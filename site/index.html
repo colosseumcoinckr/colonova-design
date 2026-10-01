@@ -552,7 +552,7 @@
           <span><kbd>⌘</kbd><kbd>T</kbd> 새 대화</span>
           <span><kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd> 찍기</span>
           <span><kbd>⌘</kbd><kbd>B</kbd> 사이드바</span>
-          <span><kbd>⌘</kbd><kbd>=</kbd> <kbd>⌘</kbd><kbd>-</kbd> 앱 전체 키우고 줄이기</span>
+          <span><kbd>⌘</kbd><kbd>=</kbd> <kbd>⌘</kbd><kbd>-</kbd> <kbd>⌘</kbd><kbd>0</kbd> 앱 전체 키우고 줄이기</span>
           <span>Windows 는 <kbd>Ctrl</kbd></span>
         </p>
       </section>
@@ -770,8 +770,8 @@
           <li><b>AI 도 못 푸는 문제만 개발자에게 와요</b><span>열린 요청이 있으면 거기에, 없으면 서비스 쪽 게시판에.</span></li>
         </ul>
         <p class="callout">
-          연결 코드를 넣고 레포를 고르면, 고른 레포 전부가 초대 파일 하나에 실려요 — 사용자는 파일을
-          놓기만 하면 모든 프로젝트가 설정돼요. 내려받은 파일의 내용은 앱만 읽을 수 있게 가려져요(편집기로 열면
+          연결 코드를 넣고 레포를 고르면, 고른 레포 전부가 초대 파일 하나에 실려요(한 파일에
+          프로젝트 20개까지) — 사용자는 파일을 놓기만 하면 모든 프로젝트가 설정돼요. 내려받은 파일의 내용은 앱만 읽을 수 있게 가려져요(편집기로 열면
           알아볼 수 없는 글자로 보여요). 그래도 연결 코드가 들어 있으니
           <strong>사용자만 보는 경로</strong>(슬랙 DM 등)로 보내고, 가져오기가 끝나면 지우라고 안내하세요. 입력한
           값은 이 브라우저 메모리에만 두고, 요청은 GitHub 에만 보내요.
@@ -862,6 +862,9 @@
                (저장소 칩은 개발 실행 전용, 단계 10). 초대장이 겹침을 만들지 않게
                붙잡는 자리다. -->
           <p class="irepos__status irepos__status--error" id="name-status" hidden></p>
+          <!-- 초대 파일 한 장의 프로젝트 상한 — 읽는 쪽(protocol LIMITS.projects)이
+               거절하는 20개를 만드는 쪽에서 먼저 잡는 자리다. -->
+          <p class="irepos__status irepos__status--error" id="limit-status" hidden></p>
 
           <div class="iform__actions">
             <button type="submit" class="btn btn--primary" id="invite-download" disabled>

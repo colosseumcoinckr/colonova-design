@@ -31,6 +31,7 @@ const manualAdd = document.getElementById("manual-add");
 const authorStatus = document.getElementById("author-status");
 const notifyStatus = document.getElementById("notify-status");
 const nameStatus = document.getElementById("name-status");
+const limitStatus = document.getElementById("limit-status");
 const guideLines = document.getElementById("guide-lines");
 const guideCopy = document.getElementById("guide-copy");
 const guideOsButtons = [...document.querySelectorAll(".iguide__osbtn")];
@@ -42,6 +43,13 @@ const guideOsButtons = [...document.querySelectorAll(".iguide__osbtn")];
 const API_BASE = /^(127\.0\.0\.1|localhost)$/.test(location.hostname)
   ? new URLSearchParams(location.search).get("api") ?? "https://api.github.com"
   : "https://api.github.com";
+
+/**
+ * 한 초대 파일이 실을 프로젝트 상한 — packages/protocol 의 LIMITS.projects 와
+ * 같은 값이다(짝은 거기, 여기는 만드는 쪽이다). 넘기면 읽는 쪽이 거절하기
+ * 전에 여기서 막고 이유를 말한다.
+ */
+const PROJECT_LIMIT = 20;
 
 /** 요청이 다 만들어지면 매번 같은 머리 — 코드는 여기만 실린다. */
 const apiHeaders = () => ({
@@ -773,6 +781,8 @@ async function render() {
   // 권한 확인(PLAN L11): 저장소에 알림을 남길 수 있는지 확인하지 못하는
   // 연결 코드(세밀 토큰)는 Slack 길이 필수다 — 둘 다 없으면 만들 수 없다.
   const notifyOk = canNotifyRepo() || slackValue() !== null;
+  // 초대 파일 한 장의 상한 — 읽는 쪽이 거절하기 전에 여기서 막는다.
+  const tooMany = values.projects.length > PROJECT_LIMIT;
   // 작업 이름은 필수다 — 비면 봉인·내려받기·보내기 어느 것도 켜지지 않고,
   // 이유가 actions 바로 위 한 줄로 선다.
   const ready = Boolean(
@@ -780,7 +790,8 @@ async function render() {
       state.author.trim() &&
       values.projects.length > 0 &&
       notifyOk &&
-      duplicateNames().size === 0,
+      duplicateNames().size === 0 &&
+      !tooMany,
   );
   const ticket = ++sealTicket;
   // 입력이 움직였다 옛 봉인은 현재 입력의 것이 아니다 — 새 것이 올 때까지
@@ -834,6 +845,11 @@ async function render() {
       render();
     });
     nameStatus.append(fix);
+  }
+  // 상한 안내 — 초과한 개수와 덜어 내는 길을 함께 말한다.
+  limitStatus.hidden = !tooMany;
+  if (tooMany) {
+    limitStatus.textContent = `한 초대 파일에는 프로젝트 ${PROJECT_LIMIT}개까지 실려요 — 지금 ${values.projects.length}개네요. 레포를 덜어 내 주세요.`;
   }
   filename.textContent = ready
     ? inviteFileName({ author: state.author, name: values.projects[0].name })

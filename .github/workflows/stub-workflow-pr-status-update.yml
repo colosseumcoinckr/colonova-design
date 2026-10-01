@@ -1,0 +1,31 @@
+name: "[ORG] PR Status Update Notifications"
+
+on:
+  pull_request_review:
+    types: [submitted]
+  pull_request:
+    types: [closed, review_requested]
+
+jobs:
+  pr-status-update:
+    # Only run for specific review states, PR close, and review (re-)request events.
+    # (review_requested fires for both first-time reviewer assignment and genuine
+    #  re-requests; the reusable workflow sends genuine re-requests plus reviewer
+    #  additions to already-announced PRs, and skips the rest.)
+    if: |
+      (
+        github.event_name == 'pull_request_review' &&
+        (
+          github.event.review.state == 'approved' ||
+          github.event.review.state == 'changes_requested'
+        )
+      ) ||
+      (
+        github.event_name == 'pull_request' &&
+        (
+          github.event.action == 'closed' ||
+          github.event.action == 'review_requested'
+        )
+      )
+    uses: colosseumcoinckr/.github/.github/workflows/org-workflow-pr-status-update.yml@v2
+    secrets: inherit

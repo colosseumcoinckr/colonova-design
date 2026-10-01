@@ -1,9 +1,11 @@
 /**
  * 히어로의 3D 층 — 외부 라이브러리 없이 손수 짠다.
  *
- * 1. 제품 창 틸트: 마우스를 따라 rotateX/rotateY, 손을 떼면 아주 느린 idle 흔들림.
+ * 1. 제품 창 틸트: 마우스를 따라 rotateX/rotateY, 제자리 느린 숨, 손을 떼면 아주 느린 idle 흔들림.
  * 2. 파티클 필드: 깊이(z)를 가진 점들을 canvas에 투영 — 가까울수록 크고 밝다.
- * 3. 떠 있는 핀/칩: translateZ 로 창 위에 띄우고 마우스 반대 방향으로 패럴랙스.
+ * 3. 바닥 그리드: 평면 위를 천천히 걸어 들어오고 포인터에 기운다.
+ * 4. 오로라: 포인터 반대편으로 떠 있는 배경 빛(느린 숨은 CSS 가 맡는다).
+ * 5. 떠 있는 핀/칩: translateZ 로 창 위에 띄우고 마우스 반대 방향으로 패럴랙스.
  *
  * prefers-reduced-motion 이면 아무것도 움직이지 않는다 — 캔버스도 그리지 않는다.
  * 문서가 숨겨지거나 히어로가 화면 밖이면 rAF 를 쉰다.
@@ -13,6 +15,8 @@ const hero = document.querySelector(".hero");
 const appwin = document.getElementById("appwin");
 const floats = [...document.querySelectorAll(".float")];
 const canvas = document.querySelector(".hero__field");
+const grid = document.querySelector(".hero__grid");
+const aurora = document.querySelector(".hero__aurora");
 
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -88,8 +92,21 @@ if (!reduced && hero && appwin) {
     curX += (gx - curX) * 0.06;
     curY += (gy - curY) * 0.06;
 
+    // 창 — 마우스를 따라 기울고, 제자리에서 아주 느리게 숨쉰다
     appwin.style.transform =
-      `rotateX(${8 - curY * 5}deg) rotateY(${curX * 7}deg)`;
+      `translateY(${Math.sin(t / 1900) * 5}px) rotateX(${8 - curY * 5}deg) rotateY(${curX * 7}deg)`;
+
+    // 바닥 그리드 — 천천히 걸어 들어오고(64px 주기라 이음새가 없다), 포인터에 살짝 기운다.
+    // translateY 는 rotateX 뒤에 오므로 그 평면 위를 미끄러진다.
+    if (grid) {
+      grid.style.transform =
+        `perspective(700px) rotateX(${62 - curY * 2.2}deg) rotateZ(${curX * 1.2}deg) scale(1.6) translateY(${((t * 0.02) % 64).toFixed(2)}px)`;
+    }
+
+    // 오로라 — 포인터 반대편으로 떠서 깊이를 하나 더 만든다(CSS 가 느린 숨을 맡는다)
+    if (aurora) {
+      aurora.style.transform = `translate3d(${(-curX * 22).toFixed(1)}px, ${(-curY * 14).toFixed(1)}px, 0)`;
+    }
 
     for (const f of floats) {
       const depth = f.classList.contains("float--pin") ? 90 : 60;

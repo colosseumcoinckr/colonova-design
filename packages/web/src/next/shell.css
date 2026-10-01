@@ -1,0 +1,196 @@
+/* 셸의 틀(U1 · U16) — 사이드바 · 본문(상태 줄 + 대화 · 미리보기) · 좁은 창. */
+
+.nx {
+  position: relative;
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  overflow: hidden;
+}
+
+/* 접힘은 열 폭을 한 번에 갈고 옷(사이드바 자체)이 translateX 로 미끄러진다 —
+   열을 매 프레임 재면 사이드바 제목들이 매 프레임 다시 잘린다. */
+.nx--collapsed {
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.nx--resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+/* 부팅 표지(shell-pane 의 `boot`) — 첫 상태가 오기 전의 조용한 한 장. 체크리스트를
+   대신 그리지 않으므로 프로젝트가 있는 기계의 다시 열기는 표지에서 곧장 작업 틀로
+   넘어간다. 뿌리 `.nx` 의 격자(사이드바 칸)는 flex 로 완전히 튼다. */
+.nx-boot {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.nx-boot img {
+  opacity: 0.9;
+}
+
+.nx-main {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+}
+
+.nx-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 홈이 앞에 서 있는 동안의 대화 · 미리보기 — 마운트한 채 자리만 비운다(미리보기
+   게스트가 살아 있게). display:none 이 아니라 크기 0 이다. */
+.nx-offstage {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 홈에서 대화로 넘어올 때의 한 번 — 자리를 드러내며 nx-chat-rise 로 뜬다.
+   offstage 가 다시 입혀지면 걸음이 풀려, 다음 넘어옴에 한 번 더 산다. */
+.nx-work:not(.nx-offstage) {
+  animation: nx-chat-rise 0.22s var(--drift);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-work:not(.nx-offstage) {
+    animation: none;
+  }
+}
+
+.nx-homebar {
+  height: 52px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+}
+
+.nx-homebar-name {
+  min-width: 0;
+  margin-left: 8px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--ink2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nx-body {
+  position: relative;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 400px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.nx-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+
+.nx .nx-tabs button {
+  flex: 1;
+  height: 32px;
+  border-radius: var(--r);
+  font-weight: 500;
+  color: var(--ink2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.nx .nx-tabs button.nx-tab--on {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.nx-scrim {
+  display: none;
+}
+
+/* ---------- 좁은 창(U16) ---------- */
+.nx--narrow {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.nx--narrow .nx-sidebar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 284px;
+  z-index: 40;
+  transform: translateX(-104%);
+  transition: transform 0.22s ease;
+}
+
+.nx--drawer .nx-sidebar {
+  transform: none;
+  box-shadow: 14px 0 40px rgba(0, 0, 0, 0.18);
+}
+
+.nx--drawer .nx-scrim {
+  display: block;
+  position: absolute;
+  inset: 0;
+  background: rgba(24, 22, 19, 0.34);
+  z-index: 39;
+  animation: nx-fade 0.2s;
+  cursor: default;
+}
+
+.nx--narrow .nx-collapse-btn {
+  display: none;
+}
+
+.nx--narrow .nx-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.nx--narrow .nx-body[data-tab="chat"] .nx-preview,
+.nx--narrow .nx-body[data-tab="preview"] .nx-chat {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+/* 탭을 옮기면 새로 앞에 선 칸이 흐림에서 걷힌다 — 가려진 칸은 마운트된 채 자리만 비우므로
+   규칙이 맞기 시작하는 순간(탭이 바뀐 순간)마다 한 번 돈다. 미리보기 게스트가 든 칸이라
+   위치가 아니라 투명도만 만진다. */
+.nx--narrow .nx-body[data-tab="chat"] .nx-chat,
+.nx--narrow .nx-body[data-tab="preview"] .nx-preview {
+  animation: nx-fade var(--nx-t-move) var(--drift);
+}
+
+.nx--narrow .nx-chat {
+  border-right: 0;
+}

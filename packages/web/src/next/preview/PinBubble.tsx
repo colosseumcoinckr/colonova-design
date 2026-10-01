@@ -1,0 +1,193 @@
+import { type CSSProperties, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { PinAttachment } from "../../hooks/usePins";
+import { composing } from "../../lib/ime";
+import { L } from "../labels";
+import { keyHint } from "../lib/key-hint";
+import { pinTitle } from "../lib/pin-name";
+import { bubblePlacement, bubbleRect } from "../lib/preview-geometry";
+import { TrashIcon } from "./icons";
+
+/** `nx:pins:send` — 말풍선의 ⌘↵. 입력창(단계 2)이 지금의 글과 핀을 보낸다. */
+export const PINS_SEND_EVENT = "nx:pins:send";
+
+/** 핀 하나의 이름 — 사람이 읽는 말만(접근성 이름 · 글자 · 종류), 영역이면 `영역`, 끝까지 못 짚으면 `찍은 곳`. */
+export function pinName(pin: PinAttachment): string {
+  return pinTitle(pin.element, {
+    area: L.pin.area,
+    point: L.pin.point,
+    kindButton: L.pin.kindButton,
+    kindLink: L.pin.kindLink,
+    kindImage: L.pin.kindImage,
+    kindInput: L.pin.kindInput,
+  });
+}
+
+/**
+ * 핀 말풍선(PLAN-UI U4) — 찍은 자리에 뜨는 메모 입력. 입력창 칩의 원격
+ * 조작기다: 적는 글은 곧장 `pins.setNote` 로 가서 같은 번호의 칩에 비친다.
+ * 게스트 안이 아니라 앱 쪽 층에 선다 — 한글 입력과 포커스가 웹뷰로 넘어가지 않게.
+ *
+ * ↵ 담기(글을 두고 닫는다) · ⌘↵ 지금 보내기 · 휴지통(이 핀 빼기) · esc(적은 글
+ * 없이 닫는다 — 열기 전의 메모로 되돌린다). 자리는 연 순간 한 번 잡는다; 어긋날
+ * 수 있는 사건(이동 · 배율 · 바깥 누름)에는 칸이 닫는다.
+ */
+export function PinBubble({
+  pin,
+  n,
+  screenName,
+  frame,
+  zoom,
+  box,
+  narrow,
+  onNote,
+  onRemove,
+  onClose,
+  toast,
+}: {
+  pin: PinAttachment;
+  n: number;
+  screenName: string;
+  /** 게스트 요소의 왼쪽 위(칸 기준). */
+  frame: { left: number; top: number };
+  zoom: number;
+  box: { width: number; height: number };
+  narrow: boolean;
+  onNote: (note: string) => void;
+  onRemove: () => void;
+  onClose: () => void;
+  toast: (text: string) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const input = useRef<HTMLInputElement>(null);
+  const opened = useRef(pin.note);
+  const [note, setNote] = useState(pin.note);
+  const [place, setPlace] = useState<{
+    left: number;
+    top: number;
+    up: boolean;
+    arrowLeft: number;
+  } | null>(null);
+
+  // 자리는 연 순간 한 번 — 말풍선의 실제 높이를 재고 나서.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 연 순간의 좌표만 쓴다.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    setPlace(
+      bubblePlacement({
+        // 영역 핀의 rect 는 스크롤이 남은 페이지 좌표라 화면 좌표(rectView)로 본다.
+        rect: bubbleRect(pin.element),
+        frame,
+        zoom,
+        box,
+        bubble: { width: el?.offsetWidth ?? 300, height: el?.offsetHeight ?? 110 },
+      }),
+    );
+  }, []);
+
+  // 자리가 정해져 말풍선이 보이는 그림에서 초점을 준다 — 첫 그림은 visibility:hidden 이라
+  // 그때의 focus() 는 조용히 실패하고, 바로 친 글과 Enter 가 엉뚱한 곳(찍기 단추)으로 간다.
+  useEffect(() => {
+    if (place) input.current?.focus({ preventScroll: true });
+  }, [place]);
+
+  // 바깥을 누르거나 게스트가 포커스를 가져가면 닫는다(글은 이미 칩에 있다).
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const onDown = (event: MouseEvent) => {
+      if (ref.current?.contains(event.target as Node)) return;
+      close.current();
+    };
+    const onFocusIn = (event: FocusEvent) => {
+      if ((event.target as HTMLElement | null)?.tagName === "WEBVIEW") close.current();
+    };
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("focusin", onFocusIn);
+    return () => {
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("focusin", onFocusIn);
+    };
+  }, []);
+
+  const keep = () => {
+    onClose();
+    toast(narrow ? L.pin.keptNarrow(n) : L.pin.keptN(n));
+  };
+  const sendNow = () => {
+    onClose();
+    window.dispatchEvent(new CustomEvent(PINS_SEND_EVENT));
+  };
+
+  return (
+    <div
+      ref={ref}
+      className={`nx-pinbub${place?.up ? " nx-pinbub--up" : ""}`}
+      role="dialog"
+      aria-label={L.pin.bubble}
+      style={
+        place
+          ? ({
+              left: place.left,
+              top: place.top,
+              "--pv-arrow": `${place.arrowLeft}px`,
+            } as CSSProperties)
+          : { visibility: "hidden" }
+      }
+    >
+      <div className="nx-pinbub-h">
+        <span className="nx-pnum">{n}</span>
+        <b>{pinName(pin)}</b>
+        <span>· {screenName}</span>
+        <button
+          type="button"
+          className="nx-ibtn nx-ibtn--sm nx-r"
+          title={L.pin.removePin}
+          aria-label={L.pin.removePin}
+          onClick={() => {
+            onClose();
+            onRemove();
+            toast(L.pin.removed);
+          }}
+        >
+          <TrashIcon />
+        </button>
+      </div>
+      <input
+        ref={input}
+        value={note}
+        placeholder={L.pin.bubblePlaceholder}
+        aria-label={L.pin.bubblePlaceholder}
+        onChange={(event) => {
+          setNote(event.target.value);
+          onNote(event.target.value);
+        }}
+        onKeyDown={(event) => {
+          if (composing(event)) return;
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            sendNow();
+          } else if (event.key === "Enter") {
+            event.preventDefault();
+            keep();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            onNote(opened.current);
+            onClose();
+          }
+        }}
+      />
+      <div className="nx-pinbub-f">
+        <span>{keyHint(L.pin.bubbleKeepHint)}</span>
+        <span className="nx-grow" />
+        {/* 여러 곳을 찍고 문장 하나로 보내는 것이 기본 흐름이다 — Enter 가 하는 `담기` 가 주 단추다. */}
+        <button type="button" className="nx-btn nx-btn--sm" onClick={sendNow}>
+          {L.pin.sendNow}
+        </button>
+        <button type="button" className="nx-btn nx-btn--sm nx-btn--pri" onClick={keep}>
+          {L.pin.keep}
+        </button>
+      </div>
+    </div>
+  );
+}

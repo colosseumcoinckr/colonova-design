@@ -1,0 +1,2331 @@
+/* ==========================================================================
+   ColoNova Design — design system
+   A document tool. Light paper by default, sans-serif, generous spacing.
+   Monospace is for code and diffs only — the places that really are machine
+   text. The console palette it started as is still here as the dark theme.
+   ========================================================================== */
+
+/* The base console doubles as the "dark" palette, declared on any element:
+   anything with [data-theme] wears a whole palette without touching the
+   app around it. The palettes that remain: dark, light, github(-light),
+   claude (the default), codex. */
+:root,
+[data-theme="dark"] {
+  /* surfaces, darkest → lightest (neutral, no blue cast) */
+  --bg: #0d0d0f;
+  --bg-2: #111114;
+  --panel: #151518;
+  --panel-2: #1b1b1f;
+  --panel-3: #212126;
+
+  /* hairlines */
+  --line: #2e2e35;
+  --line-soft: #1e1e22;
+  /* borders that only appear on hover, focus, or above a popover */
+  --line-strong: #34343b;
+  --line-hover: #3a3a42;
+  --line-hover-strong: #3f3f47;
+  --scroll-thumb: #2c2c32;
+
+  /* text */
+  --text: #e4e4e7;
+  --text-2: #b6b6bc;
+  --muted: #a4a4b0;
+
+  /* semantics — accent is steel, used only for state and links */
+  --accent: #9db1c7;
+  --accent-soft: rgba(157, 177, 199, 0.09);
+  --accent-glow: rgba(157, 177, 199, 0.35);
+  --warn: #d4a55f;
+  --warn-soft: rgba(212, 165, 95, 0.08);
+  --danger: #e07a7a;
+  --danger-soft: rgba(224, 122, 122, 0.08);
+  --ok: #79b874;
+
+  /* tinted hairlines that carry the semantic colour */
+  --warn-line: rgba(212, 165, 95, 0.38);
+  --danger-line: rgba(224, 122, 122, 0.42);
+  --select-bg: rgba(157, 177, 199, 0.25);
+
+  --mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace;
+  --sans:
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  /* things that float: menus. Dialogs and the composer use --r-dialog. Flat work stays at 4–8. */
+  --r-float: 12px;
+  --r-dialog: 16px;
+
+  --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, 0.66), 0 4px 12px -4px rgba(0, 0, 0, 0.5);
+  --brand: #7e97b5;
+  --scrim: rgba(0, 0, 0, 0.5);
+
+  --glass: color-mix(in srgb, var(--panel) 78%, transparent);
+  /* elevation — layered so a surface sits in light, not on a line. */
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.22), 0 12px 32px -16px rgba(0, 0, 0, 0.5);
+  --shadow-float: 0 2px 6px -2px rgba(0, 0, 0, 0.4), 0 24px 56px -20px rgba(0, 0, 0, 0.55);
+  /* one spring for things that pop, one ease for things that drift */
+  --spring: cubic-bezier(0.34, 1.3, 0.42, 1);
+  --drift: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* 미리보기 무대 — 어느 팔레트에서도 흰 캔버스다. 그 위에 뜨는 색은
+     작업 중인 앱의 것이므로 테마가 덮지 않는 유일한 고정 표면이다. */
+  --preview-canvas: #fff;
+
+  /* 한 단 더 조용한 글자 — 구분선 위의 시간 표식 · 나중에 보기 같은 자리.
+     팔레트마다 따로 두지 않고 muted 를 한 번 옅게 섞어 모든 테마가 따라간다. */
+  --faint: color-mix(in srgb, var(--muted) 72%, transparent);
+
+  color-scheme: dark;
+}
+
+/* Type scale: three px knobs — UI chrome, conversation content, machine
+   text (commands · diff · output). The settings panel writes each knob's
+   px ÷ base onto <html> as an inline --*-scale, before React mounts like
+   the theme, so the first paint is already the stored size. */
+:root {
+  --ui-scale: 1;
+  --content-scale: 1;
+  --code-scale: 1;
+}
+
+/* Every scaled size in the stylesheet is a token from this block, never a
+   bare calc: the axis decision (which knob a size rides) lives here and
+   nowhere else. The suffix is the base px × 10 — --font-ui-115 is 11.5px
+   at 보통 — so a rename is an audit, and a later ladder normalization is
+   an edit to this one block. */
+:root {
+  --font-ui-90: calc(9px * var(--ui-scale));
+  --font-ui-95: calc(9.5px * var(--ui-scale));
+  --font-ui-100: calc(10px * var(--ui-scale));
+  --font-ui-105: calc(10.5px * var(--ui-scale));
+  --font-ui-110: calc(11px * var(--ui-scale));
+  --font-ui-115: calc(11.5px * var(--ui-scale));
+  --font-ui-120: calc(12px * var(--ui-scale));
+  --font-ui-125: calc(12.5px * var(--ui-scale));
+  --font-ui-130: calc(13px * var(--ui-scale));
+  --font-ui-135: calc(13.5px * var(--ui-scale));
+  --font-ui-140: calc(14px * var(--ui-scale));
+  --font-ui-150: calc(15px * var(--ui-scale));
+  --font-ui-160: calc(16px * var(--ui-scale));
+  --font-ui-170: calc(17px * var(--ui-scale));
+  --font-ui-200: calc(20px * var(--ui-scale));
+  --font-ui-240: calc(24px * var(--ui-scale));
+  --font-ui-340: calc(34px * var(--ui-scale));
+  --font-content-120: calc(12px * var(--content-scale));
+  --font-content-125: calc(12.5px * var(--content-scale));
+  --font-content-130: calc(13px * var(--content-scale));
+  --font-content-135: calc(13.5px * var(--content-scale));
+  --font-content-140: calc(14px * var(--content-scale));
+  --font-code-110: calc(11px * var(--code-scale));
+  --font-code-115: calc(11.5px * var(--code-scale));
+  --font-code-120: calc(12px * var(--code-scale));
+}
+
+/* Light theme. The same console, on paper: identical structure, one palette
+   swap. `data-theme` is set by the settings panel — "system" resolves to
+   dark or light before it lands on the element, so no media query here. */
+[data-theme="light"] {
+  --bg: #ffffff;
+  --bg-2: #f6f6f8;
+  --panel: #f8f8fa;
+  --panel-2: #f1f1f4;
+  --panel-3: #e8e8ed;
+
+  --line: #dcdce2;
+  --line-soft: #e6e6ea;
+  --line-strong: #cbcbd3;
+  --line-hover: #b5b5be;
+  --line-hover-strong: #a4a4af;
+  --scroll-thumb: #c9c9d1;
+
+  --text: #17171a;
+  --text-2: #45454d;
+  --muted: #54545e;
+
+  --accent: #4a6b8f;
+  --accent-soft: rgba(74, 107, 143, 0.1);
+  --accent-glow: rgba(74, 107, 143, 0.28);
+  --warn: #855312;
+  --warn-soft: rgba(133, 83, 18, 0.08);
+  --danger: #a93b3b;
+  --danger-soft: rgba(169, 59, 59, 0.07);
+  --ok: #2f7a35;
+
+  --warn-line: rgba(133, 83, 18, 0.32);
+  --danger-line: rgba(169, 59, 59, 0.35);
+  --select-bg: rgba(74, 107, 143, 0.2);
+
+  --shadow-pop: 0 16px 40px -12px rgba(24, 24, 32, 0.16), 0 4px 12px -4px rgba(24, 24, 32, 0.1);
+  --brand: #3d5a7a;
+  --scrim: rgba(24, 24, 32, 0.32);
+
+  /* the same lit studio, on paper: weaker keys of the same washes */
+  --shadow-card: 0 1px 2px rgba(24, 24, 32, 0.05), 0 12px 32px -16px rgba(24, 24, 32, 0.16);
+  --shadow-float: 0 2px 6px -2px rgba(24, 24, 32, 0.08), 0 24px 56px -20px rgba(24, 24, 32, 0.2);
+
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------ palettes */
+
+/* GitHub dark — Primer anchors: canvas #0d1117, canvas.subtle #161b22,
+   border #30363d, accent #58a6ff, success #3fb950, danger #f85149. The
+   intermediate neutrals and status shades between them are derived. */
+[data-theme="github"] {
+  --bg: #0d1117;
+  --bg-2: #0a0e14;
+  --panel: #11161d;
+  --panel-2: #161b22;
+  --panel-3: #21262d;
+
+  --line: #30363d;
+  --line-soft: #1c2129;
+  --line-strong: #3d444d;
+  --line-hover: #444c56;
+  --line-hover-strong: #545d68;
+  --scroll-thumb: #30363d;
+
+  --text: #dce3eb;
+  --text-2: #9ea7b3;
+  --muted: #798490;
+
+  --accent: #58a6ff;
+  --accent-soft: rgba(88, 166, 255, 0.12);
+  --accent-glow: rgba(88, 166, 255, 0.4);
+  --warn: #d29922;
+  --warn-soft: rgba(210, 153, 34, 0.1);
+  --danger: #f85149;
+  --danger-soft: rgba(248, 81, 73, 0.1);
+  --ok: #3fb950;
+
+  --warn-line: rgba(210, 153, 34, 0.45);
+  --danger-line: rgba(248, 81, 73, 0.45);
+  --select-bg: rgba(88, 166, 255, 0.3);
+
+  --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, 0.75), 0 4px 12px -4px rgba(0, 0, 0, 0.6);
+  --brand: #4c8ee0;
+  --scrim: rgba(0, 0, 0, 0.6);
+
+  color-scheme: dark;
+}
+
+/* GitHub light — the default light theme: white canvas, #f6f8fa wells,
+   #1f2328 text, scale blues/greens from primer/primitives. */
+[data-theme="github-light"] {
+  --bg: #ffffff;
+  --bg-2: #f6f8fa;
+  --panel: #f6f8fa;
+  --panel-2: #eaeef2;
+  --panel-3: #d1d9e0;
+
+  --line: #d1d9e0;
+  --line-soft: #e8ebee;
+  --line-strong: #b7bec7;
+  --line-hover: #959da5;
+  --line-hover-strong: #818b98;
+  --scroll-thumb: #b7bec7;
+
+  --text: #1f2328;
+  --text-2: #424a53;
+  --muted: #59636e;
+
+  --accent: #0550ae;
+  --accent-soft: rgba(9, 105, 218, 0.1);
+  --accent-glow: rgba(9, 105, 218, 0.3);
+  --warn: #7d4e00;
+  --warn-soft: rgba(154, 103, 0, 0.1);
+  --danger: #a40e26;
+  --danger-soft: rgba(209, 36, 47, 0.08);
+  --ok: #197b35;
+  --warn-line: rgba(154, 103, 0, 0.4);
+  --danger-line: rgba(209, 36, 47, 0.4);
+  --select-bg: rgba(9, 105, 218, 0.18);
+
+  --shadow-pop: 0 16px 40px -12px rgba(31, 35, 40, 0.18), 0 4px 12px -4px rgba(31, 35, 40, 0.1);
+  --brand: #0550ae;
+  --scrim: rgba(31, 35, 40, 0.35);
+  --shadow-card: 0 1px 2px rgba(31, 35, 40, 0.06), 0 12px 32px -16px rgba(31, 35, 40, 0.16);
+  --shadow-float: 0 2px 6px -2px rgba(31, 35, 40, 0.08), 0 24px 56px -20px rgba(31, 35, 40, 0.2);
+
+  color-scheme: light;
+}
+
+/* Claude — claude.ai's paper theme. Warm off-white canvas #faf9f5, tonal
+   elevation instead of shadows, near-black olive text, terracotta accent
+   (#c96442 brand, darkened a step for AA on paper). */
+[data-theme="claude"] {
+  --bg: #faf9f5;
+  --bg-2: #f0eee6;
+  --panel: #f5f4ee;
+  --panel-2: #eceadf;
+  --panel-3: #e2ddcd;
+
+  --line: #d9d4c4;
+  --line-soft: #e8e4d6;
+  --line-strong: #c9c3b0;
+  --line-hover: #b3ac96;
+  --line-hover-strong: #a29b84;
+  --scroll-thumb: #cfc9b6;
+
+  --text: #141413;
+  --text-2: #4a463c;
+  --muted: #5c5749;
+
+  --accent: #b14a2e;
+  --accent-soft: rgba(177, 74, 46, 0.1);
+  --accent-glow: rgba(177, 74, 46, 0.28);
+  --warn: #8a5a12;
+  --warn-soft: rgba(138, 90, 18, 0.09);
+  --danger: #a63d2a;
+  --danger-soft: rgba(166, 61, 42, 0.08);
+  --ok: #4a6b2f;
+
+  --warn-line: rgba(138, 90, 18, 0.35);
+  --danger-line: rgba(166, 61, 42, 0.38);
+  --select-bg: rgba(177, 74, 46, 0.2);
+
+  --shadow-pop: 0 16px 40px -12px rgba(60, 50, 35, 0.18), 0 4px 12px -4px rgba(60, 50, 35, 0.1);
+  --brand: #b14a2e;
+  --scrim: rgba(60, 50, 35, 0.32);
+  --shadow-card: 0 1px 2px rgba(60, 50, 35, 0.06), 0 12px 32px -16px rgba(60, 50, 35, 0.18);
+  --shadow-float: 0 2px 6px -2px rgba(60, 50, 35, 0.09), 0 24px 56px -20px rgba(60, 50, 35, 0.22);
+
+  color-scheme: light;
+}
+
+/* Codex — ChatGPT light mode, measured on chatgpt.com (2026-09): near-white
+   canvas, black ink #0d0d0d, hairlines at 10% black. The current look is
+   monochrome — the primary action is a black pill with white text, so the
+   accent is ink rather than a hue. */
+[data-theme="codex"] {
+  --bg: #ffffff;
+  --bg-2: #f9f9f9;
+  --panel: #f4f4f4;
+  --panel-2: #ececec;
+  --panel-3: #e3e3e3;
+
+  --line: #e5e5e5;
+  --line-soft: #efefef;
+  --line-strong: #d6d6d6;
+  --line-hover: #bdbdbd;
+  --line-hover-strong: #a3a3a3;
+  --scroll-thumb: #cfcfcf;
+
+  --text: #0d0d0d;
+  --text-2: #5d5d5d;
+  /* 8f8f8f 는 흰 바탕에서 3.2:1 — 읽는 글자의 아래 한 등급으로는 얇았다. */
+  --muted: #6e6e6e;
+
+  --accent: #0d0d0d;
+  --accent-soft: rgba(13, 13, 13, 0.06);
+  --accent-glow: rgba(13, 13, 13, 0.22);
+  --warn: #8a5a12;
+  --warn-soft: rgba(138, 90, 18, 0.09);
+  --danger: #c43d3d;
+  --danger-soft: rgba(196, 61, 61, 0.08);
+  --ok: #23865a;
+
+  --warn-line: rgba(138, 90, 18, 0.35);
+  --danger-line: rgba(196, 61, 61, 0.38);
+  --select-bg: rgba(13, 13, 13, 0.14);
+
+  --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, 0.24), 0 4px 12px -4px rgba(0, 0, 0, 0.12);
+  --brand: #0d0d0d;
+  --scrim: rgba(0, 0, 0, 0.4);
+
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------ base */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: var(--font-ui-150) / 1.6 var(--sans);
+  letter-spacing: -0.006em;
+  /* Korean reads in words, not syllables: lines break at word edges, and an
+     unbreakable token (a long path, a url) still gives way instead of pushing
+     its line wide. This is also what stops a squeezed bar from stacking a
+     label one syllable per line. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--select-bg);
+}
+
+/* Buttons are words a planner reads, so they are set in the reading face.
+   Monospace on a button was a console affectation. */
+button {
+  font: 500 var(--font-ui-135) var(--sans);
+  cursor: pointer;
+  color: inherit;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+input,
+textarea,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 8px 11px;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--muted);
+}
+/* background-color, not the shorthand: a shorthand here would wipe the
+   picker's own arrow image on focus. */
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--line-hover);
+  background-color: var(--panel-3);
+}
+/* `outline: none` on bare :focus used to out-rank the :focus-visible ring
+   below (specificity (0,1,1) beats (0,1,0)), so keyboard users lost the ring
+   in every form. Suppressing the outline only off-keyboard keeps both. */
+input:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible),
+select:focus:not(:focus-visible) {
+  outline: none;
+}
+/* The picker loses the browser's bevel and wears the app's own arrow: one
+   quiet glyph, tuned to sit on every palette's panel-2. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23898b96' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  padding-right: 27px;
+}
+
+:focus-visible {
+  /* opaque: the old 65% alpha fell under WCAG 1.4.11's 3:1 on light palettes
+     (light 2.73, latte 1.91) while dark passed anyway (4.31) */
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.primary {
+  /* The one ink button: the reading colour itself as the surface. Every
+     other control is quieter; this is where the next step lives. The sheen
+     and the press are what make it feel like a key, not a label. */
+  background: var(--text);
+  color: var(--bg);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  padding: 7px 14px;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition:
+    filter 0.15s var(--drift),
+    transform 0.15s var(--spring),
+    box-shadow 0.15s var(--drift);
+}
+.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow:
+    0 4px 12px -4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+.primary:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+}
+
+.danger {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger-line);
+  border-radius: var(--r-md);
+  padding: 7px 14px;
+  transition: background 0.12s;
+}
+.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+}
+
+.ghost {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  padding: 2px 7px;
+  border-radius: var(--r-md);
+  transition:
+    background 0.12s,
+    color 0.12s,
+    transform 0.12s var(--spring);
+}
+.ghost:hover:not(:disabled) {
+  background: var(--panel-2);
+  color: var(--text);
+}
+.ghost:active:not(:disabled) {
+  transform: scale(0.94);
+}
+/* Icon + word controls: the icons.tsx glyphs are decoration — the word
+   carries the accessible name that tests and screen readers read. Flex
+   pins each glyph to its word's left without baseline juggling. */
+.primary,
+.danger,
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.primary svg,
+.danger svg,
+.ghost svg {
+  flex: none;
+}
+
+/* scrollbars ------------------------------------------------------------ */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll-thumb) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--line-hover);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* motion primitives ------------------------------------------------------ */
+
+.spinner {
+  width: 11px;
+  height: 11px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid transparent;
+  border-top-color: currentColor;
+  border-right-color: currentColor;
+  animation: spin 0.7s linear infinite;
+  display: inline-block;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ------------------------------------------------------- connect screen */
+
+.connect {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 18vh 24px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  font-size: var(--font-ui-130);
+}
+.connect h1 {
+  margin: 0;
+  font: 600 var(--font-ui-170) var(--sans);
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+.connect h1 .brand-name {
+  font: 700 var(--font-ui-170) var(--sans);
+  letter-spacing: -0.01em;
+}
+.connect p {
+  color: var(--muted);
+  margin: 0;
+  max-width: 52ch;
+  line-height: 1.6;
+}
+
+.connect__step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.connect__stepnum {
+  flex: none;
+  color: var(--muted);
+  font: 500 var(--font-ui-120) var(--sans);
+}
+.connect__cmd {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 8px 11px;
+  font-family: var(--mono);
+  font-size: var(--font-ui-125);
+  margin: 0;
+  color: var(--text-2);
+}
+.connect__cmd code {
+  flex: 1;
+}
+
+.connect__step--fill {
+  display: flex;
+  align-items: center;
+}
+.connect__inputrow {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.connect__step .connect__inputrow {
+  flex: 1;
+  margin-top: 0;
+}
+.connect__inputrow input {
+  flex: 1;
+  font-family: var(--mono);
+  font-size: var(--font-ui-125);
+}
+
+/* ---------------------------------------------------------------- layout */
+
+.brand-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font: 700 var(--font-ui-135) var(--sans);
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+/* The mark: the colonova project logo — the rail's one chromatic moment,
+   earned by being the only place the product signs its name. */
+.brand-name::before {
+  content: "";
+  width: 20px;
+  height: 20px;
+  flex: none;
+  background: url(/colonova-icon.svg) center / contain no-repeat;
+  filter: drop-shadow(0 2px 6px var(--accent-glow));
+}
+
+.tag {
+  font: 500 var(--font-ui-100) var(--mono);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 2px 7px;
+  color: var(--muted);
+  margin-left: 0;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* transcript --------------------------------------------------------------*/
+
+.scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 28px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* 이 열은 넘치는 것이 직업이다 — 자식을 눌러 맞추는 것이 아니라. flex-shrink
+   는 overflow:hidden 을 입은 자식(.banner · .fold · .handoffcard)의 자동 최소
+   크기를 0으로 만들어, 내용이 긴 대화에서 실패 배너를 반 줄로 짓눌러 본문을
+   잘랐다(실측: 61px 내용이 22px로). 자식은 언제나 내용 크기를 유지하고,
+   넘침은 스크롤이 받는다. */
+.scroll > * {
+  flex: none;
+}
+
+/* one readable column; cards and notices line up with the transcript */
+.transcript,
+.scroll > .card,
+.scroll > .notice,
+.scroll > .empty {
+  width: 100%;
+  max-width: 860px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+@keyframes livedot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+/* The tape's rail: one hairline joining the working cards, with the state
+   worn as a light on the line — a node the colour of whatever is happening. */
+.activity::before {
+  content: "";
+  position: absolute;
+  left: -15px;
+  top: -12px;
+  bottom: -12px;
+  width: 1px;
+  background: var(--line-soft);
+  pointer-events: none;
+}
+.activity::after {
+  content: "";
+  position: absolute;
+  left: -19px;
+  top: 15px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--line-strong);
+  box-shadow:
+    0 0 0 3px var(--bg),
+    0 0 0 4px color-mix(in srgb, var(--line-strong) 40%, transparent);
+  pointer-events: none;
+}
+
+.empty {
+  /* The only thing on screen for a new conversation: the product signs its
+     name once (the colonova mark the brand row and onboarding wear),
+     then gets out of the way. Auto margins center it in the scroll's flex
+     column; once blocks exist this node is gone. */
+  margin: auto;
+  padding: 24px 0;
+  text-align: center;
+  animation: risefade 0.55s ease-out backwards;
+}
+.empty::before {
+  /* The mark drifts one slow breath — the empty room is alive, not vacant. */
+  content: "";
+  display: block;
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 20px;
+  background: url(/colonova-icon.svg) center / contain no-repeat;
+  filter: drop-shadow(0 18px 30px var(--accent-glow));
+  animation: markdrift 7s ease-in-out infinite;
+}
+@keyframes markdrift {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .empty::before {
+    animation: none;
+  }
+}
+
+@keyframes fadein {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* markdown ---------------------------------------------------------------- */
+
+.md {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  line-height: 1.7;
+}
+.md > :first-child {
+  margin-top: 0;
+}
+.md > :last-child {
+  margin-bottom: 0;
+}
+.md p {
+  margin: 0;
+}
+.md strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.md h1,
+.md h2,
+.md h3,
+.md h4 {
+  margin: 10px 0 2px;
+  line-height: 1.35;
+  color: var(--text);
+  font-weight: 650;
+  text-wrap: balance;
+}
+.md h2,
+.md h3 {
+  margin-top: 16px;
+}
+.md h1 {
+  font-size: 1.2em;
+}
+.md h2 {
+  font-size: 1.15em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.md h3 {
+  font-size: 1.05em;
+}
+.md h4 {
+  font-size: 1em;
+}
+.md ul,
+.md ol {
+  margin: 0;
+  padding-left: 1.35em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.md li::marker {
+  color: var(--accent);
+}
+.md code {
+  font-family: var(--mono);
+  font-size: 0.87em;
+  background: var(--panel-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  padding: 0.5px 4px;
+  color: var(--text);
+}
+.md pre {
+  margin: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  overflow-x: auto;
+  max-height: 420px;
+}
+.md pre code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: var(--font-ui-125);
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.md .md__code--open > pre {
+  max-height: none;
+}
+.md__codehead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 6px 3px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-bottom: 0;
+  border-radius: var(--r-md) var(--r-md) 0 0;
+}
+.md__codelang {
+  font: 500 var(--font-ui-100) var(--mono);
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.md__codeacts {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.md__codeacts .ghost {
+  font-size: var(--font-ui-110);
+  padding: 2px 7px;
+}
+.md__mermaid {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  overflow-x: auto;
+  display: flex;
+  justify-content: center;
+}
+.md__mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.md blockquote {
+  margin: 0;
+  padding: 8px 14px;
+  border-left: 3px solid var(--accent);
+  background: var(--panel-2);
+  border-radius: var(--r-md);
+  color: var(--muted);
+}
+.md a {
+  color: var(--accent);
+  text-underline-offset: 2px;
+}
+/* 답변 끝의 화면 링크 — 누르면 옆의 미리보기가 그 화면으로 간다. 모니터
+   글리프 하나가 "브라우저가 아니라 저 칸" 이라는 뜻을 말한다. */
+.md a.md__screenlink svg {
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: -1px;
+}
+.md hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 6px 0;
+}
+.md table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.94em;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.md th,
+.md td {
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 4px 10px;
+  text-align: left;
+}
+.md tr > :last-child {
+  border-right: 0;
+}
+.md tbody tr:last-child > td {
+  border-bottom: 0;
+}
+.md thead th:first-child {
+  border-top-left-radius: var(--r-md);
+}
+.md thead th:last-child {
+  border-top-right-radius: var(--r-md);
+}
+.md tbody tr:last-child td:first-child {
+  border-bottom-left-radius: var(--r-md);
+}
+.md tbody tr:last-child td:last-child {
+  border-bottom-right-radius: var(--r-md);
+}
+.md tbody tr:nth-child(even) td {
+  background: color-mix(in srgb, var(--panel-2) 55%, transparent);
+}
+.md th {
+  background: var(--panel-2);
+  font-weight: 600;
+  color: var(--text);
+}
+.md img {
+  max-width: 100%;
+  border-radius: var(--r-sm);
+}
+
+/* thinking ---------------------------------------------------------------- */
+
+.thinking {
+  margin-left: 20px;
+  color: var(--muted);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  padding: 7px 11px 8px;
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+  font-size: var(--font-ui-120);
+}
+.thinking summary {
+  cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font: 500 var(--font-ui-115) var(--sans);
+  color: var(--muted);
+  list-style: none;
+  user-select: none;
+}
+.thinking summary::-webkit-details-marker {
+  display: none;
+}
+.thinking summary::before {
+  content: "▸";
+  flex: none;
+  color: var(--muted);
+  font-size: var(--font-ui-90);
+  transition: transform 0.15s var(--drift);
+}
+.thinking[open] summary::before {
+  transform: rotate(90deg);
+}
+.thinking summary:hover {
+  color: var(--text-2);
+}
+.thinking summary:hover::before {
+  color: var(--text-2);
+}
+.thinking[open] summary {
+  margin-bottom: 2px;
+}
+/* The fold's label; while the thought is arriving it shines. */
+.thinking__label {
+  flex: none;
+}
+.thinking--live {
+  border-color: color-mix(in srgb, var(--accent) 26%, var(--line-soft));
+}
+/* The closed fold carries the thought's first line — the shape of the
+   reasoning without opening it. Gone once the fold is open. */
+.thinking__peek {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--muted) 72%, transparent);
+}
+.thinking[open] .thinking__peek {
+  display: none;
+}
+.thinking pre {
+  white-space: pre-wrap;
+  font-family: var(--mono);
+  font-size: var(--font-code-115);
+  line-height: 1.6;
+  margin: 8px 0 2px;
+  padding: 9px 11px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  color: var(--muted);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* tool blocks ------------------------------------------------------------- */
+
+.tool {
+  margin-left: 20px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--bg-2);
+  overflow: hidden;
+}
+.tool:hover {
+  border-color: var(--line);
+}
+.tool--running {
+  border-color: var(--line-strong);
+}
+.tool--error {
+  border-color: var(--danger-line);
+}
+
+.tool__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 6px 10px;
+  text-align: left;
+  transition: background 0.1s;
+}
+.tool__head:hover {
+  background: var(--panel-2);
+}
+
+.tool__sign {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  display: grid;
+  place-items: center;
+  font-size: var(--font-ui-100);
+}
+.tool__sign--running {
+  color: var(--ok);
+}
+.tool__sign--done {
+  color: var(--muted);
+}
+.tool__sign--error {
+  color: var(--danger);
+}
+
+.tool__chevron {
+  color: var(--muted);
+  width: 11px;
+  flex: none;
+  display: inline-flex;
+  transition: transform 0.12s;
+}
+.tool__chevron--open {
+  transform: rotate(90deg);
+}
+
+.tool__name {
+  font: 600 var(--font-ui-115) var(--mono);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.tool__headline {
+  font: 400 var(--font-ui-115) var(--mono);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.tool__status--running {
+  color: var(--muted);
+  font: 500 var(--font-ui-105) var(--mono);
+  flex: none;
+}
+.tool__status--error {
+  color: var(--danger);
+  font: 500 var(--font-ui-105) var(--mono);
+  flex: none;
+}
+
+/* 도구 행의 진행: 머리 줄은 접기 버튼이고, 작업 버튼은 그 바깥에
+   산다 — 버튼 안의 버튼은 클릭이 겹친다. */
+.tool__bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tool__bar .tool__head {
+  flex: 1;
+  min-width: 0;
+}
+.tool__acts {
+  display: flex;
+  gap: 2px;
+  padding-right: 6px;
+  flex: none;
+}
+.tool__act {
+  font: 500 var(--font-ui-105) var(--sans);
+  color: var(--muted);
+  padding: 2px 6px;
+  border-radius: var(--r-sm);
+}
+.tool__act:hover {
+  color: var(--text);
+  background: var(--panel-2);
+}
+/* 그 작업이 지금 무엇을 하는지 — 30초마다 모델이 고쳐 쓰는 한 줄. */
+.tool__task {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 11px 6px 30px;
+  border-top: 1px solid var(--line-soft);
+}
+.tool__tasktext {
+  font: 400 var(--font-ui-115) var(--sans);
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool__taskmeta {
+  font: 500 var(--font-ui-105) var(--mono);
+  color: var(--muted-2, var(--muted));
+  flex: none;
+}
+
+/* 하위 작업의 대화: 그것을 띄운 도구 행 아래 한 칸 들어간 접힘. */
+.subagent {
+  margin: 2px 0 2px 18px;
+  border-left: 2px solid var(--line);
+  padding-left: 8px;
+}
+.subagent__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 2px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  text-align: left;
+}
+.subagent__label {
+  font: 500 var(--font-ui-110) var(--sans);
+  color: var(--muted);
+  flex: none;
+}
+.subagent__peek {
+  font: 400 var(--font-ui-110) var(--sans);
+  color: var(--muted);
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.subagent__body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 4px 0 6px;
+}
+.subagent__say {
+  font-size: var(--font-content-125);
+  line-height: 1.6;
+  color: var(--text);
+  padding: 2px 4px;
+}
+
+.tool__body {
+  border-top: 1px solid var(--line-soft);
+  padding: 9px 11px;
+  background: var(--bg);
+}
+.tool__label {
+  font: 500 var(--font-ui-95) var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  margin: 8px 0 4px;
+}
+.tool__label:first-child {
+  margin-top: 0;
+}
+.tool pre,
+.card pre {
+  font-family: var(--mono);
+  font-size: var(--font-code-115);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  color: var(--text-2);
+}
+
+/* notices ------------------------------------------------------------------*/
+
+.notice {
+  border-radius: var(--r-lg);
+  padding: 8px 12px;
+  font-size: var(--font-ui-125);
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  color: var(--text-2);
+}
+
+.notice--error {
+  color: var(--danger);
+  border-color: var(--danger-line);
+  background: var(--danger-soft);
+}
+
+.notice__text {
+  flex: 1;
+  word-break: break-word;
+}
+/* 알림의 원문 — 한국어 한 줄 옆의 자세히가 열면 알림 아래 한 줄을 통째로
+   차지한다. 실패 카드의 원문과 같은 옷(machine__body)을 입는다. */
+.notice:has(> .notice__more) {
+  flex-wrap: wrap;
+}
+
+/* 접힘 슬롯 (컴포넌트 Fold) — 닫힘은 접힘이다: 슬롯이 그리드 행을
+   1fr→0fr 로 줄여 아래 내용이 끌려 올라온다. 전이가 끝난다는 사실이
+   transitionend 를 보장하고, 그 이벤트가 실제로 내려가는 단계를 일으킨다. */
+.fold {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition:
+    grid-template-rows 0.2s ease,
+    opacity 0.16s ease;
+}
+.fold > .notice {
+  min-height: 0;
+  overflow: hidden;
+}
+.fold[data-closing] {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fold {
+    transition-duration: 0.01ms;
+  }
+}
+
+/* human-in-the-loop cards --------------------------------------------------*/
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: var(--r-float);
+  background: var(--panel);
+  box-shadow: var(--shadow-card);
+  padding: 13px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 8px 11px;
+  color: var(--text);
+  max-width: 32ch;
+  transition:
+    border-color 0.1s,
+    background 0.1s;
+}
+.option:hover:not(:disabled) {
+  border-color: var(--line-hover);
+  background: var(--panel-2);
+}
+
+/* composer — paseo-style floating card --------------------------------------*/
+
+.composer {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  /* the transcript's reading column (860) plus the margins it keeps — a
+     folded preview must not stretch the send hand away from the words it
+     answers */
+  width: min(100% - 44px, 904px);
+  margin: 8px auto 18px;
+  /* 컴포저는 세 층 — 상태(카드 밖) · 입력 카드 · 도구 스트립.
+     카드 옷은 .composer__field 하나만 입는다. */
+}
+
+.composer textarea {
+  resize: none;
+  min-height: 24px;
+  max-height: 220px;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  padding: 2px 0;
+  font-size: var(--font-ui-140);
+  line-height: 1.55;
+  color: var(--text);
+}
+.composer textarea::placeholder {
+  color: color-mix(in srgb, var(--muted) 68%, transparent);
+}
+.composer textarea:focus {
+  outline: none;
+  box-shadow: none;
+  border: 0;
+  background: transparent;
+}
+.composer textarea:disabled {
+  opacity: 0.5;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 2px 5px 2px 3px;
+  font: 500 var(--font-ui-110) var(--mono);
+  color: var(--text-2);
+}
+
+.chip .ghost {
+  /* The attachment chip's × joins the 24px icon
+     floor — a missed tap on a bare 13px glyph drops the file. */
+  min-width: 24px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-right: -6px;
+  font-size: var(--font-ui-130);
+  line-height: 1;
+  color: var(--muted);
+}
+.chip .ghost:hover {
+  color: var(--danger);
+}
+
+/* selector chips — model · effort · permission mode ----------------------------------*/
+
+/* Chips wrap as whole chips, never mid-label: a model name broken across two
+   lines ("Sonnet" / "5") is what a narrow chat column used to do. */
+.selectors {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  margin-left: 2px;
+}
+.selector {
+  position: relative;
+  display: inline-flex;
+}
+
+@keyframes stopbreathe {
+  50% {
+    box-shadow: 0 0 0 4px var(--danger-soft);
+  }
+}
+
+/* usage ---------------------------------------------------------------------*/
+
+@keyframes usage-fill-in {
+  from {
+    width: 0;
+  }
+}
+
+/* tip — the one tooltip ----------------------------------------------------
+   The bubble is a portal on document.body (Tip.tsx), so it escapes the
+   overflow containers — .scroll, .tree, .selector__menu — that would clip a
+   sibling span. Shown is a class, not :hover, because trigger and bubble no
+   longer share a parent. */
+.tip {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+}
+.tip__bubble {
+  position: fixed;
+  /* Above modal(60): a tip on a dialog control must clear the dialog. */
+  z-index: 70;
+  max-width: 260px;
+  padding: 5px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--panel-3);
+  box-shadow: var(--shadow-float);
+  color: var(--text);
+  font: 500 var(--font-ui-115) / 1.45 var(--sans);
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(2px);
+  transition:
+    opacity 0.12s,
+    transform 0.16s var(--drift),
+    visibility 0.12s;
+}
+.tip__bubble--shown {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  /* A beat shorter than the OS tooltip, long enough that a passing cursor
+     never arms it. Hide stays instant — the delay lives only on show. */
+  transition-delay: 0.15s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tip__bubble {
+    transition:
+      opacity 0.12s,
+      visibility 0.12s;
+    transform: none;
+  }
+}
+
+/* machine-authored turns ---------------------------------------------------- */
+
+/* A turn the planner started but did not type. It is their own side
+   of the conversation, so it sits where their bubbles sit — but it is a
+   summary of an action, not a sentence, so it is a card rather than a bubble. */
+.machine {
+  align-self: flex-end;
+  max-width: 78%;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* the agent.s plan as a card. The signs ✓ ● ○ do the state work, so
+   the rows stay quiet; the current item is the loud one. */
+.todo__list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.todo__item {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  color: var(--text-2);
+  font-size: var(--font-ui-125);
+  line-height: 1.5;
+}
+.todo__item--current {
+  color: var(--text);
+  font-weight: 600;
+}
+.todo__sign {
+  flex: none;
+  width: 13px;
+  text-align: center;
+}
+.todo--done {
+  padding: 8px 12px;
+}
+.todo__done {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 var(--font-ui-125) var(--sans);
+  text-align: left;
+}
+.todo__done:hover {
+  color: var(--text);
+}
+
+/* --------------------------------------------------------------- settings */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: var(--scrim);
+  backdrop-filter: blur(7px) saturate(1.15);
+  -webkit-backdrop-filter: blur(7px) saturate(1.15);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 8vh 20px 24px;
+  overflow-y: auto;
+}
+.modal__panel {
+  width: 100%;
+  max-width: 560px;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-dialog);
+  box-shadow: var(--shadow-float);
+  display: flex;
+  flex-direction: column;
+  max-height: 84vh;
+}
+
+.modal__panel:focus {
+  outline: none;
+}
+.modal__head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 20px 14px;
+  border-bottom: 1px solid var(--line-soft);
+}
+/* The head's signature: a brand-light hairline riding the separator — the
+   same one-chromatic-moment rule as the send button. */
+.modal__head::after {
+  content: "";
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: -1px;
+  height: 1px;
+  background: color-mix(in srgb, var(--accent) 42%, transparent);
+  pointer-events: none;
+}
+.modal__title {
+  margin: 0;
+  font: 650 var(--font-ui-150) var(--sans);
+  letter-spacing: -0.012em;
+}
+.modal__head .ghost {
+  display: inline-flex;
+  padding: 5px;
+}
+/* 진행 중 닫기의 잠김 — 진짜 disabled 대신 aria-disabled: hover·포커스는
+   남겨 title 의 이유가 도달하게 (screenpanel__action 과 같은 규칙). */
+.modal__head .ghost[aria-disabled="true"] {
+  opacity: 0.42;
+  cursor: default;
+}
+.modal__head .ghost[aria-disabled="true"]:hover {
+  background: none;
+  color: var(--muted);
+}
+.modal__body {
+  overflow-y: auto;
+  padding: 4px 20px 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 설정의 한 열 — 검색 한 줄, 방들의 아코디언, 저장 위치의 한 줄. 접힌 방은
+   지금 값으로 자기 소개를 하고, 열린 방만 그 몫의 높이를 쓴다. */
+.settings {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 0 0 0 var(--r-dialog);
+}
+
+/* A switch, not a bare 15px checkbox: a behaviour toggle reads as on/off.
+   The real input stays on top of the track — invisible, full-size — so
+   clicks, the wrapping label, and keyboard focus all land on it. */
+.switch {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.switch input {
+  /* A checked knob carries a transform, and a transform is a stacking
+     context — without this the knob would paint over, and eat clicks
+     meant for, the invisible input. */
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+  z-index: 1;
+}
+
+/* ------------------------------------------------------------ planner mode */
+
+/* The shell: the project rail on the left, everything else in
+   the right column. The grid template itself is inline — the width is a
+   dragged, stored number — so the CSS only names the shape. */
+.planner {
+  display: grid;
+  height: 100vh;
+  position: relative;
+  /* the fold breathes: the column glides between 240px and the 44px rail.
+     The drag below opts out — a dragged width must track the pointer. */
+  transition: grid-template-columns 0.22s cubic-bezier(0.33, 1, 0.68, 1);
+  background: var(--bg);
+}
+
+/* The project rail. Collapsed, it is a 44px icon column — the
+   fold button and nothing else. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow: hidden;
+}
+
+@keyframes tilein {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+}
+
+@keyframes pippulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px var(--bg-2);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px var(--bg-2),
+      0 0 0 6px var(--warn-soft);
+  }
+}
+@keyframes pipbreathe {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* The status rail: every project's conversations grouped by what they wait
+   on, then the project jump rows. Ported from the proposal mockup's
+   .gsec/.node/.leaf onto this app's tokens — the marks are the
+   conversation's state, not the file system's. */
+.tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 10px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.node {
+  display: flex;
+  flex-direction: column;
+}
+
+/* 펼친 나무에서 프로젝트 노드 사이 숨 한 번 — 접힌 노드는 한 행으로
+   줄어들므로, .tree 의 2px 만으로는 방들이 한 덩어리로 읽힌다. */
+.sidebar:not(.sidebar--collapsed) .tree > .node + .node {
+  margin-top: 4px;
+}
+
+@keyframes askpulse {
+  50% {
+    box-shadow: 0 0 0 6px var(--warn-soft);
+  }
+}
+
+/* Narrow windows fold the rail by themselves: three columns
+   cannot fit, so the fold is the window's decision, not a setting. */
+@media (max-width: 1100px) {
+  .planner {
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+  }
+}
+
+.planner__split--sidebar::after {
+  left: 0;
+}
+
+/* The draggable boundaries (Splitter). A 9px hit area over the 1px border the
+   columns already paint; the border is the resting look and a line appears on
+   hover or drag only, so the frame reads the same until it is used. */
+.planner__split {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  z-index: 10;
+  cursor: col-resize;
+  touch-action: none;
+}
+.planner__split::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  /* the boundary exists before hover — a seam you cannot see is a handle
+     only the pointer's cursor ever announces */
+  background: var(--line-soft);
+}
+.planner__split--preview::after {
+  right: 0;
+}
+.planner__split:hover::after {
+  background: var(--line-hover);
+}
+.planner__split:focus-visible::after {
+  background: var(--accent);
+}
+.planner__split--drag::after {
+  background: var(--accent);
+}
+
+/* 준비 중(내려받기·설치·서버 부팅)과 실패 상태는 미리보기 열 전체를 쓴다:
+   고정 폭 카드가 구석에 붙어 있으면 화면이 텅 빈 것처럼 읽힌다. 내용은
+   한가운데에 오고, safe는 안내 문이 길어질 때 위쪽 잘림 대신 스크롤로
+   흐르게 한다. 바탕은 미리보기 무대와 같은 도트 그리드 — 기다림의 방이
+   곧 작업대라는 걸 상태가 말하게 둔다. */
+.progress {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: safe center;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  padding: 26px 28px;
+  background: var(--bg-2);
+}
+
+.progress .spinner {
+  width: 15px;
+  height: 15px;
+  border-width: 2px;
+  color: var(--accent);
+}
+
+.progress .primary {
+  align-self: center;
+}
+
+/* activity summary ----------------------------------------------------------*/
+
+/* One run of tool calls folds into a single card on the tape's rail: the rail
+   joins consecutive runs into a timeline, and the node on it — check, pulse,
+   or red — is the state, worn as a light. The line deliberately reaches 12px
+   into the flex gap on both ends, so back-to-back runs read as one wire. */
+.activity {
+  position: relative;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  background: var(--panel);
+  transition: border-color 0.15s;
+}
+.activity:hover {
+  border-color: var(--line);
+}
+.activity--error {
+  border-color: var(--danger-line);
+}
+.activity--error::after {
+  background: var(--danger);
+  box-shadow:
+    0 0 0 3px var(--bg),
+    0 0 0 4px color-mix(in srgb, var(--danger) 36%, transparent);
+}
+.activity--running::after {
+  animation: nodepulse 1.7s ease-in-out infinite;
+}
+@keyframes nodepulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px var(--bg),
+      0 0 0 4px color-mix(in srgb, var(--accent) 42%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px var(--bg),
+      0 0 0 7px color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+}
+.activity__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 11px;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-lg);
+  text-align: left;
+  color: var(--text-2);
+  transition: background 0.12s;
+}
+.activity__head:hover {
+  background: color-mix(in srgb, var(--panel-2) 72%, transparent);
+}
+.activity--error .activity__head {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.activity__text {
+  font: 500 var(--font-ui-120) var(--sans);
+  letter-spacing: -0.003em;
+  flex: 1;
+}
+.activity__flag {
+  font: 500 var(--font-ui-105) var(--mono);
+  color: var(--danger);
+}
+.activity__body {
+  border-top: 1px solid var(--line-soft);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-2);
+  border-radius: 0 0 9px 9px;
+}
+/* 펼침의 첫 줄 — 머리에서 내려온 숫자(P3-4). 기록의 머리말이라 본문의
+   걸음들보다 한 단 조용하다. */
+.activity__counts {
+  padding: 2px 0 6px;
+  font: 400 var(--font-ui-100) var(--sans);
+  color: var(--muted);
+}
+
+/* preview column ------------------------------------------------------------*/
+
+.preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.preview__frame {
+  flex: 1;
+  width: 100%;
+  /* <webview>는 높이를 매기지 않으면 150px 기본값으로 눕는다 — 슬롯이
+     flex 의 남은 높이를 갖으므로 100% 가 그 높이를 물려받는다. */
+  height: 100%;
+  border: 0;
+  background: var(--preview-canvas);
+}
+
+/* ⌘/ 단축키 시트 */
+.shortcuts {
+  max-width: 380px;
+}
+.shortcuts__list {
+  margin: 0;
+  padding: 0 14px 14px;
+  list-style: none;
+}
+.shortcuts__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--line-soft);
+  font: 400 var(--font-ui-125) var(--sans);
+  color: var(--text-2);
+}
+.shortcuts__row:last-child {
+  border-bottom: 0;
+}
+.shortcuts__keys {
+  font: 600 var(--font-ui-115) var(--mono);
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 1px 7px;
+}
+
+/* onboarding --------------------------------------------------------------------*/
+
+.onboarding {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 32px 24px;
+  /* 시작 화면이므로 창을 통째로 쓴다: 내용은 화면 한가운데에 오고, 남는
+     공간은 위아래로 균등하게 남는다. safe는 내용이 창보다 길어질 때(토큰
+     폼 펼침 등) 중앙정렬이 윗부분을 잘라버리는 것을 막는다. */
+  justify-content: safe center;
+}
+
+/* preview comment pins -----------------------------------------------------------*/
+
+.pins {
+  border-bottom: 1px solid var(--line-soft);
+  padding: 9px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+}
+
+/* the thread head -----------------------------------------------------------
+   The chat column's one header line: the conversation's name, the menu that
+   renames or deletes it. Replaces the tab strip — the tree owns navigation
+   now, so the column reads as one conversation, not a row of them. */
+.thread {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  border-bottom: 1px solid var(--line-soft);
+  /* 45px: 대화 열의 머리 줄 — 사이클 바가 프레임 헤더로 올라간 뒤에도
+     대화 제목이 숨 쉴 높이로 남는다. */
+  min-height: 45px;
+  background: var(--glass);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  /* the glass makes this bar its own stacking context, so the row's menu
+     would paint under the transcript that follows it in the DOM — the bar
+     rides above its column instead */
+  position: relative;
+  z-index: 31;
+}
+
+@keyframes lampbreathe {
+  50% {
+    box-shadow: 0 0 0 4px var(--accent-soft);
+    opacity: 0.72;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .activity--running::after {
+    animation: none;
+  }
+}
+
+/* 빈 작업 화면은 한 줄로 읽힌다: 제목 · 부제 · 폼이 하나의 좁은 컬럼.
+   (폼이 컨테이너 폭 전체를 쓰면 시선이 넓게 흩어진다)
+   → 시작 화면은 시작 마법사(.onboarding--start)가 대신한다. */
+
+@media (max-width: 880px) {
+  .scroll {
+    padding: 16px 16px 10px;
+  }
+  .composer {
+    padding: 10px 16px;
+  }
+
+  .modal {
+    padding: 4vh 12px 16px;
+  }
+}
+
+/* the frame the palette changes on; see useSettings
+   새 길은 startViewTransition — 두 팔레트의 교차 페이드를 200ms 로 늘인다.
+   startViewTransition 이 없는 낡은 창은 theme-swap 50ms 로 어긋난 프레임을 건너뛴다. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+}
+
+:root.theme-swap *,
+:root.theme-swap *::before,
+:root.theme-swap *::after {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 프레임 머리: 브라우저 줄 — 신호등 · 이동 · 새로 고침 · 주소
+   (네이티브) 또는 화면 이름(iframe 경로). 세 구역 그리드로 양옆이 남는 만큼만
+   가져가고 알약은 가운데 뜬다. 항상 그린다: 화면을 고르기 전에도 머리가 있어야
+   미리보기 칸이 무언가를 감추는 것처럼 보이지 않는다. */
+.preview__device {
+  /* 폭 토글이 뚝 끊기지 않고 좁혀진다: 데스크톱 상태도 width 에서 렌더해야
+     양방향으로 부드럽다 — basis 0 이면 데스크톱 복귀가 스냅한다. */
+  position: relative;
+  container-type: inline-size;
+  flex: 1 1 auto;
+  transition:
+    width 0.35s var(--drift),
+    flex-grow 0.35s var(--drift),
+    border-radius 0.35s var(--drift),
+    border-color 0.35s var(--drift),
+    box-shadow 0.35s var(--drift);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: var(--r-float);
+  background: var(--preview-canvas);
+  overflow: hidden;
+  /* 무대의 빛이 기기까지 온다: float 그림자 아래에 accent 틴트 키 라이트 —
+     선 위에 놓인 게 아니라 물감 속에 뜬 읽기. */
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text) 6%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.12),
+    0 16px 44px -16px color-mix(in srgb, var(--accent) 26%, transparent),
+    var(--shadow-float);
+}
+
+@keyframes framespin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes frameprogress {
+  from {
+    transform: translateX(-110%);
+  }
+  to {
+    transform: translateX(245%);
+  }
+}
+/* webview 무대의 보이기 규약 — park은 visibility로 한다. display:none 은
+   금지: 문서가 언로드되어 warm(돌아오면 그 자리)이 깨진다. */
+.preview__frame--live {
+  visibility: visible;
+}
+.preview__frame--parked {
+  visibility: hidden;
+  position: absolute;
+  left: -9999px;
+  top: 0;
+}
+@keyframes framein {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 미리보기 무대(PreviewFrame)의 슬롯 — <webview> 게스트는 이 안의 보통
+   DOM 노드라 모달·팝오버가 그 위에 그것도 특별 규약 없이 그려진다.
+   슬롯 자체는 언제나 아래 깔린다. */
+.preview__slot {
+  flex: 1;
+  min-height: 0;
+  /* 머리(브라우저 바) 아래의 남은 것이 곧 무대다. 옛 규약의 absolute
+     inset:0 은 부모가 viewwrap 이던 때의 것 — 그 부모가 없어진 지금은
+     기기 전체를 덮어 머리를 페이지 밑에 묻는다(실사: 주소창 클릭이
+     webview 에 가로막혔다). relative 로 돌아와 flex 의 남은 높이가 무대다. */
+  position: relative;
+  background: var(--preview-canvas);
+}
+
+@keyframes histdockin {
+  from {
+    transform: translateX(12px);
+    opacity: 0;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * 첫 만남과 마법 순간의 연출
+ * 기존 어휘 그대로: hairline, panel, accent-for-state, brand 컬러는 시그니처
+ * 자리에만. 모든 모션은 prefers-reduced-motion 에서 끈다.
+ * ------------------------------------------------------------------------ */
+
+@keyframes risefade {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes gatepop {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes settlepulse {
+  0% {
+    box-shadow: 0 0 0 0 var(--accent-glow);
+  }
+  60% {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* 미세 모션 — 떠오르는 층과 눌리는 자리 ------------------------------------ */
+
+/* 떠오르는 층: 대화상자는 한 번 피어오르고, 메뉴는 제자리에서 튀어나온다. */
+.modal {
+  animation: fadein 0.18s ease-out;
+}
+.modal__panel {
+  animation: risefade 0.28s var(--spring);
+}
+
+@keyframes poprise {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.chip {
+  transition:
+    color 0.12s,
+    background-color 0.12s,
+    border-color 0.12s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal,
+  .modal__panel {
+    animation: none;
+  }
+
+  .planner {
+    transition: none;
+  }
+  .primary {
+    transition: none;
+  }
+  .preview__device {
+    transition: none;
+  }
+}
+
+/* 전체 복사는 같은 아이콘 손(.turndone__act)을 입는다 — ✓ 교환만 CopyButton
+   이 쥔다. */
+
+/* ==========================================================================
+   디자인 패스 — 아이콘 타일 공용 계약
+   A glyph that leads a section, a menu row, or an empty state lives in one
+   tinted tile (.ic). The tile's colour carries the meaning; the glyph only
+   names it. Sizes follow the icon gate: 12–16px glyphs inside 18–28px tiles.
+   ========================================================================== */
+
+.ic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.ic--quiet {
+  background: var(--panel-2);
+  color: var(--text-2);
+}
+
+.ic--danger {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.ic--sm {
+  width: 18px;
+  height: 18px;
+  border-radius: var(--r-sm);
+}
+
+/* A button's glyph never wraps alone or steals width from its label. */
+button svg,
+button .ic {
+  flex: none;
+}
+
+/* ---------------------------------------------------------------------------
+ * 기존 어휘의 재사용만: 새 토큰 0, 새 색 0. 모든 모션은 전역 reduced-motion
+ * 규칙과 짝을 이룬다.
+ * ------------------------------------------------------------------------- */
+
+/* =============================================================================
+   대화면 카드 어휘 — savecard · devmsg · cmt ·
+   milestone · day 가 여기 산다.
+   ============================================================================= */
+
+/* ── 진행 한 줄: 넘김·반영이 남기는 채팅 상태줄 ───────────────────────── */
+.milestone {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: -2px 0 14px 20px;
+  color: var(--muted);
+  font: 500 var(--font-ui-125) var(--sans);
+}
+
+.milestone .t {
+  margin-left: auto;
+  font-size: var(--font-ui-115);
+  color: var(--muted);
+  flex: none;
+}
+
+@keyframes cardflash {
+  0% {
+    box-shadow: 0 0 0 0 var(--accent-glow);
+  }
+  70% {
+    box-shadow: 0 0 0 8px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "name": "colonova-design",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Screen design in a chat for people with zero developer tooling knowledge. Connect your team's repo, ask for a screen in words, a pasted image, or an attached document, verify it against a live preview of the real app, and hand it off to developers. Each user runs their own daemon and signs in with their own Claude subscription.",
+  "type": "module",
+  "scripts": {
+    "prepare": "lefthook install",
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r build && node --test packages/daemon/test/*.test.ts packages/desktop/test/*.test.ts packages/web/test/*.test.ts scripts/bench/*.test.mjs",
+    "bench": "node scripts/bench/bench.mjs",
+    "dev:daemon": "COLONOVA_DESIGN_DEV_AGENTS=1 pnpm --filter @colonova-design/daemon dev",
+    "dev:web": "pnpm --filter @colonova-design/web dev",
+    "dev:desktop": "pnpm --filter @colonova-design/desktop dev:hmr",
+    "doctor": "pnpm --filter @colonova-design/daemon doctor"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.13",
+    "concurrently": "^10.0.5",
+    "lefthook": "^2.1.12",
+    "typescript": "^5.9.2"
+  },
+  "packageManager": "pnpm@11.20.0"
+}

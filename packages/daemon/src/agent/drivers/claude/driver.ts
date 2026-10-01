@@ -1,0 +1,227 @@
+import { realpath, rm } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import {
+  deleteSession,
+  getSessionInfo,
+  getSessionMessages,
+  listSessions,
+} from "@anthropic-ai/claude-agent-sdk";
+import type { PlanUsage, SessionModelInfo } from "@colonova-design/protocol";
+import { readAuthStatus, readClaudeVersion } from "../../../environment.js";
+import type {
+  AgentDriver,
+  AgentSession,
+  Diagnostic,
+  DriverHooks,
+  ProviderDescriptor,
+  TranscriptStore,
+} from "../../driver.js";
+import { HISTORY_LIMIT, isPrompt, resolveBranchCutoff } from "./cutoff.js";
+import { replayHistory } from "./import.js";
+import { claudeOneShot } from "./one-shot.js";
+import { ClaudeAgentSession, type ClaudeLaunch, probeModels, probePlanUsage } from "./session.js";
+
+/**
+ * A transcript's summary can be the conversation's own first line — and the
+ * tool's machine-authored turns open with the `<!-- colonova-design:… -->` marker
+ * (protocol turn-marker), so without this the raw marker leaks into the tree
+ * and the palette as a conversation name. Marker lines are dropped, the first
+ * human line wins, and whatever survives is collapsed to one clean line.
+ */
+function presentableTitle(summary: string | undefined | null): string {
+  if (!summary) return "";
+  const human = summary
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0 && !line.startsWith("<!--"));
+  return (human ?? "").replace(/\s+/g, " ").trim();
+}
+const CLAUDE_CAPABILITIES = {
+  branch: true,
+  usage: true,
+  contextUsage: true,
+  fastMode: true,
+  effort: true,
+  modelSelect: true,
+  slashCommands: true,
+  subtasks: true,
+  // 대화 요약(/compact) — CLI 가 슬래시 명령을 실행하고 요약 경계를 알려
+  // 온다(compact_boundary). 길이 초과 실패의 자기치유가 이것을 쓴다 (PLAN L12).
+  compact: true,
+  // SDK 의 interrupt 는 턴을 자를 뿐 도는 턴에 실어 넣는 길이 없다.
+  steer: false,
+  // 브라우저 도구 주입 가능. 공급자 선언일 뿐 실제 제공은 host의
+  // browserDriverFactory 주입이 정하고, status가 둘을 AND해 UI에 보인다.
+  browserTools: true,
+} as const;
+
+/**
+ * The machine turns' model (비개발자 저장): reading a diff and saying what it
+ * did is haiku's job — fast enough for the 8-second leashes the memo and the
+ * draft run on, and a planner's model stays for planning. A property of the
+ * driver, not the repo layer: each provider names its own cheap answer.
+ */
+const MACHINE_MODEL = "haiku";
+
+/**
+ * The Claude Code driver: SDK query transport plus the `~/.claude/projects`
+ * transcript store. `executable` is resolved once by the daemon (env override
+ * → PATH → installer candidates) and handed in; sessions carry it per launch.
+ */
+export class ClaudeDriver implements AgentDriver {
+  readonly id = "claude";
+
+  constructor(private readonly executable: () => string | null) {}
+
+  describe(): ProviderDescriptor {
+    return {
+      id: this.id,
+      label: "Claude",
+      capabilities: { ...CLAUDE_CAPABILITIES },
+    };
+  }
+
+  async isAvailable(): Promise<Diagnostic> {
+    const executable = this.executable();
+    if (!executable) {
+      return {
+        ok: false,
+        reason: "Claude Code CLI 를 찾지 못했습니다 — 설치한 뒤 다시 확인해 주세요.",
+      };
+    }
+    const version = await readClaudeVersion(executable);
+    const auth = await readAuthStatus(executable).catch(() => null);
+    return {
+      ok: true,
+      executable,
+      ...(version ? { version } : {}),
+      loggedIn: auth?.loggedIn ?? false,
+    };
+  }
+
+  /**
+   * 기계 잔일의 단답 턴 (비개발자 저장): 세션이 쓰는 같은 SDK 입구를 한 번만
+   * 돌게 — 도구 없음, 설정 없음, haiku 응답(machine-provider.ts 가 이 드라이버를
+   * 담당으로 골라 부른다). 프롬프트가 읽을 수 있는 전부이고 대화록은 요약
+   * 폴더에 남는다. null 이면 폴백 — 시간 초과든 CLI 부재든 같은 길이다.
+   */
+  oneShot(prompt: string, opts: { cwd: string; timeoutMs: number }): Promise<string | null> {
+    return claudeOneShot(prompt, {
+      cwd: opts.cwd,
+      executable: this.executable(),
+      model: MACHINE_MODEL,
+      timeoutMs: opts.timeoutMs,
+    });
+  }
+
+  /**
+   * The plan's windows with no thread open — one probe query, no tokens
+   * (`probePlanUsage`). API-key logins answer null: plan limits do not apply.
+   */
+  probeUsage(options: { cwd: string; signal: AbortSignal }): Promise<PlanUsage | null> {
+    return probePlanUsage({ ...options, executable: this.executable() });
+  }
+
+  /**
+   * `claude auth login` (P1-1, 스파이크 검증): OAuth 주소는 stdout 에, 코드는
+   * stdin 의 "Paste code here" 프롬프트로 받는다 — `/login` 은 TTY 를
+   * 요구해 파이프에서는 거절된다("isn't available in this environment").
+   */
+  loginCommand(): { command: string; args: string[] } | null {
+    const executable = this.executable();
+    return executable ? { command: executable, args: ["auth", "login"] } : null;
+  }
+
+  /**
+   * The picker's rows before any thread — the daemon's probe machine, the
+   * same one plan limits ride. A CLI that never answers reads as an empty
+   * list; the catalog gate's five-minute wait keeps that off the status path.
+   */
+  listModels(opts: { cwd: string; signal?: AbortSignal }): Promise<SessionModelInfo[]> {
+    return probeModels({ cwd: opts.cwd, executable: this.executable(), signal: opts.signal });
+  }
+
+  createSession(launch: ClaudeLaunch, hooks: DriverHooks): AgentSession {
+    return new ClaudeAgentSession(launch, hooks);
+  }
+
+  // -------------------------------------------------------------------------
+  // The transcript store — `~/.claude/projects` via the SDK's own readers.
+  // -------------------------------------------------------------------------
+
+  readonly store: TranscriptStore = {
+    list: async (cwd, limit = 50) => {
+      const stored = await listSessions({ dir: cwd, limit }).catch(() => []);
+      return stored.map((info) => ({
+        id: info.sessionId,
+        title: info.customTitle || presentableTitle(info.summary) || "제목 없는 대화",
+        lastModified: info.lastModified,
+        provider: "claude",
+      }));
+    },
+
+    has: async (id, cwd) => {
+      const info = await getSessionInfo(id, { dir: cwd }).catch(() => null);
+      return info !== null;
+    },
+
+    title: async (id, cwd) => {
+      const info = await getSessionInfo(id, { dir: cwd }).catch(() => null);
+      return info ? info.customTitle || presentableTitle(info.summary) || null : null;
+    },
+
+    import: async (id, cwd, limit = 1000) => {
+      const messages = await getSessionMessages(id, { dir: cwd, limit }).catch(() => []);
+      return replayHistory(messages);
+    },
+
+    /** 대화록에 이미 있는 프롬프트 수 — 재시작 뒤 턴 번호를 이어 셀 때의 밑값. */
+    promptCount: async (id, cwd) => {
+      const raw = await rawMessages(id, cwd);
+      return raw.filter((message) => isPrompt(message)).length;
+    },
+
+    branchCut: async (id, cwd, turn) => {
+      const raw = await rawMessages(id, cwd);
+      const cutoff = resolveBranchCutoff(raw, turn);
+      // 존재하는 대화에서 k 가 넘친다 — 호출자 오류. 빈 대화록은 null 그대로.
+      if (cutoff === null && raw.length > 0) {
+        throw new Error(`분기할 ${turn}번째 답이 이 대화에 없습니다.`);
+      }
+      return cutoff;
+    },
+
+    delete: async (id, cwd) => {
+      await deleteSession(id, { dir: cwd });
+    },
+
+    /**
+     * A removed project's sweep: `~/.claude/projects` keys each clone's
+     * transcripts under one directory named after the cwd — dropping it is
+     * O(1) where list+delete walks the whole store.
+     */
+    deleteAll: async (cwd) => {
+      const configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
+      let real = cwd;
+      try {
+        real = await realpath(cwd);
+      } catch {
+        // The clone may already be gone — encode the spelling we were given.
+      }
+      // The CLI's own naming: every non-alphanumeric in the cwd becomes `-`.
+      const encoded = resolve(real).replace(/[^a-zA-Z0-9]/g, "-");
+      await rm(join(configDir, "projects", encoded), { recursive: true, force: true });
+    },
+  };
+}
+
+/** Raw stored messages — the branch cutoff computation reads these. */
+async function rawMessages(
+  id: string,
+  cwd: string,
+  limit = HISTORY_LIMIT,
+): Promise<Array<Record<string, unknown>>> {
+  const raw = await getSessionMessages(id, { dir: cwd, limit }).catch(() => []);
+  return raw as Array<Record<string, unknown>>;
+}

@@ -1,0 +1,512 @@
+/* 사이드바(U1 · U7) — 목업 「셸」 칸. */
+
+.nx-sidebar {
+  /* 폭 고정 — 접힐 때 안쪽이 다시 배치되지 않고 옷째로 밀려 나간다. */
+  width: 264px;
+  z-index: 5;
+  background: var(--side);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  transform: translateX(0);
+  transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.nx--collapsed .nx-sidebar {
+  transform: translateX(-100%);
+}
+
+.nx-side-top {
+  height: 52px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px 0 18px;
+}
+/* 브랜드 — 사이드바의 유일한 색이 든 자리. colonova 마크가 이름 앞에 선다. */
+.nx-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.nx-brand img {
+  flex: none;
+  filter: drop-shadow(0 2px 6px var(--accent-glow));
+}
+
+.nx-side-nav {
+  padding: 2px 8px 0;
+}
+
+.nx .nx-side-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--r);
+  color: var(--ink2);
+  font-size: 13.5px;
+}
+
+.nx .nx-side-row:hover {
+  background: var(--nx-hover);
+  color: var(--ink);
+}
+
+.nx .nx-side-row--on {
+  background: var(--nx-selected);
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.nx-side-row kbd {
+  margin-left: auto;
+}
+/* 간격 없이 붙은 행 — 전역 포커스 링(바깥 2px+2px)이 위·아래 행 위에 그려져
+   카드가 겹쳐 보이므로, 이들은 링을 상자 안에 그린다. */
+.nx .nx-side-row:focus-visible,
+.nx .nx-orow:focus-visible,
+.nx .nx-me:focus-visible,
+.nx .nx-conv:focus-visible {
+  outline-offset: -2px;
+}
+
+.nx-proj {
+  margin: 12px 8px 2px;
+}
+
+.nx .nx-proj-btn {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 4px 4px 4px 0;
+  border-radius: var(--r-md);
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
+}
+
+.nx .nx-proj-btn:hover {
+  border-color: var(--line2);
+}
+
+/* 머리의 두 누름 — 이름은 프로젝트 카드, 셰브론은 프로젝트 목록. */
+.nx .nx-proj-open {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 2px 4px 10px;
+  border-radius: calc(var(--r-md) - 1px) 0 0 calc(var(--r-md) - 1px);
+}
+
+.nx .nx-proj-open:hover {
+  background: var(--nx-hover);
+}
+
+.nx .nx-proj-chev {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin: 0 5px;
+  border-radius: var(--r);
+  color: var(--ink3);
+}
+
+.nx .nx-proj-chev:hover {
+  background: var(--nx-hover);
+  color: var(--ink);
+}
+
+.nx-proj-nm {
+  flex: 1;
+  min-width: 0;
+}
+
+.nx-proj-nm b {
+  display: block;
+  font-weight: 600;
+  font-size: 13.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-proj-nm span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink3);
+  margin-top: 1px;
+}
+
+/* 전환기에서 뜨는 두 팝 — 앵커(.nx-proj) 폭에 맞춘다. 고정 폭은 사이드바
+   안쪽(264 - 좌우 여백 16 = 248px)보다 넓어 오른쪽이 overflow:hidden 에 잘린다. */
+.nx-proj-pop,
+.nx-proj-info {
+  width: 100%;
+}
+
+/* 프로젝트 카드 — 전환기 머리의 이름을 누르면 뜬다(U7). */
+
+.nx-pi-head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 8px 4px;
+}
+
+.nx-pi-head b {
+  flex: 1;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-pi-links {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 2px 4px;
+}
+
+.nx-ext {
+  margin-left: auto;
+  color: var(--ink3);
+  font-size: 12px;
+}
+
+.nx-pi-guide {
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+  padding: 8px 8px 6px;
+}
+
+.nx-pi-guide > b {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nx-pi-help {
+  margin: 3px 0 8px;
+  font-size: 11.5px;
+  color: var(--ink3);
+  line-height: 1.5;
+}
+
+.nx .nx-pi-box {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  padding: 8px 10px;
+  background: var(--card);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.nx .nx-pi-box:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.nx-pi-note {
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: var(--ink3);
+  line-height: 1.5;
+}
+
+.nx-side-label {
+  padding: 14px 18px 5px;
+  font-size: 11.5px;
+  color: var(--ink3);
+  font-weight: 500;
+}
+
+.nx-side-label--tight {
+  padding: 8px 10px 5px;
+}
+
+.nx-others {
+  padding: 0 8px;
+}
+
+.nx .nx-orow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--r);
+  font-size: 12.5px;
+}
+
+.nx .nx-orow:hover {
+  background: var(--nx-hover);
+}
+
+.nx-orow-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink2);
+}
+
+.nx-onote {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--ink3);
+  white-space: nowrap;
+}
+
+.nx-conv-list {
+  flex: 1;
+  overflow: auto;
+  padding: 0 8px 10px;
+}
+
+.nx .nx-conv {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 8px 6px 8px 14px;
+  border-radius: var(--r);
+}
+
+/* 강조는 줄(.nx-conv-row)이 든다 — 제목 단추와 `···` 가 한 상자 안에 있어야 눌린 줄이
+   하나로 읽힌다(단추만 칠하면 `···` 가 바탕 위에 떠 보인다). */
+.nx .nx-conv-row:hover {
+  background: var(--nx-hover);
+}
+
+.nx .nx-conv-row--on,
+.nx .nx-conv-row--menu {
+  background: var(--nx-selected);
+}
+
+/* 지금 대화 — 가장자리에서 띄운 짧은 강조색 막대. 모서리 곡률에 잘리지 않는다. */
+.nx .nx-conv-row--on::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.nx-conv-t {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+}
+
+.nx-conv-t > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-conv-s {
+  display: block;
+  font-size: 12px;
+  color: var(--ink3);
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 대화 줄 — `···` 메뉴와 이름 바꾸기 입력을 줄에 얹는다. 메뉴는 줄 안의
+   자기 칸에 서서(.nx-conv 가 남는 너비를 가진다) 제목 · 둘째 줄이 그 밑으로
+   흐르지 않는다. */
+.nx-conv-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--r);
+}
+
+.nx-conv-row .nx-conv {
+  flex: 1;
+  min-width: 0;
+}
+
+.nx-conv-tip {
+  flex: none;
+  margin: 0 4px 0 0;
+}
+
+.nx .nx-conv-menu {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--ink3);
+  /* 줄의 강조 안에 앉는 맨 단추 — 누를 자리는 호버에서만 칠한다. */
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.nx .nx-conv-menu:hover,
+.nx .nx-conv-menu[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--ink) 9%, transparent);
+  color: var(--ink);
+}
+.nx .nx-conv-row--on .nx-conv-menu,
+.nx .nx-conv-row--menu .nx-conv-menu,
+.nx .nx-conv-row:hover .nx-conv-menu,
+.nx .nx-conv-row:focus-within .nx-conv-menu {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nx .nx-conv-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r);
+  background: var(--card);
+  font-size: 13.5px;
+}
+
+.nx-conv-pop {
+  width: 220px;
+}
+
+.nx-conv-confirm {
+  padding: 6px 8px 8px;
+}
+
+.nx-conv-confirm p {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink2);
+  margin-bottom: 10px;
+}
+
+.nx-conv-confirm-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.nx .nx-btn--sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.nx .nx-mi--dng {
+  color: var(--red);
+}
+
+.nx .nx-mi--dng:hover {
+  background: var(--red-soft);
+}
+
+.nx-toolg {
+  margin: 10px 2px 0;
+}
+
+.nx-toolg summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--r);
+  font-size: 12px;
+  color: var(--ink3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nx-toolg summary::-webkit-details-marker {
+  display: none;
+}
+
+.nx-toolg summary:hover {
+  background: var(--nx-hover);
+}
+
+.nx-toolg summary .nx-i {
+  transition: transform 0.15s;
+}
+
+.nx-toolg[open] summary .nx-i {
+  transform: rotate(90deg);
+}
+
+.nx-toolg .nx-conv-t {
+  font-size: 13px;
+  color: var(--ink2);
+}
+
+.nx-side-bottom {
+  border-top: 1px solid var(--line);
+  padding: 8px;
+  flex: none;
+}
+
+.nx .nx-me {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border-radius: var(--r);
+}
+
+.nx .nx-me:hover {
+  background: var(--nx-hover);
+}
+
+.nx-av {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.nx-me b {
+  font-weight: 500;
+  font-size: 13.5px;
+}

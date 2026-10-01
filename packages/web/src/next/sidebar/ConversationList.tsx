@@ -1,0 +1,352 @@
+import type { ProjectSummary, ThreadSummary } from "@colonova-design/protocol";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Tip } from "../../components/Tip";
+import type { Sessions } from "../../hooks/useSessions";
+import type { Daemon } from "../../lib/daemon-client";
+import { composing } from "../../lib/ime";
+import { previewPathOf } from "../../lib/screen-link";
+import { SYSTEM_THREAD_TITLES, visibleThreads } from "../../lib/thread-visibility";
+import { downloadTranscript, transcriptToMarkdown } from "../../lib/transcript-export";
+import { threadScreens } from "../../lib/turn-screens";
+import { MoreIcon } from "../chat/icons";
+import { L } from "../labels";
+import { exportFileName } from "../lib/export-name";
+import { useFreshKeys } from "../lib/use-fresh-keys";
+import { ChevronRightIcon, Spin } from "../ui/icons";
+import { Popover } from "../ui/Popover";
+
+/**
+ * 활성 프로젝트의 대화 목록 — 제목과 둘째 줄(그 대화가 만진 화면들). 도구가
+ * 스스로 연 대화(연결 준비 · 리뷰 반영 · 문제 해결)는 맨 아래 접힌 `도구가 한
+ * 일` 로 간다 — 판정은 옛 사이드바와 같은 `SYSTEM_THREAD_TITLES`(데몬의 제목).
+ * 줄의 `···` 메뉴는 이름 바꾸기 · 내보내기 · 지우기를 단다(도구가 한 일의 줄은
+ * 이름 바꾸기가 없다 — 제목이 도구의 것이다).
+ */
+export function ConversationList({
+  daemon,
+  project,
+  sessions,
+  activeSessionId,
+  threadView,
+  titleFor,
+  onOpen,
+  onRenameSession,
+  onToast,
+}: {
+  daemon: Daemon;
+  project: ProjectSummary | null;
+  /** `useSessions` 의 결과 — 지운 대화가 열려 있으면 새 대화의 빈 자리로 돌린다. */
+  sessions: Sessions;
+  activeSessionId: string | null;
+  /** 대화 보기가 앞에 서 있는가 — 홈에서는 어느 행도 켜지 않는다. */
+  threadView: boolean;
+  titleFor: (thread: ThreadSummary) => string;
+  onOpen: (thread: ThreadSummary) => void;
+  /** 이름 바꾸기 — 셸의 `onRenameSession`(설정의 대화 제목에 남는다). */
+  onRenameSession: (sessionId: string, title: string) => void;
+  onToast: (text: string) => void;
+}) {
+  const threads = useMemo(
+    () => (project ? visibleThreads(project.threads, daemon.hiddenThreads, project.slug) : []),
+    [project, daemon.hiddenThreads],
+  );
+  const planner = useMemo(
+    () => threads.filter((thread) => !SYSTEM_THREAD_TITLES[thread.title]),
+    [threads],
+  );
+  const tool = useMemo(
+    () => threads.filter((thread) => SYSTEM_THREAD_TITLES[thread.title]),
+    [threads],
+  );
+  // 새로 들어온 대화만 자리를 열며 내려앉는다 — 처음 그릴 때와 프로젝트를 옮길 때는 이미
+  // 있는 줄을 새 것으로 치지 않고, 재정렬에서 옆으로 밀린 줄도 다시 등장하지 않는다.
+  const fresh = useFreshKeys(
+    threads.map((thread) => thread.id),
+    project?.slug ?? "",
+  );
+
+  // 둘째 줄의 화면 — 이 창이 기록을 읽은 대화만 안다. 읽지 않은 대화 · 화면이 아직 없는
+  // 대화는 둘째 줄이 없다.
+  const previewUrl = daemon.repo?.previewUrl ?? null;
+  const screensById = useMemo(() => {
+    const toPath = (href: string) => previewPathOf(href, previewUrl);
+    const out = new Map<string, string>();
+    for (const [id, view] of Object.entries(daemon.sessions)) {
+      if (view.blocks.length === 0) continue;
+      // 제목 없는 맨 주소는 줄에 세우지 않는다 — 사용자 면에는 화면 이름만(U10).
+      const titles = threadScreens(view.blocks, toPath).flatMap((screen) =>
+        screen.title ? [screen.title] : [],
+      );
+      // 만든 화면이 없으면 둘째 줄을 비운다 — 빈 자리를 말로 채우지 않는다.
+      out.set(id, titles.join(" · "));
+    }
+    return out;
+  }, [daemon.sessions, previewUrl]);
+
+  // 읽지 않은 대화의 둘째 줄도 채운다 — 목록 맨 앞(최신) 15개까지, 한 번에 하나씩
+  // 기록을 읽어 온다. 도구가 연 대화는 화면을 말하지 않으니 건너뛴다. 끊겨
+  // 실패한 것은 다음 연결에서 다시 묻고, 다 읽을 때까지 이어지도록 `fetchTick`
+  // 으로 이펙트를 한 박자 더 돌린다.
+  const fetched = useRef(new Set<string>());
+  const fetching = useRef(false);
+  const [, setFetchTick] = useState(0);
+  useEffect(() => {
+    if (daemon.connection !== "open" || fetching.current) return;
+    const next = planner
+      .slice(0, 15)
+      .find((thread) => !screensById.has(thread.id) && !fetched.current.has(thread.id));
+    if (!next) return;
+    fetched.current.add(next.id);
+    fetching.current = true;
+    daemon.api
+      .history(next.id)
+      .then((events) => daemon.hydrate(next.id, events))
+      .catch(() => fetched.current.delete(next.id))
+      .finally(() => {
+        fetching.current = false;
+        setFetchTick((tick) => tick + 1);
+      });
+  }, [daemon.connection, daemon.api, daemon.hydrate, planner, screensById]);
+
+  // 줄의 `···` 메뉴와 그 안의 지우기 확인, 이름 바꾸기 입력의 상태.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [confirmFor, setConfirmFor] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{ id: string; draft: string } | null>(null);
+  // Popover 가 누름 요소를 바깥으로 치지 않게 하는 줄의 `···` 단추들.
+  const menuButtons = useRef(new Map<string, HTMLButtonElement>());
+  const closeMenu = () => {
+    setMenuFor(null);
+    setConfirmFor(null);
+  };
+
+  // 이름 바꾸기 입력 — 시작할 때 안내해 고른다(autoFocus 는 쓰지 않는다).
+  const renameInput = useRef<HTMLInputElement>(null);
+  const renamingId = renaming?.id ?? null;
+  useEffect(() => {
+    if (renamingId !== null) renameInput.current?.select();
+  }, [renamingId]);
+
+  /** 이름 바꾸기의 저장 — 흰칸만 다듬어 남기고, 같은 제목은 다시 쓰지 않는다. */
+  const commitRename = () => {
+    const target = renaming;
+    if (!target) return;
+    setRenaming(null);
+    const name = target.draft.trim();
+    if (!name) return;
+    const thread = threads.find((entry) => entry.id === target.id);
+    if (thread && titleFor(thread) === name) return;
+    onRenameSession(target.id, name);
+  };
+
+  /**
+   * 내보내기 — 대화를 markdown 파일 하나로. 아직 읽지 않은 대화는 여는 길과 같은
+   * 읽기로 채우니(ensureSession · hydrate) 둘째 줄의 화면도 함께 생긴다.
+   */
+  const exportThread = (thread: ThreadSummary) => {
+    const title = titleFor(thread);
+    void daemon.api
+      .history(thread.id)
+      .then((events) => {
+        if (!daemon.sessions[thread.id]) {
+          daemon.ensureSession(thread.id);
+          daemon.hydrate(thread.id, events);
+        }
+        const base = exportFileName(title, new Date());
+        downloadTranscript(transcriptToMarkdown(events, title), base);
+        onToast(L.convMenu.exportDone(`${base}.md`));
+      })
+      .catch(() => onToast(L.convMenu.exportFailed));
+  };
+
+  /**
+   * 지우기 — 확인은 메뉴 안의 한 줄. 승인과 같은 커밋에서 행을 먼저 거둔다(낙관
+   * 숨김, thread-visibility), 데몬의 목록이 따라오면 숨김을 거둔다. 실패하면
+   * 행을 되돌린다.
+   */
+  const removeThread = (thread: ThreadSummary) => {
+    const slug = project?.slug;
+    if (!slug) return;
+    closeMenu();
+    daemon.hideThread(slug, thread.id);
+    // 지운 대화가 열려 있으면 새 대화의 빈 자리로 — 보던 화면은 그대로다.
+    if (activeSessionId === thread.id) sessions.fresh();
+    void daemon.api.deleteSession(thread.id).catch(() => {
+      daemon.unhideThread(slug, thread.id);
+      onToast(L.convMenu.removeFailed);
+    });
+  };
+
+  const rowBody = (thread: ThreadSummary) => {
+    const view = daemon.sessions[thread.id];
+    const failed = view?.state === "error";
+    const on = threadView && thread.id === activeSessionId;
+    const system = Boolean(SYSTEM_THREAD_TITLES[thread.title]);
+    const menuOpen = menuFor === thread.id;
+    const sub =
+      thread.state === "running"
+        ? L.journey.making
+        : thread.state === "awaiting"
+          ? L.sidebar.waitingAnswer
+          : failed
+            ? L.sidebar.aiFailedRetry
+            : (screensById.get(thread.id) ?? "");
+
+    if (renaming?.id === thread.id) {
+      return (
+        <div className="nx-conv-row">
+          <input
+            ref={renameInput}
+            className="nx-conv-rename"
+            value={renaming.draft}
+            aria-label={L.convMenu.renameLabel}
+            onChange={(event) => setRenaming({ id: thread.id, draft: event.target.value })}
+            onBlur={commitRename}
+            onKeyDown={(event) => {
+              // 한글이 조합 중이면 Enter 를 저장으로 읽지 않는다.
+              if (composing(event)) return;
+              if (event.key === "Enter") commitRename();
+              if (event.key === "Escape") setRenaming(null);
+            }}
+          />
+        </div>
+      );
+    }
+
+    return (
+      <div
+        className={`nx-conv-row${on ? " nx-conv-row--on" : ""}${menuOpen ? " nx-conv-row--menu" : ""}`}
+      >
+        <button
+          type="button"
+          className={`nx-conv${on ? " nx-conv--on" : ""}`}
+          aria-current={on ? "true" : undefined}
+          onClick={() => onOpen(thread)}
+        >
+          <span className="nx-conv-t">
+            <span>{titleFor(thread)}</span>
+            {thread.state === "running" ? (
+              <Spin />
+            ) : thread.state === "awaiting" ? (
+              <i className="nx-dot nx-dot--amber" aria-hidden="true" />
+            ) : failed ? (
+              <i className="nx-dot nx-dot--red" aria-hidden="true" />
+            ) : null}
+          </span>
+          {sub && <span className="nx-conv-s">{sub}</span>}
+        </button>
+        <Tip
+          label={menuOpen ? undefined : L.convMenu.label}
+          side="bottom"
+          align="end"
+          className="nx-conv-tip"
+        >
+          <button
+            ref={(element) => {
+              if (element) menuButtons.current.set(thread.id, element);
+              else menuButtons.current.delete(thread.id);
+            }}
+            type="button"
+            className="nx-conv-menu"
+            aria-label={L.convMenu.label}
+            aria-haspopup="dialog"
+            aria-expanded={menuOpen}
+            onClick={() => {
+              setConfirmFor(null);
+              setMenuFor(menuOpen ? null : thread.id);
+            }}
+          >
+            <MoreIcon />
+          </button>
+        </Tip>
+        {menuOpen && (
+          <Popover
+            anchor={{ current: menuButtons.current.get(thread.id) ?? null }}
+            onClose={closeMenu}
+            align="end"
+            className="nx-conv-pop"
+            label={L.convMenu.label}
+          >
+            {confirmFor === thread.id ? (
+              <div className="nx-conv-confirm">
+                <p>{L.convMenu.removeConfirm}</p>
+                <div className="nx-conv-confirm-row">
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm nx-btn--ghost"
+                    onClick={() => setConfirmFor(null)}
+                  >
+                    {L.convMenu.removeCancel}
+                  </button>
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm nx-btn--pri"
+                    onClick={() => removeThread(thread)}
+                  >
+                    {L.convMenu.remove}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {!system && (
+                  <button
+                    type="button"
+                    className="nx-mi"
+                    onClick={() => {
+                      closeMenu();
+                      setRenaming({ id: thread.id, draft: titleFor(thread) });
+                    }}
+                  >
+                    <b>{L.convMenu.rename}</b>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="nx-mi"
+                  onClick={() => {
+                    closeMenu();
+                    exportThread(thread);
+                  }}
+                >
+                  <b>{L.convMenu.export}</b>
+                </button>
+                <div className="nx-msep" />
+                <button
+                  type="button"
+                  className="nx-mi nx-mi--dng"
+                  onClick={() => setConfirmFor(thread.id)}
+                >
+                  <b>{L.convMenu.remove}</b>
+                </button>
+              </>
+            )}
+          </Popover>
+        )}
+      </div>
+    );
+  };
+
+  // 줄을 격자 감싸개로 싼다 — 새 줄이 높이 0 에서 제 높이로 열리며 아래 줄을 밀어낸다.
+  const row = (thread: ThreadSummary) => (
+    <div key={thread.id} className={`nx-item${fresh.has(thread.id) ? " nx-item--new" : ""}`}>
+      {rowBody(thread)}
+    </div>
+  );
+
+  const toolOpen = tool.some((thread) => thread.id === activeSessionId);
+  return (
+    <div className="nx-conv-list">
+      {planner.map(row)}
+      {tool.length > 0 && (
+        // 열린 대화가 그 안에 있을 때만 펼친 채로 선다 — 기본은 접힘.
+        <details className="nx-toolg" open={toolOpen || undefined}>
+          <summary>
+            <ChevronRightIcon />
+            {L.sidebar.toolWorkCount(tool.length)}
+          </summary>
+          {tool.map(row)}
+        </details>
+      )}
+    </div>
+  );
+}

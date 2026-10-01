@@ -1,0 +1,534 @@
+/* 새 셸의 작은 부품 — 목업 「공통」 · 「겹」 칸. */
+
+@keyframes nx-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+/* 동작 줄이기의 도는 표시 — 멈춘 각도로 서면 깨진 것처럼 보이므로 깜빡임으로
+   살아 있음을 말한다(next.css 의 동작 줄이기 블록이 부른다). */
+@keyframes nx-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes nx-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes nx-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+/* 위로 여는 팝 — 아래로 여는 `nx-pop` 과 같은 모양을 반대 방향에서 온다. */
+@keyframes nx-pop-up {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
+@keyframes nx-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+}
+
+.nx-i {
+  flex: none;
+  display: block;
+}
+
+.nx-grow {
+  flex: 1;
+}
+
+.nx-muted {
+  color: var(--ink3);
+}
+
+.nx-r {
+  margin-left: auto;
+}
+
+.nx-spin {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  border: 1.6px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: currentColor;
+  animation: nx-spin 0.8s linear infinite;
+  flex: none;
+  color: var(--accent);
+}
+
+.nx-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  background: var(--line2);
+}
+
+.nx-dot--draft {
+  background: var(--blue);
+}
+
+.nx-dot--review,
+.nx-dot--amber {
+  background: var(--amber);
+}
+
+.nx-dot--merged,
+.nx-dot--green {
+  background: var(--green);
+}
+
+.nx-dot--red {
+  background: var(--red);
+}
+
+.nx-dot--accent {
+  background: var(--accent);
+}
+
+.nx-tone--accent {
+  color: var(--accent);
+}
+
+.nx-tone--amber {
+  color: var(--amber);
+}
+
+.nx-tone--green {
+  color: var(--green);
+}
+
+.nx-tone--red {
+  color: var(--red);
+}
+
+.nx-pm {
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 700;
+  flex: none;
+}
+
+.nx-pm--md {
+  width: 22px;
+  height: 22px;
+  font-size: 11.5px;
+}
+
+.nx-pm--sm {
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  border-radius: 5px;
+}
+
+.nx-cnt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.nx-cnt--g {
+  background: var(--nx-selected);
+  color: var(--ink2);
+}
+
+.nx kbd {
+  font: 11px var(--font);
+  color: var(--ink3);
+}
+
+.nx-ibtn {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--r);
+  display: grid;
+  place-items: center;
+  color: var(--ink2);
+  flex: none;
+}
+
+.nx-ibtn:hover {
+  background: var(--nx-hover);
+  color: var(--ink);
+}
+
+.nx .nx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r);
+  border: 1px solid var(--line2);
+  background: var(--card);
+  font-weight: 500;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.nx .nx-btn:hover {
+  background: var(--bg-2);
+}
+
+.nx .nx-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.nx .nx-btn--pri {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--bg);
+}
+
+.nx .nx-btn--pri:hover {
+  background: color-mix(in srgb, var(--ink) 88%, var(--bg));
+}
+
+.nx .nx-btn--ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink2);
+}
+
+.nx .nx-btn--ghost:hover {
+  background: var(--nx-hover);
+}
+
+/* 팝오버 — 누른 요소를 감싼 `.nx-anchor` 에 붙어 선다. */
+.nx-anchor {
+  position: relative;
+}
+
+.nx-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  z-index: 60;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  box-shadow: var(--pop);
+  padding: 6px;
+  min-width: 210px;
+  max-height: 70vh;
+  overflow: auto;
+  animation: nx-pop 0.12s ease-out;
+}
+
+.nx-pop--start {
+  left: 0;
+}
+
+.nx-pop--end {
+  right: 0;
+}
+
+.nx-pop--up {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform-origin: bottom;
+  animation: nx-pop-up 0.12s ease-out;
+}
+
+.nx-mh {
+  padding: 8px 10px 4px;
+  font-size: 11.5px;
+  color: var(--ink3);
+  font-weight: 500;
+}
+
+.nx .nx-mi {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--r);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.nx .nx-mi:hover {
+  background: var(--nx-hover);
+}
+
+.nx-mi b {
+  font-weight: 500;
+}
+
+.nx-mt {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nx-mt small {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--ink3);
+  font-size: 11.5px;
+}
+
+.nx-ck {
+  color: var(--accent);
+}
+
+.nx-toast {
+  position: fixed;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 9px 15px 11px;
+  border-radius: var(--r-md);
+  font-size: 13px;
+  box-shadow: var(--pop);
+  animation: nx-toast-in 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  z-index: 95;
+  white-space: nowrap;
+  max-width: 90%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 내려앉은 뒤 한 번 지나가는 빛줄기. */
+.nx-toast::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 35%,
+    color-mix(in srgb, var(--bg) 28%, transparent) 50%,
+    transparent 65%
+  );
+  transform: translateX(-120%);
+  animation: nx-toast-shine 0.9s 0.28s ease-out both;
+  pointer-events: none;
+}
+
+.nx-toast-text {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: nx-toast-text 0.4s 0.08s ease-out both;
+}
+
+/* 머무는 시간 — 다 닳으면 토스트가 나간다. */
+.nx-toast-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  opacity: 0.85;
+  transform-origin: left;
+  animation: nx-toast-bar var(--nx-toast-ms, 2600ms) linear both;
+}
+
+.nx-toast--out {
+  animation: nx-toast-out 0.22s ease-in both;
+}
+
+@keyframes nx-toast-in {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -22px) scale(0.86);
+    filter: blur(6px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes nx-toast-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.94);
+    filter: blur(4px);
+  }
+}
+
+@keyframes nx-toast-shine {
+  to {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes nx-toast-text {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+    letter-spacing: 0.04em;
+  }
+}
+
+@keyframes nx-toast-bar {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-toast,
+  .nx-toast--out,
+  .nx-toast-text,
+  .nx-toast::after {
+    animation-duration: 0.01ms;
+    animation-delay: 0s;
+  }
+}
+
+/*
+ * 접는 머리(<details>) — 열고 닫을 때 본문이 높이째 미끄러지며 흐려진다. 본문의 높이는
+ * auto 라 원래는 전환이 없지만 interpolate-size 와 ::details-content 가 그 벽을 허문다.
+ * interpolate-size 는 상속되니 뿌리가 아니라 머리에만 건다 — 뿌리에 걸면 다른 곳의 크기
+ * 전환(auto 를 오가는 것)까지 저절로 움직이기 시작한다. 모르는 엔진은 이 블록을 통째로
+ * 건너뛰어 예전처럼 곧바로 여닫힌다.
+ * overflow 는 움직이는 동안만 잘린다 — 다 열리면 visible 로 돌아와 안쪽의 초점 고리와
+ * 팝(`···` 메뉴)이 잘리지 않는다. 열 때는 전환 길이만큼 늦춰 바꾸고(늦은 discrete 전환),
+ * 닫을 때는 곧바로 자른다. 처음부터 열려 그려지는 머리는 바뀐 적이 없어 움직이지 않는다.
+ */
+@supports selector(::details-content) {
+  .nx details {
+    interpolate-size: allow-keywords;
+  }
+
+  .nx details::details-content {
+    block-size: 0;
+    opacity: 0;
+    overflow: clip;
+    transition:
+      block-size var(--nx-t-move) var(--drift),
+      opacity var(--nx-t-move) var(--drift),
+      content-visibility var(--nx-t-move) allow-discrete,
+      overflow 0s allow-discrete;
+  }
+
+  .nx details[open]::details-content {
+    block-size: auto;
+    opacity: 1;
+    overflow: visible;
+    transition:
+      block-size var(--nx-t-move) var(--drift),
+      opacity var(--nx-t-move) var(--drift),
+      content-visibility var(--nx-t-move) allow-discrete,
+      overflow 0s var(--nx-t-move) allow-discrete;
+  }
+}
+
+/* .nx * 의 동작 줄이기 규칙은 이 가상 요소에 닿지 않는다 — 여기서 따로 끈다. */
+@media (prefers-reduced-motion: reduce) {
+  .nx details::details-content,
+  .nx details[open]::details-content {
+    transition: none;
+  }
+}
+
+/*
+ * 새로 들어온 줄 — 자리를 먼저 열고(높이 0 → 제 높이) 그 안에서 내려앉는다. 줄을 감싸는
+ * 격자(.nx-item, 홈의 .nx-dfold)가 제 높이를 1fr 로 가지므로 옆 줄이 튀지 않고 밀려난다.
+ * 채움은 backwards 만 준다 — 끝난 뒤에도 남는 애니메이션은 쌓임 맥락과 fixed 자손의 기준
+ * 상자를 만들어 팝이 옆 줄 아래로 깔릴 수 있다. 등장은 `useFreshKeys` 가 새 열쇠에만
+ * 붙인다 — CSS 만으로 걸면 React 가 재정렬에서 옮긴 옆 줄들이 다시 등장한다.
+ */
+@keyframes nx-item-in {
+  from {
+    grid-template-rows: 0fr;
+    margin-bottom: 0;
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+/* 격자 감싸개가 없는 줄(단추 한 줄)은 자리를 열지 않고 내려앉기만 한다. */
+@keyframes nx-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.nx-item {
+  display: grid;
+  grid-template-rows: 1fr;
+  /* 열을 0 까지 줄일 수 있게 — 열 정의가 없으면 긴 제목의 min-content 가 줄 폭이 되어
+     말줄임이 사라지고 `···` 가 사이드바 밖으로 밀린다. */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.nx-item > * {
+  min-height: 0;
+}
+
+.nx-item--new {
+  overflow: hidden;
+  animation: nx-item-in var(--nx-t-move) var(--drift) backwards;
+}
+
+.nx .nx-row--new {
+  animation: nx-row-in var(--nx-t-move) var(--drift) backwards;
+}
+
+/* 숫자 배지는 값이 바뀔 때 한 번 튄다 — 처음 그릴 때는 튀지 않는다(Count 가 붙인다). */
+@keyframes nx-bump {
+  from {
+    transform: scale(0.72);
+  }
+}
+
+.nx-cnt--bump {
+  animation: nx-bump 0.36s var(--spring);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-item--new,
+  .nx .nx-row--new,
+  .nx-cnt--bump {
+    animation: none;
+  }
+}

@@ -1,0 +1,857 @@
+/**
+ * 새 셸(PLAN-UI)의 사용자 문자열 — 전부 여기 한 곳에 산다(U10). `next/` 안의
+ * 다른 파일은 한글 리터럴을 쓰지 않고 이 객체를 읽는다; 시험
+ * (`test/next-labels.test.ts`)이 그 규칙과 금칙어를 함께 지킨다.
+ *
+ * 기준은 목업 `mockups/redesign.html` 의 문장이다 — 여기서 다듬지 말고 목업을
+ * 먼저 고친다. 숫자가 붙는 문장은 부르는 자리에서 잇지 않고 여기의 함수로 만든다.
+ *
+ * 단계마다 자기 칸이 있다. 각 단계는 자기 칸의 끝에만 더해 병합이 겹치지 않게
+ * 한다 — 칸 사이의 빈 줄 셋은 그 완충이다.
+ */
+// biome-ignore format: 단계 칸 사이의 빈 줄 셋이 병합의 완충이다 — 포매터가 한 줄로 접지 않게 둔다.
+export const L = {
+  // ── 공통 — U10 어휘 · 문제 문장 · 여정(U2)
+  vocab: {
+    openSubmitted: "제출한 내용 열기",
+    aiFailed: "AI가 답을 못 했어요",
+    retry: "다시 시도",
+    retriedFive: "조금씩 기다리며 다섯 번 다시 물었어요",
+    toolsReady: "필요한 도구 확인됨",
+    connectionOk: "연결 정상",
+    projectCount: (n: number) => `프로젝트 ${n}개`,
+  },
+  /** 화면의 문제 문장은 셋이다 — 셋째만 사람의 손이 필요하다. */
+  problem: {
+    fixing: "AI가 고치는 중이에요",
+    notified: "개발자에게 알렸어요",
+    reconnect: "다시 연결이 필요해요",
+    fixingPreview: "미리보기가 뜨지 않아 AI가 막힌 곳을 고치고 있어요. 하실 일은 없어요.",
+    notifiedSubmit:
+      "제출이 막혀 개발자에게 알렸어요. 풀리면 도구가 다시 제출해요 — 지금은 계속 만들어도 돼요.",
+    notifiedOther: "AI도 고칠 수 없는 문제라 개발자에게 알렸어요. 풀리면 저절로 이어져요.",
+    reconnectInvite:
+      "연결 코드가 만료됐어요. 개발자에게 받은 새 초대 파일을 열어 주세요. 대화와 작업은 그대로예요.",
+    reconnectLogin: "AI 로그인이 끝났어요. 브라우저에서 한 번만 다시 로그인해 주세요.",
+    openInvite: "초대 파일 열기",
+    loginInBrowser: "브라우저에서 로그인",
+    /** `개발자에게 알렸어요` 줄의 ✕ — 같은 문제를 이 탭이 사는 동안 숨긴다. */
+    dismiss: "이 문제 알림 닫기",
+    /** `AI가 고치는 중` 이 저절로 풀릴 때 — 접히기 전 초록 체크와 함께 선다. */
+    fixed: "다 고쳤어요",
+  },
+  /** 여정 세 점(U2) — `제출 전 ─ 개발자 확인 ─ 반영됨`. */
+  journey: {
+    making: "만드는 중",
+    before: "제출 전",
+    screensBefore: (n: number) => `제출 전 · 화면 ${n}개`,
+    beforeBlocked: "제출 전 · 제출하지 못했어요",
+    submittedDone: "제출됨",
+    review: "개발자 확인",
+    // 열린 요청이 있다는 것만 안다 — 개발자가 실제로 열어 봤는지는 모른다. 아는 만큼만 말한다.
+    reviewing: "개발자 확인을 기다려요",
+    reviewingComments: (n: number) => `개발자 확인을 기다려요 · 코멘트 ${n}`,
+    reviewed: "확인됨",
+    merged: "반영됨",
+    mergedNow: "반영됐어요",
+    openWork: "이번 작업 보기",
+    makingRead: "화면을 살펴보는 중",
+    makingFile: "화면 파일을 고치는 중",
+    makingCheck: "검사를 돌리는 중",
+    firstTurnHint: "처음은 몇 분 걸려요",
+    /** 여정 단추의 접근 이름 — 시계가 매초 이름을 갈아 놓지 않게 보이는 몸과
+       갈라 쓴다. */
+    openWorkNow: (point: string) => `이번 작업 보기 · ${point}`,
+  },
+
+
+
+  // ── 단계 1 뼈대
+  sidebar: {
+    brand: "ColoNova Design",
+    newConv: "새 대화",
+    home: "홈",
+    find: "찾기",
+    others: "다른 프로젝트",
+    convs: "대화",
+    toolWorkCount: (n: number) => `도구가 한 일 ${n}`,
+    settings: "설정",
+    /** 바퀴에 점이 켜져 있을 때의 이름 — 점의 뜻을 낭독과 툴팁이 말한다. */
+    settingsUpdate: "설정 · AI 새 버전이 있어요",
+    collapse: "사이드바 접기 · ⌘B",
+    expand: "사이드바 열기 · ⌘B",
+    switchTo: (name: string) => `옮기기 · ${name}`,
+    projects: "프로젝트",
+    prepareOnFirstOpen: "처음 열 때 준비해요",
+    preparing: "준비 중",
+    notOpened: "아직 열지 않음",
+    waitingAnswer: "답을 기다려요",
+    waitingAnswerCount: (n: number) => `답을 기다려요 ${n}`,
+    comments: (n: number) => `코멘트 ${n}`,
+    aiFailedRetry: "AI가 답을 못 했어요 — 다시 시도할 수 있어요",
+  },
+  /** 사이클 상태의 한 단어 — 사이드바 · 전환기 · 팔레트가 함께 쓴다. */
+  cycle: {
+    draft: "제출 전",
+    review: "개발자 확인을 기다려요",
+    merged: "반영됐어요",
+  },
+  home: {
+    greet: (name: string) => `${name}님, 무엇을 만들까요?`,
+    placeholder: "예: 회원 목록에 이름으로 찾는 검색창을 넣어 줘",
+    hint: "그림이나 문서를 끌어다 놓아도 돼요 · 보내면 그 프로젝트의 새 대화가 열려요",
+    whichService: "어느 프로젝트에서 만들까요?",
+    waiting: "답을 기다려요",
+    calm: "기다리는 일이 없어요",
+    running: "지금 진행 중",
+    recent: "방금 있던 일",
+  },
+  narrow: {
+    chatTab: "대화",
+    screenTab: (name: string) => `화면 · ${name}`,
+    sendPins: "찍은 곳을 대화에서 보내기",
+  },
+  toast: {
+    switched: (name: string) => `옮겼어요 · ${name} · 미리보기는 보던 자리 그대로예요`,
+    switchedPreparing: (name: string) => `옮겼어요 · ${name} · 준비가 계속 돌고 있어요`,
+  },
+  /** 셸의 틀 — 상태 줄 · 좁은 창 · 열 경계. */
+  shell: {
+    menu: "메뉴 열기",
+    chatWidth: "대화 너비",
+    closeMenu: "메뉴 닫기",
+    projectMenu: "프로젝트 고르기",
+    /** 화면 수를 모를 때(데몬이 아직 화면 목록을 싣지 않음)의 제출 이유. */
+    submitReadyAny: "만든 것을 개발자에게 제출해요",
+    submitMoreAny: "제출한 뒤로 바뀐 것을 같은 요청에 더해 제출해요",
+    commentsArrived: "코멘트가 왔어요",
+    /** 열 경계(Splitter)의 접근 값 — 화면 낭독이 폭을 말로 읽는다. */
+    pixels: (n: number) => `${n}픽셀`,
+  },
+
+  /** 홈의 받은 편지함(U6). */
+  inbox: {
+    send: "보내기",
+    openConv: "대화에서 보기",
+    allow: "허용",
+    deny: "거절",
+    askMany: "물어볼 것이 여러 개예요 — 대화에서 답해 주세요",
+    askPermission: (what: string) => `AI가 이것을 하려고 해요 · ${what}`,
+    reviewArrived: "개발자가 코멘트를 남겼어요 — 대화에서 볼 수 있어요",
+    nothingRunning: "도는 작업이 없어요",
+    firstPrepare: "처음 켜는 준비",
+    answered: "답이 왔어요 — 확인해 보세요",
+    eventMerged: "반영됐어요",
+    eventComments: "코멘트가 왔어요",
+    eventClosed: "개발자가 요청을 닫았어요",
+    eventReplied: "개발자가 답을 달았어요",
+    nothingRecent: "아직 있던 일이 없어요",
+    stepNames: ["내려받기", "설치하기", "미리보기 켜기"],
+  },
+  /** 뼈대의 자리 표시 — 단계 2·3 이 채우기 전의 대화 · 미리보기 칸. */
+  slot: {
+    previewWaiting: "미리보기가 여기에 떠요",
+  },
+  /** 전환기 머리의 이름을 누르면 뜨는 프로젝트 카드(U7) — 저장소 · 미리보기 · 지켜 줄 것. */
+  projInfo: {
+    openRepo: "저장소 열기",
+    openPreview: "미리보기 열기",
+    openInvite: "초대 파일 열기…",
+    guide: "지켜 줄 것",
+    guideHelp: "이 프로젝트에서 AI가 늘 따랐으면 하는 규칙이에요. Claude 프로젝트의 ‘지침’과 같아요.",
+    guidePlaceholder: "예) 버튼은 항상 화면 오른쪽 위에 둬 주세요",
+    guideNote: "새로 시작하는 대화부터 적용돼요. 비우면 규칙도 사라져요.",
+    guideSavedToast: "저장했어요 — 새로 시작하는 대화부터 적용돼요",
+    guideSaveFailed: "지켜 줄 것을 저장하지 못했어요",
+  },
+  /** 대화 줄의 `···` 메뉴 — 이름 바꾸기 · 내보내기 · 지우기(확인은 메뉴 안의 한 줄). */
+  convMenu: {
+    label: "대화 메뉴",
+    rename: "이름 바꾸기",
+    renameLabel: "대화 이름",
+    export: "내보내기",
+    exportDone: (file: string) => `${file} 파일로 내보냈어요`,
+    exportFailed: "내보내지 못했어요",
+    remove: "지우기",
+    removeConfirm: "이 대화를 목록에서 지울까요? 화면은 그대로예요",
+    removeCancel: "그만두기",
+    removeFailed: "지우지 못했어요",
+  },
+
+
+
+  // ── 단계 2 대화
+  composer: {
+    placeholder: "만들거나 고치고 싶은 것을 말해 주세요",
+    placeholderPins: "찍은 곳을 어떻게 고칠지 말해 주세요",
+    placeholderMerged: "다음에 만들 것을 말해 주세요 — 새 작업으로 시작해요",
+    placeholderPreparing: "준비되는 동안 먼저 말해 두셔도 돼요",
+    attach: "그림 · 문서 첨부 (한 건 8MB까지)",
+    pin: "찍기",
+    pinTip: "화면에서 고칠 곳 찍기 · ⌘⇧P",
+    send: "보내기 · ↵ (줄바꿈은 ⇧↵)",
+    /** AI 가 일하는 동안 보내면 줄을 선다 — 답이 끝나면 나간다. */
+    sendQueue: "답이 끝나면 보내요 · ↵",
+    stop: "멈추기",
+    pinNote: "어떻게 바꿀까요? (선택)",
+    pinRemove: "빼기",
+    tooBig: (name: string) => `${name} — 8MB 보다 큰 파일은 보낼 수 없어요`,
+  },
+  model: {
+    ai: "AI",
+    aiNext: "보내면 이 AI 로 대화가 열려요",
+    aiFixed: "이 대화의 AI 예요 · 다른 AI 는 새 대화에서 골라요",
+    fastMissing: "이 모델은 빠르게를 받지 않아요 — 번개는 받는 모델에서만 서요",
+    model: "모델",
+    filter: "모델 고르기",
+    filterPlaceholder: "모델 이름으로 고르세요",
+    noMatch: "맞는 모델이 없어요",
+    think: "생각 시간",
+    usage: "사용량",
+  },
+  /**
+   * 빠르게의 문장 묶음(§5.4) — 칩의 이름 · 툴팁 카드 · 토스트. `FastWords`
+   * 모양은 thread.ts 가 정하고 이 묶음이 채운다(통째로 건네므로 불리지 않는
+   * 칸 검사의 표가 `fast` 를 안다).
+   */
+  fast: {
+    name: "빠르게",
+    offTitle: "빠르게 — 같은 모델이 더 빨리 답해요",
+    nextTitle: "다음 대화부터 빠르게 — 같은 모델이 더 빨리 답해요",
+    onTitle: "빠르게 켜짐 · 누르면 꺼요",
+    costClaude: "요금제 사용량과 별도로 사용량 크레딧에서 빠져요 · 같은 답에 약 2배",
+    costMidway: "대화 중간에 켜면 지금까지의 대화도 한 번 더 계산해요",
+    costOther: "사용량이 더 빨리 닳아요",
+    blocked: {
+      creditsGone: "사용량 크레딧이 다 떨어져 보통 속도로 답해요",
+      credits: "사용량 크레딧을 켜야 빠르게를 쓸 수 있어요 — claude.ai 설정 → 사용량",
+      org: "조직 설정이 빠르게를 막아 두었어요",
+      orgModels: "조직이 허용한 모델에 빠르게 모델이 없어요",
+      network: "연결 문제로 지금은 빠르게를 쓸 수 없어요",
+      evaluation: "평가 플랜에서는 빠르게를 쓸 수 없어요",
+      cooldown: "빠르게 한도에 닿아 잠시 보통 속도로 답해요 · 풀리면 저절로 다시 켜져요",
+    },
+    /** 켜는 순간 한 번은 비용을 말한다 — 토스트가 그 자리다. */
+    toastOn: (cost: string) => `빠르게 켜졌어요 · ${cost}`,
+    toastOff: "빠르게를 껐어요",
+    toastFail: "빠르게를 바꾸지 못했어요 — 다시 눌러 주세요",
+  },
+  transcript: {
+    emptyTitle: "무엇을 만들까요?",
+    emptyBody: (name: string) =>
+      `오른쪽은 ${name}의 실제 화면이에요.\n말로 시키거나, 화면을 찍어서 짚어 주세요.\n그림이나 기획 문서를 끌어다 놓아도 돼요.`,
+    /** 좁은 창(900px 미만)에서는 미리보기가 오른쪽이 아니라 탭이다. */
+    emptyBodyNarrow: (name: string) =>
+      `${name}의 실제 화면은 화면 탭에서 봐요.\n말로 시키거나, 화면을 찍어서 짚어 주세요.\n그림이나 기획 문서를 끌어다 놓아도 돼요.`,
+    emptyPreparing: (name: string) =>
+      `${name} · 처음 켜는 중이에요.\n먼저 말해 두면 준비가 끝나는 대로 시작해요.`,
+    queued: "준비가 끝나면 바로 보낼게요",
+    editResend: "고쳐서 다시 보내기",
+    editResendTip: "이 말부터 새 대화로 갈라서 고쳐 보내요 · 화면은 그대로예요",
+    editResendToast: "이 말 앞까지 이어받은 새 대화예요 · 고쳐서 보내면 돼요 · 화면은 지금 그대로",
+    shotLabel: "고친 화면",
+    shotGo: "미리보기에서 보기",
+    took: (secs: string) => `${secs} 걸렸어요`,
+    copyAll: "전체 복사",
+    copyAllToast: "이 요청의 답을 모두 복사했어요",
+    settleMenuTip: "여기서 새 대화 · 되돌리기",
+    fork: "여기서 새 대화",
+    forkSub: "대화만 이 답까지 이어받아요",
+    forkNote: "화면은 지금 모습 그대로예요. 화면까지 되돌리려면",
+    forkRevertLink: "작업 기록에서 되돌리기",
+    forkToast: "이 답까지 이어받은 새 대화를 열었어요 · 원래 대화도 그대로 있어요",
+    copyOne: "이 답변만 복사",
+    copyOneToast: "이 답변을 복사했어요",
+    stopped: "멈췄어요 · 하던 곳까지는 화면에 남아 있어요",
+    revived: "AI 프로그램이 멈춰 다시 일으켰어요 · 하던 일을 그대로 이어서 해요",
+    seconds: (s: number) => `${s}초`,
+    minutesSeconds: (m: number, s: number) => `${m}분 ${s}초`,
+    /** 접힌 진행 문장의 머리 — 답이 끝난 뒤 과정은 이 한 줄로 접힌다. */
+    stepsFold: "작업 과정",
+    /** 고친 화면 카드의 마지막 이름 — 제목을 모를 때 주소가 서지 않게. */
+    unknownScreen: "이름 없는 화면",
+  },
+  cards: {
+    gateFixed: "AI가 고쳤어요",
+    gateFixing: "AI가 고치는 중",
+    nothingToDo: "하실 일은 없어요.",
+    nothingToDoYet: "하실 일은 없어요 — 끝나면 알려 드려요.",
+    gateBody: "AI가 받은 내용 · 개발자 말이라 몰라도 돼요",
+    screenCheck: "화면 확인",
+    developer: "개발자",
+    reviewDone: "반영해 같은 요청에 다시 제출했어요",
+    reviewFixing: "AI가 반영하는 중",
+    reply: "답하기",
+    replyTo: (name: string) => `${name}님에게 답하기`,
+    replySend: "보내기",
+    replyMine: (text: string) => `내 답: ${text}`,
+    replyToast: (name: string) => `${name}님에게 답을 달았어요`,
+    receiptFirst: "개발자에게 제출했어요",
+    receiptMore: "같은 요청에 더해 제출했어요",
+    receiptReviewers: (n: number) => `받을 개발자 ${n}명`,
+    receiptNote: (note: string) => `내 한마디 · “${note}”`,
+    askTitle: "AI가 물어봐요",
+    askFree: "직접 답하기",
+    failTitle: "AI가 답을 못 했어요",
+    failWhy:
+      "다섯 번 다시 물었지만 답을 받지 못했어요. 말씀은 그대로 남아 있어요 — 다시 시도하면 같은 말로 다시 물어요.",
+    milestoneMerged: "반영됐어요 · 다음에 만드는 것은 새 작업이에요",
+    /** 날 오류 원문의 접힌 자리(W3) — cards.tsx 의 접힌 글과 같은 모양으로 편다. */
+    detailFold: "자세히",
+    /** 한마디 더(U20 · PLAN-UI §10) — 영수증의 상자가 열린 요청에 남기는 말. */
+    noteMore: "개발자에게 한마디 더",
+    notePlaceholder: "잘못 보냈거나 덧붙일 말을 적어요",
+    noteSent: (time: string) => `${time} 개발자에게 보냈어요`,
+  },
+  inviteCleanup: {
+    title: "초대 파일을 가져왔어요",
+    body: "파일에 연결 코드가 들어 있어요. 이 앱이 대신 지워 드릴게요.",
+    remove: "파일 지우기",
+    later: "나중에",
+    removed: "초대 파일을 지웠어요",
+    removeFailed: "파일을 지우지 못했어요 — 직접 지워 주세요",
+  },
+  /** 대화 칸의 나머지 문장 — 입력창 · 대화록 · 카드가 함께 쓴다. */
+  chat: {
+    images: (n: number) => `그림 ${n}장`,
+    attachRemove: "첨부 빼기",
+    sendFailed: "AI에게 말을 전하지 못했어요 — 잠시 뒤 다시 보내 주세요",
+    somethingWrong: "잠시 문제가 있었어요 — 다시 해 주세요",
+    dismiss: "닫기",
+    offline: "연결이 끊겼어요",
+    connecting: "연결하는 중이에요",
+    stopping: "멈추는 중…",
+    working: "작업 중",
+    queuedAfter: "지금 답이 끝나면 바로 보낼게요",
+    queueEdit: "고쳐서 보내기",
+    queueNow: "지금 보내기",
+    retrying: (n: number, of: number) => `잠깐의 문제로 조금씩 기다리며 다시 묻는 중이에요 · ${n}/${of}`,
+    waitingLimit: "사용량이 다시 채워지면 스스로 이어서 해요",
+    failWhyShort: "답을 받지 못했어요. 말씀은 그대로 남아 있어요 — 다시 시도하면 같은 말로 다시 물어요.",
+    failLimit: "사용량을 다 썼어요. 다시 채워지면 다시 시도로 같은 말을 이어서 물어요.",
+    failNotified: "개발자에게도 알렸어요.",
+    retryLive: "지금은 스스로 다시 묻는 중이에요",
+    historyFailed: "대화 기록을 읽지 못했어요",
+    reopen: "다시 열기",
+    newContent: "새 내용",
+    toBottom: "맨 아래로",
+    contextFull: "대화가 길어졌어요 — 새 대화에서 이어가면 더 빨라요",
+    fixingOther: "AI가 막힌 곳을 고치고 있어요. 하실 일은 없어요.",
+    recheck: "다시 확인",
+    checking: "확인하는 중…",
+    closed: "개발자가 이번 요청을 닫았어요 — 작업은 새 요청으로 옮겨 두었어요",
+    gateSummary: (step: string) => `${step}에서 문제를 찾아 AI에게 맡겼어요.`,
+    errorSummary: "화면에 오류가 나서 AI에게 맡겼어요.",
+    lookSummary: "보여 준 화면을 AI가 살펴보고 있어요.",
+    lookTitle: "AI에게 보여 준 화면",
+    briefScreen: (title: string) => `「${title}」 만들기를 AI에게 맡겼어요`,
+    briefBootstrap: "처음 켜는 준비를 AI에게 맡겼어요",
+    briefRefresh: "개발자가 반영한 내용을 받아왔어요",
+    briefConventions: "이 서비스의 규칙을 다시 읽었어요",
+    reviewText: "코멘트를 남겼어요",
+    reviewAuthor: "개발자",
+    usageWord: (pct: number) => `사용량 ${pct}%`,
+    /** 사용량 칸의 한 줄(창 하나) — 이름 · 쓴 비율 · 다시 차는 때. */
+    usageUsed: (pct: number) => `${pct}% 썼어요`,
+    usageRefill: (when: string) => `${when}에 다시 차요`,
+    usageFiveHour: "이번 5시간",
+    usageWeek: "이번 주",
+    usageMonth: "이번 달",
+    /** 모델마다 따로 있는 창 — `Fable · 이번 주`. */
+    usageScoped: (name: string, period: string) => `${name} · ${period}`,
+    usageTomorrow: (time: string) => `내일 ${time}`,
+    usageOnDate: (month: number, day: number, weekday: string, time: string) =>
+      `${month}월 ${day}일(${weekday}) ${time}`,
+    /** `Date.getDay()` 의 차례 — 일요일부터. */
+    usageWeekdays: ["일", "월", "화", "수", "목", "금", "토"],
+    pinFlash: "화면에서 이 자리 보기",
+    files: (n: number) => `파일 ${n}개`,
+    /** 잃은 말의 실패 카드 이유(W8) — 다시 시도는 같은 말을 다시 보낸다. */
+    lostWhy: "말이 닿기 전에 AI가 멈췄어요. 다시 시도하면 같은 말을 다시 보내요.",
+  },
+  /**
+   * 데몬이 대화에 내려놓는 알림 문장의 첫머리 — 대화록이 이 머리로 알아보고
+   * 제 문장(`L.chat` · `L.transcript`)으로 바꿔 그린다. 사용자에게 그대로
+   * 보이는 글이 아니라 알아보는 표식이다.
+   */
+  daemonNotice: {
+    retry: "일시적인 문제입니다",
+    wait: "사용량이 다시 채워지는대로",
+    revive: "AI 프로그램을 다시 켰어요",
+  },
+
+
+
+  // ── 단계 3 미리보기
+  preview: {
+    back: "뒤로",
+    forward: "앞으로",
+    reload: "새로 고침 · 보던 자리 그대로",
+    devicePc: "PC",
+    deviceTablet: "태블릿",
+    devicePhone: "휴대폰",
+    pinTip: "수정할 곳 찍기 · ⌘⇧P · option(⌥)+클릭은 언제든",
+    history: "작업 기록",
+    more: "더 보기",
+    zoom: "배율",
+    showAi: "AI에게 이 화면 보여 주기",
+    showAiSub: "짚을 곳이 없는데 이상할 때",
+    showAiToast: "지금 화면을 입력창에 담았어요 — 이상한 점을 말해 주세요",
+    frozenOpen: "제출한 때의 화면 보기",
+    frozenOpenSub: "개발자가 받은 모습 그대로",
+    frozenLocked: "제출한 뒤에 볼 수 있어요",
+    frozenBar: "제출한 때의 화면이에요",
+    frozenBarAt: (time: string) => `제출한 때의 화면이에요 · ${time}`,
+    unfreeze: "지금 화면으로",
+    shortcuts: "단축키",
+    addrPlaceholder: "화면 이름이나 주소",
+    addrMine: "이 대화에서 만든 화면",
+    addrOthers: "다른 화면",
+    restartingTitle: "화면을 다시 켜는 중이에요",
+    restartingBody: "미리보기가 저절로 꺼져서 다시 켜고 있어요.\n잠시만 기다려 주세요.",
+    restarted: "화면이 다시 켜졌어요",
+    fixingTitle: "AI가 막힌 곳을 고치고 있어요",
+    fixingBody: "미리보기를 다시 띄우는 중이에요. 끝나면 화면이 저절로 떠요.",
+    addrLabel: "화면 고르기",
+    homeScreen: "첫 화면",
+    untitledScreen: "이름 없는 화면",
+    addrOnly: "미리보기 안의 화면 주소만 열 수 있어요",
+    addrEmpty: "찾는 화면이 없어요",
+    device: "화면 크기",
+    pin: "찍기",
+    pinOffTip: "찍기 끄기 · ⌘⇧P",
+    zoomOut: "작게",
+    zoomIn: "크게",
+    zoomReset: "실제 크기로",
+    lateLoad: "화면이 늦게 뜨고 있어요 — 잠시만 기다려 주세요",
+    frameTitle: "미리보기",
+    frozenNoShot: "제출한 때의 화면 그림이 없어요",
+    showAiBusy: "화면을 담는 중…",
+    showAiSent: "지금 화면을 AI에게 보여 줬어요 — 답을 기다려 주세요",
+    showAiAgain: "이미 보여 줬어요 — 답을 기다려 주세요",
+    shotName: (name: string) => `${name} 화면.jpeg`,
+    /** 데몬이 다시 켜는 동안의 상태 문장이 이 말로 시작한다(C5 의 계약). */
+    restartPrefix: "화면을 다시 켜는 중",
+    prepAgainTitle: "화면을 켜는 중이에요",
+    prepAgainBody: "잠시만 기다려 주세요 · 대화는 먼저 해도 돼요.",
+    elapsedSec: (s: number) => `${s}초`,
+    elapsedMin: (m: number, s: number) => `${m}분 ${s}초`,
+    stepEta: (eta: string, elapsed: string) => `${eta} · ${elapsed}`,
+    addrNoScreens: "아직 화면이 없어요 · 말로 부탁하면 여기에 생겨요",
+    /** 아래는 AI 가 읽는 기계의 말 — 화면에는 서지 않는다. */
+    stalledReport: "미리보기 화면이 새로 고친 뒤에도 30초 넘게 뜨지 않았어요.",
+    lookAsk: "이 화면이 이렇게 보여요. 무엇이 잘못됐는지 보고 고쳐 주세요.",
+    lookConsole: (lines: string) => `콘솔 마지막 기록:\n${lines}`,
+  },
+  pin: {
+    stripTitle: "찍기 켜짐",
+    stripBody: "화면을 누르면 그 자리가 입력창에 담겨요 · 끌면 영역을 짚어요",
+    /** 찍기 알약이 담은 수를 말한다 — 문장은 `2개 담음`. */
+    stripCount: (n: number) => `${n}개 담음`,
+    stripOff: "끄기",
+    bubblePlaceholder: "어떻게 바꿀까요? (안 적어도 돼요)",
+    bubbleKeepHint: "↵ 담기 · ⌘↵ 보내기",
+    keep: "담기",
+    sendNow: "지금 보내기",
+    removePin: "이 핀 빼기",
+    removed: "핀을 뺐어요",
+    keptN: (n: number) => `${n}번을 담았어요 — 더 찍거나 입력창에서 보내요`,
+    keptNarrow: (n: number) => `${n}번을 담았어요 — 대화 탭에서 메모를 남기고 보내요`,
+    lockedPreparing: "준비가 끝나면 화면을 찍을 수 있어요",
+    area: "영역",
+    /** 핀 이름표의 마지막 폴백 — 정체(글자 · 컴포넌트 · 화면)를 다 못 짚을 때. */
+    point: "찍은 곳",
+    bubble: "핀 메모",
+    /** 아래는 게스트 안 오버레이가 입는 말 — 선로(colonova-overlay:mode)로 건너간다. */
+    unnamed: "이름 없음",
+    hint: "클릭은 요소, 끌면 영역을 가리켜요. 여러 개 찍고 한 번에 말하세요.",
+    badgeWord: "핀",
+    badgeSentMark: "(보냄)",
+    badgeDoneMark: "(고침)",
+    kindButton: "버튼",
+    kindLink: "링크",
+    kindImage: "그림",
+    kindInput: "입력칸",
+    kindOther: "화면 부분",
+    /** 호버 패널의 겉모습 줄 — 게스트 오버레이가 입는 말(선로로 건너간다). */
+    statColor: "색",
+    statBackground: "배경",
+    statFont: "글꼴",
+  },
+  history: {
+    title: "작업 기록",
+    sub: "AI가 한 차례 답할 때마다 저절로 보관돼요.\n따로 저장할 필요가 없어요.",
+    foot: "이번 작업이 반영될 때까지 남아요",
+    emptyMerged:
+      "반영된 작업의 기록은 여기서 사라져요.\n합쳐진 것은 거슬러 갈 수 없어서예요.\n다음에 만드는 것부터 다시 쌓여요.",
+    empty: "아직 보관된 차례가 없어요.\nAI가 한 차례 답할 때마다 여기에 쌓여요.",
+    submittedAt: (time: string) => `${time} 제출했어요`,
+    toHere: "이 시점으로",
+    revert: "되돌리기",
+    cancel: "그만두기",
+    /** U9 — 시각이 아니라 제목으로 묻는다. `n` 과 코멘트 여부는 목록에서 센다. */
+    confirm: (title: string, n: number, withComments: boolean) =>
+      `「${title}」 직후의 화면으로 되돌릴까요?\n기록은 지워지지 않고, 되돌리기도 기록에 남아요. 개발자에게는 다음 제출 때 전해져요.\n그 뒤에 한 변경 ${n}가지${withComments ? " (개발자 코멘트 반영 포함)" : ""}만 화면에서 빠져요.`,
+    revertedToast: (time: string) => `${time} 시점으로 되돌렸어요 — 되돌리기도 기록에 남아요`,
+    /** 코멘트 반영 차례의 제목 머리(U9 · U14) — `revertSummary` 가 이것으로 센다. */
+    commentPrefix: "코멘트 반영 — ",
+    close: "작업 기록 닫기",
+    loading: "기록을 읽어 오는 중…",
+    readFailed: "기록을 읽지 못했어요 — 잠시 후 다시 시도해 주세요.",
+    restoreFailed: "되돌리지 못했어요 — 잠시 후 다시 시도해 주세요.",
+    restoring: "되돌리는 중…",
+    today: "오늘",
+    yesterday: "어제",
+    dayOf: (month: number, day: number) => `${month}월 ${day}일`,
+  },
+
+
+
+  // ── 단계 4 제출·이번 작업
+  submit: {
+    idle: "제출",
+    running: "제출하는 중…",
+    done: "제출됐어요",
+    retrying: "다시 제출하는 중…",
+    failed: "제출하지 못했어요",
+    whyReconnect: "다시 연결이 필요해요 — 위의 안내를 먼저 따라 주세요",
+    whyRunning: "AI가 고치는 중 — 끝나면 제출할 수 있어요",
+    whyPreparing: "준비가 끝나면 제출할 수 있어요",
+    whyMerged: "반영됐어요 — 다음 작업을 만들면 제출할 수 있어요",
+    whyBlocked:
+      "제출이 막혀 개발자에게 알렸어요 — 풀리면 도구가 다시 제출해요, 지금은 계속 만들어도 돼요",
+    whyMoreReady: (n: number) => `제출한 뒤로 바뀐 ${n}곳을 같은 요청에 더해 제출해요`,
+    whyNoMore: "제출한 뒤로 바뀐 것이 없어요 — 더 고치면 같은 요청에 더해 제출할 수 있어요",
+    whyNothing: "아직 바뀐 화면이 없어요",
+    whyReady: (n: number) => `바뀐 화면 ${n}개를 개발자에게 제출해요`,
+    /** 막힘 중 연결 코드 만료(U13 의 auth) — 사람의 손이 필요한 유일한 막힘. */
+    whyAuth: "연결 코드가 만료돼 제출이 막혔어요 — 새 초대 파일이 필요해요",
+    /** 확인 창을 보낸 순간 데몬에 닿지 못했다 — 누른 손에게 한 줄로. */
+    sendFailed: "제출하지 못했어요 — 잠시 뒤 다시 눌러 주세요",
+  },
+  /** 제출 확인 팝오버(U3). */
+  submitConfirm: {
+    title: "개발자에게 제출할까요?",
+    titleMore: "같은 요청에 더해 제출할까요?",
+    sub: "제목과 설명은 도구가 써요 · 원본은 건드리지 않아요",
+    subMore: "이미 열린 요청에 이어서 쌓여요 · 원본은 건드리지 않아요",
+    screens: (n: number) => `제출할 화면 ${n}개`,
+    screensMore: (n: number) => `제출한 뒤 바뀐 ${n}곳`,
+    outsideScreens: (n: number) => `화면 밖 변경 ${n}건`,
+    note: "개발자에게 한마디",
+    optional: "선택",
+    notePlaceholder: "예) 검색창 위치는 기획 의도예요",
+    reviewers: (names: string) => `받을 개발자 · ${names}`,
+    cancel: "그만두기",
+    confirm: "제출",
+  },
+  /** `이번 작업` 팝오버(U2). */
+  work: {
+    title: "이번 작업",
+    subDraft: "이 컴퓨터에 보관돼 있어요",
+    subReview: "개발자에게 가 있어요",
+    subMerged: "반영까지 끝났어요",
+    changed: "바뀐 화면",
+    changedCount: (n: number) => `바뀐 화면 ${n}개`,
+    changedSince: (n: number) => `제출한 뒤 ${n}곳 더`,
+    changedEmpty: "아직 바뀐 화면이 없어요.",
+    changedEmptyMerged: "이번 작업은 제품에 합쳐졌어요. 다음에 고치는 것부터 새 작업이에요.",
+    submitHeading: "제출",
+    receivedBy: (names: string) => `받은 개발자 · ${names}`,
+    notSubmitted: "아직 제출하지 않았어요. 다 만들었으면 위의 제출을 눌러요.",
+    blocked: "제출하지 못해 개발자에게 알렸어요. 풀리면 도구가 다시 제출해요.",
+    comments: "개발자 코멘트",
+    commentsCount: (n: number) => `개발자 코멘트 ${n}`,
+    commentsAuto: "AI가 스스로 반영해요",
+    commentsEmptyDraft: "제출하면 개발자의 코멘트가 여기에 모여요.",
+    commentsEmpty: "아직 없어요.",
+    commentDone: "반영됨",
+    commentFixing: "고치는 중",
+    openHistory: "작업 기록 열기",
+    /** 머리의 둘째 줄 — `<프로젝트> · <시작일>부터 · <지금 자리>`. 시작일을 모르면 빠진다. */
+    headerSub: (name: string, since: string | null, where: string) =>
+      since ? `${name} · ${since}부터 · ${where}` : `${name} · ${where}`,
+    day: (month: number, day: number) => `${month}월 ${day}일`,
+    /** 시각 한 칸 — 오늘이면 시:분만, 아니면 날짜를 앞에. */
+    time: (today: boolean, hhmm: string, month: number, day: number) =>
+      today ? hhmm : `${month}월 ${day}일 ${hhmm}`,
+    submittedBy: (time: string, author: string | null) => (author ? `${time} · ${author}` : time),
+    commentAuthor: "개발자",
+    /**
+     * 코멘트 반영 차례의 기록 제목 머리 — 도구가 붙이는 이름(데몬의
+     * COMMENT_REFLECTION_PREFIX 와 같은 글자). 이 머리의 기록이 코멘트 뒤에 있으면 `반영됨`.
+     */
+    reflectionPrefix: "코멘트 반영 — ",
+    /** 한마디 더(U20 · PLAN-UI §10) — 제출 칸 바닥의 같은 단추와 상자. */
+    noteMore: "개발자에게 한마디 더",
+    notePlaceholder: "잘못 보냈거나 덧붙일 말을 적어요",
+    noteSent: (time: string) => `${time} 개발자에게 보냈어요`,
+  },
+
+
+
+  // ── 단계 5 처음 한 번·준비·초대
+  onboarding: {
+    title: "ColoNova Design 을 시작해요",
+    sub: "세 가지가 채워지면 저절로 넘어가요.\n터미널을 열 일은 없어요.",
+    tools: "도구 준비",
+    toolsChecking: "확인하는 중…",
+    agent: "AI 연결",
+    agentIdle: "기다리는 중",
+    agentInstalling: "Claude Code 설치 중",
+    agentLogin: "브라우저에서 로그인",
+    agentOk: "Claude Code · 로그인됨",
+    agentBlocked: "설치가 막혔어요",
+    agentWhat:
+      "Claude Code 는 이 앱이 AI 를 부르는 데 쓰는 프로그램이에요. 설치가 끝나면 내 Claude 계정으로 로그인해요.",
+    copyText: "문장 복사",
+    copied: "IT 담당자에게 보낼 문장을 복사했어요",
+    retry: "다시 시도",
+    loginBody: "브라우저가 열렸어요. Claude 에 로그인하면 여기로 저절로 돌아와요.",
+    loginReopen: "브라우저 다시 열기",
+    loginFallback: "브라우저가 열리지 않았나요?",
+    loginFallbackBody: "아래 주소를 브라우저에 붙여넣고, 받은 코드를 여기에 넣어 주세요.",
+    loginCode: "받은 코드 붙여넣기",
+    confirm: "확인",
+    invite: "초대 파일",
+    inviteFrom: "개발자에게 받은 파일",
+    invitePick: "파일 고르기",
+    inviteOpening: "초대 파일을 여는 중…",
+    inviteDone: (names: string) => `${names}를 가져왔어요.`,
+    inviteFirst: (name: string) => `${name}를 먼저 열어요. 나머지는 처음 고를 때 준비해요.`,
+    inviteWarn: "초대 파일에는 연결 코드가 들어 있어요. 가져왔으니 지워 주세요.",
+    codexAsk: "Codex 도 쓰시나요?",
+    codexAskSub: "건너뛰어도 모든 일이 돼요",
+    codexInstall: "설치",
+    codexSkip: "건너뛰기",
+    codexInstalling: "Codex 설치 중…",
+    codexOk: "Codex 도 준비됐어요",
+    codexSkipped: "Codex 는 건너뛰었어요 · 설정에서 언제든 설치해요",
+    /** 초대 확인판을 닫는 길. */
+    close: "닫기",
+    /** policy 가 아닌 설치 실패의 오른쪽 문구 — 본문 문장은 데몬의 detail 이 말한다. */
+    agentFailed: "설치가 안 됐어요",
+    /** 확인이 실패로 끝난 항목 — 도는 표시 대신 손이 필요하다는 말. */
+    toolsBlocked: "확인이 막힌 항목이 있어요",
+    /** 설치 진행기의 날 줄을 가려낸 세 단계의 말 — lib/install-step.ts 의 판정과 짝이다. */
+    installSteps: {
+      download: "내려받는 중…",
+      install: "설치하는 중…",
+      verify: "확인하는 중…",
+    },
+    /** 초대 파일 놓는 칸의 문장 — 확장자 대신 쉬운 말로. */
+    inviteDropName: "개발자에게 받은 초대 파일",
+    inviteDropHow: "여기에 놓으면 가져와요",
+    /** 첫 실행이 끝나는 순간의 얼굴 — 체크리스트가 흐려져 사라지기 전의 한 문장. */
+    doneTitle: "준비됐어요",
+    doneSub: "이제 만들고 싶은 화면을 말씀해 주세요",
+  },
+  /** 처음 여는 프로젝트의 준비 화면(U8). */
+  prepare: {
+    title: "이 서비스를 이 컴퓨터에서 처음 켜요",
+    body: "준비에 몇 분 걸려요. 창을 닫아도 다음에 이어서 해요.",
+    stepDownload: "내려받기",
+    stepInstall: "설치하기",
+    stepPreview: "미리보기 켜기",
+    aboutTwoMinutes: "2분쯤",
+    hint: "준비되는 동안 먼저 말해 두셔도 돼요 — 끝나면 바로 시작해요.",
+  },
+  /** 다시 받은 초대장의 확인 창(U11). */
+  invite: {
+    title: "초대 파일을 가져왔어요",
+    renewed: "연결 코드를 새 것으로 바꿨어요.",
+    reconnected: "만료됐던 연결이 새 코드로 다시 이어졌어요.",
+    reaches: (n: number) => `프로젝트 ${n}개에 이어져요.`,
+    added: (n: number) => `새로 온 프로젝트 ${n}`,
+    addedNote: "처음 열 때 준비에 몇 분 걸려요",
+    openNow: "지금 열기",
+    updated: (n: number) => `설정이 바뀐 프로젝트 ${n}`,
+    kept: (n: number) => `그대로인 프로젝트 ${n}`,
+    keptNote: "초대장에 없는 프로젝트도 지우지 않아요.",
+    nothingChanged: "프로젝트에 바뀐 것은 없어요. 연결 코드만 새로 받았어요.",
+    mine: "프로젝트 이름과 지켜 줄 것은 내가 정한 것이라 그대로 둬요.",
+    warn: "초대 파일에는 연결 코드가 들어 있어요. 가져왔으니 파일은 지워 주세요.",
+    ok: "알겠어요",
+    /** 확인판의 적용 버튼 — 첫 실행과 다시 받기가 같은 말을 쓴다. */
+    apply: "가져오기",
+    cancel: "그만두기",
+    /** 적용이 도는 동안의 한 줄 — "N개 중 M개 연결됨". */
+    progressing: (done: number, total: number) => `${total}개 중 ${done}개 연결됨…`,
+    /** 읽기 실패 뒤 다른 파일을 고르는 버튼. */
+    otherFile: "다른 파일 열기",
+    /** 가져온 파일을 앱이 대신 지운다(데스크톱) — 확인판의 경고 옆 버튼. */
+    deleteFile: "파일 지우기",
+    deleted: "초대 파일을 지웠어요",
+    deleteFailed: "파일을 지우지 못했어요 — 직접 지워 주세요",
+    /** 행의 꼬리표(U11) — 새로 · 바뀜 · 그대로. */
+    rowNew: "새로",
+    rowUpdate: "바뀜",
+    rowKeep: "그대로",
+    /** 옛 초대장이 이름을 싣지 않았을 때만 묻는 선택 칸. */
+    authorLabel: "이 작업에 적을 이름 (선택)",
+    /** 파일을 읽지 못했을 때 확인판의 제목 — 「가져왔어요」가 아니다. */
+    errorTitle: "초대 파일을 열지 못했어요",
+  },
+  /** 바뀜 행의 무엇이 바뀌었는가(U11) — 짝의 지금 값과 비교해 만든 한 줄. */
+  inviteChange: {
+    baseBranch: (from: string, to: string) => `기본 가지 ${from} → ${to}`,
+    reviewers: "받을 개발자 명단이 바뀌어요",
+    approve: "명령 실행이 미리 허용됐어요",
+    defaults: "기본 모델 · 생각 시간이 바뀌어요",
+    lifecycle: "작업 규칙이 바뀌어요",
+  },
+
+
+
+  // ── 단계 6 설정·업데이트
+  settings: {
+    title: "설정",
+    ai: "AI",
+    aiSub: "다음 새 대화가 쓰는 AI",
+    notInstalled: "설치되지 않았어요 · 없어도 모든 일이 돼요",
+    install: "설치",
+    login: "로그인",
+    loginNeeded: "로그인이 필요해요 · 설치는 돼 있어요",
+    loginReopen: "로그인 창 다시 열기",
+    loginCode: "로그인 코드 붙여넣기",
+    loginCodeSend: "코드 보내기",
+    theme: "테마",
+    /** 테마 쪽 아래의 안내 줄 — 앱 전체를 키우고 줄이는 단축키(Windows 는 Ctrl). */
+    zoom: "글자 크기",
+    zoomSub: "앱 전체를 키우고 줄여요 · ⌘= 키우기 · ⌘- 줄이기 · ⌘0 원래대로",
+    themeSub: "화면 전체의 색깔이에요 · Claude 가 기본이에요",
+    notify: "알림",
+    /** 테마 줄의 선택지 — 설정이 보여주는 목록(lib/settings 의 PICKER_THEMES)과
+     *  한 쌍이다. */
+    themeNames: {
+      system: "시스템 따르기",
+      claude: "Claude · 기본",
+      codex: "Codex",
+      light: "밝음",
+      dark: "어두움",
+      "github-light": "GitHub 밝음",
+      github: "GitHub 어두움",
+    },
+    notifySub: "확인 요청과 멈춤은 언제나 알려요",
+    notifyDone: "다 만들었을 때",
+    notifyOff: "끔",
+    notifyLong: "오래 걸린 답만",
+    notifyAll: "모든 답",
+    sound: "소리",
+    testNotify: "시험 알림",
+    testRow: "알림이 오는지 확인",
+    openSystemNotify: "시스템 알림 설정 열기",
+    testNotifyNote:
+      "시험 알림이 오지 않으면 이 컴퓨터가 알림을 막아 둔 거예요. 시스템 알림 설정에서 켜 주세요.",
+    connection: "연결",
+    connectionSub: "개발자에게 받은 초대 파일로 이어져요",
+    authorName: "작업에 적을 이름",
+    authorNameSub: "제출에 작성자로 적혀요",
+    connectionCode: "연결 코드",
+    inviteRow: "초대 파일",
+    inviteRowSub: "새 프로젝트를 더하거나 연결을 다시 이을 때 열어요",
+    openInvite: "초대 파일 열기",
+    update: "업데이트",
+    updateSub: "켤 때 · 돌아올 때 · 하루 한 번 저절로 확인해요",
+    developer: "개발자용",
+    developerSub: "보통은 열 일이 없어요",
+    /** 왼쪽 목록의 점이 읽히는 말 — 새 버전이 있거나 연결이 곧 끝나는 쪽에 점이 서고, 쪽마다 이유를 말한다. */
+    attentionUpdate: "새 버전이 있어요",
+    attentionSoon: "곧 끝나요",
+    attentionExpired: "끝났어요",
+    toolFolder: "도구 폴더",
+    openFolder: "폴더 열기",
+    dailyLog: "하루 로그",
+    openLogFolder: "로그 폴더 열기",
+    loggedIn: "로그인됨",
+    testSent: "보냈어요",
+    testBlocked: (reason?: string) =>
+      reason ? `컴퓨터가 알림을 막았어요 — ${reason}` : "컴퓨터가 알림을 막았어요",
+    testNotifyBody: "실제 알림은 이렇게 도착해요",
+    close: "닫기",
+    /** 연결의 남은 날(U17) — 설정 → 연결 한 줄의 만료 문장. */
+    connectionUntil: (month: number, day: number) => `${month}월 ${day}일까지`,
+    connectionEnding: (days: number) => `연결이 ${days}일 뒤 끝나요`,
+    connectionAsked: "개발자에게 새 초대 파일을 부탁했어요",
+    connectionAsk: "개발자에게 새 초대 파일을 부탁하세요",
+    /** 설치 · 로그인 단추가 도는 동안의 말 — 확인이 아니라 하는 일의 이름이다. */
+    installBusy: "설치하는 중…",
+    loginBusy: "로그인하는 중…",
+    codeSending: "보내는 중…",
+  },
+  /** 업데이트 줄(U12) — 앱 · Claude Code · Codex 가 한 목록. */
+  update: {
+    available: (from: string, to: string) => `${from} → ${to} 있어요`,
+    latest: "최신이에요",
+    doneAt: (time: string) => `${time}에 업데이트했어요`,
+    deferred: "도는 작업이 끝나면 설치해요",
+    run: "업데이트",
+    runApp: "지금 다시 시작해 설치",
+    autoLabel: "새 AI 버전은 스스로 설치해요",
+    autoNote: "도는 작업이 있으면 끝난 뒤에 설치해요",
+    checkNow: "지금 확인",
+    checking: "확인하는 중",
+    foundCount: (n: number) => `새 버전 ${n}개 · 방금 확인`,
+    allLatest: "모두 최신이에요 · 방금 확인",
+    /** 홈의 `방금 있던 일` 한 줄 — 데몬이 AI 프로그램을 새 버전으로 바꿨다. */
+    doneEvent: (name: string, version: string) => `${name} 를 ${version} 으로 업데이트했어요`,
+    appRestart: "재시작합니다 — 새 버전으로 다시 열려요",
+    releasesLink: "릴리스 페이지에서 설치 파일 내려받기",
+    retry: "다시 시도",
+    useNextTime: "새 버전은 다음 새 대화부터 써요",
+    current: (version: string) => `현재 ${version}`,
+    appAvailable: (to: string) => `새 버전 ${to} 있어요`,
+    app: "앱",
+    /** 재시작 설치가 도는 동안의 말 — 내려받고 다시 시작하는 일이다. */
+    appBusy: "다시 시작하는 중…",
+  },
+
+
+
+  // ── 크래시 안내(PLAN-CRASH-PROCESS 3.A) — 와치독 문장과의 글자 동치는 시험이 지킨다.
+  crash: {
+    title: "화면에 문제가 생겼어요",
+    body: "다시 열면 대화와 작업은 그대로예요.",
+    reopen: "다시 열기",
+    bootTitle: "화면이 열리지 않아요",
+  },
+
+
+
+  // ── 찾기(⌘K) 창 — 셸 밖(components/shell)에 빌려 쓰는 판이라 사이드바와
+  // 같은 말을 쓴다.
+  palette: {
+    find: "대화, 프로젝트 찾기",
+    findInProject: "이 프로젝트의 대화 찾기",
+    recentConvs: "최근 대화",
+    projectConvs: (name: string) => `${name}의 대화`,
+    commands: "명령",
+    nowOpen: "지금 열림",
+    noMatch: (word: string) => `'${word}'에 맞는 것이 없어요`,
+    noConvs: "아직 대화가 없어요",
+    noConvsInProject: "이 프로젝트에 아직 대화가 없어요",
+    moveFailed: "프로젝트로 옮기지 못했어요 — 잠시 뒤 다시 시도해 주세요",
+    settingsHint: "AI · 테마 · 알림 · 연결 · 업데이트",
+    newConvHint: "빈 새 대화를 열어요",
+    homeHint: "홈으로 가요",
+    move: "이동",
+    open: "열기",
+    close: "닫기",
+  },
+} as const;
+
+/**
+ * 개발자용 쪽의 문장(U12 · J5) — `L` 의 금칙어 검사에서 빠진다. 진단 줄은
+ * 개발자의 어휘(데몬 · 프로토콜)로 쓰는 것이 읽는 사람을 위한 것이므로.
+ * `test/next-labels.test.ts` 가 이 export 를 금칙어 검사에서 건너뛴다.
+ */
+export const DEV = {
+  daemonLine: (protocol: number, connected: boolean) =>
+    `데몬 · ${connected ? "정상" : "연결 안 됨"} · 프로토콜 v${protocol}`,
+  activeProject: (repo: string | null, ready: boolean) =>
+    `활성 프로젝트 · ${repo ?? "-"} · 미리보기 ${ready ? "준비됨" : "대기"}`,
+  selfUpdateNote: "AI 프로그램의 자기 업데이트는 꺼 두고 이 앱이 대신 맡아요",
+  crash: {
+    details: "자세히",
+  },
+} as const;

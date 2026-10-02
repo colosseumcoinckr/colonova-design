@@ -320,7 +320,14 @@ export function useSessions(
   }, [awaitingTurn, sessions]);
 
   const refresh = useCallback(async () => {
-    setList(await api.listSessions().catch(() => [] as SessionSummary[]));
+    // 일시 실패로 목록을 비우지 않는다(2026-10-02) — 데몬이 돌아오는 순간
+    // 사이드바가 텅 비워 마지막 대화 복원까지 막히던 길이다. 실패는 이전
+    // 목록을 그대로 두고, 빈 목록은 "정말 없다"의 뜻으로만 쓰인다.
+    try {
+      setList(await api.listSessions());
+    } catch {
+      // 이전 목록 유지 — 다음 새로고침이 다시 묻는다.
+    }
   }, [api]);
 
   /**

@@ -15,6 +15,9 @@
     "dev:desktop": "pnpm --filter @colonova-design/desktop dev:hmr",
     "doctor": "pnpm --filter @colonova-design/daemon doctor"
   },
+  "engines": {
+    "node": ">=22"
+  },
   "devDependencies": {
     "@biomejs/biome": "^2.5.13",
     "concurrently": "^10.0.5",

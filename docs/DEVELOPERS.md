@@ -93,7 +93,7 @@ git, 그리고 Claude 를
 설정의 `개발자용` 쪽 → `폴더 열기` 가 이 폴더를 연다(F1) — 진단 도구는 왼쪽 목록의
 맨 아래에 따로 앉아 있어 기본으로 열리는 쪽이 아니다.
 
-데스크톱의 설정 → 연결 → `전체 초기화…`는 기본 확인 창의 동의 후 정상 종료하고, 다음 실행에서 데몬을 시작하기 전에 초기화한다. `~/.colonova-design/` 전체와 해당 클론의 Claude·Codex 대화, Electron의 설정·연결 코드·브라우저 저장 데이터를 지운다. 원격 저장소·PR과 AI 로그인은 유지된다. 완료 전에는 `userData/reset-pending`을 남겨 실패한 정리를 다음 실행에 다시 시도한다. 별도 프로젝트 위치나 연결 정보를 환경 변수로 지정한 개발 실행은 초기화를 거절한다.
+데스크톱의 설정 → 연결 → `전체 초기화…`는 기본 확인 창의 동의를 받아 앱을 정상 종료하고, 다음 실행에서 데몬을 시작하기 전에 초기화한다. 지우는 것은 `~/.colonova-design/` 전체다 — 해당 클론의 Claude·Codex 대화, Electron의 설정·연결 코드·브라우저 저장 데이터를 포함한다. 원격 저장소·PR과 AI 로그인은 유지된다. 완료 전에는 `userData/reset-pending`을 남겨 실패한 정리를 다음 실행에 다시 시도한다. 별도 프로젝트 위치나 연결 정보를 환경 변수로 지정한 개발 실행은 초기화를 거절한다.
 
 **0.4.0 의 개명은 완전 단절이다.** Colo Design(0.3.x)의 데이터를 읽거나 옮기지
 않는다 — 데이터 폴더는 `~/.colonova-design/` 에서, userData 는 `…/ColoNova Design` 에서
@@ -108,6 +108,7 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 
 | 환경 변수 | 기본값 | 역할 |
 | --- | --- | --- |
+| `COLONOVA_DESIGN_DATA_DIR` | `~/.colonova-design` | 모든 데이터의 뿌리(2026-10-02 표에 더했다). 아래 대부분 기본값의 앞머리다 |
 | `COLONOVA_DESIGN_PROJECTS_SETTINGS` | `~/.colonova-design/config/projects.json` | 프로젝트 레지스트리 파일 |
 | `COLONOVA_DESIGN_PROJECTS_DIR` | `~/.colonova-design/projects` | 프로젝트 폴더의 위치 |
 | `COLONOVA_DESIGN_REPO_DIR` | `<project>/repo` | **활성** 프로젝트의 클론 디렉터리 |
@@ -128,6 +129,8 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 | `COLONOVA_DESIGN_DEV_SERVER` | unset | 데스크톱 HMR 고리(`pnpm dev:desktop`)가 여는 vite 주소 — 패키징된 앱은 보지 않는다 |
 | `COLONOVA_DESIGN_BENCH_ENDPOINT` | unset | 개발 실행의 데스크톱이 재생 벤치의 접속 파일(ws 주소 · pid)을 적는 자리 — 패키징된 앱은 절대 보지 않는다 |
 | `COLONOVA_DESIGN_GIT_BIN` | 자동 탐지 | git 바이너리를 이 경로로 고정한다 — 탐색을 통째로 건너뛴다(테스트는 스텁을 겨눈다) |
+| `COLONOVA_DESIGN_GIT_GUARD_DIR` | `~/.colonova-design/tools/git-guard` | git 쓰기 가드(hooks)의 설치 자리 — AI 의 git 쓰기를 막는다 |
+| `COLONOVA_DESIGN_LANE_STRICT` | unset(경고) | `1` 이면 차선 밖 git 쓰기를 경고 대신 던진다(시험·개발) |
 | `COLONOVA_DESIGN_REPO_PAT` | OS 저장소 | 기계 전체의 GitHub 토큰 — 자격 증명 저장소보다 앞선다 |
 | `COLONOVA_DESIGN_GITHUB_API` | `https://api.github.com` | GitHub REST 주소(테스트는 로컬 서버로) |
 | `COLONOVA_DESIGN_READY_TIMEOUT_MS` | `120000` | 미리보기가 준비될 때까지 기다리는 벽시계 상한 |

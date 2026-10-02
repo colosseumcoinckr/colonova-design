@@ -38,5 +38,6 @@
 
 ## 검사
 
-`pnpm typecheck` · `pnpm test`(빌드 포함) · `pnpm build`. CI 는 typecheck 와 build 만 본다 —
+`pnpm typecheck` · `pnpm test`(빌드 포함) · `pnpm build`. CI 는 빌드(타입 검사 포함) · biome ·
+순수 시험을 본다 — 프로세스를 띄우는 시험은 로컬 `pnpm test` 의 몫이다(2026-10-02).
 눈으로 보는 검증은 `pnpm dev:desktop`, 수치는 `scripts/bench/`.

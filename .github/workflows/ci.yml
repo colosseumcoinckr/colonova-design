@@ -1,13 +1,23 @@
-# ColoNova Design 배포 검증 — main 푸시·PR 에서 "릴리스가 막히는 것"만 먼저 본다.
+# ColoNova Design 배포 검증 — main 푸시·PR 에서 "릴리스가 막히는 것"과
+# "규칙이 깨지는 것"을 먼저 본다.
 #
-# 무엇을 돌리는가: 릴리스 워크플로우(desktop-release.yml)가 태그에서 돌리는
-# 것과 같은 `pnpm -r build`(위상 정렬 — protocol → daemon·web → desktop).
-# 빌드가 깨지면 에셋이 못 나오므로 태그를 밀기 전에 이 문에서 잡는다.
-# 각 패키지의 build 는 tsc 컴파일 그 자체라 타입 오류도 같은 문에서 걸린다.
+# 무엇을 돌리는가:
+# - 배포 검증(빌드): 릴리스 워크플로우(desktop-release.yml)가 태그에서 돌리는
+#   것과 같은 `pnpm -r build`(위상 정렬 — protocol → daemon·web → desktop).
+#   빌드가 깨지면 에셋이 못 나오므로 태그를 밀기 전에 이 문에서 잡는다.
+#   각 패키지의 build 는 tsc 컴파일 그 자체라 타입 오류도 같은 문에서 걸린다.
+# - 정적 검사(biome): 전수. pre-commit 은 스테이징 파일만 보므로, 쌓이는
+#   포맷·import 오류를 막는 문은 여기뿐이다.
+# - 순수 시험: 프로세스를 띄우지 않는 시험만 돌린다. 라벨 · 어휘 · 공통
+#   규칙 · 턴 통계 · 로그 정화 같은 규칙의 회귀가 로컬 없이도 지켜진다.
 #
 # 2026-09-21: 테스트 레인(L1·L2·L3·L5, 정적 검사)은 운영 판단으로
 # 걷어냈다 — 러너(Linux)와 실제 배포 플랫폼(mac·Windows) 환경이 어긋나
 # 제품이 아니라 러너를 탓하는 빨간 신호가 5일(릴리스 2건) 지속됐다.
+# 2026-10-02: 그 결정을 좁혀 되살린다. 플랫폼을 전혀 만지지 않는 순수 시험과
+# biome 은 러너와 무관하므로 그 빨간불의 이유가 닿지 않는다. 프로세스를
+# 띄우는 시험(cycle-* · git-* · agent-install · type-check · agent-briefs)은
+# 여전히 로컬 `pnpm test` 에만 둔다. 출처: 2026-10-02 프로젝트 개선 분석 8번.
 name: ci
 
 on:
@@ -43,3 +53,94 @@ jobs:
 
       - name: 빌드 (릴리스와 같은 경로)
         run: pnpm -r build
+
+  lint:
+    name: 정적 검사 (biome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: 설치
+        run: pnpm install --frozen-lockfile
+
+      # 경고는 통과다 — 오류(포맷 · import · 린트)만 이 문이 막는다.
+      - name: biome 전수 검사
+        run: pnpm exec biome check packages scripts
+
+  pure-tests:
+    name: 순수 시험 (프로세스 없음)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: 설치
+        run: pnpm install --frozen-lockfile
+
+      # 데몬 시험은 dist 를 읽는다 — 빌드가 시험의 재료다.
+      - name: 빌드
+        run: pnpm -r build
+
+      # 프로세스를 띄우는 시험은 여기에 두지 않는다(파일 머리 주석 참조).
+      # 새 시험이 순수하면 목록에 더한다 — 띄우는 시험이면 로컬에만 둔다.
+      - name: 순수 시험
+        run: >
+          node --test
+          packages/daemon/test/colonova-names.test.ts
+          packages/daemon/test/common-instructions.test.ts
+          packages/daemon/test/gate-type.test.ts
+          packages/daemon/test/screen-a11y.test.ts
+          packages/daemon/test/screen-overflow.test.ts
+          packages/daemon/test/turn-stats-measure.test.ts
+          packages/daemon/test/turn-changes.test.ts
+          packages/daemon/test/handoff-body.test.ts
+          packages/daemon/test/capture-targets.test.ts
+          packages/daemon/test/request-replay.test.ts
+          packages/daemon/test/screen-comparisons.test.ts
+          packages/daemon/test/session-identity.test.ts
+          packages/daemon/test/session-manager-close.test.ts
+          packages/daemon/test/log-sanitize.test.ts
+          packages/daemon/test/git-network-stall.test.ts
+          packages/daemon/test/machine-setting.test.ts
+          packages/daemon/test/plan-usage.test.ts
+          packages/daemon/test/queue-inflight.test.ts
+          packages/daemon/test/submit-preview.test.ts
+          packages/daemon/test/github-reviewers.test.ts
+          packages/daemon/test/feedback.test.ts
+          packages/web/test/chat-options.test.ts
+          packages/web/test/error-words.test.ts
+          packages/web/test/invite-file-name.test.ts
+          packages/web/test/transcript-history.test.ts
+          packages/web/test/next-labels.test.ts
+          packages/web/test/vocab-sweep.test.ts
+          packages/web/test/next-journey.test.ts
+          packages/web/test/next-problem.test.ts
+          packages/web/test/next-project-note.test.ts
+          packages/web/test/next-submit-copy.test.ts
+          packages/web/test/next-work-ledger.test.ts
+          packages/web/test/next-modal-escape.test.ts
+          packages/web/test/next-session-target.test.ts
+          packages/web/test/next-sent-draft.test.ts
+          packages/web/test/next-request-results.test.ts
+          packages/web/test/next-screen-review.test.ts
+          packages/web/test/next-usage.test.ts
+          packages/web/test/next-invite-rows.test.ts
+          packages/web/test/next-feedback-draft.test.ts
+          packages/desktop/test/app-reset.test.ts
+          packages/desktop/test/pin-envelope.test.ts
+          scripts/bench/lib.test.mjs

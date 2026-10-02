@@ -111,12 +111,16 @@ export interface RouterDeps {
   comparisonReady?: (slug: string) => Promise<void> | undefined;
 }
 
-/**
- * 클라이언트 메시지의 라우팅 테이블 — 한 케이스가 곧 선로 위 계약 하나. 서버는
- * transport 와 수명주기를, 이 라우터는 "무엇을 어디로 보내는가"를 담당한다.
- */
 /** `repo.submit` 이 감독자의 틱을 기다리는 창 — 넘으면 진행 중을 돌려준다. */
 const SUBMIT_WAIT_MS = 60_000;
+
+/** 메시지 종류별 형태 — 표의 각 칸이 받는 좁은 메시지 하나. */
+type ClientMessageOf<K extends ClientMessage["type"]> = Extract<ClientMessage, { type: K }>;
+
+/** 핸들러 표의 형태 — 종류마다 그 종류의 메시지를 받는 문 하나. */
+type DispatchHandlers = {
+  [K in ClientMessage["type"]]: (message: ClientMessageOf<K>) => unknown;
+};
 
 export class RequestRouter {
   /** The last thread a failing gate briefed, when it had to open one itself. */
@@ -188,913 +192,892 @@ export class RequestRouter {
     return this.deps.fleet.workspaceOfSession(sessionId);
   }
 
-  async dispatch(message: ClientMessage): Promise<unknown> {
-    switch (message.type) {
-      case "daemon.status":
-        return await this.deps.status();
-
-      case "session.list":
-        return await this.deps.manager.list(this.workspaceCwd(), message.limit ?? 50);
-
-      // 리뷰 B7: the notification click names a session, the UI needs its
-      // project first — resuming in the wrong project would fork the thread.
-      case "session.locate": {
-        const workspaces = this.workspaceOfSession(message.sessionId);
-        const slug = workspaces
-          ? ([...this.deps.fleet.workspaces.entries()].find(
-              ([, value]) => value === workspaces,
-            )?.[0] ?? null)
-          : null;
-        return { slug };
-      }
-
-      case "session.history": {
-        const sessionCwd = await this.resolveSessionCwd(message.sessionId);
-        const events0 = await this.deps.manager.history(message.sessionId, sessionCwd);
-        // hero-synthesis D1: the daemon's own cycle events (저장 · 넘김 ·
-        // 반영 · 코멘트 도착) live on the session tape, not the vendor
-        // transcript — splice them in at the turn they followed.
-        const tape = this.deps.fleet.workspacesForCwd(sessionCwd);
-        const replayed = tape
-          ? spliceTape(
-              events0,
-              readTape(
-                tape.paths.root,
-                this.deps.manager.canonicalId(message.sessionId, sessionCwd),
-              ),
-            )
-          : events0;
-        // 대기 줄과 lost room 은 기록이 아니라 지금의 상태 (PLAN D86 의
-        // 확장): a window opened — or reloaded — must see both above the
-        // field, so they ride at the tail of the replay. The tail is
-        // AUTHORITATIVE, empty rooms included — a window that kept rows the
-        // daemon no longer holds must lose them here, not keep the ghosts.
-        const events = [
-          ...replayed,
-          { kind: "queued", items: this.deps.manager.get(message.sessionId)?.heldItems() ?? [] },
-        ];
-        const lost = this.deps.queueStore.lostItems(message.sessionId);
-        return lost.length > 0 ? [...events, { kind: "queue.lost", items: lost }] : events;
-      }
-
-      case "session.create": {
-        // 재개는 대화를 가리킬 뿐 공급자를 고르지 않는다 — 대화의 AI 는 태어날 때
-        // 정해진다. 주인(살아 있는 세션 → 대화록 저장소)이 드라이버를 정하고, 요청이
-        // 다른 공급자를 실어 와도 조용히 무시한다(thread-provider.ts).
-        const live = message.resume ? this.deps.manager.get(message.resume)?.provider : undefined;
-        const storedProvider =
-          message.resume && live === undefined
-            ? await this.deps.manager.findStoredProvider(message.resume, this.workspaceCwd())
-            : undefined;
-        const { provider, ignored } = threadProvider({
-          resume: message.resume,
-          requested: message.provider,
-          live,
-          stored: storedProvider,
-        });
-        if (ignored !== undefined) {
-          this.deps.logger.warn("재개 요청의 공급자를 무시한다 — 대화는 태어난 AI 로 이어진다", {
-            sessionId: message.resume,
-            requested: ignored,
-            provider,
-          });
-        }
-        const driver = this.deps.agentDrivers.get(provider);
-        if (!driver) {
-          throw new Error(`알 수 없는 에이전트입니다: ${provider}`);
-        }
-        const availability = await driver.isAvailable();
-        if (!availability.ok || !availability.executable) {
-          throw new Error(
-            provider === "claude"
-              ? "Claude Code CLI 를 찾지 못했습니다 — 설치를 마친 뒤 다시 시도해 주세요."
-              : `${driver.describe().label} CLI 를 찾지 못했습니다 — 설치를 마친 뒤 다시 시도해 주세요.`,
-          );
-        }
-        if (!existsSync(this.repo.root)) {
-          throw new Error("연결 레포가 아직 준비되지 않았습니다 — 잠시 후 다시 시도해 주세요.");
-        }
-        // A resume onto a thread whose live query already died (the crash
-        // card's own state, or a force-aborted stop): tear the dead object
-        // down FIRST, under its own id — after the replacement lands, its
-        // late `closed` broadcast would take the fresh session's preview
-        // driver with it. A healthy live thread is left exactly as it was.
-        const dead = message.resume ? this.deps.manager.get(message.resume) : undefined;
-        if (dead && (dead.state === "error" || dead.state === "closed")) {
-          // 교체 close 도 "shutdown" — lost 방은 복구 패널의 몫이라 지우지 않는다.
-          await this.deps.manager.close(dead.id, "shutdown");
-        }
-        const sessionCwd = this.workspaceCwd();
-        const instructions = this.projectInstructions(sessionCwd);
-        // 초대 v4(PLAN 단계 5): 칩이 말하지 않은 값은 프로젝트의 기본값이
-        // 채운다 — defaults.provider 가 있으면 그 공급자에게만 적용된다.
-        // 이어 든 스레드(resume)는 태어날 때의 모델을 이미 갖고 있어 기본값이
-        // 끼어들지 않는다.
-        const defaults = message.resume ? undefined : this.deps.registry.active()?.defaults;
-        const defaultsFit =
-          defaults !== undefined && (!defaults.provider || defaults.provider === provider);
-        const model = message.model ?? (defaultsFit ? defaults.model : undefined);
-        const effort = message.effort ?? (defaultsFit ? defaults.effort : undefined);
-        const fastMode = message.fastMode === true;
-        const session = this.deps.manager.create({
-          cwd: sessionCwd,
+  /**
+   * 클라이언트 메시지의 라우팅 테이블 — 한 케이스가 곧 선로 위 계약 하나. 서버는
+   * transport 와 수명주기를, 이 라우터는 "무엇을 어디로 보내는가"를 담당한다.
+   */
+  private readonly handlers: Partial<DispatchHandlers> = {
+    "daemon.status": async () => {
+      return await this.deps.status();
+    },
+    "session.list": async (message) => {
+      return await this.deps.manager.list(this.workspaceCwd(), message.limit ?? 50);
+    },
+    // 리뷰 B7: the notification click names a session, the UI needs its
+    // project first — resuming in the wrong project would fork the thread.
+    "session.locate": (message) => {
+      const workspaces = this.workspaceOfSession(message.sessionId);
+      const slug = workspaces
+        ? ([...this.deps.fleet.workspaces.entries()].find(
+            ([, value]) => value === workspaces,
+          )?.[0] ?? null)
+        : null;
+      return { slug };
+    },
+    "session.history": async (message) => {
+      const sessionCwd = await this.resolveSessionCwd(message.sessionId);
+      const events0 = await this.deps.manager.history(message.sessionId, sessionCwd);
+      // hero-synthesis D1: the daemon's own cycle events (저장 · 넘김 ·
+      // 반영 · 코멘트 도착) live on the session tape, not the vendor
+      // transcript — splice them in at the turn they followed.
+      const tape = this.deps.fleet.workspacesForCwd(sessionCwd);
+      const replayed = tape
+        ? spliceTape(
+            events0,
+            readTape(tape.paths.root, this.deps.manager.canonicalId(message.sessionId, sessionCwd)),
+          )
+        : events0;
+      // 대기 줄과 lost room 은 기록이 아니라 지금의 상태 (PLAN D86 의
+      // 확장): a window opened — or reloaded — must see both above the
+      // field, so they ride at the tail of the replay. The tail is
+      // AUTHORITATIVE, empty rooms included — a window that kept rows the
+      // daemon no longer holds must lose them here, not keep the ghosts.
+      const events = [
+        ...replayed,
+        { kind: "queued", items: this.deps.manager.get(message.sessionId)?.heldItems() ?? [] },
+      ];
+      const lost = this.deps.queueStore.lostItems(message.sessionId);
+      return lost.length > 0 ? [...events, { kind: "queue.lost", items: lost }] : events;
+    },
+    "session.create": async (message) => {
+      // 재개는 대화를 가리킬 뿐 공급자를 고르지 않는다 — 대화의 AI 는 태어날 때
+      // 정해진다. 주인(살아 있는 세션 → 대화록 저장소)이 드라이버를 정하고, 요청이
+      // 다른 공급자를 실어 와도 조용히 무시한다(thread-provider.ts).
+      const live = message.resume ? this.deps.manager.get(message.resume)?.provider : undefined;
+      const storedProvider =
+        message.resume && live === undefined
+          ? await this.deps.manager.findStoredProvider(message.resume, this.workspaceCwd())
+          : undefined;
+      const { provider, ignored } = threadProvider({
+        resume: message.resume,
+        requested: message.provider,
+        live,
+        stored: storedProvider,
+      });
+      if (ignored !== undefined) {
+        this.deps.logger.warn("재개 요청의 공급자를 무시한다 — 대화는 태어난 AI 로 이어진다", {
+          sessionId: message.resume,
+          requested: ignored,
           provider,
-          queueDiskFor: this.deps.queueDiskFor,
-          writePolicy: repoWritePolicy(sessionCwd),
-          ...(message.title ? { title: message.title } : {}),
-          launch: {
-            executable: availability.executable,
-            ...(instructions ? { appendSystemPrompt: instructions } : {}),
-            ...(message.resume ? { resume: message.resume } : {}),
-            ...(model ? { model } : {}),
-            ...(effort ? { effort } : {}),
-            ...(fastMode ? { fastMode: true } : {}),
-          },
         });
-        // 태어날 때의 빠르게 — 새 대화 자리에서 미리 켠 ⚡ 선택. 첫 selectors
-        // 읽기가 이미 켠 상태를 보도록 여기서 기다린다. 받지 못하는 에이전트의
-        // 거절은 조용히 흘린다 — 칩이 이미 그 모델의 줄로 걸러 서 있었다.
-        if (fastMode) await session.setFastMode(true).catch(() => undefined);
-        // The plan reading is owed per provider, and a fresh session is
-        // already idle — ask it now rather than waiting for a status
-        // broadcast nothing schedules. A codex thread's first composer
-        // render is exactly when its account's numbers matter.
-        this.deps.plans.refresh(provider);
-        // A session start is the moment the 화면 half goes back to the remote.
-        // 감독자의 틱이 최신화·착지를 치르고(PLAN L2 흡수표), 충돌은 원장에
-        // 적혀 브리프 턴이 된다 — 새 세션이 열린 뒤에 부르는 이유는 그 브리프가
-        // 이 대화를 찾을 수 있게 하기 위해서다.
-        void this.workspaceOfSession(session.id)?.supervisor.tick("session-start");
-        // The tree gains a child row (PLAN D59).
-        this.deps.manager.invalidateThreads(session.cwd);
-        this.refreshThreads();
-        return { sessionId: session.id, state: session.state };
       }
-
-      case "session.send": {
-        // A live session of another project writes into another clone.
-        // list() filters them out, but a client that kept an old id (a stale
-        // tab) could still reach it — refuse instead of writing across.
-        const target = this.deps.manager.require(message.sessionId);
-        if (target.cwd !== this.workspaceCwd()) {
-          throw new Error("다른 프로젝트의 대화입니다 — 프로젝트를 전환한 뒤 보내 주세요.");
-        }
-        // 사람이 다시 말을 걸었다 — 화면 확인 게이트의 한 번 제한이 풀린다.
-        // 게이트는 사람의 턴마다 한 번이지, 대화마다 한 번이 아니다.
-        this.deps.previewDrivers.gatedSessions.delete(message.sessionId);
-        // 사람이 가리킨 화면은 이 말과 함께 간다: 핀을 받는 시점에 기록하지
-        // 않는 이유는 대기 줄 때문이다. 도는 턴에 온 말은 held 로 기다리는데,
-        // 그 핀을 미리 적으면 턴이 바뀔 때 지워져 그 말을 실은 턴의 게이트
-        // 입력이 영영 사라진다. 핀은 deliver 시점(session 쪽)에 적힌다.
-        // 죽은 질의에 말을 흘리지 않는다: 크래시 카드가 약속한대로, 같은 id 의
-        // 재개(resume)가 새 CLI 에서 대화를 이어받아 지금의 말을 전달한다.
-        // Refusals answer through the dispatch-wide Korean boundary above.
-        const carrier = target.sendable ? target : await this.resurrectSession(target);
-        // 최신화는 사람의 몫이 아니게 됐다(E1): 말이 나가기 전에 도구가
-        // 스스로 받아 온다 — 감독자의 틱이 fetch·병합·착지를 치르고, 충돌은
-        // 원장에 적혀 브리프 턴이 된다. 그 브리프 턴이 먼저 열리면 지금의
-        // 말은 대기 줄로 물러나고, 정리가 끝난 뒤 실행된다 — 세션이 도는
-        // 턴에 온 말을 held 로 미뤄두는 기존 질서가 순서를 잡는다. 실패·
-        // 20초 경과는 말을 막지 않는다: 틱은 조용히 이어된다.
-        // PLAN-UI U8: 처음 여는 프로젝트의 준비가 끝나지 않았으면 말은 대기 줄에서
-        // 기다린다 — 받아올 것도 없으니 최신화도 건너뛴다.
-        this.deps.fleet.holdIfPreparing(carrier.id);
-        if (!carrier.preparing) await this.pullBeforeSend(message.sessionId);
+      const driver = this.deps.agentDrivers.get(provider);
+      if (!driver) {
+        throw new Error(`알 수 없는 에이전트입니다: ${provider}`);
+      }
+      const availability = await driver.isAvailable();
+      if (!availability.ok || !availability.executable) {
+        throw new Error(
+          provider === "claude"
+            ? "Claude Code CLI 를 찾지 못했습니다 — 설치를 마친 뒤 다시 시도해 주세요."
+            : `${driver.describe().label} CLI 를 찾지 못했습니다 — 설치를 마친 뒤 다시 시도해 주세요.`,
+        );
+      }
+      if (!existsSync(this.repo.root)) {
+        throw new Error("연결 레포가 아직 준비되지 않았습니다 — 잠시 후 다시 시도해 주세요.");
+      }
+      // A resume onto a thread whose live query already died (the crash
+      // card's own state, or a force-aborted stop): tear the dead object
+      // down FIRST, under its own id — after the replacement lands, its
+      // late `closed` broadcast would take the fresh session's preview
+      // driver with it. A healthy live thread is left exactly as it was.
+      const dead = message.resume ? this.deps.manager.get(message.resume) : undefined;
+      if (dead && (dead.state === "error" || dead.state === "closed")) {
+        // 교체 close 도 "shutdown" — lost 방은 복구 패널의 몫이라 지우지 않는다.
+        await this.deps.manager.close(dead.id, "shutdown");
+      }
+      const sessionCwd = this.workspaceCwd();
+      const instructions = this.projectInstructions(sessionCwd);
+      // 초대 v4(PLAN 단계 5): 칩이 말하지 않은 값은 프로젝트의 기본값이
+      // 채운다 — defaults.provider 가 있으면 그 공급자에게만 적용된다.
+      // 이어 든 스레드(resume)는 태어날 때의 모델을 이미 갖고 있어 기본값이
+      // 끼어들지 않는다.
+      const defaults = message.resume ? undefined : this.deps.registry.active()?.defaults;
+      const defaultsFit =
+        defaults !== undefined && (!defaults.provider || defaults.provider === provider);
+      const model = message.model ?? (defaultsFit ? defaults.model : undefined);
+      const effort = message.effort ?? (defaultsFit ? defaults.effort : undefined);
+      const fastMode = message.fastMode === true;
+      const session = this.deps.manager.create({
+        cwd: sessionCwd,
+        provider,
+        queueDiskFor: this.deps.queueDiskFor,
+        writePolicy: repoWritePolicy(sessionCwd),
+        ...(message.title ? { title: message.title } : {}),
+        launch: {
+          executable: availability.executable,
+          ...(instructions ? { appendSystemPrompt: instructions } : {}),
+          ...(message.resume ? { resume: message.resume } : {}),
+          ...(model ? { model } : {}),
+          ...(effort ? { effort } : {}),
+          ...(fastMode ? { fastMode: true } : {}),
+        },
+      });
+      // 태어날 때의 빠르게 — 새 대화 자리에서 미리 켠 ⚡ 선택. 첫 selectors
+      // 읽기가 이미 켠 상태를 보도록 여기서 기다린다. 받지 못하는 에이전트의
+      // 거절은 조용히 흘린다 — 칩이 이미 그 모델의 줄로 걸러 서 있었다.
+      if (fastMode) await session.setFastMode(true).catch(() => undefined);
+      // The plan reading is owed per provider, and a fresh session is
+      // already idle — ask it now rather than waiting for a status
+      // broadcast nothing schedules. A codex thread's first composer
+      // render is exactly when its account's numbers matter.
+      this.deps.plans.refresh(provider);
+      // A session start is the moment the 화면 half goes back to the remote.
+      // 감독자의 틱이 최신화·착지를 치르고(PLAN L2 흡수표), 충돌은 원장에
+      // 적혀 브리프 턴이 된다 — 새 세션이 열린 뒤에 부르는 이유는 그 브리프가
+      // 이 대화를 찾을 수 있게 하기 위해서다.
+      void this.workspaceOfSession(session.id)?.supervisor.tick("session-start");
+      // The tree gains a child row (PLAN D59).
+      this.deps.manager.invalidateThreads(session.cwd);
+      this.refreshThreads();
+      return { sessionId: session.id, state: session.state };
+    },
+    "session.send": async (message) => {
+      // A live session of another project writes into another clone.
+      // list() filters them out, but a client that kept an old id (a stale
+      // tab) could still reach it — refuse instead of writing across.
+      const target = this.deps.manager.require(message.sessionId);
+      if (target.cwd !== this.workspaceCwd()) {
+        throw new Error("다른 프로젝트의 대화입니다 — 프로젝트를 전환한 뒤 보내 주세요.");
+      }
+      // 사람이 다시 말을 걸었다 — 화면 확인 게이트의 한 번 제한이 풀린다.
+      // 게이트는 사람의 턴마다 한 번이지, 대화마다 한 번이 아니다.
+      this.deps.previewDrivers.gatedSessions.delete(message.sessionId);
+      // 사람이 가리킨 화면은 이 말과 함께 간다: 핀을 받는 시점에 기록하지
+      // 않는 이유는 대기 줄 때문이다. 도는 턴에 온 말은 held 로 기다리는데,
+      // 그 핀을 미리 적으면 턴이 바뀔 때 지워져 그 말을 실은 턴의 게이트
+      // 입력이 영영 사라진다. 핀은 deliver 시점(session 쪽)에 적힌다.
+      // 죽은 질의에 말을 흘리지 않는다: 크래시 카드가 약속한대로, 같은 id 의
+      // 재개(resume)가 새 CLI 에서 대화를 이어받아 지금의 말을 전달한다.
+      // Refusals answer through the dispatch-wide Korean boundary above.
+      const carrier = target.sendable ? target : await this.resurrectSession(target);
+      // 최신화는 사람의 몫이 아니게 됐다(E1): 말이 나가기 전에 도구가
+      // 스스로 받아 온다 — 감독자의 틱이 fetch·병합·착지를 치르고, 충돌은
+      // 원장에 적혀 브리프 턴이 된다. 그 브리프 턴이 먼저 열리면 지금의
+      // 말은 대기 줄로 물러나고, 정리가 끝난 뒤 실행된다 — 세션이 도는
+      // 턴에 온 말을 held 로 미뤄두는 기존 질서가 순서를 잡는다. 실패·
+      // 20초 경과는 말을 막지 않는다: 틱은 조용히 이어된다.
+      // PLAN-UI U8: 처음 여는 프로젝트의 준비가 끝나지 않았으면 말은 대기 줄에서
+      // 기다린다 — 받아올 것도 없으니 최신화도 건너뛴다.
+      this.deps.fleet.holdIfPreparing(carrier.id);
+      if (!carrier.preparing) await this.pullBeforeSend(message.sessionId);
+      // 빠른 수정: 핀 턴의 정체(pinHints)로 클론을 훑어 `파일 후보:` 줄을
+      // 얹는다 — 에이전트가 첫 tool call로 반복할 검색을 데몬이 대신한다.
+      // 여기서(intake) 얹으므로 대기 줄·복원 모두 강화된 텍스트를 물고
+      // 간다. 실패는 조용하다(원문 그대로).
+      let text = message.text;
+      if (message.pinHints !== undefined && message.pinHints.length > 0) {
+        const scanStart = Date.now();
         // 빠른 수정: 핀 턴의 정체(pinHints)로 클론을 훑어 `파일 후보:` 줄을
         // 얹는다 — 에이전트가 첫 tool call로 반복할 검색을 데몬이 대신한다.
         // 여기서(intake) 얹으므로 대기 줄·복원 모두 강화된 텍스트를 물고
-        // 간다. 실패는 조용하다(원문 그대로).
-        let text = message.text;
-        if (message.pinHints !== undefined && message.pinHints.length > 0) {
-          const scanStart = Date.now();
-          // 빠른 수정: 핀 턴의 정체(pinHints)로 클론을 훑어 `파일 후보:` 줄을
-          // 얹는다 — 에이전트가 첫 tool call로 반복할 검색을 데몬이 대신한다.
-          // 여기서(intake) 얹으므로 대기 줄·복원 모두 강화된 텍스트를 물고
-          // 간다. 정체가 빈손이면 핀의 화면을 고친 커밋의 관찰 지도가 마지막
-          // 길이다(그 세션의 프로젝트 폴더에 산다). 실패는 조용하다(원문 그대로).
-          const workspaces = this.workspaceOfSession(message.sessionId);
-          const enriched = await enrichCommentsTurn(
-            message.text,
-            message.pinHints,
-            carrier.cwd,
-            workspaces ? { projectRoot: workspaces.paths.root } : null,
-          ).catch(() => null);
-          text = enriched?.text ?? message.text;
-          // 측정: 강화가 보내기 문에서 얼마나 걸렸는지 — 턴 행의 scanMs 로
-          // 내려앉는다(모델이 시작되기 전의 시간이다). 후보는 절대경로로 물려
-          // 준다 — 에이전트의 편집 경로(pinHit)와 비교하는 잣자리다.
-          this.deps.stats.noteScan(message.sessionId, Date.now() - scanStart, {
-            cwd: carrier.cwd,
-            ...(enriched && enriched.candidates.length > 0
-              ? { candidates: enriched.candidates.map((file) => join(carrier.cwd, file)) }
-              : {}),
-          });
-        }
-        carrier.send(text, message.attachments, message.pins, message.mode);
-        return { ok: true };
-      }
-
-      case "session.interrupt":
-        await this.deps.manager.require(message.sessionId).interrupt();
-        return { ok: true };
-
-      // 대기 줄 다루기 (PLAN D86): both act on a live room, and `sendNow`
-      // writes into the clone — the same cross-project fence as session.send.
-      case "session.queue.remove": {
-        const target = this.deps.manager.require(message.sessionId);
-        if (target.cwd !== this.workspaceCwd()) {
-          throw new Error("다른 프로젝트의 대화입니다 — 프로젝트를 전환한 뒤 시도해 주세요.");
-        }
-        return target.removeHeld(message.itemId);
-      }
-
-      case "session.queue.sendNow": {
-        const target = this.deps.manager.require(message.sessionId);
-        if (target.cwd !== this.workspaceCwd()) {
-          throw new Error("다른 프로젝트의 대화입니다 — 프로젝트를 전환한 뒤 시도해 주세요.");
-        }
-        await target.sendHeldNow(message.itemId);
-        return { ok: true };
-      }
-
-      // lost room 다루기 (PLAN D86 의 확장): these touch only the daemon's
-      // own store — no clone is written — so they need no project fence, and
-      // they work for a thread nobody has reopened since the restart.
-      case "session.queue.takeDropped":
-        return this.deps.queueStore.takeLost(message.sessionId, message.itemId);
-
-      case "session.queue.dismissDropped": {
-        this.deps.queueStore.dismissLost(message.sessionId, message.itemId);
-        // The store changed under every window: re-announce the state.
-        this.deps.broadcast({
-          type: "session.event",
-          sessionId: message.sessionId,
-          event: { kind: "queue.lost", items: this.deps.queueStore.lostItems(message.sessionId) },
+        // 간다. 정체가 빈손이면 핀의 화면을 고친 커밋의 관찰 지도가 마지막
+        // 길이다(그 세션의 프로젝트 폴더에 산다). 실패는 조용하다(원문 그대로).
+        const workspaces = this.workspaceOfSession(message.sessionId);
+        const enriched = await enrichCommentsTurn(
+          message.text,
+          message.pinHints,
+          carrier.cwd,
+          workspaces ? { projectRoot: workspaces.paths.root } : null,
+        ).catch(() => null);
+        text = enriched?.text ?? message.text;
+        // 측정: 강화가 보내기 문에서 얼마나 걸렸는지 — 턴 행의 scanMs 로
+        // 내려앉는다(모델이 시작되기 전의 시간이다). 후보는 절대경로로 물려
+        // 준다 — 에이전트의 편집 경로(pinHit)와 비교하는 잣자리다.
+        this.deps.stats.noteScan(message.sessionId, Date.now() - scanStart, {
+          cwd: carrier.cwd,
+          ...(enriched && enriched.candidates.length > 0
+            ? { candidates: enriched.candidates.map((file) => join(carrier.cwd, file)) }
+            : {}),
         });
-        return { ok: true };
       }
-
-      case "session.close": {
-        const cwd = this.deps.manager.get(message.sessionId)?.cwd;
-        await this.deps.manager.close(message.sessionId);
-        this.touchThreadsCwd(cwd);
-        return { ok: true };
+      carrier.send(text, message.attachments, message.pins, message.mode);
+      return { ok: true };
+    },
+    "session.interrupt": async (message) => {
+      await this.deps.manager.require(message.sessionId).interrupt();
+      return { ok: true };
+    },
+    // 대기 줄 다루기 (PLAN D86): both act on a live room, and `sendNow`
+    // writes into the clone — the same cross-project fence as session.send.
+    "session.queue.remove": (message) => {
+      const target = this.deps.manager.require(message.sessionId);
+      if (target.cwd !== this.workspaceCwd()) {
+        throw new Error("다른 프로젝트의 대화입니다 — 프로젝트를 전환한 뒤 시도해 주세요.");
       }
-
-      case "session.delete": {
-        const cwd = await this.resolveSessionCwd(message.sessionId);
-        const canonicalId = this.deps.manager.canonicalId(message.sessionId, cwd);
-        await this.deps.manager.remove(message.sessionId, cwd);
-        // The thread is gone; its wait room, lost room and tape rows go with
-        // it — 사람 메시지도 세션 소속이다 (hero-synthesis D1).
-        this.deps.queueStore.clear(canonicalId);
-        const tape = this.deps.fleet.workspacesForCwd(cwd);
-        if (tape) dropTape(tape.paths.root, canonicalId);
-        this.touchThreadsCwd(cwd);
-        return { ok: true };
+      return target.removeHeld(message.itemId);
+    },
+    "session.queue.sendNow": async (message) => {
+      const target = this.deps.manager.require(message.sessionId);
+      if (target.cwd !== this.workspaceCwd()) {
+        throw new Error("다른 프로젝트의 대화입니다 — 프로젝트를 전환한 뒤 시도해 주세요.");
       }
-      case "session.deleteAll": {
-        // The tree's 대화 모두 지우기: unlike session.delete this names its
-        // project, so a non-active clone's transcripts die too (D77's store
-        // is keyed by the clone's realpath).
-        const paths = this.deps.registry.paths(message.slug);
-        const repoRoot = realpathBestEffort(paths.repoRoot);
-        // The erase takes seconds (live sessions close under a grace, the
-        // store sweep retries) and the planner's tree empties the moment
-        // they press the button — so the reply carries the ACCEPTANCE, not
-        // the completion. `beginRemoveWhere` invalidates every cache and
-        // marks the clone synchronously: reads from any window — a reload
-        // mid-erase included — answer empty from the first message after
-        // this one, and the background pass below lands the sweep.
-        this.deps.manager.beginRemoveWhere(repoRoot);
-        // The wait rooms, lost rooms and tape rows go with the threads —
-        // collect the ids first; removeWhere closes live sessions and
-        // sweeps every driver's store in one pass. The id set must cover
-        // what the sweep deletes: manager.list 의 상한(그리고 그 캐시)을
-        // 믿으면 상한 너머의 대화는 지워지면서 방과 테이프만 남는다 — 저장소마다
-        // 사실상 전부(사이드바 상한의 2000배)를 읽어 모으고, 아직 대화록을
-        // 쓰지 않은 라이브 세션은 따로 더한다.
-        const ids = new Set<string>();
-        for (const session of this.deps.manager.all()) {
-          if (session.cwd === repoRoot) ids.add(session.id);
-        }
-        for (const driver of this.deps.agentDrivers.all()) {
-          const stored = await driver.store?.list(repoRoot, 100_000).catch(() => []);
-          for (const info of stored ?? []) ids.add(info.id);
-        }
-        for (const sessionId of ids) {
-          this.deps.queueStore.clear(sessionId);
-          dropTape(paths.root, sessionId);
-        }
-        void this.deps.manager
-          .removeWhere(repoRoot)
-          .catch(() => undefined)
-          .then(() => {
-            this.touchThreadsCwd(repoRoot);
-            this.announceProjects();
-          });
-        return { ok: true };
+      await target.sendHeldNow(message.itemId);
+      return { ok: true };
+    },
+    // lost room 다루기 (PLAN D86 의 확장): these touch only the daemon's
+    // own store — no clone is written — so they need no project fence, and
+    // they work for a thread nobody has reopened since the restart.
+    "session.queue.takeDropped": (message) => {
+      return this.deps.queueStore.takeLost(message.sessionId, message.itemId);
+    },
+    "session.queue.dismissDropped": (message) => {
+      this.deps.queueStore.dismissLost(message.sessionId, message.itemId);
+      // The store changed under every window: re-announce the state.
+      this.deps.broadcast({
+        type: "session.event",
+        sessionId: message.sessionId,
+        event: { kind: "queue.lost", items: this.deps.queueStore.lostItems(message.sessionId) },
+      });
+      return { ok: true };
+    },
+    "session.close": async (message) => {
+      const cwd = this.deps.manager.get(message.sessionId)?.cwd;
+      await this.deps.manager.close(message.sessionId);
+      this.touchThreadsCwd(cwd);
+      return { ok: true };
+    },
+    "session.delete": async (message) => {
+      const cwd = await this.resolveSessionCwd(message.sessionId);
+      const canonicalId = this.deps.manager.canonicalId(message.sessionId, cwd);
+      await this.deps.manager.remove(message.sessionId, cwd);
+      // The thread is gone; its wait room, lost room and tape rows go with
+      // it — 사람 메시지도 세션 소속이다 (hero-synthesis D1).
+      this.deps.queueStore.clear(canonicalId);
+      const tape = this.deps.fleet.workspacesForCwd(cwd);
+      if (tape) dropTape(tape.paths.root, canonicalId);
+      this.touchThreadsCwd(cwd);
+      return { ok: true };
+    },
+    "session.deleteAll": async (message) => {
+      // The tree's 대화 모두 지우기: unlike session.delete this names its
+      // project, so a non-active clone's transcripts die too (D77's store
+      // is keyed by the clone's realpath).
+      const paths = this.deps.registry.paths(message.slug);
+      const repoRoot = realpathBestEffort(paths.repoRoot);
+      // The erase takes seconds (live sessions close under a grace, the
+      // store sweep retries) and the planner's tree empties the moment
+      // they press the button — so the reply carries the ACCEPTANCE, not
+      // the completion. `beginRemoveWhere` invalidates every cache and
+      // marks the clone synchronously: reads from any window — a reload
+      // mid-erase included — answer empty from the first message after
+      // this one, and the background pass below lands the sweep.
+      this.deps.manager.beginRemoveWhere(repoRoot);
+      // The wait rooms, lost rooms and tape rows go with the threads —
+      // collect the ids first; removeWhere closes live sessions and
+      // sweeps every driver's store in one pass. The id set must cover
+      // what the sweep deletes: manager.list 의 상한(그리고 그 캐시)을
+      // 믿으면 상한 너머의 대화는 지워지면서 방과 테이프만 남는다 — 저장소마다
+      // 사실상 전부(사이드바 상한의 2000배)를 읽어 모으고, 아직 대화록을
+      // 쓰지 않은 라이브 세션은 따로 더한다.
+      const ids = new Set<string>();
+      for (const session of this.deps.manager.all()) {
+        if (session.cwd === repoRoot) ids.add(session.id);
       }
-      case "session.contextUsage": {
-        const usage = await this.deps.manager.require(message.sessionId).contextUsage();
-        this.deps.plans.rememberPlanUsage(usage?.plan ?? null);
-        return usage;
+      for (const driver of this.deps.agentDrivers.all()) {
+        const stored = await driver.store?.list(repoRoot, 100_000).catch(() => []);
+        for (const info of stored ?? []) ids.add(info.id);
       }
-
-      case "plan.refresh":
-        // 사용량 칸이 열렸다 — 그 계정의 한도를 지금 다시 읽는다. 쉬는 대화가
-        // 없으면 드라이버의 probe 가 읽고, 읽기 간격의 하한은 추적기가 지킨다.
-        // 답은 status 방송으로 돌아온다.
-        this.deps.plans.refresh(message.provider);
-        return { ok: true };
-
-      case "repo.files": {
-        // @-mention autocomplete draws from the repo clone only.
-        const root = this.repo.root;
-        const files = existsSync(root) ? await listFiles(root) : [];
-        return browseFiles(files, message.query ?? "", message.limit ?? 40);
+      for (const sessionId of ids) {
+        this.deps.queueStore.clear(sessionId);
+        dropTape(paths.root, sessionId);
       }
-
-      case "session.setModel":
-        await this.deps.manager.require(message.sessionId).setModel(message.model);
-        this.deps.manager.rememberIdentity(message.sessionId);
-        return { ok: true };
-
-      case "session.setEffort":
-        await this.deps.manager.require(message.sessionId).setEffort(message.effort);
-        this.deps.manager.rememberIdentity(message.sessionId);
-        return { ok: true };
-
-      case "session.setFastMode":
-        await this.deps.manager.require(message.sessionId).setFastMode(message.fast);
-        return { ok: true };
-
-      case "session.selectors": {
-        const selectors = await this.deps.manager.selectors(
-          message.sessionId,
-          await this.resolveSessionCwd(message.sessionId),
-        );
-        if (selectors.provider && selectors.models.length)
-          this.deps.plans.rememberModels(selectors.provider, selectors.models);
-        return selectors;
-      }
-      case "session.commands":
-        return await this.deps.manager.require(message.sessionId).commands();
-
-      case "session.stopTask":
-        await this.deps.manager.require(message.sessionId).stopTask(message.taskId);
-        return { ok: true };
-
-      case "session.backgroundTask": {
-        const moved = await this.deps.manager
-          .require(message.sessionId)
-          .backgroundTask(message.toolUseId);
-        return { moved };
-      }
-
-      case "cli.commands":
-        return await this.cliCommands();
-
-      case "permission.respond": {
-        const session = this.deps.manager.findByRequest(message.requestId);
-        if (!session)
-          throw new Error("이미 끝난 권한 요청입니다 — 방금 뜬 카드에서 다시 답해 주세요.");
-        await session.respondPermission(
-          message.requestId,
-          message.decision,
-          message.message,
-          message.updatedInput,
-        );
-        return { ok: true };
-      }
-
-      case "question.respond": {
-        const session = this.deps.manager.findByRequest(message.requestId);
-        if (!session) throw new Error("이미 끝난 질문입니다 — 방금 뜬 카드에서 다시 답해 주세요.");
-        session.respondQuestion(
-          message.requestId,
-          message.answers,
-          message.response,
-          message.annotations,
-        );
-        return { ok: true };
-      }
-
-      case "project.list":
-        return {
-          projects: this.projectSummaries(),
-          activeSlug: this.deps.registry.activeSlug(),
-        };
-
-      case "project.create":
-        return await this.createProject(message);
-
-      case "project.activate": {
-        await this.activateProject(message.slug);
-        // 프로젝트가 바뀌면 pane 은 남의 페이지로 옮겨간다 — 세션의 브라우저
-        // 요약이 옛 페이지의 줄과 차이를 재지 않게 서버의 기억을 비운다.
-        this.deps.afterProjectSwitch?.();
-        return {
-          projects: this.projectSummaries(),
-          activeSlug: this.deps.registry.activeSlug(),
-        };
-      }
-
-      case "project.update": {
-        // Same guard as create — a moved url re-clones, so the wire's word
-        // passes through the clone-url guard before the registry hears it.
-        if (message.repoUrl != null) assertClonableRepoUrl(message.repoUrl);
-        // The error card's 실행 허용: the registry remembers, the workspace is
-        // told, and the bring-up it was waiting on runs to ready.
-        if (message.approveCommands !== undefined) {
-          this.deps.registry.update(message.slug, {
-            commandsApproved: message.approveCommands,
-          });
-          const gate = this.workspacesFor(message.slug);
-          gate.repo.setCommandsApproved(message.approveCommands);
-          if (message.approveCommands) void gate.repo.sync().catch(() => undefined);
-        }
+      void this.deps.manager
+        .removeWhere(repoRoot)
+        .catch(() => undefined)
+        .then(() => {
+          this.touchThreadsCwd(repoRoot);
+          this.announceProjects();
+        });
+      return { ok: true };
+    },
+    "session.contextUsage": async (message) => {
+      const usage = await this.deps.manager.require(message.sessionId).contextUsage();
+      this.deps.plans.rememberPlanUsage(usage?.plan ?? null);
+      return usage;
+    },
+    "plan.refresh": (message) => {
+      // 사용량 칸이 열렸다 — 그 계정의 한도를 지금 다시 읽는다. 쉬는 대화가
+      // 없으면 드라이버의 probe 가 읽고, 읽기 간격의 하한은 추적기가 지킨다.
+      // 답은 status 방송으로 돌아온다.
+      this.deps.plans.refresh(message.provider);
+      return { ok: true };
+    },
+    "repo.files": async (message) => {
+      // @-mention autocomplete draws from the repo clone only.
+      const root = this.repo.root;
+      const files = existsSync(root) ? await listFiles(root) : [];
+      return browseFiles(files, message.query ?? "", message.limit ?? 40);
+    },
+    "session.setModel": async (message) => {
+      await this.deps.manager.require(message.sessionId).setModel(message.model);
+      this.deps.manager.rememberIdentity(message.sessionId);
+      return { ok: true };
+    },
+    "session.setEffort": async (message) => {
+      await this.deps.manager.require(message.sessionId).setEffort(message.effort);
+      this.deps.manager.rememberIdentity(message.sessionId);
+      return { ok: true };
+    },
+    "session.setFastMode": async (message) => {
+      await this.deps.manager.require(message.sessionId).setFastMode(message.fast);
+      return { ok: true };
+    },
+    "session.selectors": async (message) => {
+      const selectors = await this.deps.manager.selectors(
+        message.sessionId,
+        await this.resolveSessionCwd(message.sessionId),
+      );
+      if (selectors.provider && selectors.models.length)
+        this.deps.plans.rememberModels(selectors.provider, selectors.models);
+      return selectors;
+    },
+    "session.commands": async (message) => {
+      return await this.deps.manager.require(message.sessionId).commands();
+    },
+    "session.stopTask": async (message) => {
+      await this.deps.manager.require(message.sessionId).stopTask(message.taskId);
+      return { ok: true };
+    },
+    "session.backgroundTask": async (message) => {
+      const moved = await this.deps.manager
+        .require(message.sessionId)
+        .backgroundTask(message.toolUseId);
+      return { moved };
+    },
+    "cli.commands": async () => {
+      return await this.cliCommands();
+    },
+    "permission.respond": async (message) => {
+      const session = this.deps.manager.findByRequest(message.requestId);
+      if (!session)
+        throw new Error("이미 끝난 권한 요청입니다 — 방금 뜬 카드에서 다시 답해 주세요.");
+      await session.respondPermission(
+        message.requestId,
+        message.decision,
+        message.message,
+        message.updatedInput,
+      );
+      return { ok: true };
+    },
+    "question.respond": (message) => {
+      const session = this.deps.manager.findByRequest(message.requestId);
+      if (!session) throw new Error("이미 끝난 질문입니다 — 방금 뜬 카드에서 다시 답해 주세요.");
+      session.respondQuestion(
+        message.requestId,
+        message.answers,
+        message.response,
+        message.annotations,
+      );
+      return { ok: true };
+    },
+    "project.list": () => {
+      return {
+        projects: this.projectSummaries(),
+        activeSlug: this.deps.registry.activeSlug(),
+      };
+    },
+    "project.create": async (message) => {
+      return await this.createProject(message);
+    },
+    "project.activate": async (message) => {
+      await this.activateProject(message.slug);
+      // 프로젝트가 바뀌면 pane 은 남의 페이지로 옮겨간다 — 세션의 브라우저
+      // 요약이 옛 페이지의 줄과 차이를 재지 않게 서버의 기억을 비운다.
+      this.deps.afterProjectSwitch?.();
+      return {
+        projects: this.projectSummaries(),
+        activeSlug: this.deps.registry.activeSlug(),
+      };
+    },
+    "project.update": async (message) => {
+      // Same guard as create — a moved url re-clones, so the wire's word
+      // passes through the clone-url guard before the registry hears it.
+      if (message.repoUrl != null) assertClonableRepoUrl(message.repoUrl);
+      // The error card's 실행 허용: the registry remembers, the workspace is
+      // told, and the bring-up it was waiting on runs to ready.
+      if (message.approveCommands !== undefined) {
         this.deps.registry.update(message.slug, {
-          ...(message.name !== undefined ? { name: message.name } : {}),
-          ...(message.repoUrl !== undefined ? { repoUrl: message.repoUrl } : {}),
-          ...(message.baseBranch !== undefined ? { baseBranch: message.baseBranch } : {}),
-          // 지침(P1#8): 다음 대화부터 적용된다 — 돌고 있는 세션의 시스템
-          // 프롬프트를 중간에 바꾸지 않는다(SDK 의 스냅샷 계약).
-          ...(message.instructions !== undefined ? { instructions: message.instructions } : {}),
-          // 초대 v4(PLAN 단계 5): 개발자의 값은 덮는다 — null 은 지운다.
-          ...(message.defaults !== undefined ? { defaults: message.defaults } : {}),
-          ...(message.lifecycle !== undefined ? { lifecycle: message.lifecycle } : {}),
-          ...(message.reviewers !== undefined ? { reviewers: message.reviewers } : {}),
+          commandsApproved: message.approveCommands,
         });
-        // A url change is a repo change: the workspace re-points (and
-        // re-clones when the url moved) through its own update path.
-        const workspaces = this.workspacesFor(message.slug);
-        if (message.repoUrl !== undefined) {
-          await workspaces.repo.update({ url: message.repoUrl });
-        }
-        this.announceProjects();
-        return {
-          projects: this.projectSummaries(),
-          activeSlug: this.deps.registry.activeSlug(),
-        };
+        const gate = this.workspacesFor(message.slug);
+        gate.repo.setCommandsApproved(message.approveCommands);
+        if (message.approveCommands) void gate.repo.sync().catch(() => undefined);
       }
-      case "project.remove": {
-        const paths = this.deps.registry.paths(message.slug);
-        // Transcripts are keyed by the clone's realpath (see workspaceCwd) —
-        // every lookup below must use that same spelling.
-        const repoRoot = realpathBestEffort(paths.repoRoot);
-        const workspaces = this.deps.fleet.workspaces.get(message.slug);
-        if (workspaces) {
-          // The clone's live threads die with it (D21): a session left
-          // running would keep writing into a folder the planner just
-          // disowned — or one `deleteFiles` is about to remove.
-          await this.deps.manager.closeWhere(repoRoot);
-          await workspaces.repo.stop();
-          this.deps.fleet.workspaces.delete(message.slug);
-        }
-        this.deps.registry.remove(message.slug);
-        // Files survive a forget: the clone holds screen work that was saved
-        // but never merged, and nothing else on the machine has it.
-        if (message.deleteFiles) {
-          // The conversations go with the folder (PLAN D77): the transcript
-          // store lives outside the project folder, keyed by this clone's
-          // path — leaving it behind would orphan every thread and let a
-          // same-named re-add resurrect them against an empty worktree.
-          await this.deps.manager.removeWhere(repoRoot);
-          rmSync(paths.root, { recursive: true, force: true });
-        }
-        const next = this.deps.registry.activeSlug();
-        if (next) await this.activateProject(next);
-        this.announceProjects();
-        return { projects: this.projectSummaries(), activeSlug: next };
+      this.deps.registry.update(message.slug, {
+        ...(message.name !== undefined ? { name: message.name } : {}),
+        ...(message.repoUrl !== undefined ? { repoUrl: message.repoUrl } : {}),
+        ...(message.baseBranch !== undefined ? { baseBranch: message.baseBranch } : {}),
+        // 지침(P1#8): 다음 대화부터 적용된다 — 돌고 있는 세션의 시스템
+        // 프롬프트를 중간에 바꾸지 않는다(SDK 의 스냅샷 계약).
+        ...(message.instructions !== undefined ? { instructions: message.instructions } : {}),
+        // 초대 v4(PLAN 단계 5): 개발자의 값은 덮는다 — null 은 지운다.
+        ...(message.defaults !== undefined ? { defaults: message.defaults } : {}),
+        ...(message.lifecycle !== undefined ? { lifecycle: message.lifecycle } : {}),
+        ...(message.reviewers !== undefined ? { reviewers: message.reviewers } : {}),
+      });
+      // A url change is a repo change: the workspace re-points (and
+      // re-clones when the url moved) through its own update path.
+      const workspaces = this.workspacesFor(message.slug);
+      if (message.repoUrl !== undefined) {
+        await workspaces.repo.update({ url: message.repoUrl });
       }
-      case "project.openFolder": {
-        if (!this.deps.registry.get(message.slug)) {
-          throw new Error(`프로젝트를 찾을 수 없습니다: ${message.slug}`);
-        }
-        const paths = this.deps.registry.paths(message.slug);
-        openInFileManager(paths.repoRoot);
-        return { ok: true };
+      this.announceProjects();
+      return {
+        projects: this.projectSummaries(),
+        activeSlug: this.deps.registry.activeSlug(),
+      };
+    },
+    "project.remove": async (message) => {
+      const paths = this.deps.registry.paths(message.slug);
+      // Transcripts are keyed by the clone's realpath (see workspaceCwd) —
+      // every lookup below must use that same spelling.
+      const repoRoot = realpathBestEffort(paths.repoRoot);
+      const workspaces = this.deps.fleet.workspaces.get(message.slug);
+      if (workspaces) {
+        // The clone's live threads die with it (D21): a session left
+        // running would keep writing into a folder the planner just
+        // disowned — or one `deleteFiles` is about to remove.
+        await this.deps.manager.closeWhere(repoRoot);
+        await workspaces.repo.stop();
+        this.deps.fleet.workspaces.delete(message.slug);
       }
-
-      case "repo.status":
-        return await this.repo.status();
-
-      case "repo.sync":
-        return await this.repo.sync(message.force === true);
-
-      case "onboarding.check":
-        // 방어(2026-09-24): 시작 때 못 푼 claude 경로는 여기서 한 번 다시 푼다 —
-        // 사용자가 앱 밖에서 직접 설치한 경우도 재시작 없이 잡히게.
-        if (this.deps.claudeExecutable() === null) await this.deps.refreshClaudeExecutable();
-        return await runOnboardingChecks({
-          claudeExecutableOverride: this.deps.claudeExecutableOverride(),
-          gitHubClient: () => this.deps.github.client(),
-          provider: message.provider,
-          driverFor: (id) => this.deps.agentDrivers.get(id),
-          // 쓰기 레포 수(P1-2): 브리지의 캐시를 읽는다 — 피커가 곧 같은 목록을
-          // 요청하므로 이 판정의 추가 비용은 첫 한 번뿐이다.
-          githubWriteRepoCount: () => this.deps.github.writeRepoCount(),
-        });
-
-      case "onboarding.fix":
-        switch (message.kind) {
-          case "install-claude":
-          case "install-codex": {
-            // 1단계: 데몬이 설치를 끝까지 지켜본다 — 진행 줄과 끝은 방송으로
-            // 나가고, ok 면 웹이 게이트를 다시 묻는다. 종류마다 하나씩만 돈다.
-            const kind = message.kind;
-            return this.deps.agentInstall.start(kind, {
-              onProgress: (line) =>
-                this.deps.broadcast({ type: "onboarding.install.progress", kind, line }),
-              onDone: (ok, detail, executable) => {
-                // 방송 전에 먼저: claude 설치의 성공 판정에 쓴 경로를 심어야
-                // 이어지는 재검사·로그인이 방금 설치한 CLI 를 본다(2026-09-24).
-                if (ok && kind === "install-claude" && executable) {
-                  this.deps.setClaudeExecutable(executable);
-                }
-                this.deps.broadcast({ type: "onboarding.install.done", kind, ok, detail });
-              },
-            });
-          }
-          case "login-claude":
-          case "login-codex": {
-            // P1-1: 데몬이 로그인을 대신 몰고, 주소·끝은 방송으로 나간다.
-            // 각 드라이버가 자기 로그인 명령을 선언한다(loginCommand) — claude 는
-            // `auth login`(스파이크로 확인: 주소는 stdout, 코드는 stdin), codex 는
-            // `login`(주소는 stderr, 콜백 대기). login-codex 는 설정의 「로그인이
-            // 필요해요」 행이 부르는 같은 길이다(2026-09-28).
-            const provider =
-              message.provider ?? (message.kind === "login-codex" ? "codex" : "claude");
-            const driver = this.deps.agentDrivers.get(provider);
-            const command = driver?.loginCommand?.();
-            if (!command) {
-              return {
-                started: false,
-                guidance:
-                  "이 에이전트는 로그인을 앱이 대신 시작할 수 없습니다 — 터미널에서 직접 로그인한 뒤 다시 확인해 주세요.",
-              };
-            }
-            return this.deps.agentLogin.start(command.command, command.args, {
-              onUrl: (url, wantsCode) =>
-                this.deps.broadcast({ type: "agent.login.url", url, wantsCode }),
-              onDone: (ok, detail) => {
-                this.deps.broadcast({ type: "agent.login.done", ok, detail });
-                // 로그인이 돌아왔다 — 로그인 만료로 멈춰 둔 말을 다시 세운다
-                // (PLAN L12). 감시의 다음 틱을 기다리지 않게 하는 길이다.
-                if (ok) this.deps.afterAgentLogin?.();
-              },
-            });
-          }
-          case "install-git":
-            return startGitInstall();
-          case "install-pnpm":
-            return await runPnpmInstall();
-        }
-        return { started: false, guidance: "알 수 없는 수정 요청입니다." };
-      case "agent.login.code": {
-        if (!this.deps.agentLogin.submitCode(message.code)) {
-          throw new Error("진행 중인 로그인이 없습니다 — 로그인 버튼을 다시 눌러 주세요.");
-        }
-        return { ok: true as const };
+      this.deps.registry.remove(message.slug);
+      // Files survive a forget: the clone holds screen work that was saved
+      // but never merged, and nothing else on the machine has it.
+      if (message.deleteFiles) {
+        // The conversations go with the folder (PLAN D77): the transcript
+        // store lives outside the project folder, keyed by this clone's
+        // path — leaving it behind would orphan every thread and let a
+        // same-named re-add resurrect them against an empty worktree.
+        await this.deps.manager.removeWhere(repoRoot);
+        rmSync(paths.root, { recursive: true, force: true });
       }
-      case "escalation.set":
-        await this.deps.escalation.set(message.config);
-        return { ok: true as const };
-      case "machine.set": {
-        const provider = message.provider;
-        if (message.agentAutoUpdate !== undefined) {
-          // 켬이 기본이라 파일에는 끔만 적힌다 — 잊기(null)가 곧 켬이다.
-          this.deps.machineSetting.set("agentAutoUpdate", message.agentAutoUpdate ? null : "off");
-          void this.deps
-            .status()
-            .then((status) => this.deps.broadcast({ type: "status", status } as ServerMessage));
-          // 켰다면 이미 아는 새 버전을 곧바로 건다(도는 작업이 있으면 미룬다).
-          if (message.agentAutoUpdate) void this.deps.agentUpdates.applyAuto();
+      const next = this.deps.registry.activeSlug();
+      if (next) await this.activateProject(next);
+      this.announceProjects();
+      return { projects: this.projectSummaries(), activeSlug: next };
+    },
+    "project.openFolder": (message) => {
+      if (!this.deps.registry.get(message.slug)) {
+        throw new Error(`프로젝트를 찾을 수 없습니다: ${message.slug}`);
+      }
+      const paths = this.deps.registry.paths(message.slug);
+      openInFileManager(paths.repoRoot);
+      return { ok: true };
+    },
+    "repo.status": async () => {
+      return await this.repo.status();
+    },
+    "repo.sync": async (message) => {
+      return await this.repo.sync(message.force === true);
+    },
+    "onboarding.check": async (message) => {
+      // 방어(2026-09-24): 시작 때 못 푼 claude 경로는 여기서 한 번 다시 푼다 —
+      // 사용자가 앱 밖에서 직접 설치한 경우도 재시작 없이 잡히게.
+      if (this.deps.claudeExecutable() === null) await this.deps.refreshClaudeExecutable();
+      return await runOnboardingChecks({
+        claudeExecutableOverride: this.deps.claudeExecutableOverride(),
+        gitHubClient: () => this.deps.github.client(),
+        provider: message.provider,
+        driverFor: (id) => this.deps.agentDrivers.get(id),
+        // 쓰기 레포 수(P1-2): 브리지의 캐시를 읽는다 — 피커가 곧 같은 목록을
+        // 요청하므로 이 판정의 추가 비용은 첫 한 번뿐이다.
+        githubWriteRepoCount: () => this.deps.github.writeRepoCount(),
+      });
+    },
+    "onboarding.fix": async (message) => {
+      switch (message.kind) {
+        case "install-claude":
+        case "install-codex": {
+          // 1단계: 데몬이 설치를 끝까지 지켜본다 — 진행 줄과 끝은 방송으로
+          // 나가고, ok 면 웹이 게이트를 다시 묻는다. 종류마다 하나씩만 돈다.
+          const kind = message.kind;
+          return this.deps.agentInstall.start(kind, {
+            onProgress: (line) =>
+              this.deps.broadcast({ type: "onboarding.install.progress", kind, line }),
+            onDone: (ok, detail, executable) => {
+              // 방송 전에 먼저: claude 설치의 성공 판정에 쓴 경로를 심어야
+              // 이어지는 재검사·로그인이 방금 설치한 CLI 를 본다(2026-09-24).
+              if (ok && kind === "install-claude" && executable) {
+                this.deps.setClaudeExecutable(executable);
+              }
+              this.deps.broadcast({ type: "onboarding.install.done", kind, ok, detail });
+            },
+          });
         }
-        if (provider === undefined) return { ok: true as const };
-        if (provider !== null) {
+        case "login-claude":
+        case "login-codex": {
+          // P1-1: 데몬이 로그인을 대신 몰고, 주소·끝은 방송으로 나간다.
+          // 각 드라이버가 자기 로그인 명령을 선언한다(loginCommand) — claude 는
+          // `auth login`(스파이크로 확인: 주소는 stdout, 코드는 stdin), codex 는
+          // `login`(주소는 stderr, 콜백 대기). login-codex 는 설정의 「로그인이
+          // 필요해요」 행이 부르는 같은 길이다(2026-09-28).
+          const provider =
+            message.provider ?? (message.kind === "login-codex" ? "codex" : "claude");
           const driver = this.deps.agentDrivers.get(provider);
-          if (!driver) throw new Error(`알 수 없는 에이전트입니다: ${provider}`);
-          if (!driver.oneShot) {
-            throw new Error(
-              `${driver.describe().label} 는 보관 메모를 맡을 수 없습니다 — 자동으로 두거나 다른 에이전트를 골라 주세요.`,
-            );
+          const command = driver?.loginCommand?.();
+          if (!command) {
+            return {
+              started: false,
+              guidance:
+                "이 에이전트는 로그인을 앱이 대신 시작할 수 없습니다 — 터미널에서 직접 로그인한 뒤 다시 확인해 주세요.",
+            };
           }
-          const diagnostic = await driver.isAvailable().catch(() => null);
-          if (!diagnostic?.ok || !diagnostic.executable) {
-            throw new Error(
-              `${driver.describe().label} CLI 를 찾지 못했습니다 — 설치를 마친 뒤 다시 시도해 주세요.`,
-            );
-          }
+          return this.deps.agentLogin.start(command.command, command.args, {
+            onUrl: (url, wantsCode) =>
+              this.deps.broadcast({ type: "agent.login.url", url, wantsCode }),
+            onDone: (ok, detail) => {
+              this.deps.broadcast({ type: "agent.login.done", ok, detail });
+              // 로그인이 돌아왔다 — 로그인 만료로 멈춰 둔 말을 다시 세운다
+              // (PLAN L12). 감시의 다음 틱을 기다리지 않게 하는 길이다.
+              if (ok) this.deps.afterAgentLogin?.();
+            },
+          });
         }
-        this.deps.machineSetting.set("provider", provider);
-        this.deps.machineTurns.invalidate();
-        return { ok: true as const };
+        case "install-git":
+          return startGitInstall();
+        case "install-pnpm":
+          return await runPnpmInstall();
       }
-      case "agent.update": {
-        // PLAN-UI U12: `check` 는 `지금 확인` — 새 버전만 읽고 상태를 다시 보낸다.
-        // 아니면 설치 진행기로 바꿔 깐다(도는 작업이 있으면 끝나는 즉시).
-        if (message.check === true) {
-          await this.deps.agentUpdates.check();
-          void this.deps
-            .status()
-            .then((status) => this.deps.broadcast({ type: "status", status } as ServerMessage));
-          return {
-            ok: true as const,
-            latestVersion: this.deps.agentUpdates.latest(message.kind) ?? null,
-          };
-        }
-        return { ok: true as const, phase: this.deps.agentUpdates.request(message.kind) };
+      return { started: false, guidance: "알 수 없는 수정 요청입니다." };
+    },
+    "agent.login.code": (message) => {
+      if (!this.deps.agentLogin.submitCode(message.code)) {
+        throw new Error("진행 중인 로그인이 없습니다 — 로그인 버튼을 다시 눌러 주세요.");
       }
-      case "machine.author.set": {
-        // 이름은 문서로 흘러가는 문자열이라 잘라내는 것으로 충분하다 — 빈 칸은
-        // 지우기(null 과 같은 길)로 읽는다. 상태를 곧바로 다시 보낸다 — 다음 방송을
-        // 기다리면 초대 파일을 가져온 직후의 홈 인사가 이름 없이 남는다(단계 8 에서 봄).
-        const name = message.name === null ? null : message.name.trim();
-        this.deps.machineSetting.set("authorName", name === "" ? null : name);
+      return { ok: true as const };
+    },
+    "escalation.set": async (message) => {
+      await this.deps.escalation.set(message.config);
+      return { ok: true as const };
+    },
+    "machine.set": async (message) => {
+      const provider = message.provider;
+      if (message.agentAutoUpdate !== undefined) {
+        // 켬이 기본이라 파일에는 끔만 적힌다 — 잊기(null)가 곧 켬이다.
+        this.deps.machineSetting.set("agentAutoUpdate", message.agentAutoUpdate ? null : "off");
         void this.deps
           .status()
           .then((status) => this.deps.broadcast({ type: "status", status } as ServerMessage));
-        return { ok: true as const };
+        // 켰다면 이미 아는 새 버전을 곧바로 건다(도는 작업이 있으면 미룬다).
+        if (message.agentAutoUpdate) void this.deps.agentUpdates.applyAuto();
       }
-      case "escalation.notify": {
-        // 화면이 지은 문구를 그대로 울린다. 10분 동일 문구 dedupe 는 그대로
-        // 두고(같은 사고가 연달아 슬랙을 때리지 않게), 문구에 프로젝트와
-        // 시각이 들어 있어 두 번째 누름이 조용히 삼켜지지 않는다 — 그 조립은
-        // 화면의 몫이다.
-        const rung = await this.deps.escalation.notify(message.text);
-        if (!rung)
+      if (provider === undefined) return { ok: true as const };
+      if (provider !== null) {
+        const driver = this.deps.agentDrivers.get(provider);
+        if (!driver) throw new Error(`알 수 없는 에이전트입니다: ${provider}`);
+        if (!driver.oneShot) {
           throw new Error(
-            "개발자 알림을 보내지 못했습니다 — 설정 → 알림에서 연결을 확인해 주세요.",
+            `${driver.describe().label} 는 보관 메모를 맡을 수 없습니다 — 자동으로 두거나 다른 에이전트를 골라 주세요.`,
           );
-        return { ok: true as const };
-      }
-      case "escalation.test": {
-        const sent = await this.deps.escalation.notify(
-          "[ColoNova Design] 개발자 알림 시험 — 이 메시지가 보이면 연결된 것입니다.",
-        );
-        if (!sent)
-          throw new Error("알림을 보내지 못했습니다 — 웹훅 주소나 봇 토큰·채널을 확인해 주세요.");
-        return { ok: true as const };
-      }
-
-      case "github.token.set":
-        return await this.deps.github.setToken(message.token);
-
-      case "github.repo.inspect":
-        return await this.deps.github.inspectRepo(message.owner, message.repo);
-
-      case "diff.get":
-        return await this.repo.diff();
-
-      case "repo.save":
-        return await this.repo.save({
-          ...(message.message ? { message: message.message } : {}),
-          // hero-synthesis D1: the calling conversation owns the saved card.
-          ...(message.sessionId ? { sessionId: message.sessionId } : {}),
-          ...this.briefTo(message.sessionId, "save"),
-        });
-
-      case "repo.handoff": {
-        const active = this.requireActive();
-        // The captures come first, while the preview server is still the one
-        // serving — the build gate inside the handoff may not leave it up.
-        // 핀 주도 (브리지 폐지): 이 사이클에 사람이 핀으로 가리킨 화면·상태만이
-        // "보낸 화면"이다 — 선언된 목록은 더 이상 없다.
-        const commentsFile = join(active.paths.root, "comments.json");
-        const targets = captureTargets(
-          readComments(commentsFile),
-          await active.repo.cycleAnchor(),
-          active.repo.repoCore().snapshot().cycleScreens,
-        );
-        const shots = await this.deps.previewDrivers.captureHandoffShots(targets);
-        return await active.repo.handoff({
-          title: message.title ?? this.deps.registry.get(active.slug)?.name ?? undefined,
-          body: message.body ?? DEFAULT_HANDOFF_BODY,
-          ...(shots.length > 0 ? { shots } : {}),
-          // D93: the comment store — the PR body's `### 수정 요청` section is
-          // the daemon's to build.
-          commentsFile,
-          ...(message.sessionId ? { sessionId: message.sessionId } : {}),
-          ...this.briefTo(message.sessionId, "handoff"),
-        });
-      }
-
-      case "repo.submit": {
-        // 제출은 의도를 적는 것으로 끝난다 (PLAN L6) — 나머지는 감독자의 네
-        // 단계가 멱등하게 끝낸다. 여기서는 그 틱의 끝을 최대 60초 기다렸다 지금
-        // DiffStatus 를 돌려준다: 넘으면 "진행 중"(handing-off) — 의도는 원장에
-        // 남아 다음 틱이 이어받는다.
-        const active = this.requireActive();
-        // 확인 창의 한마디(PLAN-UI U3)는 의도와 함께 원장에 적힌다 — 본문의 `> 한마디:`.
-        if (message.expectedHead || message.expectedPreview) {
-          this.refuseWhileTurnRuns();
-          await active.repo.repoCore().lane.run("submit", async () => {
-            const head = await active.repo.headCommitFiles();
-            await active.repo.repoCore().refreshPendingChanges(true);
-            this.refuseWhileTurnRuns();
-            if (
-              (message.expectedHead && head?.sha !== message.expectedHead) ||
-              active.repo.pendingChanges > 0 ||
-              (message.expectedPreview &&
-                (await active.repo.repoCore().submitPreviewToken()) !== message.expectedPreview)
-            ) {
-              throw new Error(
-                "SUBMIT_CHANGED: 확인한 뒤 작업 내용이 바뀌었어요. 변경 목록을 다시 확인해 주세요.",
-              );
-            }
-            if ((await active.repo.repoCore().finalChangedFiles()).length === 0) {
-              throw new Error("제출할 변경이 없어요.");
-            }
-            active.supervisor.submit("button", message.sessionId, message.note || undefined);
-          });
-        } else {
-          active.supervisor.submit("button", message.sessionId, message.note || undefined);
         }
-        await new Promise<void>((resolve) => {
-          const timer = setTimeout(resolve, SUBMIT_WAIT_MS);
-          void active.supervisor.settled().then(() => {
-            clearTimeout(timer);
-            resolve();
-          });
-        });
-        return active.lastDiff ?? { stage: "computing" as const };
-      }
-
-      case "repo.handoffStatus": {
-        // 상태 확인은 읽기만 한다 — 끝난 사이클의 착지(fetch·checkout·reset)는
-        // 감독자의 몫이다(PLAN L2 흡수표). 읽은 뒤의 틱이 그 일을 한다.
-        const workspaces = this.requireActive();
-        const report = await workspaces.repo.peekHandoff();
-        void workspaces.supervisor.tick("manual");
-        return report;
-      }
-
-      // 보낸 화면 동결: the frozen stage asks for one
-      // committed capture at a time — null is the "no shot" answer, not an
-      // error, so the panel falls back to the live preview with the stamp.
-      case "repo.handoffShot":
-        return await this.repo.handoffShot(message.route);
-
-      // 시점 빌드 재현: the frozen stage's 실제로
-      // 열기 — the handoff branch's tip in a throwaway worktree, served on
-      // a second port. Absence answers as a ready:false info, not an error,
-      // so the stage falls back to the committed capture. The sessionId is
-      // what ties the build's life to the conversation that asked for it.
-      case "repo.handoffPreview":
-        return await this.deps.handoffPreviews.open(message.sessionId ?? null);
-
-      // 패인 오류의 판정: the pane's held error report, re-opened in the
-      // isolated verification window. The pane decides what the verdict
-      // means — a fixed transient is put away quietly, a live break becomes
-      // the auto fix turn. 확인 불능(null)도 판정의 하나다.
-      case "preview.screenCheck":
-        return await this.deps.previewDrivers.checkScreen(message.route);
-
-      // 답하기 (PLAN D88): the planner's words to one developer comment —
-      // the daemon picks the endpoint by the id's kind.
-      case "session.branch": {
-        const target = this.deps.manager.require(message.sessionId);
-        if (target.cwd !== this.workspaceCwd()) {
-          throw new Error("다른 프로젝트의 대화입니다 — 프로젝트를 전환한 뒤 시도해 주세요.");
+        const diagnostic = await driver.isAvailable().catch(() => null);
+        if (!diagnostic?.ok || !diagnostic.executable) {
+          throw new Error(
+            `${driver.describe().label} CLI 를 찾지 못했습니다 — 설치를 마친 뒤 다시 시도해 주세요.`,
+          );
         }
-        // 도는 턴의 대화록은 아직 정산되지 않았다 — 그 위에서 자르면 k 셈과
-        // 저장 대화록이 어긋난다. 되감기의 실행 중 거절과 같은 정직함이다.
-        if (target.state === "running" || target.state === "starting") {
-          throw new Error("돌고 있는 턴이 있습니다 — 턴이 끝난 뒤 분기할 수 있습니다.");
-        }
-        const targetDriver = this.deps.agentDrivers.get(target.provider);
-        const targetExecutable = targetDriver
-          ? ((await targetDriver.isAvailable().catch(() => null))?.executable ?? null)
-          : null;
-        const result = await this.deps.manager.branch({
-          sessionId: message.sessionId,
-          cwd: this.workspaceCwd(),
-          turn: message.turn,
-          base: {
-            cwd: this.workspaceCwd(),
-            provider: target.provider,
-            queueDiskFor: this.deps.queueDiskFor,
-            writePolicy: repoWritePolicy(this.workspaceCwd()),
-            launch: {
-              ...(targetExecutable ? { executable: targetExecutable } : {}),
-            },
-          },
-        });
-        this.deps.manager.invalidateThreads(target.cwd);
-        this.refreshThreads();
-        return result;
       }
-
-      case "comments.reply": {
-        const activeWs = this.requireActive();
-        await activeWs.repo.replyToReview(message.reviewId, message.body);
-        return { ok: true as const };
-      }
-
-      // U20(PLAN-UI §10): 영수증의 `개발자에게 한마디 더` — 활성 프로젝트의
-      // 열린 요청에 달린다. 명령 id 가 멱등 키라 재전송이 두 번 달지 않는다.
-      case "repo.note": {
-        const activeWs = this.requireActive();
-        await activeWs.repo.noteToDeveloper(message.text);
-        return { ok: true as const };
-      }
-
-      // --- 되돌리기와 넘기기 (PLAN D52 · D53) ------------------------------
-      case "repo.handoffDraft": {
-        const active = this.requireActive();
-        const commentsFile = join(active.paths.root, "comments.json");
-        // The dialog's shot count reads the same pin-driven targets the
-        // handoff itself will capture — the preview never promises a number
-        // the handoff then fails to deliver.
-        const targets = captureTargets(
-          readComments(commentsFile),
-          await active.repo.cycleAnchor(),
-          active.repo.repoCore().snapshot().cycleScreens,
-        );
-        return await active.repo.handoffDraft({
-          commentsFile,
-          shotCount: await this.deps.previewDrivers.handoffShotCount(targets),
-        });
-      }
-
-      case "repo.comparison": {
-        const active = this.requireActive();
-        if (!message.submitted) {
-          await this.deps.comparisonReady?.(active.slug);
-          return readComparison(active.paths.root, message);
-        }
-        const route = message.route.split("?")[0] ?? "/";
-        if (!route.startsWith("/") || route.startsWith("//")) return null;
-        const before = await active.repo.handoffShot(route);
-        const shots = await this.deps.previewDrivers.captureHandoffShots([{ route }]);
-        const shot = shots[0];
-        const mediaType =
-          shot?.extension === ".png"
-            ? "image/png"
-            : shot?.extension === ".webp"
-              ? "image/webp"
-              : "image/jpeg";
+      this.deps.machineSetting.set("provider", provider);
+      this.deps.machineTurns.invalidate();
+      return { ok: true as const };
+    },
+    "agent.update": async (message) => {
+      // PLAN-UI U12: `check` 는 `지금 확인` — 새 버전만 읽고 상태를 다시 보낸다.
+      // 아니면 설치 진행기로 바꿔 깐다(도는 작업이 있으면 끝나는 즉시).
+      if (message.check === true) {
+        await this.deps.agentUpdates.check();
+        void this.deps
+          .status()
+          .then((status) => this.deps.broadcast({ type: "status", status } as ServerMessage));
         return {
-          route,
-          requestId: "submitted",
-          sessionId: "",
-          sha: "",
-          title: "",
-          viewport: "desktop",
-          before: before ? { ...before, at: "" } : null,
-          after: shot
-            ? {
-                mediaType,
-                data: Buffer.from(shot.image).toString("base64"),
-                at: new Date().toISOString(),
-              }
-            : null,
+          ok: true as const,
+          latestVersion: this.deps.agentUpdates.latest(message.kind) ?? null,
         };
       }
-
-      case "repo.submitPreview": {
-        const active = this.requireActive();
-        return active.repo.repoCore().lane.run("submit", async () => {
-          const core = active.repo.repoCore();
-          const head = await core.headCommitFiles();
-          if (!head) throw new Error("제출할 작업을 읽지 못했어요.");
-          await core.refreshPendingChanges(true);
-          const history = await core.history(true);
-          const finalFiles = await core.finalChangedFiles();
-          const expectedPreview = await core.submitPreviewToken();
-          return { head: head.sha, expectedPreview, repo: core.snapshot(), history, finalFiles };
-        });
-      }
-
-      case "repo.history":
-        return await this.repo.history();
-
-      case "repo.restore": {
+      return { ok: true as const, phase: this.deps.agentUpdates.request(message.kind) };
+    },
+    "machine.author.set": (message) => {
+      // 이름은 문서로 흘러가는 문자열이라 잘라내는 것으로 충분하다 — 빈 칸은
+      // 지우기(null 과 같은 길)로 읽는다. 상태를 곧바로 다시 보낸다 — 다음 방송을
+      // 기다리면 초대 파일을 가져온 직후의 홈 인사가 이름 없이 남는다(단계 8 에서 봄).
+      const name = message.name === null ? null : message.name.trim();
+      this.deps.machineSetting.set("authorName", name === "" ? null : name);
+      void this.deps
+        .status()
+        .then((status) => this.deps.broadcast({ type: "status", status } as ServerMessage));
+      return { ok: true as const };
+    },
+    "escalation.notify": async (message) => {
+      // 화면이 지은 문구를 그대로 울린다. 10분 동일 문구 dedupe 는 그대로
+      // 두고(같은 사고가 연달아 슬랙을 때리지 않게), 문구에 프로젝트와
+      // 시각이 들어 있어 두 번째 누름이 조용히 삼켜지지 않는다 — 그 조립은
+      // 화면의 몫이다.
+      const rung = await this.deps.escalation.notify(message.text);
+      if (!rung)
+        throw new Error("개발자 알림을 보내지 못했습니다 — 설정 → 알림에서 연결을 확인해 주세요.");
+      return { ok: true as const };
+    },
+    "escalation.test": async () => {
+      const sent = await this.deps.escalation.notify(
+        "[ColoNova Design] 개발자 알림 시험 — 이 메시지가 보이면 연결된 것입니다.",
+      );
+      if (!sent)
+        throw new Error("알림을 보내지 못했습니다 — 웹훅 주소나 봇 토큰·채널을 확인해 주세요.");
+      return { ok: true as const };
+    },
+    "github.token.set": async (message) => {
+      return await this.deps.github.setToken(message.token);
+    },
+    "github.repo.inspect": async (message) => {
+      return await this.deps.github.inspectRepo(message.owner, message.repo);
+    },
+    "diff.get": async () => {
+      return await this.repo.diff();
+    },
+    "repo.save": async (message) => {
+      return await this.repo.save({
+        ...(message.message ? { message: message.message } : {}),
+        // hero-synthesis D1: the calling conversation owns the saved card.
+        ...(message.sessionId ? { sessionId: message.sessionId } : {}),
+        ...this.briefTo(message.sessionId, "save"),
+      });
+    },
+    "repo.handoff": async (message) => {
+      const active = this.requireActive();
+      // The captures come first, while the preview server is still the one
+      // serving — the build gate inside the handoff may not leave it up.
+      // 핀 주도 (브리지 폐지): 이 사이클에 사람이 핀으로 가리킨 화면·상태만이
+      // "보낸 화면"이다 — 선언된 목록은 더 이상 없다.
+      const commentsFile = join(active.paths.root, "comments.json");
+      const targets = captureTargets(
+        readComments(commentsFile),
+        await active.repo.cycleAnchor(),
+        active.repo.repoCore().snapshot().cycleScreens,
+      );
+      const shots = await this.deps.previewDrivers.captureHandoffShots(targets);
+      return await active.repo.handoff({
+        title: message.title ?? this.deps.registry.get(active.slug)?.name ?? undefined,
+        body: message.body ?? DEFAULT_HANDOFF_BODY,
+        ...(shots.length > 0 ? { shots } : {}),
+        // D93: the comment store — the PR body's `### 수정 요청` section is
+        // the daemon's to build.
+        commentsFile,
+        ...(message.sessionId ? { sessionId: message.sessionId } : {}),
+        ...this.briefTo(message.sessionId, "handoff"),
+      });
+    },
+    "repo.submit": async (message) => {
+      // 제출은 의도를 적는 것으로 끝난다 (PLAN L6) — 나머지는 감독자의 네
+      // 단계가 멱등하게 끝낸다. 여기서는 그 틱의 끝을 최대 60초 기다렸다 지금
+      // DiffStatus 를 돌려준다: 넘으면 "진행 중"(handing-off) — 의도는 원장에
+      // 남아 다음 틱이 이어받는다.
+      const active = this.requireActive();
+      // 확인 창의 한마디(PLAN-UI U3)는 의도와 함께 원장에 적힌다 — 본문의 `> 한마디:`.
+      if (message.expectedHead || message.expectedPreview) {
         this.refuseWhileTurnRuns();
-        const restored = await this.repo.restore(message.sha);
-        undoLog().record({ kind: "save", slug: this.requireActive().slug });
-        return restored;
+        await active.repo.repoCore().lane.run("submit", async () => {
+          const head = await active.repo.headCommitFiles();
+          await active.repo.repoCore().refreshPendingChanges(true);
+          this.refuseWhileTurnRuns();
+          if (
+            (message.expectedHead && head?.sha !== message.expectedHead) ||
+            active.repo.pendingChanges > 0 ||
+            (message.expectedPreview &&
+              (await active.repo.repoCore().submitPreviewToken()) !== message.expectedPreview)
+          ) {
+            throw new Error(
+              "SUBMIT_CHANGED: 확인한 뒤 작업 내용이 바뀌었어요. 변경 목록을 다시 확인해 주세요.",
+            );
+          }
+          if ((await active.repo.repoCore().finalChangedFiles()).length === 0) {
+            throw new Error("제출할 변경이 없어요.");
+          }
+          active.supervisor.submit("button", message.sessionId, message.note || undefined);
+        });
+      } else {
+        active.supervisor.submit("button", message.sessionId, message.note || undefined);
       }
-
-      // --- 코멘트 저장소 (PLAN D57) ----------------------------------------
-      // The pins belong to the ACTIVE project: the messages carry no slug,
-      // exactly because the planner is looking at one project's preview.
-      // Write-only from here: the store's reader is the pull request body.
-      case "comments.record": {
-        recordComments(join(this.requireActive().paths.root, "comments.json"), message.items);
-        return { recorded: message.items.length };
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, SUBMIT_WAIT_MS);
+        void active.supervisor.settled().then(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+      return active.lastDiff ?? { stage: "computing" as const };
+    },
+    "repo.handoffStatus": async () => {
+      // 상태 확인은 읽기만 한다 — 끝난 사이클의 착지(fetch·checkout·reset)는
+      // 감독자의 몫이다(PLAN L2 흡수표). 읽은 뒤의 틱이 그 일을 한다.
+      const workspaces = this.requireActive();
+      const report = await workspaces.repo.peekHandoff();
+      void workspaces.supervisor.tick("manual");
+      return report;
+    },
+    // 보낸 화면 동결: the frozen stage asks for one
+    // committed capture at a time — null is the "no shot" answer, not an
+    // error, so the panel falls back to the live preview with the stamp.
+    "repo.handoffShot": async (message) => {
+      return await this.repo.handoffShot(message.route);
+    },
+    // 시점 빌드 재현: the frozen stage's 실제로
+    // 열기 — the handoff branch's tip in a throwaway worktree, served on
+    // a second port. Absence answers as a ready:false info, not an error,
+    // so the stage falls back to the committed capture. The sessionId is
+    // what ties the build's life to the conversation that asked for it.
+    "repo.handoffPreview": async (message) => {
+      return await this.deps.handoffPreviews.open(message.sessionId ?? null);
+    },
+    // 패인 오류의 판정: the pane's held error report, re-opened in the
+    // isolated verification window. The pane decides what the verdict
+    // means — a fixed transient is put away quietly, a live break becomes
+    // the auto fix turn. 확인 불능(null)도 판정의 하나다.
+    "preview.screenCheck": async (message) => {
+      return await this.deps.previewDrivers.checkScreen(message.route);
+    },
+    // 답하기 (PLAN D88): the planner's words to one developer comment —
+    // the daemon picks the endpoint by the id's kind.
+    "session.branch": async (message) => {
+      const target = this.deps.manager.require(message.sessionId);
+      if (target.cwd !== this.workspaceCwd()) {
+        throw new Error("다른 프로젝트의 대화입니다 — 프로젝트를 전환한 뒤 시도해 주세요.");
       }
+      // 도는 턴의 대화록은 아직 정산되지 않았다 — 그 위에서 자르면 k 셈과
+      // 저장 대화록이 어긋난다. 되감기의 실행 중 거절과 같은 정직함이다.
+      if (target.state === "running" || target.state === "starting") {
+        throw new Error("돌고 있는 턴이 있습니다 — 턴이 끝난 뒤 분기할 수 있습니다.");
+      }
+      const targetDriver = this.deps.agentDrivers.get(target.provider);
+      const targetExecutable = targetDriver
+        ? ((await targetDriver.isAvailable().catch(() => null))?.executable ?? null)
+        : null;
+      const result = await this.deps.manager.branch({
+        sessionId: message.sessionId,
+        cwd: this.workspaceCwd(),
+        turn: message.turn,
+        base: {
+          cwd: this.workspaceCwd(),
+          provider: target.provider,
+          queueDiskFor: this.deps.queueDiskFor,
+          writePolicy: repoWritePolicy(this.workspaceCwd()),
+          launch: {
+            ...(targetExecutable ? { executable: targetExecutable } : {}),
+          },
+        },
+      });
+      this.deps.manager.invalidateThreads(target.cwd);
+      this.refreshThreads();
+      return result;
+    },
+    "comments.reply": async (message) => {
+      const activeWs = this.requireActive();
+      await activeWs.repo.replyToReview(message.reviewId, message.body);
+      return { ok: true as const };
+    },
+    // U20(PLAN-UI §10): 영수증의 `개발자에게 한마디 더` — 활성 프로젝트의
+    // 열린 요청에 달린다. 명령 id 가 멱등 키라 재전송이 두 번 달지 않는다.
+    "repo.note": async (message) => {
+      const activeWs = this.requireActive();
+      await activeWs.repo.noteToDeveloper(message.text);
+      return { ok: true as const };
+    },
+    // --- 되돌리기와 넘기기 (PLAN D52 · D53) ------------------------------
+    "repo.handoffDraft": async () => {
+      const active = this.requireActive();
+      const commentsFile = join(active.paths.root, "comments.json");
+      // The dialog's shot count reads the same pin-driven targets the
+      // handoff itself will capture — the preview never promises a number
+      // the handoff then fails to deliver.
+      const targets = captureTargets(
+        readComments(commentsFile),
+        await active.repo.cycleAnchor(),
+        active.repo.repoCore().snapshot().cycleScreens,
+      );
+      return await active.repo.handoffDraft({
+        commentsFile,
+        shotCount: await this.deps.previewDrivers.handoffShotCount(targets),
+      });
+    },
+    "repo.comparison": async (message) => {
+      const active = this.requireActive();
+      if (!message.submitted) {
+        await this.deps.comparisonReady?.(active.slug);
+        return readComparison(active.paths.root, message);
+      }
+      const route = message.route.split("?")[0] ?? "/";
+      if (!route.startsWith("/") || route.startsWith("//")) return null;
+      const before = await active.repo.handoffShot(route);
+      const shots = await this.deps.previewDrivers.captureHandoffShots([{ route }]);
+      const shot = shots[0];
+      const mediaType =
+        shot?.extension === ".png"
+          ? "image/png"
+          : shot?.extension === ".webp"
+            ? "image/webp"
+            : "image/jpeg";
+      return {
+        route,
+        requestId: "submitted",
+        sessionId: "",
+        sha: "",
+        title: "",
+        viewport: "desktop",
+        before: before ? { ...before, at: "" } : null,
+        after: shot
+          ? {
+              mediaType,
+              data: Buffer.from(shot.image).toString("base64"),
+              at: new Date().toISOString(),
+            }
+          : null,
+      };
+    },
+    "repo.submitPreview": async () => {
+      const active = this.requireActive();
+      return active.repo.repoCore().lane.run("submit", async () => {
+        const core = active.repo.repoCore();
+        const head = await core.headCommitFiles();
+        if (!head) throw new Error("제출할 작업을 읽지 못했어요.");
+        await core.refreshPendingChanges(true);
+        const history = await core.history(true);
+        const finalFiles = await core.finalChangedFiles();
+        const expectedPreview = await core.submitPreviewToken();
+        return { head: head.sha, expectedPreview, repo: core.snapshot(), history, finalFiles };
+      });
+    },
+    "repo.history": async () => {
+      return await this.repo.history();
+    },
+    "repo.restore": async (message) => {
+      this.refuseWhileTurnRuns();
+      const restored = await this.repo.restore(message.sha);
+      undoLog().record({ kind: "save", slug: this.requireActive().slug });
+      return restored;
+    },
+    // --- 코멘트 저장소 (PLAN D57) ----------------------------------------
+    // The pins belong to the ACTIVE project: the messages carry no slug,
+    // exactly because the planner is looking at one project's preview.
+    // Write-only from here: the store's reader is the pull request body.
+    "comments.record": (message) => {
+      recordComments(join(this.requireActive().paths.root, "comments.json"), message.items);
+      return { recorded: message.items.length };
+    },
+    // --- 기능 제안 (PLAN-FEEDBACK) ---------------------------------------
+    // 앱 전체 기능: 활성 프로젝트·세션과 무관하므로 아무 준비도 묻지 않는다.
+    "feedback.submit": async (message) => {
+      return await submitFeatureRequest(
+        { request: message.request, context: message.context },
+        { github: this.deps.github, appVersion: this.deps.appVersion },
+      );
+    },
+  };
 
-      // --- 기능 제안 (PLAN-FEEDBACK) ---------------------------------------
-      // 앱 전체 기능: 활성 프로젝트·세션과 무관하므로 아무 준비도 묻지 않는다.
-      case "feedback.submit":
-        return await submitFeatureRequest(
-          { request: message.request, context: message.context },
-          { github: this.deps.github, appVersion: this.deps.appVersion },
-        );
-    }
+  async dispatch(message: ClientMessage): Promise<unknown> {
+    const handler = this.handlers[message.type];
+    if (!handler) return undefined;
+    return (handler as (message: ClientMessage) => unknown)(message);
   }
 
   /**

@@ -202,6 +202,11 @@ export class MainWindowHost {
       title: "ColoNova Design",
       autoHideMenuBar: true,
       webPreferences: {
+        // 갇힌 렌더러의 기본값을 코드로 못박는다(2026-10-02) — Electron 44 의
+        // 기본과 같은 값이지만, 나중에 기본이 바뀌어도 이 창의 뜻이 따로
+        // 살아남는다. preload 가 노출하는 다리가 좁다는 전제도 여기에 걸린다.
+        contextIsolation: true,
+        sandbox: true,
         // 업데이트 확인 다리 — 이 preload 가 렌더러에 노출하는 전부다.
         preload: join(dirname(fileURLToPath(import.meta.url)), "preload.cjs"),
         // 미리보기 무대(PreviewFrame)가 쓰는 <webview> — 이 창에만 켠다.

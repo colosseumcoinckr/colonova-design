@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "prepare": "lefthook install",
+    "dev": "pnpm --filter @colonova-design/web dev",
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r build && node --test packages/daemon/test/*.test.ts packages/desktop/test/*.test.ts packages/web/test/*.test.ts scripts/bench/*.test.mjs",

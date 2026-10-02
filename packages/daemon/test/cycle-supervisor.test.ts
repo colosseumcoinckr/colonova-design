@@ -413,6 +413,7 @@ async function openCycle(scene: SupervisedScene, branch: string): Promise<number
 test("S4 스쿼시 병합 뒤 남은 커밋 — 새 사이클 브랜치에 그 커밋만 이어진다", async () => {
   const scene = await makeSupervisedScene();
   try {
+    scene.authorName = "김기획";
     await scene.git(["checkout", "-b", BRANCH]);
     await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
     await scene.git(["push", "-u", "origin", BRANCH]);
@@ -426,7 +427,7 @@ test("S4 스쿼시 병합 뒤 남은 커밋 — 새 사이클 브랜치에 그 �
 
     const head = (await scene.git(["symbolic-ref", "--short", "HEAD"])).trim();
     assert.notEqual(head, BRANCH, "새 사이클 브랜치 위에 있어야 한다");
-    assert.ok(head.startsWith("colonova-design/"));
+    assert.match(head, /^colonova-design\/김기획\/\d{8}-\d+-[0-9a-f]{16}$/);
     const log = await scene.git(["log", "--format=%s", "origin/main..HEAD"]);
     assert.deepEqual(
       log.trim().split("\n"),

@@ -1,5 +1,6 @@
 // 저장 → 개발자에게 넘기기 → 반영됨: the publish cycle (PLAN D5[넘기기]).
 // Owns the in-flight cycle's handoff bookkeeping and the review replies.
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -55,17 +56,28 @@ export const ASSETS_BRANCH = "colonova-design-assets";
 /** 그 브랜치 안에서 캡처가 사는 폴더 — `<폴더>/<사이클 브랜치>/<이름>`. */
 const ASSETS_SHOTS_DIR = "shots";
 /**
- * 사이클 브랜치 이름 — 로컬 날짜로 짓는다(PLAN L4 · 단계 0). UTC 였을 때 아침
- * 9시 전의 이름이 어제 날짜로 남았다: 하루의 경계는 기계의 시간대가 아니라
- * 사용자의 것이다. 순수 함수 — 시험이 자정 경계를 직접 만든다.
+ * 사이클 브랜치 이름 — 작성자 · 로컬 날짜 · 번호 · 작업 식별자.
+ * 이름만으로 구분하면 동명이인이나 여러 기계의 동시 시작이 겹친다.
+ * 식별자는 고르기마다 새로 만들고, 결정된 이름은 기존 사이클 기록으로 재사용한다.
  */
-export function cycleBranchName(date: Date, n: number): string {
+export function cycleBranchName(
+  date: Date,
+  n: number,
+  authorName: string | null,
+  cycleId: string,
+): string {
+  // Git ref 의 금칙 문자와 경로 구분자는 빼고 한글 이름은 그대로 읽게 한다.
+  const cleaned = (authorName ?? "")
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{M}\p{N}_-]+/gu, "-")
+    .replace(/^-+|-+$/g, "");
+  const author = Array.from(cleaned).slice(0, 48).join("").replace(/-+$/g, "") || "user";
   const yyyymmdd = [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("");
-  return `${BRANCH_PREFIX}/${yyyymmdd}-${n}`;
+  return `${BRANCH_PREFIX}/${author}/${yyyymmdd}-${n}-${cycleId}`;
 }
 
 /**
@@ -105,10 +117,10 @@ export async function alignCycleBranch(
 }
 
 /**
- * 새 사이클 브랜치의 이름 고르기 (PLAN L4) — `<YYYYMMDD>-<n>` 을 올려 가며
- * 로컬 · 원격 어느 쪽에도 없는 첫 번호를 고른다. ensureCycleBranch 와
- * 감독자의 랜딩 이월이 함께 쓴다 — 두 곳이 같은 규칙으로 골라야 두 기계가
- * 같은 이름을 두고 다투지 않는다. 원격이 닿지 않으면 로컬만으로 고른다 —
+ * 새 사이클 이름 고르기 — 작성자와 무작위 64비트 식별자로 동시 시작을 구분하고,
+ * 번호를 올려 로컬 · 원격에 없는 이름을 고른다. 조회만으로 이름을 예약할 수
+ * 없으므로 작업 식별자가 필요하다. ensureCycleBranch 와 랜딩 이월이 함께 쓴다.
+ * 원격이 닿지 않으면 로컬만으로 고른다 —
  * 이름을 못 고르는 것이 저장을 막을 이유는 아니다(뒤의 push 가 진짜 문제를
  * 말한다).
  *
@@ -120,12 +132,13 @@ export async function alignCycleBranch(
 export async function pickCycleBranchName(
   git: (args: string[]) => Promise<string>,
   remote: string,
+  authorName: string | null = null,
 ): Promise<string> {
   const today = new Date();
+  const cycleId = randomBytes(8).toString("hex");
   let remoteConsultable = true;
-  let name = cycleBranchName(today, 1);
   for (let n = 1; n <= 99; n += 1) {
-    name = cycleBranchName(today, n);
+    const name = cycleBranchName(today, n, authorName, cycleId);
     if (remoteConsultable) {
       const remoteAnswer = await git(["ls-remote", "--heads", remote, name])
         .then((out) => (out.trim() !== "" ? "taken" : "free"))
@@ -139,9 +152,9 @@ export async function pickCycleBranchName(
     const takenLocal = await git(["rev-parse", "--verify", "--quiet", `refs/heads/${name}`]).catch(
       () => "",
     );
-    if (takenLocal.trim() === "") break;
+    if (takenLocal.trim() === "") return name;
   }
-  return name;
+  throw new Error("작업 브랜치 이름을 고르지 못했습니다 — 사용 중인 번호가 너무 많습니다");
 }
 
 /** The committed file's name part — the route, made safe for a path segment. */
@@ -358,12 +371,9 @@ export class PublishCycle {
    * The branch this cycle belongs on, checked out and created if this is the
    * first save since the last handoff was merged.
    *
-   * `<YYYYMMDD>-<n>` rather than a name derived from the work: the planner
-   * never reads it, and a title mined from the diff would be one more place a
-   * rename could break. `n` walks up until neither the remote NOR the local
-   * clone has such a branch, so two machines on one project cannot collide —
-   * and a name the local clone still holds (원격은 지웠는데 로컬에 남은) is
-   * not handed to `checkout -b`, which would refuse it (PLAN L4).
+   * 작성자로 소유자를 표시하고 무작위 식별자로 동시 작업을 구분한다.
+   * 로컬 · 원격에 남은 이름은 번호를 올려 피한다. 기록된 브랜치가 있으면
+   * 작성자 설정이 바뀌어도 그 사이클은 같은 이름으로 이어진다.
    */
   async ensureCycleBranch(): Promise<string> {
     if (this.core.branch) {
@@ -376,6 +386,7 @@ export class PublishCycle {
     const name = await pickCycleBranchName(
       (args) => this.core.git(args),
       this.core.url ?? "origin",
+      this.core.authorName?.() ?? null,
     );
 
     // `-b` 이지 `-B` 가 아니다(PLAN L4 · 단계 0): 위 고르기가 로컬 · 원격

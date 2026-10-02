@@ -1055,7 +1055,11 @@ export class CycleSupervisor {
       this.log("랜딩 실패: 끝난 사이클의 브랜치를 찾을 수 없습니다");
       return false;
     }
-    const newBranch = await pickCycleBranchName((args) => core.git(args), core.url ?? "origin");
+    const newBranch = await pickCycleBranchName(
+      (args) => core.git(args),
+      core.url ?? "origin",
+      core.authorName?.() ?? null,
+    );
     let carried = 0;
     const pendingLand = (): NonNullable<CyclePendingOp["land"]> => ({
       outcome: action.outcome,

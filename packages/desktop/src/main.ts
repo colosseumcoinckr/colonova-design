@@ -1,12 +1,18 @@
 import { randomBytes } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { bundledToolEnv, COLONOVA_DESIGN_DATA_DIR } from "@colonova-design/daemon/environment";
 import type { DaemonNotice } from "@colonova-design/daemon/server";
 // 서브패스로 가져온다 — 루트 진입점은 CLI 라 가져오는 순간 실행된다.
-import { DaemonServer, daemonOwnedPorts } from "@colonova-design/daemon/server";
-import { app, BrowserWindow, dialog, Menu, safeStorage, shell } from "electron";
+import {
+  DaemonServer,
+  daemonOwnedPorts,
+  eraseProjectConversations,
+} from "@colonova-design/daemon/server";
+import { app, BrowserWindow, dialog, Menu, safeStorage, session, shell } from "electron";
 import { PlannerNotices } from "./app-notify.js";
+import { assertResetPaths, finishPendingAppReset, requestAppReset } from "./app-reset.js";
 import { SelfUpdates } from "./app-updates.js";
 import { loadAppZoom, saveAppZoom, stepZoom } from "./app-zoom.js";
 import { benchEndpointBody, benchEndpointPath, benchEndpointPid } from "./bench-endpoint.js";
@@ -183,6 +189,25 @@ function removeBenchEndpoint(): void {
 }
 
 async function bootApp(): Promise<void> {
+  const resetPaths = {
+    dataDir: COLONOVA_DESIGN_DATA_DIR,
+    userData: app.getPath("userData"),
+    home: homedir(),
+    appPath: app.getAppPath(),
+  };
+  await finishPendingAppReset(resetPaths, process.env, {
+    eraseConversations: eraseProjectConversations,
+    clearBrowserData: async () => {
+      for (const browser of [session.defaultSession, session.fromPartition("persist:preview")]) {
+        await browser.clearStorageData();
+        await browser.clearCache();
+      }
+    },
+  }).catch((error: unknown) => {
+    throw new Error(
+      `초기화를 마치지 못했어요. 일부 데이터는 이미 지워졌을 수 있어요. 앱을 다시 실행하면 남은 정리를 이어갑니다.\n${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
   // Windows 토스트 알림은 시작 메뉴 바로 가기의 AUMID 로 귀속된다. NSIS 템플릿은
   // 바로 가기에 appId 를 새기므로 같은 문자열을 여기서 직접 건다 — Squirrel 이
   // 하던 자동 맞춤이 NSIS 에는 없고, 어긋난 채 띄운 알림은 Windows 가 조용히
@@ -381,6 +406,29 @@ async function bootApp(): Promise<void> {
     logsDir: LOGS_DIR,
     settingsPath: desktopSettingsPath,
     lastRendererCrash: () => host.takeRendererCrash(),
+    requestReset: async () => {
+      assertResetPaths(resetPaths, process.env);
+      const options = {
+        type: "warning" as const,
+        title: "처음부터 다시 시작",
+        message: "이 컴퓨터의 모든 프로젝트와 설정을 지울까요?",
+        detail:
+          "프로젝트 파일, 대화와 작업 기록, 앱 설정, 초대장 연결 정보를 지워요. 목록에서 삭제했지만 컴퓨터에 남아 있는 프로젝트도 포함돼요. 제출하지 않은 작업은 되돌릴 수 없어요.\n\n이미 개발자에게 제출한 작업과 Claude·Codex 로그인은 유지돼요. 앱이 다시 열리면 새 초대 파일을 넣어 주세요.",
+        buttons: ["취소", "모두 지우고 다시 시작"],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      };
+      const result = host.window
+        ? await dialog.showMessageBox(host.window, options)
+        : await dialog.showMessageBox(options);
+      if (result.response !== 1) return { cancelled: true };
+      requestAppReset(resetPaths, process.env);
+      stopUnderTurnAllowed = true;
+      app.relaunch();
+      app.quit();
+      return { restarting: true };
+    },
   });
   void updates.reportSwapResult();
   updates.schedule();

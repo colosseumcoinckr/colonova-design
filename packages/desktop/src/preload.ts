@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld("colonovaDesignDesktop", {
   platform: process.platform,
   updateCheck: () => ipcRenderer.invoke("desktop:update-check"),
   selfUpdate: () => ipcRenderer.invoke("desktop:self-update"),
+  reset: () => ipcRenderer.invoke("desktop:reset"),
   openHome: (target?: "logs") => ipcRenderer.invoke("desktop:open-home", target),
   /** 알림 정책(시점·소리)을 메인에 반영한다 — 창이 닫혀도 정책이 살아 있게. */
   setNotificationPrefs: (prefs: { done: string; sound: boolean }) =>

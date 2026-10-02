@@ -23,6 +23,7 @@ export interface BridgeDeps {
   settingsPath(): string;
   /** 직전 렌더러 사망 기록(크래시 방어 층 3) — 렌더러가 부팅 때 읽는다. */
   lastRendererCrash(): { reason: string; at: number } | null;
+  requestReset(): Promise<{ cancelled?: boolean; restarting?: boolean }>;
 }
 
 export function registerDesktopBridge(deps: BridgeDeps): void {
@@ -30,6 +31,19 @@ export function registerDesktopBridge(deps: BridgeDeps): void {
 
   ipcMain.handle("desktop:update-check", () => updates.check());
   ipcMain.handle("desktop:self-update", () => updates.install());
+  let resetting = false;
+  ipcMain.handle("desktop:reset", async (event) => {
+    // Only the app's top-level renderer can open the native destructive confirmation.
+    if (event.senderFrame !== event.sender.mainFrame || resetting) return { cancelled: true };
+    resetting = true;
+    try {
+      return await deps.requestReset();
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    } finally {
+      resetting = false;
+    }
+  });
 
   // `폴더 열기`(PLAN D2[폴더 열기]): 숨긴 `~/.colonova-design` 을 사용자가
   // 찾아 헤매지 않게 앱이 열어 준다.

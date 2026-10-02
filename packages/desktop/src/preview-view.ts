@@ -8,6 +8,7 @@ import type {
 import { type BrowserWindow, ipcMain, nativeImage, shell, type WebContents } from "electron";
 import { ownersOfElement } from "./element-identity.js";
 import { VIEWPORT_METRICS } from "./emulation.js";
+import { isPinEnvelope, isPinFocus } from "./pin-envelope.js";
 
 /**
  * 사용자의 미리보기 (PLAN D64 → webview 전환). The planner's preview pane is
@@ -1041,10 +1042,14 @@ export class PlannerPreviewView {
       // (베타 테스트 #2).
       if (this.agentInputDepth > 0) return;
       // inside is logged, never an unhandled rejection.
-      void this.relayPin(payload as ColoNovaDesignPinEnvelope).catch((error) => {
+      // 페이지 스크립트가 만들 수 있는 payload 를 검증 없이 믿지 않는다
+      // (2026-10-02) — 봉투의 모양 · 크기가 아니면 통째로 버린다.
+      if (!isPinEnvelope(payload)) return;
+      void this.relayPin(payload).catch((error) => {
         console.error("preview pin relay failed", error);
       });
     } else if (type === "colonova-design.pin-focus" && this.activePage === page) {
+      if (!isPinFocus(payload)) return;
       this.send("colonova-preview:pin-focus", payload);
     }
   }

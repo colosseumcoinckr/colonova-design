@@ -1,51 +1,48 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { createFileLogger } from "../dist/log.js";
 
-test("비밀·이메일·계정 경로는 눌러 닫힌다", () => {
+/**
+ * 로그의 정화는 message 와 fields 둘 다 지난다(2026-10-02). message 만 흘려
+ * 보내던 시절, 호출자가 문장에 실은 사용자 경로 · 토큰이 그대로 남었다.
+ */
+test("로그: message 와 fields 모두에서 사용자 경로 · 비밀이 걷힌다", () => {
   const dir = mkdtempSync(join(tmpdir(), "colonova-log-"));
   try {
-    const logger = createFileLogger({ dir, now: () => new Date("2026-09-22T00:00:00Z") });
-    logger.error("요청 실패", {
-      detail:
-        "fatal: Authentication failed for https://x-access-token:ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ@github.com/owner/repo.git",
-      contact: "planner@example.com",
-      cwd: "/Users/developjik/.colonova-design/projects/my-repo/repo",
-      slack: "https://hooks.slack.com/services/T000/B000/XXXXXXXXXXXXXXXXXXXXXXXX",
-      bearer: "Bearer eyJhbGciOi.eyJzdWIi.TL0",
+    const logger = createFileLogger({
+      dir,
+      now: () => new Date("2026-10-02T09:00:00Z"),
     });
-    const line = readFileSync(join(dir, "daemon-2026-09-22.log"), "utf8");
-    assert.match(line, /\{secret\}@github\.com/);
-    assert.doesNotMatch(line, /ghp_[A-Za-z0-9_]+/);
-    assert.match(line, /\{email\}/);
-    assert.doesNotMatch(line, /planner@example\.com/);
-    // 계정 이름만 닫힌다 — 나머지 경로는 지원의 단서로 남는다.
-    assert.match(line, /~\/\.colonova-design\/projects\/my-repo\/repo/);
-    assert.doesNotMatch(line, /developjik/);
-    assert.match(line, /"slack":"https:\/\/\{secret\}"/); // 도메인까지 통째로
-    assert.doesNotMatch(line, /hooks\.slack\.com/);
-    assert.match(line, /Bearer \{secret\}/);
+    logger.info("보관 실패 /Users/alice/repo/pages/Home.tsx (ghp_ABCDEFGHIJKLMNOPQRST12)", {
+      detail: "/Users/alice/repo/또다른파일.ts",
+      email: "alice@example.com",
+    });
+    const files = readdirSync(dir);
+    assert.equal(files.length, 1);
+    const line = readFileSync(join(dir, files[0]!), "utf8");
+    assert.ok(!line.includes("/Users/alice"), "message 의 계정 경로가 그대로 남으면 안 된다");
+    assert.ok(!line.includes("ghp_ABCDEFGHIJKLMNOPQRST12"), "토큰이 그대로 남으면 안 된다");
+    assert.ok(!line.includes("alice@example.com"), "이메일이 그대로 남으면 안 된다");
+    assert.ok(line.includes("~"), "계정 뿌리는 ~ 로 눌러 담는다");
+    assert.ok(line.includes("{secret}"), "토큰은 {secret} 로 바뀐다");
+    assert.ok(line.includes("보관 실패"), "문장 자체는 남는다 — 종류가 로그의 일이다");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("정상 문장과 중첩 값은 그대로 남는다", () => {
+test("로그: 줄바꿈이 있던 message 도 한 줄로 눌러 담긴다", () => {
   const dir = mkdtempSync(join(tmpdir(), "colonova-log-"));
   try {
-    const logger = createFileLogger({ dir, now: () => new Date("2026-09-22T00:00:00Z") });
-    logger.info("클라이언트 연결", {
-      clients: 2,
-      nested: { note: "저장이 성립했습니다", err: new Error("read ECONNRESET on /home/dev/app") },
-    });
-    const line = readFileSync(join(dir, "daemon-2026-09-22.log"), "utf8");
-    assert.match(line, /저장이 성립했습니다/);
-    assert.match(line, /~/); // Error 의 message 도 샌다 — /home/dev 가 ~ 로
-    assert.doesNotMatch(line, /\/home\/dev/);
-    assert.match(line, /"clients":2/);
+    const logger = createFileLogger({ dir, now: () => new Date("2026-10-02T09:00:00Z") });
+    logger.warn("첫 줄\n둘째 줄");
+    const [name] = readdirSync(dir);
+    const lines = readFileSync(join(dir, name!), "utf8").trim().split("\n");
+    assert.equal(lines.length, 1);
+    assert.ok(lines[0]!.includes("⏎"));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

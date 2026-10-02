@@ -17,6 +17,7 @@ import type {
 import { readTurn } from "@colonova-design/protocol";
 import type { AgentSession, DriverHooks, PermissionVerdict, ToolClass } from "./agent/driver.js";
 import { GIT_WRITE_REFUSAL, gitWriteDenied } from "./git-guard.js";
+import { sanitizeText } from "./log.js";
 import { containsPath, realpathBestEffort } from "./paths.js";
 import { permissionLog } from "./permission-log.js";
 import { pinEffortFor } from "./pin-effort.js";
@@ -40,7 +41,7 @@ export function asPlannerFacingError(error: unknown): Error {
   const detail = error instanceof Error ? error.message : String(error);
   if (/[\p{Script=Hangul}]/u.test(detail))
     return error instanceof Error ? error : new Error(detail);
-  console.error(`[session] 전송이 거절됐습니다: ${detail}`);
+  console.error(`[session] 전송이 거절됐습니다: ${sanitizeText(detail)}`);
   return new Error(
     "에이전트와의 대화가 방금 끊겼습니다 — 입력창의 말을 잠시 뒤 다시 보내면 이어집니다.",
   );

@@ -126,9 +126,11 @@ export function createFileLogger(options?: { dir?: string; now?: () => Date }): 
         pruneOldLogs(dir, at, RETENTION_DAYS);
       }
       lastDay = day;
-      // 한 줄에 실을 수 없는 말은 한 줄로 눌러 담는다 — 파일은 줄 단위로 읽힌다.
+      // message 도 정화를 지난다(2026-10-02) — 호출자가 사용자 경로나 비밀을
+      // 문장에 실어도 로그는 종류와 흔적만 남는다. 한 줄에 실을 수 없는 말은
+      // 한 줄로 눌러 담는다 — 파일은 줄 단위로 읽힌다.
       const line =
-        `${at.toISOString()}\t${level}\t${message.replace(/\r?\n/g, " ⏎ ")}` +
+        `${at.toISOString()}\t${level}\t${sanitizeText(message).replace(/\r?\n/g, " ⏎ ")}` +
         (fields && Object.keys(fields).length > 0
           ? `\t${JSON.stringify(serializable(fields))}`
           : "") +

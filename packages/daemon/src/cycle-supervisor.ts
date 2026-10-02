@@ -338,7 +338,7 @@ export class CycleSupervisor {
   recordToolOp(op: CyclePendingOp): void {
     this.ledger = { ...this.ledger, pendingOp: op };
     writeLedger(this.ledgerPath, this.ledger);
-    this.log(`pendingOp 기록: ${op.kind} (${op.files.join(", ")})`);
+    this.log(`pendingOp 기록: ${op.kind} (파일 ${op.files.length}개)`);
     void this.tick("tool-conflict");
   }
 

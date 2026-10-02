@@ -18,7 +18,9 @@ const NAMES: Record<string, string> = {
   WebFetch: "웹 읽기",
   WebSearch: "웹 찾아보기",
   TodoWrite: "할 일 정리",
+  // 서브에이전트 도구 — 옛 CLI 는 `Task`, SDK 0.3.x 타입은 `Agent`(2026-10-02). 둘 다 같은 일이다.
   Task: "보조 작업",
+  Agent: "보조 작업",
   AskUserQuestion: "질문",
 };
 

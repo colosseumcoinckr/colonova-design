@@ -318,6 +318,14 @@ export function reviewToTurn(reviews: DeveloperReview[], opts: { intro?: string 
       const where = `(#${review.id})${at ? ` (${at})` : ""}`;
       return `${index + 1}. ${review.author} ${where}: ${review.body}`;
     }),
+    "",
+    // 끝의 기준(2026-10-02, claude.dev 「Opus 5.5」) — 코멘트마다 답이 있는 것. 범위는 코멘트가
+    // 가리킨 자리로 묶는다 — 반영 턴이 요청에 없던 정리를 함께 싣는 일을 막는다.
+    REVIEW_FINISH_LINE,
   ];
   return markTurn(marker, lines.join("\n"));
 }
+
+/** 코멘트 반영 턴의 끝의 기준 — reviewToTurn 이 마지막 줄로 싣는다. */
+export const REVIEW_FINISH_LINE =
+  "끝의 기준: 코멘트마다 반영했거나 반영하지 않은 이유가 답변 끝의 `개발자에게 (#<id>):` 줄에 있는 것입니다 — 코멘트가 가리키지 않은 화면과 파일은 손대지 마세요.";

@@ -201,7 +201,16 @@ export interface RepoStatus {
    * 지도에서 온다. `note` 는 그 커밋의 제목(=사용자의 말 첫 줄). 웹은 파생하지
    * 않는다. 아직 채우지 않는 데몬은 키를 싣지 않는다.
    */
-  cycleScreens?: Array<{ route: string; title: string; note: string; at: string }>;
+  cycleScreens?: Array<{
+    route: string;
+    title: string;
+    note: string;
+    at: string;
+    kind?: RepoHistoryKind;
+    sha?: string;
+    sessionId?: string;
+    requestId?: string;
+  }>;
 
   /**
    * 제출의 진행과 막힘 (PLAN-UI U13) — 원장의 `submit` 과 개발자 알림에서
@@ -390,11 +399,38 @@ export interface RepoHistoryEntry {
   at: string;
   /** Files the save carried, relative to the repo root. */
   files: string[];
+  /** The kind of an app-created history event, when known. */
+  kind?: RepoHistoryKind;
 }
 
+/** Generated repository events shown with a plain language label in the app. */
+export type RepoHistoryKind = "merge" | "restore" | "comment";
+
 /** `repo.history` — the cycle's saves, newest first (PLAN D53). */
+export interface SubmitPreview {
+  /** Immutable saved content and developer baseline used for this review. */
+  expectedPreview: string;
+  head: string;
+  repo: RepoStatus;
+  history: RepoHistory;
+  /** Unique files whose final content differs from the current developer baseline. */
+  finalFiles: string[];
+}
+
 export interface RepoHistory {
   /** What the entries are counted against, e.g. `origin/main`. */
   base: string;
   entries: RepoHistoryEntry[];
+}
+
+/** Local pictures of an actual request, never inferred from repeated wording. */
+export interface ScreenComparison {
+  requestId: string;
+  sessionId: string;
+  sha: string;
+  route: string;
+  title: string;
+  viewport: "desktop";
+  before: { at: string; mediaType: string; data: string } | null;
+  after: { at: string; mediaType: string; data: string } | null;
 }

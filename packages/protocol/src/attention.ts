@@ -10,7 +10,7 @@
 
 export type Attention =
   | { kind: "ai-fixing"; since: string }
-  | { kind: "developer-notified"; since: string; via: "pr" | "issue" | "slack" }
+  | { kind: "developer-notified"; since: string; via: "pr" | "issue" | "slack"; key?: string }
   | { kind: "reconnect"; since: string; what: "github" | "agent-login" };
 
 /** 서 있는 개발자 알림의 최소 모양 — 원장(cycle.json notices)의 값과 같다. */
@@ -39,11 +39,11 @@ export function composeAttention(parts: AttentionParts): Attention | null {
   if (parts.reconnect) {
     return { kind: "reconnect", since: parts.reconnect.since, what: parts.reconnect.what };
   }
-  const notices = Object.values(parts.notices ?? {});
+  const notices = Object.entries(parts.notices ?? {}).map(([key, notice]) => ({ key, ...notice }));
   if (notices.length > 0) {
     // 가장 오래 서 있는 알림의 경로와 시각 — 문제가 둘 이상이어도 문장은 하나다.
     const first = notices.reduce((a, b) => (a.raisedAt <= b.raisedAt ? a : b));
-    return { kind: "developer-notified", since: first.raisedAt, via: first.via };
+    return { kind: "developer-notified", since: first.raisedAt, via: first.via, key: first.key };
   }
   if (parts.aiFixingSince) {
     return { kind: "ai-fixing", since: parts.aiFixingSince };

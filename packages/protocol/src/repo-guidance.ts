@@ -86,10 +86,18 @@ export interface Guidance {
   agent?: AgentAsk;
 }
 
+/**
+ * 준비 회복 브리프의 끝의 기준(2026-10-02, claude.dev 「Opus 5.5」: 끝나는 선을 이름
+ * 붙이라) — 멈춘 단계를 넘어가는 것이지 "고쳤다"가 아니고, 확인은 도구가 준비를 다시
+ * 돌려서 한다. git 쓰기 동사를 쓰지 않는다(git-write-gate 시험이 브리프를 거른다).
+ */
+export const BRING_UP_FINISH_LINE =
+  "끝의 기준: 준비(내려받기 · 설치 · 미리보기 켜기)가 멈춘 단계를 넘어가는 것입니다 — 확인은 도구가 준비를 다시 돌려서 합니다. 그 밖의 화면과 파일은 손대지 마세요.";
+
 const ask = (step: string, thread: string, lead: string, detail: string | null): AgentAsk => ({
   step,
   thread,
-  brief: detail ? `${lead}\n\n${detail}` : lead,
+  brief: `${detail ? `${lead}\n\n${detail}` : lead}\n\n${BRING_UP_FINISH_LINE}`,
 });
 
 export function guidanceFor(kind: ErrorKind, detail: string | null): Guidance {

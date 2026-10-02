@@ -530,6 +530,14 @@ const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     ...withId,
     type: z.literal("repo.submit"),
+    expectedHead: z
+      .string()
+      .regex(/^[a-f0-9]{40,64}$/)
+      .optional(),
+    expectedPreview: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
     /** 이 대화에 제출 카드가 귀속된다 (cycle.handed 사건의 줄). */
     sessionId: z.string().min(1).optional(),
     /** 제출 확인의 `개발자에게 한마디`(PLAN-UI U3) — 요청 본문의 `> 한마디:` 줄. */
@@ -583,6 +591,18 @@ const clientMessageSchema = z.discriminatedUnion("type", [
    * is what the `저장 기록` drawer lists — messages and times, no git words.
    */
   z.object({ ...withId, type: z.literal("repo.history") }),
+  z.object({ ...withId, type: z.literal("repo.submitPreview") }),
+  z.object({
+    ...withId,
+    type: z.literal("repo.comparison"),
+    submitted: z.boolean().optional(),
+    route: z.string().min(1).max(2000),
+    requestId: z.string().min(1).max(200).optional(),
+    sha: z
+      .string()
+      .regex(/^[a-f0-9]{40,64}$/)
+      .optional(),
+  }),
   /**
    * 되돌리기 (PLAN D53): bring the worktree back to a saved point as a NEW
    * commit on the cycle branch — never reset · revert · force-push, because

@@ -46,7 +46,22 @@ export type QueuedSendPayload = {
   pins?: Array<{ screen: string }>;
 } | null;
 
+/**
+ * 한 턴의 토큰 · 비용 — 프로바이더 중립 이름. `input` 은 캐시를 뺀 새 입력, `cacheRead` 는
+ * 캐시에서 읽은 입력, `cacheWrite` 는 캐시에 적은 입력(모르는 프로바이더는 null), `output`
+ * 은 생각을 포함한 출력. `costUsd` 는 정가 기준 추정(Claude 만, Codex 는 null) — 구독에서는
+ * 일의 양을 재는 눈금이지 청구서가 아니다.
+ */
+export interface TurnUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number | null;
+  costUsd: number | null;
+}
+
 export type ChatEvent =
+  | { kind: "gate.result"; requestId: string; result: GateResult }
   | {
       kind: "init";
       sessionId: string;
@@ -94,7 +109,15 @@ export type ChatEvent =
    * replayed transcript keeps the words, not the bytes.
    */
   | {
+      kind: "screens.saved";
+      requestId: string;
+      screens: Array<{ route: string; title: string }>;
+    }
+  | {
       kind: "user.echo";
+      requestId?: string;
+      changedScreens?: Array<{ route: string; title: string }>;
+      gateResult?: GateResult;
       text: string;
       images: number;
       /** Non-image attachment names — the card lists what it cannot thumb. */
@@ -105,11 +128,21 @@ export type ChatEvent =
       kind: "turn.end";
       subtype: string;
       isError: boolean;
+      /**
+       * 프로바이더가 보고한 비용 — Claude 는 SDK result 의 `total_cost_usd`, 즉 이
+       * query() 의 **누적** 추정치다(턴의 몫이 아니다). 턴 하나의 몫은 `usage` 에 있다.
+       */
       costUsd: number | null;
       numTurns: number | null;
       durationMs: number | null;
       /** Present when the turn ended because the model declined. */
       resultText: string | null;
+      /**
+       * 이 턴이 쓴 토큰 · 비용(2026-10-02) — 프로바이더가 알려 준 턴에만 있다. 턴 통계가
+       * 캐시 적중률 · 턴당 비용의 재료로 쓴다(claude.dev 「What a task costs」의 네 변수:
+       * 턴 수 · 캐시 읽기 · 출력 · 모델).
+       */
+      usage?: TurnUsage;
       /**
        * 사다리를 다 쓴 실패(PLAN L12) — 개발자 알림(turn:failed)이 나갔다는
        * 표식. 실패 카드가 `개발자에게 알렸어요` 한 줄을 이유 옆에 싣는다.
@@ -270,6 +303,14 @@ export type ChatEvent =
   | { kind: "cycle.carried"; at: string; from: string; to: string; commits: number }
   | { kind: "review.arrived"; reviews: DeveloperReview[] };
 
+export type GateResult =
+  | "verified"
+  | "remaining"
+  | "unchanged"
+  | "unverified"
+  | "failed"
+  | "interrupted";
+
 // ---------------------------------------------------------------------------
 // Session summaries and replies
 // ---------------------------------------------------------------------------
@@ -401,6 +442,8 @@ export interface SessionModelInfo {
 
 /** What the composer's model·노력 chips show and switch, per session. */
 export interface SessionSelectors {
+  /** False only when a legacy stored conversation has no recoverable selection metadata. */
+  selectionKnown?: boolean;
   /** Currently pinned model, or the CLI's own choice when never pinned. */
   model: string | null;
   effort: EffortLevel | null;

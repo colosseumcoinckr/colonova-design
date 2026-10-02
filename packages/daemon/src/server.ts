@@ -807,6 +807,14 @@ export class DaemonServer {
             this.screenMapDue.delete(sessionId);
             this.drivers.pinnedThisTurn.delete(sessionId);
             this.drivers.gatedSessions.delete(sessionId);
+            // 턴의 장부도 세션과 함께 간다(2026-10-02) — 기준 스냅숏 · 바뀐
+            // 파일 · 게이트 대기 · 판정 · 재시도 횟수가 살아 있는 세션 수만큼
+            // 쌓이던 긴 실행의 샘이었다.
+            this.turnBaselines.delete(sessionId);
+            this.changedTurnFiles.delete(sessionId);
+            this.gateRequests.delete(sessionId);
+            this.turnEnds.delete(sessionId);
+            this.gateFallbackCount.delete(sessionId);
             // 브라우저 시크릿도 세션과 함께 간다(3단계) — 남은 자식의 비밀로
             // 닫힌 세션의 브라우저를 몰 수 없게.
             for (const [secret, candidate] of this.browserSecrets) {

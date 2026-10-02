@@ -111,6 +111,11 @@ export const L = {
     calm: "기다리는 일이 없어요",
     running: "지금 진행 중",
     recent: "방금 있던 일",
+    workingTool: (tool: string) => `${tool} 하는 중이에요`,
+    working: "작업하는 중이에요",
+    untitled: "대화",
+    doneFailed: "AI가 답을 못 했어요 — 다시 시도할 수 있어요",
+    doneArrived: "답이 왔어요 — 확인해 보세요",
   },
   narrow: {
     chatTab: "대화",

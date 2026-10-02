@@ -3,10 +3,10 @@ import { useMemo, useState } from "react";
 import { toolHeadline } from "../../components/transcript/shared";
 import type { Daemon } from "../../lib/daemon-client";
 import { timeAgo } from "../../lib/format";
-import { type AskingItem, buildHomeFeed } from "../../lib/home-feed";
 import { bashHeadline, toolLabel } from "../../lib/labels";
 import { L } from "../labels";
 import { connectionLock } from "../lib/connection-copy";
+import { type AskingItem, buildHomeFeed } from "../lib/home-feed";
 import { isPreparing } from "../lib/project-note";
 import { agentUpdateEvents } from "../lib/update-row";
 import { useFreshKeys } from "../lib/use-fresh-keys";
@@ -70,7 +70,7 @@ export function HomeInbox({
   onSwitch: (slug: string) => void;
 }) {
   const feed = useMemo(
-    () => buildHomeFeed(daemon.pending, daemon.sessions, daemon.projects, daemon.activeSlug),
+    () => buildHomeFeed(daemon.pending, daemon.sessions, daemon.projects, daemon.activeSlug, L),
     [daemon.pending, daemon.sessions, daemon.projects, daemon.activeSlug],
   );
   const active = daemon.projects.find((project) => project.slug === daemon.activeSlug) ?? null;

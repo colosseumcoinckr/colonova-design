@@ -3,10 +3,13 @@ import type {
   PermissionSuggestion,
   ProjectSummary,
 } from "@colonova-design/protocol";
-import type { PendingPermission, PendingQuestion, SessionView } from "./daemon-client";
-import { toolLabel } from "./labels";
+import type { PendingPermission, PendingQuestion, SessionView } from "../../lib/daemon-client";
+import { toolLabel } from "../../lib/labels";
+import type { L } from "../labels";
 
 type Pending = PendingPermission | PendingQuestion;
+/** 문장의 주인 — `L.home`. 칸을 통째로 건네므로 죽은 문장 시험이 지킨다. */
+export type HomeFeedWords = Pick<typeof L, "home">;
 
 /** 질문형 결정 카드 — 즉답 칩은 단일 질문·단일 선택일 때만 있다. */
 interface AskingQuestion {
@@ -90,15 +93,16 @@ export interface HomeFeed {
  * 지금 진행 중 카드의 한 줄 — 서브에이전트(Task 도구) 경유 작업이면 그 설명을
  * 그대로 쓰고, 아니면 마지막으로 돈 도구의 한국어 이름으로 낮춘다.
  * 아무 신호도 없으면(막 시작해 블록이 쌓이기 전) 빈 문장을 보이지 않는다.
+ * 문장은 `L.home` 이 정한다(2026-10-02) — 이 파일은 next 의 것이다.
  */
-function lastActionLine(view: SessionView): string {
+function lastActionLine(view: SessionView, words: HomeFeedWords): string {
   const task = view.tasks.find((item) => item.description.trim().length > 0);
   if (task) return task.description.trim();
   for (let i = view.blocks.length - 1; i >= 0; i--) {
     const block = view.blocks[i];
-    if (block?.type === "tool") return `${toolLabel(block.name)} 하는 중이에요`;
+    if (block?.type === "tool") return words.home.workingTool(toolLabel(block.name));
   }
-  return "작업하는 중이에요";
+  return words.home.working;
 }
 
 /**
@@ -117,11 +121,12 @@ export function buildHomeFeed(
   sessions: Record<string, SessionView>,
   projects: ProjectSummary[],
   activeSlug: string | null,
+  words: HomeFeedWords,
 ): HomeFeed {
   const activeProject = projects.find((project) => project.slug === activeSlug) ?? null;
   const threads = activeProject?.threads ?? [];
   const threadById = new Map(threads.map((thread) => [thread.id, thread]));
-  const titleFor = (sessionId: string) => threadById.get(sessionId)?.title ?? "대화";
+  const titleFor = (sessionId: string) => threadById.get(sessionId)?.title ?? words.home.untitled;
 
   // 질문형·권한형: 데몬이 준 순서는 도착 순이지 발생 순이 아니다 —
   // 타임스탬프가 없는 한 "최신이 맨 위"는 근사값일 뿐이니, 도착이 늦은
@@ -182,7 +187,7 @@ export function buildHomeFeed(
       running.push({
         sessionId: thread.id,
         title: thread.title,
-        line: lastActionLine(view),
+        line: lastActionLine(view, words),
         turnStartedAt: view.turnStartedAt,
       });
     } else if (thread.state === "finished") {
@@ -192,10 +197,7 @@ export function buildHomeFeed(
       done.push({
         sessionId: thread.id,
         title: thread.title,
-        line:
-          view?.state === "error"
-            ? "AI가 답을 못 했어요 — 다시 시도할 수 있어요"
-            : "답이 왔어요 — 확인해 보세요",
+        line: view?.state === "error" ? words.home.doneFailed : words.home.doneArrived,
         at: Date.parse(thread.updatedAt) || 0,
       });
     }

@@ -141,3 +141,48 @@ test("vocab: 면제 목록의 파일이 모두 있다 — 지운 파일의 면�
     [],
   );
 });
+
+/**
+ * 2026-10-02: 사용자 문장의 갈 곳은 `next/labels.ts` 하나다. next/ 안은
+ * next-labels.test.ts 가 지키므로 여기는 그 밖 — 낡은 면(components · lib ·
+ * hooks)의 한국어 리터럴을 얼어 붙인다. 면제는 파일과 사유를 함께 적는다.
+ * 새 문장은 L 에 두고, 면제를 더할 때는 사유에 날짜를 단다.
+ */
+const KOREAN_EXEMPT: Record<string, string> = {
+  "ConnectScreen.tsx": "브라우저 개발 경로의 연결 화면 — 데몬 주소를 붙여넣는 개발자의 화면",
+  "lib/preview-turns.ts": "AI 가 읽는 턴 본문(핀 · 오류 · 화면 보여 주기) — 카드로 접어 그린다",
+  "lib/transcript-export.ts": "내보낸 markdown 의 머리 — 파일을 받는 개발자가 읽는다",
+  "components/CopyButton.tsx": "낡은 공용 단추의 복사 · 복사됨",
+  "components/Markdown.tsx": "대화록 마크다운의 접기 · 복사 · 표 — 낡은 면의 어휘",
+  "components/dialogs/ShortcutsSheet.tsx": "낡은 단축키 장의 제목 · 닫기",
+  "components/transcript/activity.tsx": "낡은 대화록의 활동 머리",
+  "components/transcript/blocks.tsx": "낡은 대화록의 도구 · 생각 카드",
+  "components/transcript/shared.ts": "낡은 대화록의 시각 · 날짜 읽기",
+  "components/transcript/todo.tsx": "낡은 대화록의 할 일 카드",
+  "lib/chat-options.ts": "노력 안내 문장 — 설정과 칩이 함께 읽는다",
+  "lib/daemon-client.ts": "선로 사건을 카드로 접는 층의 문장 — L 이동은 별도 작업로 둔다",
+  "lib/error-words.ts": "오류 id → 한국어 문장의 사전",
+  "lib/format.ts": "시각 읽기(방금 · N분 전) — 낡은 대화록과 함께 쓴다",
+  "lib/invite-import.ts": "초대 파일 오류 안내",
+  "lib/labels.ts": "낡은 게이트 · 도구 이름 묶음 — 개발자 면",
+  "lib/thread-visibility.ts":
+    "도구 대화의 고정 제목 — 표시 판정의 열쇠. 선로 상수로 옮기는 것이 다음 걸음이다(2026-10-02)",
+  "lib/preview-address.ts": "주소창 오류 안내",
+  "hooks/usePins.ts": "코멘트 기록 실패 안내",
+};
+
+test("vocab: next/ 밖의 한국어 리터럴은 면제 목록의 파일에만 산다(동결)", () => {
+  const root = join(import.meta.dirname, "../src");
+  const files = sourceFiles(root).filter((file) => !relative(root, file).startsWith("next/"));
+  const carrying: string[] = [];
+  for (const file of files) {
+    const { literals, code } = splitSource(readFileSync(file, "utf8"));
+    if (literals.some((text) => HANGUL.test(text)) || HANGUL.test(code)) {
+      carrying.push(relative(root, file));
+    }
+  }
+  const unlisted = carrying.filter((file) => !(file in KOREAN_EXEMPT));
+  assert.deepEqual(unlisted, []);
+  const idle = Object.keys(KOREAN_EXEMPT).filter((file) => !carrying.includes(file));
+  assert.deepEqual(idle, []);
+});

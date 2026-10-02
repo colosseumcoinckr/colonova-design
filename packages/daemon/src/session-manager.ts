@@ -339,9 +339,15 @@ export class SessionManager {
     const session = this.get(sessionId);
     if (!session) return;
     this.rememberIdentity(session.id);
-    await session.close(reason);
-    this.live.delete(session.id);
-    this.settledTurns.delete(session.id);
+    // close 가 던져도 명단에서 지운다(2026-10-02) — throw 가 남긴 좀비 세션이
+    // 같은 id 를 계속 돌려주고 closeAll 을 거절하던 길이었다. 지움은 close 의
+    // 성패와 무관하다.
+    try {
+      await session.close(reason);
+    } finally {
+      this.live.delete(session.id);
+      this.settledTurns.delete(session.id);
+    }
   }
 
   /**
@@ -392,8 +398,10 @@ export class SessionManager {
 
   async closeAll(): Promise<void> {
     // A daemon-wide stop is not the planner closing threads: the wait rooms
-    // stay on disk and come back as the lost room after a restart.
-    await Promise.all([...this.live.keys()].map((id) => this.close(id, "shutdown")));
+    // stay on disk and come back as the lost room after a restart. 하나가
+    // 실패해도 나머지 닫힘은 기다린다(2026-10-02) — closeAll 의 거절이 종료
+    // 경로 전체를 막지 않게.
+    await Promise.allSettled([...this.live.keys()].map((id) => this.close(id, "shutdown")));
   }
 
   get liveCount(): number {

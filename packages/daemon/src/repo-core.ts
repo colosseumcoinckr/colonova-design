@@ -326,6 +326,46 @@ export interface RepoWorkspaceOptions {
   cycleView?: () => Pick<RepoStatus, "cycleScreens" | "submit">;
 }
 
+/**
+ * 2026-10-02 네트워크 동사의 침묵 예산 — 소켓이 끊겨 명령이 말을 멈추면 이
+ * 만큼의 조용함 뒤에 죽인다. 그 전까지 fetch · push 하나가 멈추면 그 프로젝트의
+ * 차선(보관 · 제출 · 틱)이 영원히 기다렸다. 시계는 출력 청크마다 다시 차므로
+ * (capture 의 와치독), 끊임없이 말하는 명령은 잘리지 않는다. 파이프를 타면 git
+ * 이 진행 출력을 끄므로 --progress 를 얹어 시계가 걸릴 거리를 만든다.
+ */
+const GIT_NETWORK_STALL_MS = 300_000;
+const GIT_NETWORK_VERBS: Record<string, true> = {
+  clone: true,
+  fetch: true,
+  pull: true,
+  push: true,
+  "ls-remote": true,
+};
+const GIT_PROGRESS_VERBS: Record<string, true> = {
+  clone: true,
+  fetch: true,
+  pull: true,
+  push: true,
+};
+
+/** 네트워크 동사에만 예산을 걸고 진행 출력을 강제한다 — 나머지 동사는 그대로. */
+export function armGitNetworkWatchdog(args: string[]): {
+  args: string[];
+  stallMs: number | undefined;
+} {
+  const verb = args[0] ?? "";
+  if (!(verb in GIT_NETWORK_VERBS)) return { args, stallMs: undefined };
+  const quiet = args.includes("-q") || args.includes("--quiet");
+  const already = args.includes("--progress");
+  return {
+    args:
+      quiet || already || !(verb in GIT_PROGRESS_VERBS)
+        ? args
+        : [verb, "--progress", ...args.slice(1)],
+    stallMs: GIT_NETWORK_STALL_MS,
+  };
+}
+
 export class RepoCore {
   readonly root: string;
 
@@ -1318,7 +1358,8 @@ export class RepoCore {
     // PLAN L1: 클론을 바꾸는 git 은 차선 작업 안에서만 돈다. 판정은 동사로
     // 한다 — 다른 작업 트리 cwd(handoff-preview 의 워크트리)로 도는 명령도
     // 같은 .git 을 쓰면 위반이다.
-    this.guardLane(args);
+    const { args: argv, stallMs } = armGitNetworkWatchdog(args);
+    this.guardLane(argv);
     const windows = currentPlatform() === "win32";
     // The same binary the onboarding gate judged: on a Finder-launched app
     // whose PATH stops at /usr/bin, a Homebrew-only git is exactly the one
@@ -1340,8 +1381,8 @@ export class RepoCore {
           ...env,
         },
       },
-      args,
-      undefined,
+      argv,
+      stallMs,
       binary,
     );
     if (result.code === 0) return result.stdout;

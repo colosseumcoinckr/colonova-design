@@ -31,6 +31,18 @@ const handoff = (state: HandoffStatus["state"]): HandoffStatus => ({
 
 const screen = (title: string, at: string) => ({ route: `/${title}`, title, note: "n", at });
 
+test("같은 화면을 여러 대화에서 고쳐도 제출 화면은 한 개로 센다", () => {
+  const j = run({
+    branch: "work",
+    cycleScreens: [
+      { ...screen("이전 제목", "2026-09-25T01:00:00Z"), route: "/" },
+      { ...screen("현재 제목", "2026-09-25T02:00:00Z"), route: "/" },
+    ],
+  });
+  assert.equal(j.submit.reason, L.submit.whyReady(1));
+  assert.equal(j.points[0].label, L.journey.screensBefore(1));
+});
+
 // 셸과 같은 모양 — 제출 상태의 문장은 부르는 쪽이 지어 건넨다.
 const run = (repo: Partial<RepoStatus>, rest: Partial<JourneyInput> = {}) => {
   const full = { ...REPO, ...repo };
@@ -59,7 +71,7 @@ test("제출 전 — 첫 점이 지금 점이고 화면 수를 말한다", () =>
     [
       ["제출 전 · 화면 1개", "cur"],
       ["개발자 확인", "todo"],
-      ["반영됨", "todo"],
+      ["개발자 반영", "todo"],
     ],
   );
   assert.equal(j.submit.enabled, true);
@@ -90,7 +102,7 @@ test("개발자 확인 — 둘째 점이 지금 점, 코멘트 수가 붙는다"
     [
       ["제출됨", "done"],
       ["개발자 확인을 기다려요 · 코멘트 2", "cur"],
-      ["반영됨", "todo"],
+      ["개발자 반영", "todo"],
     ],
   );
   assert.equal(j.submit.more, true);
@@ -123,10 +135,28 @@ test("반영됨 — 셋째 점, 제출은 다음 작업까지 잠긴다", () => 
   assert.equal(j.current, 2);
   assert.deepEqual(
     j.points.map((p) => p.label),
-    ["제출됨", "확인됨", "반영됐어요"],
+    ["제출됨", "확인됨", "개발자 반영 완료"],
   );
   assert.equal(j.submit.enabled, false);
   assert.equal(j.submit.reason, L.submit.whyMerged);
+});
+
+test("제출 후 복원이나 화면 밖 변경만 있어도 다시 제출할 수 있다", () => {
+  const base = {
+    branch: "b",
+    handoff: handoff("open"),
+    cycleScreens: [screen("가", "2026-09-25T01:00:00Z")],
+    submit: {
+      phase: "idle" as const,
+      attempts: 1,
+      log: [{ at: "2026-09-25T02:00:00Z", text: "제출했어요" }],
+    },
+  };
+  const changed = run(base, { outsideChanges: 1 });
+  assert.equal(changed.submit.enabled, true);
+  assert.equal(changed.submit.more, true);
+  assert.equal(changed.submit.reason, L.shell.submitMoreAny);
+  assert.equal(run(base, { outsideChanges: 0 }).submit.enabled, false);
 });
 
 test("반영 뒤에 쌓인 작업은 새 사이클의 제출 전이다", () => {

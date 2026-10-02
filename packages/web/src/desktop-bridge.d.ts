@@ -22,6 +22,8 @@ declare global {
       /** The OS the app runs on — mac and win replace themselves; anything
        * else goes to the releases page. */
       platform: string;
+      /** Native confirmation, clean shutdown, then reset on the next launch. */
+      reset?: () => Promise<{ cancelled?: boolean; restarting?: boolean; error?: string }>;
       /** `url`/`sha256` arrive already resolved for this platform (main picks
        * the mac zip or the Windows installer), so the renderer stays blind. */
       updateCheck: () => Promise<UpdateCheckResult>;

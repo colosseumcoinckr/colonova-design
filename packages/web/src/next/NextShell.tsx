@@ -1,7 +1,8 @@
 import { sameRepo } from "@colonova-design/protocol";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useInviteImport } from "../hooks/use-invite-import";
 import type { Daemon } from "../lib/daemon-client";
+import { onProjectEmptyModeChange } from "../lib/project-empty-bus";
 import {
   type ChatSettings,
   type LayoutSettings,
@@ -10,6 +11,7 @@ import {
 } from "../lib/settings";
 import { FirstRun } from "./onboarding/FirstRun";
 import { InviteConfirm } from "./onboarding/InviteConfirm";
+import { NoProjects } from "./onboarding/NoProjects";
 import "./next.css";
 import {
   decideShellPane,
@@ -47,6 +49,56 @@ export function NextShell(props: NextShellProps) {
   const { daemon, settings, onChatChange } = props;
   const { connection, api } = daemon;
   const invite = useInviteImport(daemon);
+  const hadProjects = useRef(false);
+  const [emptyAfterUse, setEmptyAfterUse] = useState(() => {
+    try {
+      return (
+        typeof window !== "undefined" &&
+        window.localStorage.getItem("colonova-design.emptyAfterProjectRemoval") === "1"
+      );
+    } catch {
+      return false;
+    }
+  });
+  useEffect(
+    () =>
+      onProjectEmptyModeChange((empty) => {
+        setEmptyAfterUse(empty);
+        try {
+          if (empty) window.localStorage.setItem("colonova-design.emptyAfterProjectRemoval", "1");
+          else window.localStorage.removeItem("colonova-design.emptyAfterProjectRemoval");
+        } catch {
+          // 저장소를 쓸 수 없어도 현재 창의 화면은 이어 간다.
+        }
+      }),
+    [],
+  );
+  // 마지막 프로젝트를 지운 뒤 다시 켜도 초대 파일을 여는 짧은 화면을 보인다.
+  // 새 기계의 첫 실행 체크리스트와 구분하되, 프로젝트를 다시 가져오면 표식을 걷는다.
+  useLayoutEffect(() => {
+    if (daemon.status === null) return;
+    if (daemon.projects.length > 0) {
+      hadProjects.current = true;
+      return;
+    }
+    if (hadProjects.current) {
+      setEmptyAfterUse(true);
+      try {
+        window.localStorage.setItem("colonova-design.emptyAfterProjectRemoval", "1");
+      } catch {
+        // 저장소를 쓸 수 없어도 현재 창의 화면은 이어 간다.
+      }
+    }
+  }, [daemon.status, daemon.projects.length]);
+  useEffect(() => {
+    if (!emptyAfterUse || daemon.projects.length === 0 || invite.state.phase !== "done") return;
+    setEmptyAfterUse(false);
+    try {
+      window.localStorage.removeItem("colonova-design.emptyAfterProjectRemoval");
+    } catch {
+      // 저장소를 쓸 수 없어도 현재 창의 화면은 이어 간다.
+    }
+  }, [emptyAfterUse, daemon.projects.length, invite.state]);
 
   // 연결 직후의 검사는 설정이 고른 프로바이더의 몫이다. 문은 연결이다 — 고른 것이
   // 바뀌는 순간의 다시 묻기는 아래 효과가 맡으므로, 여기서는 그 순간의 값만 읽는다.
@@ -157,6 +209,21 @@ export function NextShell(props: NextShellProps) {
     firstRun &&
     projects.length === 0 &&
     (invite.state.phase === "reading" || invite.state.phase === "applying" || autoFirst);
+  const firstRunScreen =
+    emptyAfterUse && projects.length === 0 ? (
+      <NoProjects
+        openInvite={invite.openPicker}
+        importing={invite.state.phase === "reading" || invite.state.phase === "applying"}
+      />
+    ) : (
+      <FirstRun
+        daemon={daemon}
+        provider={settings.chat.provider}
+        invite={invite}
+        checking={recheckingProvider}
+        done={false}
+      />
+    );
 
   // 첫 실행이 모두 성공하고 경고도 없으면 확인판은 소음이다 — 조용히 닫는다
   // (삭제 안내는 확인판이 이미 말했다).
@@ -208,15 +275,18 @@ export function NextShell(props: NextShellProps) {
         </div>
       ) : entered ? (
         <>
-          {(firstRun || holdingDone) && (
-            <FirstRun
-              daemon={daemon}
-              provider={settings.chat.provider}
-              invite={invite}
-              checking={recheckingProvider}
-              done={holdingDone}
-            />
-          )}
+          {(firstRun || holdingDone) &&
+            (firstRun ? (
+              firstRunScreen
+            ) : (
+              <FirstRun
+                daemon={daemon}
+                provider={settings.chat.provider}
+                invite={invite}
+                checking={recheckingProvider}
+                done
+              />
+            ))}
           {/* 붙드는 동안의 nx-ws-enter — 작업 틀이 페이드로 들어온다. 끝나면 클래스만 벗긴다.
               다시 첫 실행으로 돌아가면(프로젝트가 모두 사라짐) 작업 틀은 서지 않는다. */}
           {!firstRun && (
@@ -226,13 +296,7 @@ export function NextShell(props: NextShellProps) {
           )}
         </>
       ) : firstRun ? (
-        <FirstRun
-          daemon={daemon}
-          provider={settings.chat.provider}
-          invite={invite}
-          checking={recheckingProvider}
-          done={false}
-        />
+        firstRunScreen
       ) : (
         <Workspace {...props} discardableInvitePath={discardableInvitePath} />
       )}

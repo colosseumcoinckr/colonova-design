@@ -42,7 +42,7 @@ test("submitCopy: 막힘 — 버튼은 제출하지 못했어요, 첫 점과 잠
     const notified = submitCopy({ phase: "blocked", attempts: 5, lastError, log }, L);
     assert.equal(
       notified.reason,
-      "제출이 막혀 개발자에게 알렸어요 — 풀리면 도구가 다시 제출해요, 지금은 계속 만들어도 돼요",
+      "제출이 막혔어요 — 풀리면 다시 제출해요. 위의 안내를 확인해 주세요",
       String(lastError),
     );
   }
@@ -65,7 +65,7 @@ test("ledgerLine: 이번 작업의 제출 칸 — 도는 중 · 다시 도는 �
   assert.equal(ledgerLine({ phase: "retrying", attempts: 2, log: [] }, L), "다시 제출하는 중…");
   assert.equal(
     ledgerLine({ phase: "blocked", attempts: 3, log: [] }, L),
-    "제출하지 못해 개발자에게 알렸어요. 풀리면 도구가 다시 제출해요.",
+    "제출이 멈췄어요. 작업은 보관돼 있고, 문제가 풀리면 다시 제출해요.",
   );
   // 쉬는 제출은 칸이 여정의 문장으로 말한다 — null.
   assert.equal(ledgerLine({ phase: "idle", attempts: 0, log: [] }, L), null);

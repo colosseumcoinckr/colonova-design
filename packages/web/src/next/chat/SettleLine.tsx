@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { L } from "../labels";
 import { splitDuration } from "../lib/thread";
 import { Popover } from "../ui/Popover";
-import { CheckIcon, CopyIcon, ForkIcon, FwdIcon, MoreIcon } from "./icons";
+import { CheckIcon, CopyIcon, ForkIcon, MoreIcon } from "./icons";
 
 /** `12초` · `1분 5초` — 걸린 시간. */
 export function durationText(ms: number): string {
@@ -12,18 +12,15 @@ export function durationText(ms: number): string {
     : L.transcript.minutesSeconds(minutes, seconds);
 }
 
-/** 창 밖으로 글을 복사한다 — 실패해도 조용하다(복사는 편의다). */
-export function copyText(text: string, onDone: () => void): void {
-  void navigator.clipboard
-    .writeText(text)
-    .then(onDone)
-    .catch(() => undefined);
+/** Report clipboard failures as well as successful copies. */
+export function copyText(text: string, onDone: () => void, onError: () => void): void {
+  void navigator.clipboard.writeText(text).then(onDone).catch(onError);
 }
 
 /**
- * 정산 줄(목업 `.settle`) — 한 답이 끝난 자리: `✓ 12초 걸렸어요 · 전체 복사 · ···`.
+ * 정산 줄 — 한 답이 끝난 자리: 걸린 시간 · 답변 복사 · 더 보기.
  * `···` 안에 `여기서 새 대화`(대화만 이 답까지 이어받는다 — 화면은 그대로라는
- * 문장과 `작업 기록에서 되돌리기` 링크가 함께), 그리고 `이 답변만 복사`.
+ * 문장과 `작업 기록에서 되돌리기` 링크가 함께), 그리고 `전체 복사`.
  */
 export function SettleLine({
   durationMs,
@@ -57,27 +54,32 @@ export function SettleLine({
     },
     [],
   );
-  const copyWhole = () => {
-    if (whole === null) return;
-    copyText(whole, () => {
-      onToast(L.transcript.copyAllToast);
-      setCopied(true);
-      if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
-      copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
-    });
+  const answer = lastAnswer ?? whole;
+  const copyAnswer = () => {
+    if (answer === null) return;
+    copyText(
+      answer,
+      () => {
+        onToast(lastAnswer !== null ? L.transcript.copyOneToast : L.transcript.copyAllToast);
+        setCopied(true);
+        if (copiedTimer.current !== null) window.clearTimeout(copiedTimer.current);
+        copiedTimer.current = window.setTimeout(() => setCopied(false), 1500);
+      },
+      () => onToast(L.transcript.copyFailed),
+    );
   };
-  const hasMenu = onFork !== null || lastAnswer !== null;
+  const hasMenu = onFork !== null || whole !== null;
   if (durationMs == null && whole == null && !hasMenu) return null;
   return (
     <div className={`nx-settle${reward ? " nx-settle--draw" : ""}`}>
       <CheckIcon />
       {durationMs != null && <span>{L.transcript.took(durationText(durationMs))}</span>}
-      {whole != null && (
+      {answer != null && (
         <>
           {durationMs != null && <span className="nx-sep">·</span>}
-          <button type="button" onClick={copyWhole}>
+          <button type="button" onClick={copyAnswer} aria-live="polite">
             {copied ? <CheckIcon /> : <CopyIcon />}
-            {L.transcript.copyAll}
+            {copied ? L.transcript.copied : L.transcript.copyOne}
           </button>
         </>
       )}
@@ -133,18 +135,22 @@ export function SettleLine({
                   </div>
                 </>
               )}
-              {onFork && lastAnswer !== null && <div className="nx-msep" />}
-              {lastAnswer !== null && (
+              {onFork && whole !== null && <div className="nx-msep" />}
+              {whole !== null && (
                 <button
                   type="button"
                   className="nx-mi"
                   onClick={() => {
                     setOpen(false);
-                    copyText(lastAnswer, () => onToast(L.transcript.copyOneToast));
+                    copyText(
+                      whole,
+                      () => onToast(L.transcript.copyAllToast),
+                      () => onToast(L.transcript.copyFailed),
+                    );
                   }}
                 >
                   <CopyIcon />
-                  {L.transcript.copyOne}
+                  {L.transcript.copyAll}
                 </button>
               )}
             </Popover>
@@ -152,29 +158,5 @@ export function SettleLine({
         </span>
       )}
     </div>
-  );
-}
-
-/**
- * `고친 화면` 카드(U5) — 답이 말한 화면 하나. 누르면 미리보기가 그리로 간다.
- * 썸네일 자리는 목업의 그림(화면 골격)이다 — 실제 캡처를 싣는 선로는 아직 없다.
- */
-export function ShotCard({ title, onOpen }: { title: string; onOpen: () => void }) {
-  return (
-    <button type="button" className="nx-shot" onClick={onOpen}>
-      <span className="nx-thumb" aria-hidden="true">
-        <i />
-        <i />
-        <i />
-      </span>
-      <span className="nx-st">
-        <small>{L.transcript.shotLabel}</small>
-        <b>{title}</b>
-        <span>{L.transcript.shotGo}</span>
-      </span>
-      <span className="nx-go">
-        <FwdIcon />
-      </span>
-    </button>
   );
 }

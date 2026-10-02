@@ -57,6 +57,7 @@ export function ProblemLine({
   const heldRef = useRef(held);
   heldRef.current = held;
   const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
   // 고침이 저절로 풀린 뒤의 체크 단계 — 접히기 전에 잠깐 선다.
   const [fixed, setFixed] = useState(false);
   const timers = useRef<number[]>([]);
@@ -71,6 +72,7 @@ export function ProblemLine({
   }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 몸통 객체는 렌더마다 새로 지어진다 — 신원 문자열이 곧 의존성이고 몸통은 그 회차의 것을 쓴다.
   useEffect(() => {
+    setCopied(false);
     if (shown !== null && shownId !== null) {
       setFixed(false);
       if (problemLineId(heldRef.current) !== shownId) setHeld(shown);
@@ -112,6 +114,8 @@ export function ProblemLine({
         )
       ) : line.kind === "notified" ? (
         <MailIcon />
+      ) : line.kind === "blocked" ? (
+        <AlertIcon />
       ) : (
         <PlugIcon />
       );
@@ -121,6 +125,26 @@ export function ProblemLine({
           {icon}
           <b>{fixed ? L.problem.fixed : line.title}</b>
           <span>{line.body}</span>
+          {!fixed && line.action === "copy" && (
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm"
+              onClick={() => {
+                const project = daemon.projects.find((item) => item.slug === daemon.activeSlug);
+                void navigator.clipboard
+                  .writeText(
+                    L.problem.helpText(
+                      project?.name ?? L.sidebar.brand,
+                      `${line.body}\n${daemon.repo?.submit?.lastError ?? ""}`,
+                    ),
+                  )
+                  .then(() => setCopied(true))
+                  .catch(() => onToast(L.chat.somethingWrong));
+              }}
+            >
+              {copied ? L.problem.copiedHelp : L.problem.copyHelp}
+            </button>
+          )}
           {!fixed && line.action === "invite" && (
             <button
               type="button"

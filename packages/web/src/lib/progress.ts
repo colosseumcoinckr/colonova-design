@@ -198,10 +198,13 @@ export interface AgentBrief {
   toolUses: number;
 }
 
+const SUBAGENT_TOOLS = new Set(["Task", "Agent"]);
+
 export function agentBriefs(blocks: Block[]): AgentBrief[] {
   const agents: AgentBrief[] = [];
   for (const block of blocks) {
-    if (block.type !== "tool" || block.name !== "Task") continue;
+    // 서브에이전트 도구의 이름은 둘이다 — 옛 CLI 의 `Task`, SDK 0.3.x 의 `Agent`(2026-10-02).
+    if (block.type !== "tool" || !SUBAGENT_TOOLS.has(block.name)) continue;
     const task = block.progress?.task ?? null;
     const input = (block.input ?? {}) as Record<string, unknown>;
     const description =

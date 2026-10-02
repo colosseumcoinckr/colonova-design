@@ -71,7 +71,9 @@ export function entryScreens(
   const names: string[] = [];
   for (const screen of screens) {
     const match =
-      (entry.sha !== undefined && screen.sha === entry.sha) || entryTitle(screen.note) === title;
+      entry.sha !== undefined && screen.sha !== undefined
+        ? screen.sha === entry.sha
+        : entryTitle(screen.note) === title;
     const name = screen.title.trim();
     if (match && name !== "" && !names.includes(name)) names.push(name);
   }

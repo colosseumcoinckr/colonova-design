@@ -1,4 +1,6 @@
+import type { SubmitPreview } from "@colonova-design/protocol";
 import { useEffect, useRef, useState } from "react";
+import { openScreenPath } from "../../lib/screen-link";
 import { L } from "../labels";
 import { keyHint } from "../lib/key-hint";
 import {
@@ -15,6 +17,8 @@ import {
   SUBMIT_STORY_POINT_MS,
   submitStoryPhase,
 } from "../lib/submit-story";
+import { useScreenReview } from "../lib/use-screen-review";
+import { openComparison } from "../preview/ComparisonDialog";
 import type { StatusLineProps } from "../slots";
 import { MenuIcon, PanelIcon, Spin } from "../ui/icons";
 import { Elapsed } from "./Elapsed";
@@ -68,8 +72,64 @@ export function StatusLine({
   sidebarHidden: boolean;
   onOpenSidebar: () => void;
 }) {
+  const review = useScreenReview();
+  const noteKey = `colonova-design.submit-note:${JSON.stringify([daemon.activeSlug, daemon.repo?.root])}`;
+  const [noteDraft, setNoteDraft] = useState({ key: noteKey, text: "" });
+  useEffect(() => {
+    let text = "";
+    try {
+      text = localStorage.getItem(noteKey) ?? "";
+    } catch {}
+    setNoteDraft({ key: noteKey, text });
+  }, [noteKey]);
+  const setNote = (text: string) => {
+    setNoteDraft({ key: noteKey, text });
+    try {
+      localStorage.setItem(noteKey, text);
+    } catch {}
+  };
   const [workOpen, setWorkOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [snapshot, setSnapshot] = useState<SubmitPreview | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const reviewRead = useRef(0);
+  const projectSlug = useRef(daemon.activeSlug);
+  projectSlug.current = daemon.activeSlug;
+  const loadSubmission = () => {
+    const version = ++reviewRead.current;
+    const slug = daemon.activeSlug;
+    setReviewLoading(true);
+    setReviewError(null);
+    setSnapshot(null);
+    void daemon.api
+      .submitPreview()
+      .then((next) => {
+        if (version === reviewRead.current && slug === projectSlug.current) setSnapshot(next);
+      })
+      .catch(() => {
+        if (version === reviewRead.current && slug === projectSlug.current)
+          setReviewError(L.submitConfirm.readFailed);
+      })
+      .finally(() => {
+        if (version === reviewRead.current && slug === projectSlug.current) setReviewLoading(false);
+      });
+  };
+  useEffect(() => {
+    ++reviewRead.current;
+    setConfirmOpen(false);
+    setSnapshot(null);
+    setWorkOpen(false);
+  }, [daemon.activeSlug]);
+  const reviewChanged =
+    !sending &&
+    snapshot !== null &&
+    ((review?.snapshot && review.snapshot.expectedPreview !== snapshot.expectedPreview) ||
+      !journey.submit.enabled ||
+      (daemon.repo?.pendingChanges ?? 0) > 0 ||
+      JSON.stringify(snapshot.repo.cycleScreens ?? []) !==
+        JSON.stringify(daemon.repo?.cycleScreens ?? []));
   const journeyRef = useRef<HTMLButtonElement>(null);
   // 여정 단추의 접근 이름 — 보이는 몸(세 점 · 시계)은 매초 바뀌므로, 이름은
   // `이번 작업 보기` 와 지금 점의 글자만 갖고 몸은 낭독에서 빼 둔다.
@@ -128,12 +188,6 @@ export function StatusLine({
           ? L.journey.makingCheck
           : L.journey.making;
 
-  // 보낸 순간부터 데몬이 `running` 을 싣기까지의 틈 — 버튼이 먼저 답한다.
-  const [sending, setSending] = useState(false);
-  useEffect(() => {
-    if (submitCopy.phase !== "idle") setSending(false);
-  }, [submitCopy.phase]);
-
   // 버튼의 짧은 답 — `done` 은 영수증(cycle.handed)이, `failed` 는 막힘의 시작이 켠다.
   const [flash, setFlash] = useState<"done" | "failed" | null>(null);
   useEffect(() => {
@@ -147,6 +201,7 @@ export function StatusLine({
     lastHanded.current = ledger.handedAt;
     if (!ledger.handedAt || ledger.handedAt === previous) return;
     if (Date.now() - Date.parse(ledger.handedAt) > FRESH_RECEIPT_MS) return;
+    setConfirmOpen(false);
     setSending(false);
     setFlash("done");
   }, [ledger.handedAt]);
@@ -162,6 +217,7 @@ export function StatusLine({
       (previous === "running" || previous === "retrying") &&
       daemon.repo?.handoff
     ) {
+      setConfirmOpen(false);
       setFlash("done");
     }
   }, [submitCopy.phase, daemon.repo?.handoff]);
@@ -223,20 +279,20 @@ export function StatusLine({
       ? daemon.repo.handoff.reviewers
       : (project?.reviewers ?? []);
 
-  const send = (note: string) => {
-    setConfirmOpen(false);
-    // 창이 열린 사이에 AI 가 돌기 시작했으면 — 잠긴 이유로 답한다.
-    if (!journey.submit.enabled) {
-      setWhy(journey.submit.reason);
-      return;
-    }
+  const send = (note: string, head: string, token: string) => {
+    if (!journey.submit.enabled || sending || reviewChanged) return;
     setSending(true);
     onSubmit();
     daemon.api
-      .submit(sessions.activeId, note || undefined)
+      .submit(sessions.activeId, note || undefined, head, token)
+      .then(() => {
+        setConfirmOpen(false);
+      })
       .catch((error) => {
         console.error("[colonova-design] submit", error);
-        setWhy(L.submit.sendFailed);
+        setReviewError(
+          String(error).includes("SUBMIT_CHANGED") ? L.submitConfirm.changed : L.submit.sendFailed,
+        );
       })
       .finally(() => setSending(false));
   };
@@ -256,9 +312,17 @@ export function StatusLine({
           {narrow ? <MenuIcon /> : <PanelIcon />}
         </button>
       )}
-      {!narrow && <div className="nx-conv-title">{title}</div>}
+      {!narrow && (
+        <div className="nx-conv-title">
+          <small>{L.sidebar.convs}</small>
+          <span>{title}</span>
+        </div>
+      )}
       <div className="nx-grow" />
-      <div className="nx-anchor">
+      <div className="nx-anchor nx-project-work">
+        <span className="nx-work-scope">
+          {L.journey.projectWork(project?.name ?? L.sidebar.brand)}
+        </span>
         <button
           ref={journeyRef}
           type="button"
@@ -373,7 +437,7 @@ export function StatusLine({
             }
             setWhy(null);
             setWorkOpen(false);
-            if (!confirmOpen) ledger.refresh();
+            if (!confirmOpen) loadSubmission();
             setConfirmOpen((open) => !open);
           }}
         >
@@ -404,12 +468,32 @@ export function StatusLine({
           <SubmitPopover
             anchor={submitRef}
             journey={journey}
-            repo={daemon.repo}
-            history={ledger.history}
+            snapshot={snapshot}
+            projectName={project?.name ?? L.sidebar.brand}
+            loading={reviewLoading}
+            error={reviewError}
+            busy={sending}
+            changed={reviewChanged}
+            onRefresh={loadSubmission}
             since={submitCopy.lastAt}
             reviewers={reviewers}
             onClose={() => setConfirmOpen(false)}
             onConfirm={send}
+            note={noteDraft.key === noteKey ? noteDraft.text : ""}
+            onNote={setNote}
+            onPreview={(screen) => {
+              setConfirmOpen(false);
+              openScreenPath(screen.route);
+              nav.showTab("preview");
+            }}
+            onCompare={(screen) =>
+              openComparison({
+                route: screen.route,
+                title: screen.title,
+                requestId: screen.requestId,
+                sha: screen.sha,
+              })
+            }
           />
         )}
         {why && (

@@ -22,6 +22,22 @@ export function pinName(pin: PinAttachment): string {
   });
 }
 
+const PIN_STYLE_NAMES: Readonly<Record<string, string>> = {
+  color: L.pin.textColor,
+  "background-color": L.pin.backgroundColor,
+  "font-family": L.pin.font,
+  "font-size": L.pin.textSize,
+  "font-weight": L.pin.weight,
+  "line-height": L.pin.lineHeight,
+  padding: L.pin.padding,
+  margin: L.pin.margin,
+  "border-radius": L.pin.rounding,
+  display: L.pin.layout,
+  width: L.pin.width,
+  height: L.pin.height,
+  gap: L.pin.gap,
+};
+
 /**
  * 핀 말풍선(PLAN-UI U4) — 찍은 자리에 뜨는 메모 입력. 입력창 칩의 원격
  * 조작기다: 적는 글은 곧장 `pins.setNote` 로 가서 같은 번호의 칩에 비친다.
@@ -61,6 +77,10 @@ export function PinBubble({
   const input = useRef<HTMLInputElement>(null);
   const opened = useRef(pin.note);
   const [note, setNote] = useState(pin.note);
+  const styleRows = Object.entries(pin.element.styles ?? {}).flatMap(([key, value]) => {
+    const name = PIN_STYLE_NAMES[key];
+    return name ? [{ name, value }] : [];
+  });
   const [place, setPlace] = useState<{
     left: number;
     top: number;
@@ -177,6 +197,19 @@ export function PinBubble({
           }
         }}
       />
+      {styleRows.length > 0 && (
+        <details className="nx-pinbub-details">
+          <summary>{L.pin.details}</summary>
+          <dl>
+            {styleRows.map(({ name, value }) => (
+              <div key={name}>
+                <dt>{name}</dt>
+                <dd>{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
       <div className="nx-pinbub-f">
         <span>{keyHint(L.pin.bubbleKeepHint)}</span>
         <span className="nx-grow" />

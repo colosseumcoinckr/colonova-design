@@ -52,6 +52,7 @@ export function PreviewFrame({
   onPinFocus,
   onError,
   onLoading,
+  onEmulated,
   onZoom,
 }: {
   /** The preview server's url — null while the pane browses a clicked link
@@ -82,6 +83,7 @@ export function PreviewFrame({
   onError: (error: { kind: "runtime" | "build"; message: string; route: string }) => void;
   /** The view is loading — the frame's reload button spins. */
   onLoading: (on: boolean) => void;
+  onEmulated?: (width: "mobile" | "tablet" | "desktop") => void;
   /** The zoom moved (the menu can move it) — the chip follows. */
   onZoom: (factor: number) => void;
 }) {
@@ -180,8 +182,18 @@ export function PreviewFrame({
   // 폭 is emulation on the guest, not CSS names — the element narrows with
   // the stage's own width, the guest believes it is the device.
   useEffect(() => {
-    void window.colonovaDesignDesktop?.preview?.emulate?.(width === "desktop" ? null : width);
-  }, [width]);
+    let cancelled = false;
+    const emulate = window.colonovaDesignDesktop?.preview?.emulate;
+    if (emulate)
+      void emulate(width === "desktop" ? null : width)
+        .then(() => {
+          if (!cancelled) onEmulated?.(width);
+        })
+        .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [width, onEmulated]);
 
   // The channels subscribe ONCE: PreviewHost passes fresh inline callbacks
   // every render, so keying the effect on them re-subscribed per render —

@@ -4,6 +4,7 @@ import type { Daemon } from "../../lib/daemon-client";
 import { composing } from "../../lib/ime";
 import { requestInvitePicker } from "../../lib/invite-bus";
 import { openLink } from "../../lib/open-link";
+import { setEmptyAfterProjectRemoval } from "../../lib/project-empty-bus";
 import { L } from "../labels";
 import { neverPrepared, projectCycle, projectStatus } from "../lib/project-note";
 import { Count } from "../ui/Count";
@@ -118,6 +119,7 @@ export function ProjectSwitcher({
         <ProjectInfo
           daemon={daemon}
           project={active}
+          lastProject={projects.length === 1}
           anchor={nameBtn}
           onClose={() => setPop(null)}
           onToast={onToast}
@@ -139,21 +141,26 @@ const WEB_URL = /^https?:\/\//i;
 function ProjectInfo({
   daemon,
   project,
+  lastProject,
   anchor,
   onClose,
   onToast,
 }: {
   daemon: Daemon;
   project: ProjectSummary;
+  lastProject: boolean;
   anchor: RefObject<HTMLElement | null>;
   onClose: () => void;
   onToast: (text: string) => void;
 }) {
   const stored = project.instructions ?? "";
   const [guide, setGuide] = useState(stored);
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const latest = useRef({ guide, stored });
   latest.current = { guide, stored };
   const sent = useRef<string>(stored);
+  const removingProject = useRef(false);
   /** 저장 — 같은 값은 다시 쓰지 않고, 비우면 지운다(null). */
   const commit = useRef(() => {});
   commit.current = () => {
@@ -169,7 +176,35 @@ function ProjectInfo({
       });
   };
   // 바깥 누름 · Esc 로 카드가 떼어지는 길도 저장과 같은 커밋으로 나간다.
-  useEffect(() => () => commit.current(), []);
+  useEffect(
+    () => () => {
+      if (!removingProject.current) commit.current();
+    },
+    [],
+  );
+  const submitPhase = daemon.activeSlug === project.slug ? daemon.repo?.submit?.phase : undefined;
+  const projectBusy =
+    project.working ||
+    ["cloning", "pulling", "installing", "starting"].includes(project.phase) ||
+    submitPhase === "running" ||
+    submitPhase === "retrying";
+  const removeProject = async () => {
+    if (removing || projectBusy) return;
+    if (lastProject) setEmptyAfterProjectRemoval(true);
+    removingProject.current = true;
+    setRemoving(true);
+    try {
+      await daemon.api.projectRemove(project.slug);
+      onClose();
+      onToast(L.projInfo.removeDone(project.name));
+    } catch {
+      if (lastProject) setEmptyAfterProjectRemoval(false);
+      removingProject.current = false;
+      setRemoving(false);
+      setConfirmingRemove(false);
+      onToast(L.projInfo.removeFailed);
+    }
+  };
   const repoUrl = project.repoUrl ?? null;
   const repo = repoUrl !== null && WEB_URL.test(repoUrl) ? repoUrl : null;
   const preview = daemon.repo?.phase === "ready" ? daemon.repo.previewUrl : null;
@@ -224,6 +259,41 @@ function ProjectInfo({
           }}
         />
         <p className="nx-pi-note">{L.projInfo.guideNote}</p>
+      </div>
+      <div className="nx-pi-remove">
+        {confirmingRemove ? (
+          <div className="nx-pi-confirm">
+            <p>{L.projInfo.removeConfirm(project.name)}</p>
+            {projectBusy && <p className="nx-pi-remove-busy">{L.projInfo.removeBusy}</p>}
+            <div className="nx-conv-confirm-row">
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm nx-btn--ghost"
+                disabled={removing}
+                onClick={() => setConfirmingRemove(false)}
+              >
+                {L.projInfo.removeCancel}
+              </button>
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm nx-btn--pri"
+                disabled={removing || projectBusy}
+                onClick={() => void removeProject()}
+              >
+                {removing ? L.projInfo.removing : L.projInfo.remove}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="nx-mi nx-mi--dng"
+            disabled={removing}
+            onClick={() => setConfirmingRemove(true)}
+          >
+            <b>{L.projInfo.remove}</b>
+          </button>
+        )}
       </div>
     </Popover>
   );

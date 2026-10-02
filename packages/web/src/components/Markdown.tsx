@@ -293,13 +293,26 @@ function CodeBlock({
  * 이 메시지를 다시 parse 하지 않는다(완성본은 확정본). 스트리밍 중에는 text 가
  * 계속 바뀌니 그때만 다시 그린다.
  */
+function ChatTable({ children }: { children?: ReactNode }) {
+  return (
+    // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users need to focus the scroll area to pan wide tables.
+    <section className="md__table-scroll" aria-label="표" tabIndex={0}>
+      <table>{children}</table>
+    </section>
+  );
+}
+
 export const Markdown = memo(function Markdown({ text }: { text: string }) {
   return (
     <div className="md">
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         urlTransform={urlTransform}
-        components={{ a: ChatLink, pre: ChatPre }}
+        components={{
+          a: ChatLink,
+          pre: ChatPre,
+          table: ChatTable,
+        }}
       >
         {text}
       </ReactMarkdown>

@@ -12,8 +12,9 @@ import { deriveJourney } from "./lib/journey";
 import { keyHint } from "./lib/key-hint";
 import { firstTurn, makingPhase } from "./lib/making";
 import { submitCopy } from "./lib/submit-copy";
+import { ScreenReviewProvider, useProjectScreenReview } from "./lib/use-screen-review";
 import { useNarrow, useShellNav } from "./lib/use-shell-nav";
-import { commentCount } from "./lib/work-ledger";
+import { commentCount, outsideChanges } from "./lib/work-ledger";
 import type { NextShellProps } from "./NextShell";
 import { PreviewColumn } from "./preview/PreviewColumn";
 import { SettingsDialog } from "./settings/SettingsDialog";
@@ -117,15 +118,18 @@ export function Workspace({
     if (!activeId) return L.sidebar.newConv;
     const renamed = settings.sessionTitles[activeId];
     if (renamed) return renamed;
-    const listed = sessions.list.find((session) => session.sessionId === activeId);
-    if (listed) return listed.title;
-    return project?.threads?.find((thread) => thread.id === activeId)?.title ?? L.sidebar.newConv;
+    return (
+      project?.threads?.find((thread) => thread.id === activeId)?.title ??
+      sessions.list.find((session) => session.sessionId === activeId)?.title ??
+      L.sidebar.newConv
+    );
   })();
 
   // 이 프로젝트에서 AI 가 도는가 — 열린 대화의 상태가 먼저, 다른 대화는 등록부가 안다.
   const activeLive = LIVE.has(sessions.active?.state ?? "idle");
   const awaiting = sessions.awaitingTurn?.sessionId === activeId ? sessions.awaitingTurn : null;
   const running = activeLive || awaiting !== null || project?.working === true;
+  const screenReview = useProjectScreenReview(daemon, running);
   const turnStartedAt = activeLive
     ? (sessions.active?.turnStartedAt ?? null)
     : (awaiting?.since ?? null);
@@ -143,6 +147,7 @@ export function Workspace({
       running,
       reconnect: attention?.kind === "reconnect",
       comments: commentCount(ledger.reviews),
+      outsideChanges: outsideChanges(ledger.history, daemon.repo?.cycleScreens, copy.lastAt),
       submitCopy: copy,
     },
     L,
@@ -288,7 +293,7 @@ export function Workspace({
   }, [home]);
 
   return (
-    <>
+    <ScreenReviewProvider value={screenReview}>
       <div className={classes} data-testid="next-shell">
         <Sidebar
           daemon={daemon}
@@ -462,6 +467,7 @@ export function Workspace({
           activeSessionId={activeId}
           projects={daemon.projects}
           hiddenThreads={daemon.hiddenThreads}
+          transcripts={daemon.sessions}
           activeSlug={daemon.activeSlug}
           onOpenThread={(slug, thread) => nav.openThread(slug, thread.id)}
           onCreateSession={() => nav.newThread()}
@@ -471,6 +477,6 @@ export function Workspace({
           onClose={() => setPalette(false)}
         />
       )}
-    </>
+    </ScreenReviewProvider>
   );
 }

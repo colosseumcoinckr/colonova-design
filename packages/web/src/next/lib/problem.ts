@@ -17,11 +17,11 @@ export type ProblemWords = Pick<typeof L, "problem" | "chat">;
 
 export interface Problem {
   /** 줄의 색 — 목업의 `.problem.fixing` · `.notified` · `.reconnect`. */
-  kind: "fixing" | "notified" | "reconnect";
+  kind: "fixing" | "notified" | "reconnect" | "blocked";
   title: string;
   body: string;
   /** 사람의 손 — 초대 파일 열기 · 브라우저에서 다시 로그인. 없으면 버튼이 없다. */
-  action: "invite" | "login" | null;
+  action: "invite" | "login" | "copy" | null;
   /**
    * 닫기의 신원 (PLAN-UI U13) — `개발자에게 알렸어요` 줄만 가진다. 문제가
    * 처음 선 시각(`since`)이 들어 있어 같은 문제는 한 번 닫으면 다시 뜨지
@@ -90,12 +90,19 @@ export function problemFor(
   }
   // 제출이 막힌 것은 개발자 몫의 문제다(U13) — 데몬이 알림을 세우기 전에도
   // 막힘 자체가 그 문장을 말한다.
-  if (repo?.submit?.phase === "blocked") {
+  if (
+    repo?.submit?.phase === "blocked" &&
+    !(
+      repo.attention?.kind === "developer-notified" &&
+      repo.attention.key?.startsWith("submit:") &&
+      (!repo.submit.since || Date.parse(repo.attention.since) >= Date.parse(repo.submit.since))
+    )
+  ) {
     return {
-      kind: "notified",
-      title: W.problem.notified,
-      body: W.problem.notifiedSubmit,
-      action: null,
+      kind: "blocked",
+      title: W.problem.blocked,
+      body: W.problem.blockedBody,
+      action: "copy",
       dismissId: `submit:${repo.submit.since ?? "?"}`,
     };
   }
@@ -103,7 +110,10 @@ export function problemFor(
     return {
       kind: "notified",
       title: W.problem.notified,
-      body: W.problem.notifiedOther,
+      body:
+        repo?.submit?.phase === "blocked" && attention.key?.startsWith("submit:")
+          ? W.problem.notifiedSubmit
+          : W.problem.notifiedOther,
       action: null,
       dismissId: `notice:${attention.since}`,
     };

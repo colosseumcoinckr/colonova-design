@@ -28,7 +28,7 @@ export interface WorkLedger {
 const OPEN_READ_THROTTLE_MS = 60_000;
 
 export function useWorkLedger(daemon: Daemon): WorkLedger {
-  const { api, activeSlug, repo, sessions } = daemon;
+  const { api, activeSlug, repo, sessions, diffStatus } = daemon;
   const handoff = repo?.handoff ?? null;
   const [reviews, setReviews] = useState<DeveloperReview[]>([]);
   const [history, setHistory] = useState<RepoHistoryEntry[] | null>(null);
@@ -94,8 +94,9 @@ export function useWorkLedger(daemon: Daemon): WorkLedger {
     readReviews(hasHandoff);
   }, [readReviews, hasHandoff, handoffKey, humanCount]);
 
-  // 기록은 차례가 보관될 때 움직인다 — 화면 목록의 머리 · 사이클 가지가 그 신호다.
-  const historyKey = `${activeSlug}:${repo?.branch ?? ""}:${repo?.cycleScreens?.[0]?.at ?? ""}:${humanCount}`;
+  // 복원이나 화면 밖 변경도 저장 기록을 갱신한다. 화면 목록만으로는 놓칠 수 있다.
+  const savedCommit = diffStatus?.stage === "published" ? diffStatus.commit : null;
+  const historyKey = `${activeSlug}:${repo?.branch ?? ""}:${repo?.cycleScreens?.[0]?.at ?? ""}:${humanCount}:${savedCommit ?? ""}`;
   // biome-ignore lint/correctness/useExhaustiveDependencies: historyKey 는 방아쇠다.
   useEffect(() => {
     readHistory();

@@ -117,3 +117,8 @@
 .nx--narrow .nx-problem b {
   flex: 1;
 }
+
+.nx-problem--blocked {
+  color: var(--red);
+  background: var(--red-bg);
+}

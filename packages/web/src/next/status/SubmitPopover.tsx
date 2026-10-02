@@ -1,105 +1,234 @@
-import type { RepoHistoryEntry, RepoStatus } from "@colonova-design/protocol";
-import { type RefObject, useState } from "react";
+import type { SubmitPreview } from "@colonova-design/protocol";
+import { type RefObject, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { useModalEscape, useModalFocus } from "../../hooks/use-modal-focus";
 import { composing } from "../../lib/ime";
 import { L } from "../labels";
 import type { Journey } from "../lib/journey";
-import { outgoingScreens, outsideChanges } from "../lib/work-ledger";
-import { Popover } from "../ui/Popover";
+import { useScreenReview } from "../lib/use-screen-review";
+import type { CycleScreen } from "../lib/work-ledger";
+import { finalOutgoingChanges } from "../lib/work-ledger";
+import { ReviewBadges } from "../ui/ReviewBadges";
 import { ScreenRow } from "./parts";
 
-/**
- * 제출은 확인 한 장(PLAN-UI U3) — 열린 제출 버튼을 누르면 뜬다. 무엇이 가는지
- * (화면마다 한 줄, 가장 최근의 말) · 화면 밖 변경의 수 · `개발자에게 한마디` ·
- * 받을 개발자. 열린 요청이 있으면 제목이 `같은 요청에 더해 제출할까요?` 이고
- * 목록은 마지막 제출 뒤의 것이다. Enter 로 보낸다(한글 조합 중에는 아니다).
- */
+/** The list is a fresh project snapshot. Submission checks the same saved version again. */
 export function SubmitPopover({
   anchor,
   journey,
-  repo,
-  history,
-  since,
+  snapshot,
+  projectName,
   reviewers,
+  loading,
+  error,
+  busy,
+  changed,
+  onRefresh,
   onClose,
   onConfirm,
+  note,
+  onNote,
+  onPreview,
+  onCompare,
 }: {
   anchor: RefObject<HTMLElement | null>;
   journey: Journey;
-  repo: RepoStatus | null;
-  history: RepoHistoryEntry[] | null;
-  /** 마지막 제출의 시각 — 열린 요청에 더할 때만 목록을 자른다. */
+  snapshot: SubmitPreview | null;
+  projectName: string;
   since: string | null;
   reviewers: string[];
+  loading: boolean;
+  error: string | null;
+  busy: boolean;
+  changed: boolean;
+  onRefresh: () => void;
   onClose: () => void;
-  onConfirm: (note: string) => void;
+  onConfirm: (note: string, head: string, token: string) => void;
+  note: string;
+  onNote: (note: string) => void;
+  onPreview: (screen: CycleScreen) => void;
+  onCompare: (screen: CycleScreen) => void;
 }) {
-  const [note, setNote] = useState("");
+  const panel = useRef<HTMLDivElement>(null);
+  useModalFocus(panel, true, anchor);
+  useModalEscape(panel, () => {
+    if (!busy) onClose();
+  });
+  useEffect(() => {
+    panel.current?.focus();
+  }, []);
+  const review = useScreenReview();
   const more = journey.submit.more;
-  const cut = more ? since : null;
-  const screens = outgoingScreens(repo?.cycleScreens, cut);
-  const outside = outsideChanges(history, repo?.cycleScreens, cut);
-  const confirm = () => onConfirm(note.trim());
-
-  return (
-    <Popover
-      anchor={anchor}
-      onClose={onClose}
-      align="end"
-      className="nx-work-pop nx-submit-pop"
-      label={more ? L.submitConfirm.titleMore : L.submitConfirm.title}
-    >
-      <div className="nx-wp-h">
-        <b>{more ? L.submitConfirm.titleMore : L.submitConfirm.title}</b>
-        <div>{more ? L.submitConfirm.subMore : L.submitConfirm.sub}</div>
+  const { screens, outside } = finalOutgoingChanges(
+    snapshot?.history.entries ?? [],
+    snapshot?.repo.cycleScreens,
+    snapshot?.finalFiles ?? [],
+  );
+  const outsideFiles = outside.reduce((sum, item) => sum + item.files, 0);
+  const enabled =
+    snapshot !== null &&
+    snapshot.finalFiles.length > 0 &&
+    !loading &&
+    !error &&
+    !busy &&
+    !changed &&
+    journey.submit.enabled;
+  const confirm = () => {
+    if (enabled && snapshot) onConfirm(note.trim(), snapshot.head, snapshot.expectedPreview);
+  };
+  const checked =
+    snapshot?.expectedPreview === review?.snapshot?.expectedPreview
+      ? screens.reduce(
+          (n, screen) =>
+            n +
+            (["desktop", "tablet", "mobile"] as const).filter(
+              (device) => review?.status(screen.route, device) === "checked",
+            ).length,
+          0,
+        )
+      : 0;
+  return createPortal(
+    <div className="nx-modal-back nx-submit-review-back">
+      <div
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={more ? L.submitConfirm.titleMore : L.submitConfirm.title}
+        className="nx-work-pop nx-submit-review"
+      >
+        <div className="nx-wp-h">
+          <b>{more ? L.submitConfirm.titleMore : L.submitConfirm.title}</b>
+          <div>{more ? L.submitConfirm.subMore : L.submitConfirm.sub}</div>
+        </div>
+        <div className="nx-submit-review-body">
+          <div className="nx-wp-sec nx-submit-scope">
+            <b>{L.submitConfirm.project(projectName)}</b>
+            <p>{L.submitConfirm.shared}</p>
+            <p>{L.submitConfirm.follows}</p>
+          </div>
+          <div className="nx-wp-sec" aria-busy={loading}>
+            {loading ? (
+              <div role="status" className="nx-wp-empty">
+                {L.submitConfirm.loading}
+              </div>
+            ) : error ? (
+              <div role="alert" className="nx-submit-warning">
+                {error}
+              </div>
+            ) : snapshot ? (
+              <>
+                <h5>{L.submitConfirm.screens(screens.length)}</h5>
+                <p className="nx-review-progress">
+                  {L.screenReview.progress(checked, screens.length * 3)}
+                </p>
+                {checked < screens.length * 3 && (
+                  <p className="nx-submit-warning">{L.screenReview.pending}</p>
+                )}
+                {screens.map((screen) => (
+                  <div key={screen.route} className="nx-submit-screen">
+                    <ScreenRow screen={screen} />
+                    <ReviewBadges route={screen.route} version={snapshot.expectedPreview} />
+                    <div className="nx-submit-screen-actions">
+                      <button
+                        type="button"
+                        className="nx-btn nx-btn--sm"
+                        disabled={busy}
+                        onClick={() => onPreview(screen)}
+                      >
+                        {L.requestResult.latest}
+                      </button>
+                      <button
+                        type="button"
+                        className="nx-btn nx-btn--ghost nx-btn--sm"
+                        disabled={busy}
+                        onClick={() => onCompare(screen)}
+                      >
+                        {L.compare.open}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {outsideFiles > 0 && (
+                  <details className="nx-wp-outside">
+                    <summary>{L.submitConfirm.outsideScreens(outsideFiles)}</summary>
+                    <p>{L.submitConfirm.outsideDetail}</p>
+                    {outside.map((item) => (
+                      <p key={item.key}>
+                        {item.note
+                          ? L.submitConfirm.relatedRequest(
+                              item.note.split(/\r?\n/, 1)[0] ?? "",
+                              item.files,
+                            )
+                          : L.submitConfirm.unassociated(item.files)}
+                      </p>
+                    ))}
+                  </details>
+                )}
+                {snapshot.finalFiles.length === 0 && (
+                  <div className="nx-wp-empty">{L.submitConfirm.empty}</div>
+                )}
+              </>
+            ) : null}
+            {!loading && changed && !error && (
+              <div role="status" className="nx-submit-warning">
+                {L.submitConfirm.changed}
+              </div>
+            )}
+            {!loading && (error || changed) && (
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                onClick={onRefresh}
+                disabled={busy}
+              >
+                {L.submitConfirm.refresh}
+              </button>
+            )}
+          </div>
+          <div className="nx-wp-sec nx-wp-sec--last">
+            <h5>
+              {L.submitConfirm.note}
+              <span className="nx-wp-hr">{L.submitConfirm.optional}</span>
+            </h5>
+            <input
+              className="nx-note-input"
+              value={note}
+              maxLength={500}
+              disabled={busy}
+              placeholder={L.submitConfirm.notePlaceholder}
+              aria-label={L.submitConfirm.note}
+              onChange={(event) => onNote(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || composing(event)) return;
+                event.preventDefault();
+                confirm();
+              }}
+            />
+          </div>
+        </div>
+        <div className="nx-wp-foot">
+          {reviewers.length > 0 && (
+            <span className="nx-snote">{L.submitConfirm.reviewers(reviewers.join(" · "))}</span>
+          )}
+          <button
+            type="button"
+            className="nx-btn nx-btn--ghost nx-btn--sm"
+            onClick={onClose}
+            disabled={busy}
+          >
+            {L.submitConfirm.cancel}
+          </button>
+          <button
+            type="button"
+            className="nx-btn nx-btn--pri nx-btn--sm"
+            onClick={confirm}
+            disabled={!enabled}
+          >
+            {busy ? L.submit.running : L.submitConfirm.confirm}
+          </button>
+        </div>
       </div>
-      <div className="nx-wp-sec">
-        <h5>
-          {more && screens.length > 0
-            ? L.submitConfirm.screensMore(screens.length)
-            : L.submitConfirm.screens(screens.length)}
-        </h5>
-        {screens.map((screen) => (
-          <ScreenRow key={screen.route} screen={screen} />
-        ))}
-        {outside > 0 && (
-          <div className="nx-wp-outside">{L.submitConfirm.outsideScreens(outside)}</div>
-        )}
-        {screens.length === 0 && outside === 0 && (
-          <div className="nx-wp-empty">{journey.submit.reason}</div>
-        )}
-      </div>
-      <div className="nx-wp-sec nx-wp-sec--last">
-        <h5>
-          {L.submitConfirm.note}
-          <span className="nx-wp-hr">{L.submitConfirm.optional}</span>
-        </h5>
-        <input
-          className="nx-note-input"
-          // biome-ignore lint/a11y/noAutofocus: 확인 한 장은 한마디 칸에서 시작한다 — Enter 가 곧 제출이다.
-          autoFocus
-          value={note}
-          maxLength={500}
-          placeholder={L.submitConfirm.notePlaceholder}
-          aria-label={L.submitConfirm.note}
-          onChange={(event) => setNote(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" || composing(event)) return;
-            event.preventDefault();
-            confirm();
-          }}
-        />
-      </div>
-      <div className="nx-wp-foot">
-        {reviewers.length > 0 && (
-          <span className="nx-snote">{L.submitConfirm.reviewers(reviewers.join(" · "))}</span>
-        )}
-        <button type="button" className="nx-btn nx-btn--ghost nx-btn--sm" onClick={onClose}>
-          {L.submitConfirm.cancel}
-        </button>
-        <button type="button" className="nx-btn nx-btn--pri nx-btn--sm" onClick={confirm}>
-          {L.submitConfirm.confirm}
-        </button>
-      </div>
-    </Popover>
+    </div>,
+    document.querySelector(".nx") ?? document.body,
   );
 }

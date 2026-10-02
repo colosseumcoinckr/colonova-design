@@ -40,6 +40,22 @@
   white-space: pre-line;
 }
 
+.nx-ob--empty .nx-ob-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: min(18vh, 160px);
+}
+
+.nx-ob--empty .nx-ob-sub {
+  margin-bottom: 22px;
+}
+
+.nx-empty-projects-progress {
+  color: var(--ink2);
+  font-size: 13px;
+}
+
 .nx-ob-steps {
   list-style: none;
   margin: 0;

@@ -1,7 +1,7 @@
 import type { EffortLevel, LostSend } from "@colonova-design/protocol";
 import { koreanNoticeWords, LIMIT_WORDS } from "../../lib/error-words.ts";
 import { screenPath } from "../../lib/screen-link.ts";
-import { screenKey } from "../../lib/turn-screens.ts";
+import { screenKey, titleOfPath } from "../../lib/turn-screens.ts";
 import type { L } from "../labels";
 
 /**
@@ -316,10 +316,14 @@ export function screenTitle(
   if (screen.title !== null && screen.title.trim() !== "") return screen.title;
   const path = screenKey(screenPath(screen.path));
   if (path === "/") return words.homeScreen;
-  const found = cycleScreens?.find(
-    (candidate) => candidate.title.trim() !== "" && screenKey(screenPath(candidate.route)) === path,
+  const found = titleOfPath(
+    (cycleScreens ?? []).map((candidate) => ({
+      path: screenPath(candidate.route),
+      title: candidate.title,
+    })),
+    path,
   );
-  return found?.title ?? words.unknownScreen;
+  return found ?? words.unknownScreen;
 }
 
 /** 말줄 역할 판정이 읽는 테이프의 모양 — 대화록(Block)에서 필요한 칸만. */

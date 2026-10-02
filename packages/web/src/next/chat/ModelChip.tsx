@@ -19,6 +19,14 @@ import { CheckIcon, ChevIcon, LockIcon, ProviderMark } from "./icons";
 /** 이 개수부터는 모델 줄을 눈으로 걷지 않고 거르는 편이 빠르다. */
 const MODEL_FILTER_MIN = 8;
 
+/** CLI descriptions currently shown by the installed providers, in plain Korean. */
+const MODEL_HINTS: Record<string, string> = L.model.hints;
+
+function modelHint(label: string, hint?: string): string | null {
+  if (/^default\b/i.test(label)) return L.model.defaultHint;
+  return hint ? (MODEL_HINTS[hint] ?? null) : null;
+}
+
 /** AI 고르는 줄의 화살표 키 — 한 칸씩 가는 방향. Home · End 는 양 끝으로 간다. */
 const AI_KEY_STEP: Record<string, number> = {
   ArrowRight: 1,
@@ -57,6 +65,7 @@ export function ModelChip({
 }) {
   const [open, setOpen] = useState(false);
   const [modelQuery, setModelQuery] = useState("");
+  const [showAllModels, setShowAllModels] = useState(false);
   // AI 를 바꿀 때마다 오르는 셈 — 모델 목록의 열쇠라, 목록이 새로 서며 내려앉는다.
   // 팝을 열 때는 0 이라 처음 여는 목록은 움직이지 않는다.
   const [aiSwap, setAiSwap] = useState(0);
@@ -65,6 +74,7 @@ export function ModelChip({
   const close = () => {
     setOpen(false);
     setModelQuery("");
+    setShowAllModels(false);
     setAiSwap(0);
   };
   const providers = (daemon.status?.providers ?? []).filter(
@@ -82,6 +92,7 @@ export function ModelChip({
     if (id !== provider) setAiSwap((n) => n + 1);
     target.pickProvider?.(id);
     setModelQuery("");
+    setShowAllModels(false);
   };
   // 라디오 묶음의 화살표 — 고른 자리가 곧 초점이다(초점은 고른 칸에만 서는 로빙 탭 순서).
   const stepProvider = (from: number, event: KeyboardEvent<HTMLButtonElement>) => {
@@ -104,8 +115,20 @@ export function ModelChip({
     // 화살표로 훑는 손이 끊기지 않게 그린 뒤 고른 칸으로 되돌려 놓는다.
     requestAnimationFrame(() => aiRadios.current[to]?.focus());
   };
-  const modelRow = modelRowOf(target.models, target.model);
+  const modelRow =
+    modelRowOf(target.models, target.model) ??
+    (target.model === null
+      ? (target.models.find((row) => row.value === "default") ?? target.models[0])
+      : undefined);
   const models = modelOptions(target.models, modelRow);
+  const recommendedModel = models.find((row) => row.value === "default") ?? models[0];
+  const primaryModels = recommendedModel ? [recommendedModel] : [];
+  const selectedOutsidePrimary = models.find((row) => row.picked && !primaryModels.includes(row));
+  const compactModels = selectedOutsidePrimary
+    ? [...primaryModels, selectedOutsidePrimary]
+    : primaryModels;
+  const shownModels = showAllModels ? models : compactModels;
+  const hiddenModelCount = Math.max(0, models.length - compactModels.length);
   const needle = modelQuery.trim().toLowerCase();
   const visibleModels =
     needle === ""
@@ -117,10 +140,14 @@ export function ModelChip({
   const efforts = Object.keys(EFFORT_OF) as EffortWord[];
   const showEffort = modelRow?.supportsEffort !== false;
   const think = effortWord(target.effort);
-  const label = chipLabel(
-    modelName(target.models, target.model) ?? providerLabel,
-    showEffort ? EFFORT_OF[think] : null,
-  );
+  const label = target.loading
+    ? L.model.loading
+    : target.unknown
+      ? L.model.unknown
+      : chipLabel(
+          modelName(target.models, target.model) ?? providerLabel,
+          showEffort ? L.model.efforts[think] : null,
+        );
   const plan = daemon.status?.planUsageByProvider?.[provider];
   const reading = usageReading(plan);
   const usage = usageRows(plan);
@@ -219,7 +246,7 @@ export function ModelChip({
           {models.length > 0 && (
             <>
               <div className="nx-mh">{L.model.model}</div>
-              {models.length > MODEL_FILTER_MIN && (
+              {showAllModels && models.length > MODEL_FILTER_MIN && (
                 <input
                   className="nx-mfilter"
                   type="text"
@@ -233,29 +260,46 @@ export function ModelChip({
               )}
               {/* AI 를 바꾸면 목록이 새로 서며 내려앉는다 — 어디가 바뀌었는지 눈이 따라간다. */}
               <div key={aiSwap} className={aiSwap > 0 ? "nx-mlist nx-mlist--swap" : "nx-mlist"}>
-                {visibleModels.map((row) => (
-                  <button
-                    key={row.value ?? row.label}
-                    type="button"
-                    className="nx-mi"
-                    onClick={() => {
-                      void target.setModel(row.value);
-                      close();
-                    }}
-                  >
-                    <span className="nx-mt">
-                      <b>{row.label}</b>
-                      {row.hint && <small>{row.hint}</small>}
-                    </span>
-                    {row.picked && (
-                      <span className="nx-ck nx-r">
-                        <CheckIcon />
-                      </span>
-                    )}
-                  </button>
-                ))}
+                {visibleModels
+                  .filter((row) => shownModels.includes(row))
+                  .map((row) => {
+                    const hint = modelHint(row.label, row.hint);
+                    return (
+                      <button
+                        key={row.value ?? row.label}
+                        type="button"
+                        className="nx-mi"
+                        onClick={() => {
+                          void target.setModel(row.value);
+                          close();
+                        }}
+                      >
+                        <span className="nx-mt">
+                          <b>{/^default\b/i.test(row.label) ? L.model.auto : row.label}</b>
+                          {hint && <small>{hint}</small>}
+                        </span>
+                        {row.picked && (
+                          <span className="nx-ck nx-r">
+                            <CheckIcon />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 {visibleModels.length === 0 && <div className="nx-mempty">{L.model.noMatch}</div>}
               </div>
+              {(hiddenModelCount > 0 || showAllModels) && !needle && (
+                <button
+                  type="button"
+                  className="nx-model-more"
+                  onClick={() => {
+                    setShowAllModels((shown) => !shown);
+                    setModelQuery("");
+                  }}
+                >
+                  {showAllModels ? L.model.fewerModels : L.model.otherModels(hiddenModelCount)}
+                </button>
+              )}
               {modelRow?.supportsFastMode === false && (
                 // 번개 칩이 없는 이유를 팝이 대신 대답한다 — 모델이 조용히
                 // 가려진 것을 빠르게의 부재로 오해하는 일이 없게.
@@ -282,10 +326,15 @@ export function ModelChip({
                     className={think === word ? "nx-on" : ""}
                     onClick={() => void target.setEffort(EFFORT_OF[word])}
                   >
-                    {EFFORT_OF[word]}
+                    {L.model.efforts[word]}
                   </button>
                 ))}
               </div>
+              <div className="nx-mnote">{L.model.thinkHelp}</div>
+              {target.subject === "session" && (
+                // 열린 대화의 칩에만 — 다음 새 대화(next)는 아직 다시 읽을 대화가 없다.
+                <div className="nx-mnote">{L.model.thinkHelpSession}</div>
+              )}
             </>
           )}
           {usage.length > 0 && (

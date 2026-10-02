@@ -11,16 +11,14 @@ import { ActivitySummary, groupActivity } from "../../components/transcript/acti
 import { ThinkingBlock, ToolBlock } from "../../components/transcript/blocks";
 import { TodoCard } from "../../components/transcript/todo";
 import type { Block } from "../../lib/daemon-client";
-import { previewPathOf } from "../../lib/screen-link";
+import { previewPathOf, screenPath } from "../../lib/screen-link";
 import { blockOnTape, mergeThinking } from "../../lib/tape-visibility";
 import { turnAnswerText, turnBlockNumbers } from "../../lib/turn-numbering";
-import {
-  lastTurnScreens,
-  type TurnScreen,
-  withoutTrailingScreenLinks,
-} from "../../lib/turn-screens";
+import { type TurnScreen, withoutTrailingScreenLinks } from "../../lib/turn-screens";
 import { L } from "../labels";
+import { assistantDisplay } from "../lib/assistant-display";
 import { shownPinLabel } from "../lib/pin-name";
+import { requestResults } from "../lib/request-results";
 import {
   failureCards,
   LIMIT_RESULT,
@@ -31,9 +29,11 @@ import {
   screenTitle,
   textRoles,
 } from "../lib/thread";
+import { openComparison } from "../preview/ComparisonDialog";
 import { BriefCard, FailCard, GateCard, ReceiptCard, ReviewCard, reviewParts } from "./cards";
 import { CheckIcon, ClockIcon, EditIcon, FwdIcon, SparkIcon } from "./icons";
-import { SettleLine, ShotCard } from "./SettleLine";
+import { type LoadComparison, ResultScreen } from "./ResultScreens";
+import { SettleLine } from "./SettleLine";
 
 /** CLI 가 사람의 말이나 답인 척 내려놓는 살림 줄 — 사람의 말이 아니다. */
 const INTERRUPTED = "[Request interrupted by user]";
@@ -90,6 +90,8 @@ export interface ThreadProps {
   /** 잃은 말의 `다시 시도` — 되살려 다시 보낸다(입력창이 쓰던 길). */
   onRetryDropped: (itemId: string) => void;
   onOpenScreen: (screen: TurnScreen) => void;
+  onAdditionalEdit: (screen: TurnScreen) => void;
+  loadComparison: LoadComparison;
   onOpenHistory: () => void;
   onReply: (id: number, text: string) => Promise<void>;
   /** 영수증의 `한마디 더`(U20) — 열린 요청에 코멘트로 남긴다. */
@@ -170,9 +172,23 @@ export function Thread(props: ThreadProps) {
   const turnAnswers = turnAnswerText(blocks);
   const toPath = (href: string) => previewPathOf(href, props.previewUrl);
 
+  const plainAnswer = (text: string) =>
+    assistantDisplay(withoutTrailingScreenLinks(text, toPath), {
+      heading: L.chat.technicalHeading,
+      references: L.chat.technicalReferences,
+      screenCheckTool: L.chat.screenCheckTool,
+      browserFindTool: L.chat.browserFindTool,
+      browserInspectTool: L.chat.browserInspectTool,
+      screenFilesTool: L.chat.screenFilesTool,
+      diagnosticsTool: L.chat.diagnosticsTool,
+      elementReference: L.chat.elementReference,
+      fileReference: L.chat.fileReference,
+    }).answer;
   // 턴 끝마다: 그 턴이 말한 화면과 마지막 답 한 조각.
+  const results = requestResults(blocks, props.cycleScreens);
   const screensByTurn = new Map<string, TurnScreen[]>();
   const lastAnswerByTurn = new Map<string, string>();
+  const requestByTurn = new Map<string, string>();
   // `고친 화면` 카드가 서는 답의 글 — 끝의 화면 링크 줄은 카드와 같은 말이라 글에서 뺀다.
   const cardedTexts = new Set<string>();
   let segmentStart = 0;
@@ -184,8 +200,13 @@ export function Thread(props: ThreadProps) {
     } else if (block.type === "text" && block.agentId === null) {
       lastText = block.text;
     } else if (block.type === "turn") {
-      if (props.previewUrl) {
-        const screens = lastTurnScreens(blocks.slice(segmentStart, index + 1), toPath);
+      {
+        const result = results.get(block.id);
+        const screens = (result?.screens ?? []).map((screen) => ({
+          path: screen.route,
+          title: screen.title,
+        }));
+        if (result) requestByTurn.set(block.id, result.requestId);
         screensByTurn.set(block.id, screens);
         if (screens.length > 0 && !failed(block)) {
           for (const earlier of blocks.slice(segmentStart, index)) {
@@ -244,7 +265,9 @@ export function Thread(props: ThreadProps) {
         const { marker, body } = readTurn(block.text);
         const running = live && block.id === lastUserId;
         if (marker?.kind === "gate" || marker?.kind === "error") {
-          return <GateCard marker={marker} body={body} fixing={running} />;
+          return (
+            <GateCard marker={marker} body={body} fixing={running} result={block.gateResult} />
+          );
         }
         if (marker?.kind === "brief") return <BriefCard marker={marker} body={body} />;
         if (marker?.kind === "review") {
@@ -374,13 +397,32 @@ export function Thread(props: ThreadProps) {
         const shown = cardedTexts.has(block.id)
           ? withoutTrailingScreenLinks(block.text, toPath)
           : block.text;
+        const display = assistantDisplay(shown, {
+          heading: L.chat.technicalHeading,
+          references: L.chat.technicalReferences,
+          screenCheckTool: L.chat.screenCheckTool,
+          browserFindTool: L.chat.browserFindTool,
+          browserInspectTool: L.chat.browserInspectTool,
+          screenFilesTool: L.chat.screenFilesTool,
+          diagnosticsTool: L.chat.diagnosticsTool,
+          elementReference: L.chat.elementReference,
+          fileReference: L.chat.fileReference,
+        });
         return (
           <div className={`nx-m-ai${first ? "" : " nx-m-ai--cont"}`}>
             <div className="nx-av" aria-hidden="true">
               {first && <SparkIcon />}
             </div>
             <div className={`nx-m-body${block.streaming ? " nx-m-live" : ""}`}>
-              <Markdown text={shown} />
+              <Markdown text={display.answer} />
+              {display.technical !== null && (
+                <details className="nx-card-fold nx-answer-details">
+                  <summary>{L.chat.technicalDetails}</summary>
+                  <div className="nx-answer-details-body">
+                    <Markdown text={display.technical} />
+                  </div>
+                </details>
+              )}
             </div>
           </div>
         );
@@ -428,18 +470,54 @@ export function Thread(props: ThreadProps) {
         return (
           <>
             {screens.length > 0 && (
-              <div className={`nx-shots${fresh ? " nx-shots--new" : ""}`}>
-                {screens.map((screen) => (
-                  <ShotCard
-                    key={screen.path}
-                    title={screenTitle(screen, props.cycleScreens, {
-                      homeScreen: L.preview.homeScreen,
-                      unknownScreen: L.transcript.unknownScreen,
-                    })}
-                    onOpen={() => props.onOpenScreen(screen)}
-                  />
-                ))}
-              </div>
+              <section
+                className={`nx-results${fresh ? " nx-results--new" : ""}`}
+                aria-label={L.transcript.shotLabel}
+              >
+                <div className="nx-results-heading">
+                  <span>{L.transcript.shotLabel}</span>
+                  <span className="nx-results-count">{screens.length}</span>
+                </div>
+                <div className="nx-result-context">
+                  <span>{L.requestResult.request}</span>
+                  <p>{results.get(block.id)?.prompt}</p>
+                  {results.get(block.id)?.explanation && (
+                    <>
+                      <span>{L.requestResult.explanation}</span>
+                      <blockquote>
+                        {plainAnswer(results.get(block.id)?.explanation ?? "")
+                          .replace(/\s+/g, " ")
+                          .slice(0, 220)}
+                      </blockquote>
+                    </>
+                  )}
+                </div>
+                <div className="nx-results-grid">
+                  {screens.map((screen) => (
+                    <ResultScreen
+                      key={`${requestByTurn.get(block.id) ?? block.id}:${screen.path}`}
+                      route={screenPath(screen.path)}
+                      requestId={requestByTurn.get(block.id)}
+                      loadComparison={props.loadComparison}
+                      title={screenTitle(screen, props.cycleScreens, {
+                        homeScreen: L.preview.homeScreen,
+                        unknownScreen: L.transcript.unknownScreen,
+                      })}
+                      onEdit={() => props.onAdditionalEdit(screen)}
+                      onOpen={() => props.onOpenScreen(screen)}
+                      onCompare={() =>
+                        openComparison({
+                          route: screen.path,
+                          title: screen.title ?? L.transcript.unknownScreen,
+                          ...(requestByTurn.get(block.id)
+                            ? { requestId: requestByTurn.get(block.id) }
+                            : {}),
+                        })
+                      }
+                    />
+                  ))}
+                </div>
+              </section>
             )}
             <SettleLine
               durationMs={block.durationMs}

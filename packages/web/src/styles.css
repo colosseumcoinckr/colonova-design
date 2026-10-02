@@ -937,7 +937,16 @@ select {
   border-top: 1px solid var(--line);
   margin: 6px 0;
 }
+.md__table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.md__table-scroll:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
 .md table {
+  width: 100%;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.94em;

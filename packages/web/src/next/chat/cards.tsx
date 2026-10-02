@@ -54,11 +54,13 @@ export function GateCard({
   marker,
   body,
   fixing,
+  result,
 }: {
   marker: Extract<TurnMarker, { kind: "gate" | "error" }>;
   body: string;
   /** 이 턴이 아직 도는 중인가 — 알약이 `AI가 고치는 중` 이 된다. */
   fixing: boolean;
+  result?: import("@colonova-design/protocol").GateResult;
 }) {
   const title =
     marker.kind === "error" && marker.errorKind === "look" ? L.chat.lookTitle : L.cards.screenCheck;
@@ -73,10 +75,17 @@ export function GateCard({
       <div className="nx-ch">
         <EyeIcon />
         <b>{title}</b>
-        <Stat done={!fixing} doneText={L.cards.gateFixed} runText={L.cards.gateFixing} />
+        {fixing ? (
+          <Stat done={false} doneText={L.cards.gateFixed} runText={L.cards.gateFixing} />
+        ) : (
+          <span className={`nx-stat${result === "verified" ? " nx-stat--done" : ""}`}>
+            {L.cards.gateResult[result ?? "unverified"]}
+          </span>
+        )}
       </div>
       <div className="nx-cs">
-        {summary} {fixing ? L.cards.nothingToDoYet : L.cards.nothingToDo}
+        {summary}{" "}
+        {fixing ? L.cards.nothingToDoYet : L.cards.gateResultDetail[result ?? "unverified"]}
       </div>
       <Received body={body} />
     </div>

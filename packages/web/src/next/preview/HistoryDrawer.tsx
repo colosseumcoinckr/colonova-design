@@ -2,7 +2,9 @@ import type { RepoHistoryEntry, RepoStatus } from "@colonova-design/protocol";
 import { Fragment, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
+import { historyKindOf } from "../lib/history-kind";
 import { entryScreens, entryTitle, historyRows, revertSummary } from "../lib/revert-summary";
+import { openComparison } from "./ComparisonDialog";
 import { CloseIcon, SmallCheckIcon, UndoIcon } from "./icons";
 
 /** `nx:history:open` — 정산 줄의 메뉴(단계 2)와 `이번 작업`(단계 4)이 서랍을 연다. */
@@ -113,7 +115,7 @@ export function HistoryDrawer({
       const target = event.target as HTMLElement | null;
       const typing = target?.closest("input, textarea, [contenteditable]") !== null;
       if (typing && !panel.current?.contains(target)) return;
-      if (document.querySelector(".modal, .nx-pal")) return;
+      if (document.querySelector(".modal, .nx-pal, .nx-modal-back")) return;
       if (confirmRef.current === null) onClose();
       else {
         setConfirm(null);
@@ -149,6 +151,8 @@ export function HistoryDrawer({
     [api, onRestored, toast],
   );
 
+  const working =
+    daemon.projects.find((project) => project.slug === daemon.activeSlug)?.working === true;
   const merged = repo?.handoff?.state === "merged";
   const list = entries ?? [];
   const rows = historyRows(list, submits);
@@ -178,7 +182,7 @@ export function HistoryDrawer({
           <CloseIcon />
         </button>
       </div>
-      <div className="nx-hist-sub">{L.history.sub}</div>
+      <div className="nx-hist-sub">{working ? L.history.working : L.history.sub}</div>
       <div className="nx-hist-list">
         {entries === null && !error && <div className="nx-hist-empty">{L.history.loading}</div>}
         {entries !== null && list.length === 0 && (
@@ -196,15 +200,29 @@ export function HistoryDrawer({
           }
           const entry = list[row.index];
           if (!entry) return null;
-          const title = entryTitle(entry.message);
+          const kind = historyKindOf(entry.message, entry.kind, {
+            restore: L.history.restorePrefix,
+            comment: L.history.commentPrefix,
+          });
+          const originalTitle = entryTitle(entry.message);
+          const title =
+            kind === "merge"
+              ? L.history.eventMerge
+              : kind === "restore"
+                ? L.history.eventRestore
+                : kind === "comment"
+                  ? L.history.eventComment
+                  : originalTitle;
           const day = dayOf(entry.at, now);
           const dayHead = day !== lastDay ? day : null;
           lastDay = day;
           const current = row.index === 0;
           const screens = entryScreens(entry, repo?.cycleScreens);
+          const comparableScreens =
+            repo?.cycleScreens?.filter((screen) => screen.sha === entry.sha) ?? [];
           const summary = revertSummary(list, row.index, L.history.commentPrefix);
           const pick = () => {
-            if (current || restoring !== null) return;
+            if (current || restoring !== null || working) return;
             setError(null);
             setConfirm((open) => (open === row.index ? null : row.index));
           };
@@ -213,7 +231,7 @@ export function HistoryDrawer({
               {dayHead && <div className="nx-hday">{dayHead}</div>}
               <div className={`nx-hitem${current ? " nx-hitem--cur" : ""}`}>
                 <span className="nx-hd" />
-                {/* biome-ignore lint/a11y/useKeyWithClickEvents: 줄의 누름은 오른쪽 단추의 넓은 과녁이다 — 키보드는 그 단추로 닿는다. */}
+                {/* biome-ignore lint/a11y/useKeyWithClickEvents: 줄의 누름은 되돌리기 단추의 넓은 과녁이다 — 키보드는 그 단추로 닿는다. */}
                 {/* biome-ignore lint/a11y/noStaticElementInteractions: 위와 같다. */}
                 {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: 위와 같다. */}
                 <div className="nx-hbody" onClick={pick}>
@@ -223,25 +241,64 @@ export function HistoryDrawer({
                   </div>
                   {screens.length > 0 && <div className="nx-hs">{screens.join(" · ")}</div>}
                 </div>
-                {!current && (
-                  <button
-                    type="button"
-                    className="nx-btn nx-btn--sm nx-hb"
-                    disabled={restoring !== null}
-                    onClick={pick}
-                  >
-                    <UndoIcon />
-                    {L.history.toHere}
-                  </button>
+                {(comparableScreens.length > 0 || !current) && (
+                  <div className="nx-hactions">
+                    {comparableScreens.map((screen) => (
+                      <button
+                        key={screen.route}
+                        type="button"
+                        className="nx-btn nx-btn--sm nx-hcompare"
+                        aria-label={`${screen.title} · ${L.compare.open}`}
+                        onClick={() =>
+                          openComparison({
+                            route: screen.route,
+                            title: screen.title,
+                            sha: entry.sha,
+                          })
+                        }
+                      >
+                        {L.compare.open}
+                      </button>
+                    ))}
+                    {!current && (
+                      <button
+                        type="button"
+                        className="nx-btn nx-btn--sm nx-hb"
+                        disabled={restoring !== null || working}
+                        onClick={pick}
+                      >
+                        <UndoIcon />
+                        {L.history.toHere}
+                      </button>
+                    )}
+                  </div>
                 )}
                 {confirm === row.index && (
                   <div className="nx-hconfirm" role="alertdialog" aria-label={L.history.revert}>
-                    <p>{L.history.confirm(title, summary.count, summary.withComments)}</p>
+                    <p>
+                      {kind
+                        ? L.history.confirmEvent(summary.count, summary.withComments)
+                        : L.history.confirm(title, summary.count, summary.withComments)}
+                    </p>
+                    <p className="nx-hs">
+                      {(() => {
+                        const affected = [
+                          ...new Set(
+                            list
+                              .slice(0, row.index)
+                              .flatMap((item) => entryScreens(item, repo?.cycleScreens)),
+                          ),
+                        ];
+                        return affected.length
+                          ? L.history.affected(affected.join(" · "))
+                          : L.history.affectedUnknown;
+                      })()}
+                    </p>
                     <div className="nx-hconfirm-row">
                       <button
                         type="button"
                         className="nx-btn nx-btn--sm nx-btn--pri"
-                        disabled={restoring !== null}
+                        disabled={restoring !== null || working}
                         onClick={() => void restore(entry)}
                       >
                         {restoring === entry.sha ? L.history.restoring : L.history.revert}
@@ -249,7 +306,7 @@ export function HistoryDrawer({
                       <button
                         type="button"
                         className="nx-btn nx-btn--sm nx-btn--ghost"
-                        disabled={restoring !== null}
+                        disabled={restoring !== null || working}
                         // biome-ignore lint/a11y/noAutofocus: 엉뚱한 Enter 가 되돌리지 않게 기본 초점은 `그만두기` — 되돌리는 손이 직접 고른다.
                         autoFocus
                         onClick={() => {

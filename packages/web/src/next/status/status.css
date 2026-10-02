@@ -715,3 +715,109 @@
 .nx .nx-note-input:focus {
   border-color: var(--ink3);
 }
+
+.nx-conv-title {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nx-conv-title small {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink3);
+}
+.nx-conv-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.nx-project-work {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+.nx-work-scope {
+  font-size: 10px;
+  color: var(--ink3);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-project-work .nx-journey {
+  padding: 4px 10px;
+}
+.nx-submit-scope > b {
+  font-size: 12px;
+}
+.nx-submit-scope p {
+  margin: 6px 0 0;
+  color: var(--ink3);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.nx-submit-warning {
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 0 0 10px;
+}
+.nx--narrow .nx-work-scope {
+  max-width: 190px;
+}
+
+.nx .nx-submit-review-back {
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--ink) 26%, transparent);
+}
+.nx-submit-review {
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line2);
+  width: min(800px, calc(100vw - 40px));
+  height: auto;
+  max-height: min(820px, calc(100dvh - 48px));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  position: relative;
+  box-shadow: 0 24px 80px #0003;
+}
+.nx-submit-review .nx-wp-h {
+  flex: none;
+  padding: 24px 28px 18px;
+}
+.nx-submit-review-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.nx-submit-review .nx-wp-sec {
+  padding: 20px 28px;
+}
+.nx-submit-review .nx-wp-foot {
+  flex: none;
+  padding: 18px 28px;
+  background: var(--card);
+}
+.nx-submit-screen {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.nx-submit-screen .nx-wp-row {
+  padding: 0 0 10px;
+}
+.nx-submit-screen-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.nx-review-progress {
+  font-weight: 600;
+}

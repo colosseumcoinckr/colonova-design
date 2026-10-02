@@ -58,6 +58,8 @@ export interface JourneyInput {
   reconnect?: boolean;
   /** 개발자 코멘트 수 — 아는 쪽(단계 4 의 장부)이 넘긴다. 모르면 0. */
   comments?: number;
+  /** 마지막 제출 뒤 저장된 변경 중 화면 목록에 나타나지 않는 기록 수. */
+  outsideChanges?: number;
   /** 제출 상태의 문장 — `submitCopy(repo?.submit, L)`(U13). 막힘 · 도는 중을 이것이 말한다. */
   submitCopy: SubmitCopy;
 }
@@ -75,7 +77,11 @@ function hasWork(repo: RepoStatus | null): boolean {
 
 /** 제목이 빈 화면(화면을 만지지 않은 차례)은 목록에서 뺀다(PLAN-UI 6 리스크). */
 function screensOf(repo: RepoStatus | null): RepoStatus["cycleScreens"] {
-  return repo?.cycleScreens?.filter((screen) => screen.title.trim().length > 0);
+  if (!repo?.cycleScreens) return undefined;
+  const screens = new Map<string, NonNullable<RepoStatus["cycleScreens"]>[number]>();
+  for (const screen of repo.cycleScreens)
+    if (screen.title.trim()) screens.set(screen.route, screen);
+  return [...screens.values()];
 }
 
 export function deriveJourney(input: JourneyInput, words: JourneyWords): Journey {
@@ -181,7 +187,8 @@ function submitState(
       // 글자로 견주면 어긋난다.
       const cut = Date.parse(since);
       const more = facts.screens.filter((screen) => Date.parse(screen.at) > cut).length;
-      return more > 0 ? ready(S.whyMoreReady(more)) : lock(S.whyNoMore);
+      if (more > 0) return ready(S.whyMoreReady(more));
+      return (input.outsideChanges ?? 0) > 0 ? ready(shell.submitMoreAny) : lock(S.whyNoMore);
     }
     return facts.work ? ready(shell.submitMoreAny) : lock(S.whyNoMore);
   }

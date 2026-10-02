@@ -119,6 +119,7 @@ export function ChatColumn({
           : (daemon.repo?.cycleScreens?.find(
               (s) => s.title.trim() && screenPath(s.route) === firstPath,
             )?.title ?? undefined);
+    setEditHint(false);
     await sessions.submit(
       sent.length > 0 ? pinsToTurn(sent, text, () => null) : text,
       [...pinImages, ...attachments],
@@ -156,18 +157,31 @@ export function ChatColumn({
   };
 
   // --- 고쳐서 다시 보내기(U15) · 여기서 새 대화 ----------------------------
-  const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
+  const [editHint, setEditHint] = useState(false);
+  const editTarget = useRef(false);
+  useEffect(() => {
+    setEditHint(editTarget.current);
+    editTarget.current = false;
+  }, [activeId]);
+  const [prefill, setPrefill] = useState<{
+    text: string;
+    nonce: number;
+    append?: boolean;
+    screen?: string;
+  } | null>(null);
   const nonce = useRef(0);
-  const fill = (text: string) => {
+  const fill = (text: string, append = false, screen?: string) => {
     nonce.current += 1;
-    setPrefill({ text, nonce: nonce.current });
+    setPrefill({ text, nonce: nonce.current, append, screen });
   };
   const editResend = (prompt: number, text: string) => {
     // k 번째 말 앞까지 = k-1 번째 답까지. 첫 말이면 이어받을 것이 없다 — 새 대화다.
+    editTarget.current = true;
     const branched =
       prompt > 1 ? sessions.branchFrom(prompt - 1) : Promise.resolve(sessions.fresh());
     void branched.then(() => {
       fill(text);
+      setEditHint(true);
       nav.toast(L.transcript.editResendToast);
     });
   };
@@ -311,6 +325,7 @@ export function ChatColumn({
               <SparkIcon />
             </span>
             <h2>{L.transcript.emptyTitle}</h2>
+            {project && <p className="nx-shared-hint">{L.transcript.sharedWork}</p>}
             {project && (
               <p>
                 {preparing
@@ -341,7 +356,18 @@ export function ChatColumn({
             onEditResend={editResend}
             onRetry={retry}
             onRetryDropped={retryDropped}
+            onAdditionalEdit={(screen) => {
+              fill(
+                L.requestResult.draft(screen.title ?? L.transcript.unknownScreen),
+                true,
+                screen.path,
+              );
+              nav.showThread();
+              nav.showTab("chat");
+              nav.toast(L.requestResult.draftReady);
+            }}
             onOpenScreen={openScreen}
+            loadComparison={api.comparison}
             onOpenHistory={() => window.dispatchEvent(new CustomEvent("nx:history:open"))}
             onReply={async (id, text) => {
               await api.replyToReview(id, text);
@@ -417,6 +443,11 @@ export function ChatColumn({
             {hasNew ? L.chat.newContent : L.chat.toBottom}
             <ChevIcon />
           </button>
+        )}
+        {editHint && (
+          <div className="nx-cmp-hint" role="status">
+            {L.transcript.editScreenHint}
+          </div>
         )}
         {contextFull && <div className="nx-cmp-hint">{L.chat.contextFull}</div>}
         <Composer

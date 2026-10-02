@@ -8,6 +8,7 @@ import {
   commentCount,
   commentRows,
   cycleStart,
+  finalOutgoingChanges,
   outgoingScreens,
   outsideChanges,
 } from "../src/next/lib/work-ledger.ts";
@@ -75,6 +76,65 @@ test("화면 밖 변경 — 화면 목록에 서지 않은 차례를 센다", ()
   assert.equal(outsideChanges(history, SCREENS, "2026-09-25T02:40:00Z"), 1);
   assert.equal(outsideChanges(null, SCREENS, null), 0);
   assert.equal(outsideChanges(history, undefined, null), 5);
+});
+
+test("automatic sync records never count as outgoing user changes", () => {
+  const sync = Array.from({ length: 6 }, (_, n) => ({
+    ...entry(
+      `Merge remote-tracking branch 'origin/main' into work-${n}`,
+      `2026-10-02T0${n}:00:00Z`,
+    ),
+    kind: "merge" as const,
+    files: ["shared.ts"],
+  }));
+  assert.equal(outsideChanges(sync, [], null), 0);
+  assert.equal(
+    outsideChanges(
+      sync.map(({ kind, ...row }) => row),
+      [],
+      null,
+    ),
+    0,
+  );
+  assert.equal(
+    outsideChanges(
+      [
+        ...sync,
+        { ...entry("Make the heading smaller", "2026-10-02T06:00:00Z"), files: ["heading.css"] },
+      ],
+      [],
+      null,
+    ),
+    1,
+  );
+});
+
+test("final submission lists unique remaining screens and related outside requests, excluding sync and reverted files", () => {
+  const at = "2026-10-02T06:00:00Z";
+  const history: RepoHistoryEntry[] = [
+    {
+      sha: "sync",
+      message: "Merge remote-tracking branch 'origin/main'",
+      at,
+      kind: "merge",
+      files: ["incoming.ts"],
+    },
+    { sha: "style", message: "Use the smaller headings", at, files: ["common.css", "theme.css"] },
+    { sha: "screen", message: "Add member search", at, files: ["member.tsx"] },
+    { sha: "reverted", message: "Change the logo", at, files: ["logo.svg"] },
+  ];
+  const screens = [
+    { ...screen("/members", "Members", "Add member search", at), sha: "screen" },
+    { ...screen("/logo", "Logo", "Change the logo", at), sha: "reverted" },
+  ];
+  assert.deepEqual(
+    finalOutgoingChanges(history, screens, ["member.tsx", "common.css", "common.css", "theme.css"]),
+    {
+      screens: [screens[0]],
+      outside: [{ key: "style", note: "Use the smaller headings", files: 2 }],
+    },
+  );
+  assert.deepEqual(finalOutgoingChanges(history, screens, []), { screens: [], outside: [] });
 });
 
 test("코멘트 장부 — 뒤에 코멘트 반영 차례가 있으면 반영됨, 없으면 고치는 중", () => {

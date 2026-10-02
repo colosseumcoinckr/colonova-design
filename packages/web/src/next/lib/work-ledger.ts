@@ -1,4 +1,5 @@
 import type { DeveloperReview, RepoHistoryEntry, RepoStatus } from "@colonova-design/protocol";
+import { historyKindOf } from "./history-kind.ts";
 
 /**
  * `이번 작업` 과 제출 확인의 순수 판정(PLAN-UI U2 · U3) — 데몬이 싣는 사실
@@ -11,6 +12,8 @@ import type { DeveloperReview, RepoHistoryEntry, RepoStatus } from "@colonova-de
 export type CycleScreen = NonNullable<RepoStatus["cycleScreens"]>[number];
 
 const time = (iso: string): number => Date.parse(iso);
+const synced = (entry: { message: string; kind?: RepoHistoryEntry["kind"] }) =>
+  historyKindOf(entry.message, entry.kind, { restore: "\0", comment: "\0" }) === "merge";
 
 /** `since` 뒤인가 — 기준이 없으면 모두 뒤다. */
 function after(iso: string, since: string | null): boolean {
@@ -30,6 +33,7 @@ export function outgoingScreens(
   const out: CycleScreen[] = [];
   const newestFirst = [...(screens ?? [])].sort((a, b) => time(b.at) - time(a.at));
   for (const screen of newestFirst) {
+    if (synced({ message: screen.note, kind: screen.kind })) continue;
     if (screen.title.trim() === "" || seen.has(screen.route)) continue;
     seen.add(screen.route);
     if (after(screen.at, since)) out.push(screen);
@@ -51,7 +55,55 @@ export function outsideChanges(
   const onScreen = new Set(
     (screens ?? []).filter((screen) => screen.title.trim() !== "").map((screen) => time(screen.at)),
   );
-  return history.filter((entry) => after(entry.at, since) && !onScreen.has(time(entry.at))).length;
+  const onScreenSha = new Set(
+    (screens ?? [])
+      .filter((screen) => screen.title.trim() !== "" && screen.sha)
+      .map((screen) => screen.sha),
+  );
+  return history.filter(
+    (entry) =>
+      !synced(entry) &&
+      after(entry.at, since) &&
+      !onScreenSha.has(entry.sha) &&
+      !((screens ?? []).some((screen) => !screen.sha) && onScreen.has(time(entry.at))),
+  ).length;
+}
+
+/** Final file deltas grouped by the last related user request. Activity counts are never diff counts. */
+export function finalOutgoingChanges(
+  history: RepoHistoryEntry[],
+  screens: CycleScreen[] | undefined,
+  finalFiles: string[],
+): { screens: CycleScreen[]; outside: Array<{ key: string; note: string | null; files: number }> } {
+  const meaningful = history
+    .filter((entry) => !synced(entry))
+    .sort((a, b) => time(b.at) - time(a.at));
+  const final = new Set(finalFiles);
+  const currentScreens = outgoingScreens(
+    (screens ?? []).filter((screen) =>
+      meaningful.some(
+        (entry) => entry.sha === screen.sha && entry.files.some((file) => final.has(file)),
+      ),
+    ),
+    null,
+  );
+  const screenShas = new Set(
+    (screens ?? [])
+      .filter(
+        (screen) => screen.title.trim() && !synced({ message: screen.note, kind: screen.kind }),
+      )
+      .map((screen) => screen.sha),
+  );
+  const outside = new Map<string, { key: string; note: string | null; files: number }>();
+  for (const file of final) {
+    const owner = meaningful.find((entry) => entry.files.includes(file));
+    if (owner && screenShas.has(owner.sha)) continue;
+    const key = owner?.sha ?? "unassociated";
+    const row = outside.get(key) ?? { key, note: owner?.message ?? null, files: 0 };
+    row.files++;
+    outside.set(key, row);
+  }
+  return { screens: currentScreens, outside: [...outside.values()] };
 }
 
 export interface CommentRow {

@@ -103,7 +103,7 @@ test("problemFor: 다시 연결이 제출 막힘 · 알림 · 고침보다 먼�
   assert.equal(problemFor({ attention: github }, repo, L)?.kind, "reconnect");
 });
 
-test("problemFor: 제출이 막히면 개발자에게 알렸어요 — 제출의 문장", () => {
+test("problemFor: 제출 막힘만으로 알림 성공을 말하지 않는다", () => {
   const problem = problemFor(
     null,
     {
@@ -119,10 +119,10 @@ test("problemFor: 제출이 막히면 개발자에게 알렸어요 — 제출의
     },
     L,
   );
-  assert.equal(problem?.kind, "notified");
-  assert.equal(problem?.title, L.problem.notified);
-  assert.equal(problem?.body, L.problem.notifiedSubmit);
-  assert.equal(problem?.action, null);
+  assert.equal(problem?.kind, "blocked");
+  assert.equal(problem?.title, L.problem.blocked);
+  assert.equal(problem?.body, L.problem.blockedBody);
+  assert.equal(problem?.action, "copy");
   assert.equal(problem?.dismissId, "submit:2026-09-27T00:00:00.000Z");
 });
 
@@ -193,4 +193,28 @@ test("닫은 문제는 이 탭의 저장소에 신원으로 남는다 — 같은
       globals.sessionStorage = original;
     }
   }
+});
+
+test("submit notification must belong to this failure; stale or unrelated notices do not prove delivery", () => {
+  const submit = { phase: "blocked" as const, attempts: 3, since: "2026-09-27T00:00:00Z", log: [] };
+  const repo = { ...REPO, submit };
+  assert.equal(
+    problemFor(null, { ...repo, attention: { ...notified, key: "submit:pr" } }, L)?.kind,
+    "blocked",
+  );
+  assert.equal(
+    problemFor(
+      null,
+      { ...repo, attention: { ...notified, key: "env:git", since: "2026-09-28T00:00:00Z" } },
+      L,
+    )?.kind,
+    "blocked",
+  );
+  const delivered = problemFor(
+    null,
+    { ...repo, attention: { ...notified, key: "submit:pr", since: "2026-09-28T00:00:00Z" } },
+    L,
+  );
+  assert.equal(delivered?.kind, "notified");
+  assert.equal(delivered?.body, L.problem.notifiedSubmit);
 });

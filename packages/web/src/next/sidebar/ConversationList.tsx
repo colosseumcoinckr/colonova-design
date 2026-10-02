@@ -94,7 +94,12 @@ export function ConversationList({
     if (daemon.connection !== "open" || fetching.current) return;
     const next = planner
       .slice(0, 15)
-      .find((thread) => !screensById.has(thread.id) && !fetched.current.has(thread.id));
+      .find(
+        (thread) =>
+          !daemon.sessions[thread.id]?.live &&
+          !screensById.has(thread.id) &&
+          !fetched.current.has(thread.id),
+      );
     if (!next) return;
     fetched.current.add(next.id);
     fetching.current = true;

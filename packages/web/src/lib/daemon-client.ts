@@ -49,6 +49,7 @@ import {
   unhideAllThreads as unhideAllThreadsIn,
   unhideThread as unhideThreadIn,
 } from "./thread-visibility";
+import { withPendingRequest } from "./transcript-history";
 
 // ---------------------------------------------------------------------------
 // Transcript model: ChatEvents folded into renderable blocks
@@ -57,6 +58,9 @@ import {
 export type Block =
   | {
       type: "user";
+      requestId?: string;
+      changedScreens?: Array<{ route: string; title: string }>;
+      gateResult?: import("@colonova-design/protocol").GateResult;
       id: string;
       text: string;
       images: number;
@@ -105,6 +109,9 @@ export type Block =
       id: string;
       subtype: string;
       isError: boolean;
+      /** 프로바이더의 누적 추정치(SDK 의 total_cost_usd) — 이 턴의 몫이 아니다. 턴의 몫을
+       *  그리려면 ChatEvent turn.end 의 `usage.costUsd` 를 써야 한다(2026-10-02). 지금은
+       *  어디에도 그리지 않는다. */
       costUsd: number | null;
       durationMs: number | null;
       /** The SDK's own closing line — a usage-limit refusal names
@@ -181,11 +188,26 @@ function settleThinking(blocks: Block[]): Block[] {
 
 function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
   switch (event.kind) {
+    case "gate.result":
+      return blocks.map((block) =>
+        block.type === "user" && block.requestId === event.requestId
+          ? { ...block, gateResult: event.result }
+          : block,
+      );
+    case "screens.saved":
+      return blocks.map((block) =>
+        block.type === "user" && block.requestId === event.requestId
+          ? { ...block, changedScreens: event.screens }
+          : block,
+      );
     case "user.echo":
       return [
         ...blocks,
         {
           type: "user",
+          ...(event.requestId ? { requestId: event.requestId } : {}),
+          ...(event.changedScreens ? { changedScreens: event.changedScreens } : {}),
+          ...(event.gateResult ? { gateResult: event.gateResult } : {}),
           id: `u${++noticeSeq}`,
           text: event.text,
           images: event.images,
@@ -754,7 +776,18 @@ interface DaemonApi {
    * 남아 다음 틱이 이어받는다(다시 누를 일이 생기지 않는다).
    * `note` 는 제출 확인의 `개발자에게 한마디`(PLAN-UI U3) — 비면 싣지 않는다.
    */
-  submit: (sessionId?: string | null, note?: string) => Promise<DiffStatus>;
+  submit: (
+    sessionId?: string | null,
+    note?: string,
+    expectedHead?: string,
+    expectedPreview?: string,
+  ) => Promise<DiffStatus>;
+  comparison: (input: {
+    route: string;
+    requestId?: string;
+    sha?: string;
+    submitted?: boolean;
+  }) => Promise<import("@colonova-design/protocol").ScreenComparison | null>;
   /**
    * 상태 확인 — the pull request plus the developer's comments. Asked for by
    * the planner, never polled — the state only moves when a developer acts on
@@ -788,6 +821,7 @@ interface DaemonApi {
    * 저장 기록: the saved commits of this cycle, `base` → HEAD.
    */
   saveHistory: () => Promise<SaveHistory>;
+  submitPreview: () => Promise<import("@colonova-design/protocol").SubmitPreview>;
   /**
    * 되돌리기: put the worktree back to `sha` as a NEW commit — no
    * reset, no force-push; a developer may be reading the branch. Refuses
@@ -1829,10 +1863,18 @@ export function useDaemon(url: string | null): Daemon {
         ),
       // 제출 (PLAN L6): 의도를 적는 것으로 끝나고, 데몬은 그 틱을 최대 60초
       // 기다렸다 지금 상태를 돌려준다 — 창은 그 대기에 여유를 곁들인 값.
-      submit: (sessionId?: string | null, note?: string) =>
+      comparison: (input) => call({ type: "repo.comparison", ...input }, 30_000),
+      submit: (
+        sessionId?: string | null,
+        note?: string,
+        expectedHead?: string,
+        expectedPreview?: string,
+      ) =>
         call<DiffStatus>(
           {
             type: "repo.submit",
+            ...(expectedHead ? { expectedHead } : {}),
+            ...(expectedPreview ? { expectedPreview } : {}),
             ...(sessionId ? { sessionId } : {}),
             ...(note?.trim() ? { note: note.trim() } : {}),
           },
@@ -1893,6 +1935,7 @@ export function useDaemon(url: string | null): Daemon {
         ),
       // The draft runs one short agent turn on the daemon.
       handoffDraft: () => call<HandoffDraft>({ type: "repo.handoffDraft" }, 120_000),
+      submitPreview: () => call({ type: "repo.submitPreview" }, 60_000),
       saveHistory: () => call<SaveHistory>({ type: "repo.history" }, 60_000),
       // A restore commits and pushes, and the repo's checks may run on the
       // way: the same window a save is given.
@@ -2046,7 +2089,7 @@ export function useDaemon(url: string | null): Daemon {
         ...prev,
         [sessionId]: {
           ...view,
-          blocks: events.reduce<Block[]>(foldEvent, []),
+          blocks: withPendingRequest(events.reduce<Block[]>(foldEvent, []), view.blocks),
           queue,
           dropped,
         },

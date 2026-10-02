@@ -49,6 +49,7 @@ export function PreviewHost({
   onZoom,
   onError,
   onSelfReload,
+  onReady,
   stageRef,
   children,
 }: {
@@ -72,12 +73,23 @@ export function PreviewHost({
   onError: (error: StageError) => void;
   /** 30초의 멈춤 — 도구가 먼저 한 번 새로 고친다. */
   onSelfReload: () => void;
+  onReady?: (device: PreviewDevice | null) => void;
   /** 기기 틀 — 말풍선이 게스트의 화면 위치를 읽는 자리. */
   stageRef: RefObject<HTMLDivElement | null>;
   children?: ReactNode;
 }) {
   const native = nativePreview();
   const [loading, setLoading] = useState(false);
+  const [applied, setApplied] = useState<PreviewDevice | null>(null);
+  useEffect(() => {
+    if (!native) {
+      const frame = requestAnimationFrame(() => setApplied(device));
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [native, device]);
+  useEffect(() => {
+    onReady?.(url && !loading && applied === device ? device : null);
+  }, [url, loading, applied, device, onReady]);
   const [loadPhase, setLoadPhase] = useState<"ok" | "late" | "stuck">("ok");
 
   // 데스크톱의 로딩 신호 — PreviewFrame 은 이 선로를 구독하지 않으므로 여기서 한 번.
@@ -185,6 +197,7 @@ export function PreviewHost({
             onPinFocus={onPinFocus}
             onError={onError}
             onLoading={setLoading}
+            onEmulated={setApplied}
             onZoom={onZoom}
           />
         ) : frameSrc ? (

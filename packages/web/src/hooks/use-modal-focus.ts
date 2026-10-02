@@ -9,10 +9,23 @@ import { type RefObject, useEffect } from "react";
  * Focus SEEDING stays with the caller (some panels want the panel itself,
  * the palette wants its search field); this hook only traps and restores.
  */
-export function useModalFocus(panel: RefObject<HTMLElement | null>, open: boolean = true): void {
+export function useModalFocus(
+  panel: RefObject<HTMLElement | null>,
+  open: boolean = true,
+  returnRef?: RefObject<HTMLElement | null>,
+): void {
   useEffect(() => {
     if (!open) return;
-    const opener = document.activeElement as HTMLElement | null;
+    const opener = modalReturnTarget(
+      returnRef?.current,
+      document.activeElement as HTMLElement | null,
+    );
+    const root = panel.current?.closest<HTMLElement>(MODAL_ROOT_SELECTOR) ?? null;
+    const restoreLayers = isolateModalLayer(
+      root,
+      Array.from(document.querySelectorAll<HTMLElement>(MODAL_ROOT_SELECTOR)),
+      (a, b) => a.contains(b) || b.contains(a),
+    );
 
     // Elements outside the tab order (tabindex -1) are not ends of the trap: a
     // roving group (radio cards, tabs) leaves only its checked item tabbable,
@@ -37,6 +50,12 @@ export function useModalFocus(panel: RefObject<HTMLElement | null>, open: boolea
       if (event.key !== "Tab") return;
       const root = panel.current;
       if (!root) return;
+      const overlay = root.closest(MODAL_ROOT_SELECTOR);
+      if (
+        overlay &&
+        !escapeCloses(overlay, Array.from(document.querySelectorAll(MODAL_ROOT_SELECTOR)))
+      )
+        return;
       const within = focusables(root);
       if (within.length === 0) {
         event.preventDefault();
@@ -64,9 +83,10 @@ export function useModalFocus(panel: RefObject<HTMLElement | null>, open: boolea
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      restoreLayers();
       if (opener && document.contains(opener)) opener.focus();
     };
-  }, [panel, open]);
+  }, [panel, open, returnRef]);
 }
 
 /**
@@ -124,9 +144,62 @@ export function useModalEscape(
       // 그것이 맨 위 층이다; 없을 때만 DOM 마지막이 맨 위다.
       const root = panel.current?.closest(MODAL_ROOT_SELECTOR);
       if (!escapeCloses(root ?? null, overlays)) return;
+      event.preventDefault();
       onClose();
     };
     document.addEventListener("keydown", onKeydown);
     return () => document.removeEventListener("keydown", onKeydown);
   }, [panel, onClose, open]);
+}
+
+/** Auto-focused dialog fields cannot replace an explicit initiating control. */
+export function modalReturnTarget<T>(explicit: T | null | undefined, focused: T | null): T | null {
+  return explicit ?? focused;
+}
+
+export interface ModalAttributes {
+  getAttribute(name: string): string | null;
+  setAttribute(name: string, value: string): void;
+  removeAttribute(name: string): void;
+}
+export interface ModalLayer extends OverlayLike, ModalAttributes {
+  inert: boolean;
+  querySelectorAll(selector: string): Iterable<ModalAttributes>;
+}
+
+/** Only the top dialog is interactive/exposed; closing restores the exact lower layer state. */
+export function isolateModalLayer<T extends ModalLayer>(
+  root: T | null,
+  layers: readonly T[],
+  related: (a: T, b: T) => boolean = () => false,
+): () => void {
+  if (!root || !escapeCloses(root, layers)) return () => {};
+  const lower = layers
+    .filter((layer) => layer !== root && !related(layer, root))
+    .map((layer) => ({
+      layer,
+      inert: layer.inert,
+      hidden: layer.getAttribute("aria-hidden"),
+      dialogs: Array.from(layer.querySelectorAll('[aria-modal="true"]')).map((dialog) => ({
+        dialog,
+        modal: dialog.getAttribute("aria-modal"),
+      })),
+    }));
+  for (const { layer, dialogs } of lower) {
+    // Hidden lower dialogs must stop claiming exclusive AX modal scope.
+    for (const { dialog } of dialogs) dialog.setAttribute("aria-modal", "false");
+    layer.inert = true;
+    layer.setAttribute("aria-hidden", "true");
+  }
+  return () => {
+    for (const { layer, inert, hidden, dialogs } of lower) {
+      layer.inert = inert;
+      if (hidden === null) layer.removeAttribute("aria-hidden");
+      else layer.setAttribute("aria-hidden", hidden);
+      for (const { dialog, modal } of dialogs) {
+        if (modal === null) dialog.removeAttribute("aria-modal");
+        else dialog.setAttribute("aria-modal", modal);
+      }
+    }
+  };
 }

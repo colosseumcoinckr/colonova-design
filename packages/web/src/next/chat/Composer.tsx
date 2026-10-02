@@ -23,7 +23,11 @@ const RESIZABLE: Record<string, true> = {
   "image/jpeg": true,
   "image/webp": true,
 };
+
 /** 입력창의 초안은 옛 입력창과 같은 열쇠를 쓴다 — 두 셸이 같은 대화의 같은 초안을 본다. */
+import { appendScreenDraft, DraftScreenHints } from "../lib/screen-review";
+import { clearSentDraft } from "../lib/sent-draft";
+
 const DRAFT_PREFIX = "colonova-design.draft.";
 
 function storedDraft(key: string): string {
@@ -200,7 +204,7 @@ export function Composer({
   onStop?: () => void;
   stopping?: boolean;
   /** 밖에서 채워 넣는 말(고쳐서 다시 보내기) — `nonce` 가 오르면 한 번 집는다. */
-  prefill?: { text: string; nonce: number } | null;
+  prefill?: { text: string; nonce: number; append?: boolean; screen?: string } | null;
   /** 말풍선의 `지금 보내기`(`nx:pins:send`)를 이 입력창이 받는다 — 대화 칸만. */
   listenPinsSend?: boolean;
   registerHandle?: (handle: ComposerHandle | null) => void;
@@ -252,6 +256,7 @@ export function Composer({
       (incoming?.text ?? storedDraft(draftKey)) === "" && (incoming?.attachments.length ?? 0) === 0;
     const carry = previous.startsWith("new:") && prevEditor.text !== "" && pristine;
     if (carry) {
+      shownScreens.current.add(draftKey, shownScreens.current.take(previous));
       drafts.current.delete(previous);
       saveDraft(previous, "");
     }
@@ -282,7 +287,11 @@ export function Composer({
   useEffect(() => {
     if (!prefill || prefill.nonce === prefillSeen.current) return;
     prefillSeen.current = prefill.nonce;
-    setEditor((prev) => ({ text: prefill.text, attachments: prev.attachments }));
+    if (prefill.screen) shownScreens.current.add(keyRef.current, [{ screen: prefill.screen }]);
+    setEditor((prev) => ({
+      text: prefill.append ? appendScreenDraft(prev.text, prefill.text) : prefill.text,
+      attachments: prev.attachments,
+    }));
     requestAnimationFrame(() => {
       const el = area.current;
       if (!el) return;
@@ -329,10 +338,10 @@ export function Composer({
     setNotice(null);
     const sentKey = keyRef.current;
     const sentEditor = editor;
-    const sentScreens = shownScreens.current;
-    shownScreens.current = [];
+    const sentScreens = shownScreens.current.take(sentKey);
     void onSend(text, editor.attachments, pins, sentScreens)
       .then(() => {
+        clearSentDraft(sentKey, sentEditor.text);
         // 보내는 동안 다른 대화로 옮겼으면 비우는 것은 보낸 쪽의 초안뿐이다.
         if (keyRef.current !== sentKey) {
           drafts.current.set(sentKey, EMPTY);
@@ -346,7 +355,7 @@ export function Composer({
         );
       })
       .catch((error: unknown) => {
-        shownScreens.current = [...sentScreens, ...shownScreens.current];
+        shownScreens.current.add(sentKey, sentScreens);
         // 데몬의 거절 문장은 한국어이고 고치는 길을 싣는다 — 있으면 그대로, 없으면 한 줄.
         const raw = error instanceof Error ? (error.message.split("\n")[0] ?? "").trim() : "";
         setNotice({ tone: "danger", text: koreanNoticeWords(raw) ? raw : L.chat.sendFailed });
@@ -366,7 +375,7 @@ export function Composer({
 
   // 미리보기의 `AI에게 이 화면 보여 주기`(단계 3) — 담아 준 그림을 첨부로 받는다. 받았다고
   // 알리면(preventDefault) 미리보기는 스스로 보내지 않는다. 화면은 다음 보내기에 실린다.
-  const shownScreens = useRef<Array<{ screen: string }>>([]);
+  const shownScreens = useRef(new DraftScreenHints());
   useEffect(() => {
     if (!listenPinsSend) return;
     const onAttach = (event: Event) => {
@@ -387,8 +396,7 @@ export function Composer({
         size: att.size ?? Math.ceil(att.data.length * 0.75),
       }));
       setEditor((prev) => ({ text: prev.text, attachments: [...prev.attachments, ...read] }));
-      if (detail?.screen)
-        shownScreens.current = [...shownScreens.current, { screen: detail.screen }];
+      if (detail?.screen) shownScreens.current.add(keyRef.current, [{ screen: detail.screen }]);
       area.current?.focus();
     };
     window.addEventListener("nx:composer:attach", onAttach);

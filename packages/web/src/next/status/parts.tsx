@@ -8,6 +8,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { L } from "../labels";
+import { historyKindOf } from "../lib/history-kind";
 import { type CycleScreen, clockParts } from "../lib/work-ledger";
 
 /**
@@ -69,6 +70,18 @@ export function dayText(iso: string | null): string | null {
 
 /** 화면 한 줄 — 작은 그림 · 제목 · 그 화면을 만든 말 · 시각(목업 `.wp-row`). */
 export function ScreenRow({ screen }: { screen: CycleScreen }) {
+  const eventKind = historyKindOf(screen.note, screen.kind, {
+    restore: L.history.restorePrefix,
+    comment: L.history.commentPrefix,
+  });
+  const note =
+    eventKind === "merge"
+      ? L.history.eventMerge
+      : eventKind === "restore"
+        ? L.history.eventRestore
+        : eventKind === "comment"
+          ? L.history.eventComment
+          : screen.note;
   return (
     <div className="nx-wp-row" title={screen.route}>
       <span className="nx-thumb" aria-hidden="true">
@@ -78,7 +91,7 @@ export function ScreenRow({ screen }: { screen: CycleScreen }) {
       </span>
       <span className="nx-wp-t">
         <b>{screen.title}</b>
-        {screen.note && <span>{screen.note}</span>}
+        {note && <span>{note}</span>}
       </span>
       <span className="nx-wp-r">{whenText(screen.at)}</span>
     </div>

@@ -41,6 +41,11 @@ export function screenKey(path: string): string {
   return query ? `${base}?${query}` : base;
 }
 
+/** 주소는 쿼리까지 구분하되, 화면 이름을 빌릴 때는 같은 경로끼리 본다. */
+function screenRouteKey(path: string): string {
+  return screenKey(path).split("?")[0] ?? "/";
+}
+
 /** 링크 제목에서 마크다운 강조만 벗긴다 — `**회원 목록**` 은 `회원 목록` 이다. */
 function cleanTitle(raw: string): string | null {
   const title = raw.replace(/[*`]/g, "").trim();
@@ -171,7 +176,17 @@ export function threadScreens(blocks: readonly Block[], toPath: ToPath): TurnScr
 /** 경로의 제목 — 이 대화가 그 화면을 제목으로 부른 적이 있으면. */
 export function titleOfPath(screens: readonly TurnScreen[], path: string): string | null {
   const key = screenKey(path);
-  return screens.find((screen) => screenKey(screen.path) === key)?.title ?? null;
+  const exact = screens.find((screen) => screenKey(screen.path) === key)?.title?.trim();
+  if (exact) return exact;
+
+  const route = screenRouteKey(key);
+  const names = new Set(
+    screens
+      .filter((screen) => screenRouteKey(screen.path) === route)
+      .map((screen) => screen.title?.trim() ?? "")
+      .filter(Boolean),
+  );
+  return names.size === 1 ? ([...names][0] ?? null) : null;
 }
 
 /** 문서 제목의 조각 가르개 — `화면명 · 앱 · 사이트` 의 가운뎃점과 흔한 이웃들. */
@@ -193,8 +208,25 @@ export function screenNameOfTitle(title: string): string | null {
  */
 export function pageTitleOf(titles: ReadonlyMap<string, string>, path: string): string | null {
   const key = screenKey(path);
-  const title = titles.get(key);
-  if (title === undefined) return null;
-  for (const [other, seen] of titles) if (other !== key && seen === title) return null;
-  return screenNameOfTitle(title);
+  const route = screenRouteKey(key);
+  const sameRoute = [...titles].filter(([candidate]) => screenRouteKey(candidate) === route);
+  if (sameRoute.length === 0) return null;
+
+  const exact = titles.get(key);
+  let name = exact === undefined ? null : screenNameOfTitle(exact);
+  if (name === null) {
+    const names = new Set(
+      sameRoute
+        .map(([, title]) => screenNameOfTitle(title))
+        .filter((candidate): candidate is string => candidate !== null),
+    );
+    if (names.size !== 1) return null;
+    name = [...names][0] ?? null;
+  }
+  if (name === null) return null;
+
+  for (const [other, title] of titles) {
+    if (screenRouteKey(other) !== route && screenNameOfTitle(title) === name) return null;
+  }
+  return name;
 }

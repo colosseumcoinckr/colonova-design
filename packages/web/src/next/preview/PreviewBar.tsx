@@ -4,6 +4,7 @@ import { L } from "../labels";
 import { keyHint } from "../lib/key-hint";
 import { zoomButtons } from "../lib/preview-geometry";
 import { Popover } from "../ui/Popover";
+import { ReviewBadges } from "../ui/ReviewBadges";
 import {
   AddrChevronIcon,
   BackIcon,
@@ -28,6 +29,7 @@ import type { PreviewDevice } from "./PreviewHost";
 export interface ScreenRow {
   path: string;
   name: string;
+  modified?: boolean;
 }
 
 /**
@@ -60,6 +62,7 @@ export function PreviewBar({
   zoom,
   onZoom,
   frozenReady,
+  onCompare,
   onFrozen,
   onShowAi,
   showAiBusy,
@@ -95,6 +98,7 @@ export function PreviewBar({
   /** 제출한 때의 화면을 볼 수 있는가 — 개발자에게 가 있는 동안만. */
   frozenReady: boolean;
   onFrozen: () => void;
+  onCompare: () => void;
   onShowAi: () => void;
   showAiBusy: boolean;
   onShortcuts: () => void;
@@ -339,6 +343,18 @@ export function PreviewBar({
                 <small>{frozenReady ? L.preview.frozenOpenSub : L.preview.frozenLocked}</small>
               </span>
             </button>
+            <button
+              type="button"
+              className="nx-mi"
+              disabled={!frozenReady}
+              onClick={() => {
+                setMoreOpen(false);
+                onCompare();
+              }}
+            >
+              <EyeIcon />
+              <b>{L.compare.submitted}</b>
+            </button>
             <div className="nx-msep" />
             <button
               type="button"
@@ -416,6 +432,8 @@ function AddressList({
       >
         {here ? <SmallCheckIcon /> : <EyeIcon />}
         <b>{entry.name}</b>
+        {entry.modified && <span className="nx-screen-recent">{L.screenReview.recent}</span>}
+        <ReviewBadges route={entry.path} />
         {/* 이름이 없는 화면만 주소로 말한다 — 이름이 있는 줄의 `/` 는 비개발자에게 군더더기다. */}
         {entry.name === L.preview.untitledScreen && <span className="nx-mi-r">{entry.path}</span>}
       </button>

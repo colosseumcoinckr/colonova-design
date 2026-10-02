@@ -128,6 +128,7 @@
 .nx-pal-row {
   position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   padding: 8px 12px 8px 14px;
@@ -196,6 +197,28 @@
 /* 걷는 줄의 바탕은 한 단계 짙어져 옅은 글자가 4.5:1 밑으로 내려간다(github · codex) —
    그 줄의 한마디만 한 단계 진하게. */
 .nx-pal-row--on .nx-pal-hint {
+  color: var(--ink2);
+}
+
+.nx-pal-matchline {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding-left: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink3);
+  font-size: 12px;
+}
+
+.nx-pal-matchline mark {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
+
+.nx-pal-row--on .nx-pal-matchline {
   color: var(--ink2);
 }
 

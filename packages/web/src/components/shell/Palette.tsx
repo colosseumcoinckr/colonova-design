@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { useModalEscape, useModalFocus } from "../../hooks/use-modal-focus";
-import { timeAgo } from "../../lib/format";
+import type { Block, Daemon } from "../../lib/daemon-client";
 import { composing } from "../../lib/ime";
 import { type HiddenThreads, visibleThreads } from "../../lib/thread-visibility";
 import { L } from "../../next/labels";
@@ -44,6 +44,7 @@ type Row =
           moved — plus the project's name when the frame-wide walk reaches
           into another project. */
       hint: string;
+      match?: string;
       run: () => void | Promise<void>;
     }
   | {
@@ -53,6 +54,27 @@ type Row =
       hint: string;
       run: () => void | Promise<void>;
     };
+
+/** The most recent visible user or assistant line that contains the search. */
+function transcriptMatch(query: string, blocks: Block[]): string | undefined {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return undefined;
+  for (let i = blocks.length - 1; i >= 0; i -= 1) {
+    const block = blocks[i];
+    if (!block || (block.type !== "user" && block.type !== "text")) continue;
+    const text = block.text.replace(/\s+/g, " ").trim();
+    if (text.toLocaleLowerCase().includes(needle)) return text;
+  }
+  return undefined;
+}
+
+function excerptAround(query: string, text: string): string {
+  const at = text.toLocaleLowerCase().indexOf(query.trim().toLocaleLowerCase());
+  if (at < 0) return text.slice(0, 100);
+  const start = Math.max(0, at - 32);
+  const end = Math.min(text.length, at + query.trim().length + 48);
+  return `${start > 0 ? "…" : ""}${text.slice(start, end)}${end < text.length ? "…" : ""}`;
+}
 
 /** A chip under the list: a command the frame answers wherever the planner is. */
 interface Command {
@@ -83,6 +105,7 @@ export function Palette({
   activeSessionId,
   projects,
   hiddenThreads,
+  transcripts,
   activeSlug,
   projectSlug = null,
   onOpenThread,
@@ -99,6 +122,8 @@ export function Palette({
   /** 낙관 삭제가 이미 거둔 행 — 사이드바·홈과 같은 규칙이 팔레트에도
       산다. 숨김을 모르면 지운 대화가 ⌘K 걸음에 되살아난다. */
   hiddenThreads: HiddenThreads;
+  /** Cached visible conversation lines; search shows a matching excerpt when available. */
+  transcripts: Daemon["sessions"];
   activeSlug: string | null;
   /** Opened for ONE project's conversations (the tree's 더 보기 row): the
       session walk stays inside it, and the search says so. Null — the whole
@@ -150,7 +175,10 @@ export function Palette({
       // 않아도 지워진 대화가 걸음에 남지 않게.
       for (const thread of visibleThreads(project.threads, hiddenThreads, project.slug)) {
         const label = titleForThread(thread);
-        const at = rank(query, label);
+        const titleRank = rank(query, label);
+        const matchedLine =
+          titleRank < 0 ? transcriptMatch(query, transcripts[thread.id]?.blocks ?? []) : undefined;
+        const at = titleRank < 0 ? (matchedLine ? 4 : -1) : titleRank;
         if (at < 0) continue;
         const now = project.slug === activeSlug && thread.id === activeSessionId;
         // Recency is the palette's first axis (오버레이 목업 05): the list
@@ -161,7 +189,14 @@ export function Palette({
         // the clock together (만드는 중 · 4분 전), the bare clock when the
         // conversation is quiet — plus the project's name where the
         // frame-wide walk reaches into another project.
-        const clock = Number.isNaN(stamp) ? "" : timeAgo(stamp);
+        const clock = Number.isNaN(stamp)
+          ? ""
+          : new Intl.DateTimeFormat("ko-KR", {
+              month: "numeric",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            }).format(stamp);
         const state =
           thread.state === "running"
             ? clock
@@ -186,6 +221,7 @@ export function Palette({
             mark: thread.state === "running" ? "live" : thread.state === "awaiting" ? "ask" : null,
             now,
             hint,
+            ...(matchedLine ? { match: excerptAround(query, matchedLine) } : {}),
             run: async () => {
               onOpenThread(project.slug, thread);
               onClose();
@@ -232,6 +268,7 @@ export function Palette({
   }, [
     projects,
     hiddenThreads,
+    transcripts,
     activeSlug,
     activeSessionId,
     projectSlug,
@@ -445,6 +482,8 @@ export function Palette({
                 // The typed letters, inked where they landed — only the contiguous
                 // match has a shape to hold (matchRange scatters to null).
                 const range = matchRange(query, row.label);
+                const matchText = row.kind === "session" ? row.match : undefined;
+                const matchAt = matchText ? matchRange(query, matchText) : null;
                 const on = row.kind === "session" && row.now;
                 return (
                   <Fragment key={row.kind + row.key}>
@@ -486,6 +525,20 @@ export function Palette({
                         )}
                       </span>
                       {row.hint && <span className="nx-pal-hint">{row.hint}</span>}
+                      {matchText && (
+                        <span className="nx-pal-matchline">
+                          <span>{L.palette.messageMatch} · </span>
+                          {matchAt ? (
+                            <>
+                              {matchText.slice(0, matchAt[0])}
+                              <mark>{matchText.slice(matchAt[0], matchAt[1])}</mark>
+                              {matchText.slice(matchAt[1])}
+                            </>
+                          ) : (
+                            matchText
+                          )}
+                        </span>
+                      )}
                     </li>
                   </Fragment>
                 );

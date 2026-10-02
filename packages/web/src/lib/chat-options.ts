@@ -84,15 +84,17 @@ function idName(id: string): string {
  * beside it, so the provider's name would only repeat it. A never-pinned
  * choice (`null`) is the CLI's `default` row, and that row's own label
  * ("Default (recommended)") names no model: it borrows the name of the row
- * that resolves to the same model. An id the list does not carry (a session
- * reporting the wire id it runs) is read as a name rather than dropped.
+ * that resolves to the same model. If the CLI has no default row, the first
+ * offered row is the new-thread default (the same choice `useSessions` seeds).
+ * An id the list does not carry (a session reporting the wire id it runs) is
+ * read as a name rather than dropped.
  * `null` only when nothing names a model — then the caller says the provider.
  */
 export function modelName(models: SessionModelInfo[], picked: string | null): string | null {
   const row =
     modelRowOf(models, picked) ??
     (picked == null
-      ? models.find((model) => model.value === CLI_DEFAULT)
+      ? (models.find((model) => model.value === CLI_DEFAULT) ?? models[0])
       : models.find(
           (model) => model.resolvedModel != null && bareId(model.resolvedModel) === bareId(picked),
         ));

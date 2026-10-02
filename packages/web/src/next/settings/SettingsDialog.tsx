@@ -130,6 +130,22 @@ export function SettingsDialog({
 
   // 닫히는 중 — 역방향 pop 이 끝나는 뒤에 물러난다(움직임을 끈 창은 곧바로).
   const [closing, setClosing] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  const resetApp = async () => {
+    const reset = window.colonovaDesignDesktop?.reset;
+    if (!reset || resetBusy) return;
+    setResetBusy(true);
+    setResetError(null);
+    try {
+      const result = await reset();
+      if (result.error) setResetError(result.error);
+      if (!result.restarting) setResetBusy(false);
+    } catch {
+      setResetError(L.settings.resetFailed);
+      setResetBusy(false);
+    }
+  };
   const closeTimer = useRef<number | null>(null);
   useEffect(
     () => () => {
@@ -138,7 +154,7 @@ export function SettingsDialog({
     [],
   );
   const requestClose = () => {
-    if (closing || closeTimer.current !== null) return;
+    if (resetBusy || closing || closeTimer.current !== null) return;
     // 이름 칸에서 치던 글은 blur 없이 닫혀도(Esc) 잃지 않는다 — 다른 설정처럼 바로 적용된다.
     commitAuthor();
     const reduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? true;
@@ -887,6 +903,25 @@ export function SettingsDialog({
                 </button>
               </SRow>
             </SGroup>
+            {desktop?.reset && (
+              <SGroup>
+                <SRow title={L.settings.resetTitle} sub={L.settings.resetSub}>
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm"
+                    disabled={resetBusy || daemon.connection !== "open"}
+                    onClick={() => void resetApp()}
+                  >
+                    {resetBusy ? L.settings.resetBusy : L.settings.resetAction}
+                  </button>
+                </SRow>
+                {resetError && (
+                  <p className="nx-snote nx-snote--red" role="alert">
+                    {resetError}
+                  </p>
+                )}
+              </SGroup>
+            )}
           </div>
 
           <div

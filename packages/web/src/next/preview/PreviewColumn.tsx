@@ -18,7 +18,10 @@ import {
 } from "../../lib/turn-screens";
 import { L } from "../labels";
 import { arriveOnTurnEnd } from "../lib/preview-geometry";
+import { useScreenReview } from "../lib/use-screen-review";
 import type { PreviewColumnProps } from "../slots";
+import { ReviewBadges } from "../ui/ReviewBadges";
+import { ComparisonDialog, openComparison } from "./ComparisonDialog";
 import { clockOf, HISTORY_OPEN_EVENT, HistoryDrawer } from "./HistoryDrawer";
 import { ArrowIcon, PinSmallIcon } from "./icons";
 import { PINS_SEND_EVENT, PinBubble } from "./PinBubble";
@@ -45,9 +48,6 @@ const OVERLAY_WORDS: Record<string, string> = {
   kindImage: L.pin.kindImage,
   kindInput: L.pin.kindInput,
   kindOther: L.pin.kindOther,
-  statColor: L.pin.statColor,
-  statBackground: L.pin.statBackground,
-  statFont: L.pin.statFont,
 };
 
 /** 팔레트가 바뀌면 오버레이의 색도 따라간다 — 테마는 뿌리의 data-theme 에 선다. */
@@ -143,7 +143,18 @@ export function PreviewColumn({
     setTarget(null);
     setLocation(null);
   }
-  const go = useCallback((path: string) => setTarget({ kind: "path", path }), []);
+  const viewEpoch = useRef(0);
+  const currentRoute = useRef("/");
+  const [readyDevice, setReadyDevice] = useState<PreviewDevice | null>(null);
+  const invalidateView = useCallback(() => {
+    ++viewEpoch.current;
+    setReadyDevice(null);
+  }, []);
+  const go = useCallback((path: string) => {
+    ++viewEpoch.current;
+    if (screenKey(path) !== screenKey(currentRoute.current)) setReadyDevice(null);
+    setTarget({ kind: "path", path });
+  }, []);
 
   // 브라우저 경로의 궤적 — iframe 은 제 위치를 말하지 않으니 물음이 곧 역사다.
   const [trail, setTrail] = useState<{ list: string[]; at: number }>({ list: [], at: -1 });
@@ -158,6 +169,7 @@ export function PreviewColumn({
   }, [native, target]);
   const walk = (delta: -1 | 1) => {
     if (native) {
+      invalidateView();
       void window.colonovaDesignDesktop?.preview?.history?.(delta);
       return;
     }
@@ -167,6 +179,7 @@ export function PreviewColumn({
     go(path);
   };
   const herePath = location?.path ?? target?.path ?? "/";
+  currentRoute.current = herePath;
 
   // 답변의 화면 링크 · `고친 화면` 카드가 이 칸을 옮기는 손(screen-link.ts).
   const narrowRef = useRef(narrow);
@@ -176,11 +189,11 @@ export function PreviewColumn({
     return registerScreenOpener({
       previewUrl,
       open: (path) => {
-        setTarget({ kind: "path", path });
+        go(path);
         if (narrowRef.current) showTab("preview");
       },
     });
-  }, [previewUrl, showTab]);
+  }, [previewUrl, showTab, go]);
 
   // 지나온 화면 — 주소 목록의 `다른 화면` 이 읽는다.
   const [recent, setRecent] = useState<string[]>([]);
@@ -258,9 +271,10 @@ export function PreviewColumn({
 
   const cycleTitle = useCallback(
     (path: string): string | null => {
-      const key = screenKey(path);
-      const found = repo?.cycleScreens?.find((s) => s.title.trim() && screenKey(s.route) === key);
-      return found?.title ?? null;
+      return titleOfPath(
+        (repo?.cycleScreens ?? []).map((screen) => ({ path: screen.route, title: screen.title })),
+        path,
+      );
     },
     [repo?.cycleScreens],
   );
@@ -283,6 +297,7 @@ export function PreviewColumn({
     const mine: ScreenRow[] = convScreens.map((s) => ({
       path: s.path,
       name: s.title ?? nameOf(s.path),
+      modified: repo?.cycleScreens?.some((screen) => screenKey(screen.route) === screenKey(s.path)),
     }));
     const seen = new Set(mine.map((row) => screenKey(row.path)));
     const others: ScreenRow[] = [];
@@ -290,7 +305,11 @@ export function PreviewColumn({
       const key = screenKey(path);
       if (seen.has(key)) return;
       seen.add(key);
-      others.push({ path, name: nameOf(path) });
+      others.push({
+        path,
+        name: nameOf(path),
+        modified: repo?.cycleScreens?.some((screen) => screenKey(screen.route) === key),
+      });
     };
     for (const screen of repo?.cycleScreens ?? []) if (screen.title.trim()) add(screen.route);
     for (const path of recent) add(path);
@@ -391,8 +410,13 @@ export function PreviewColumn({
   const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [zoom, setZoom] = useState(1);
   const [reloadKey, setReloadKey] = useState(0);
-  const reload = useCallback(() => setReloadKey((n) => n + 1), []);
+  const reload = useCallback(() => {
+    invalidateView();
+    setReloadKey((n) => n + 1);
+  }, [invalidateView]);
   const pickDevice = (next: PreviewDevice) => {
+    if (next === device) return;
+    invalidateView();
     setDevice(next);
     // 기기는 몸이고 배율은 눈이다 — 기기가 바뀌면 눈은 100% 로.
     setZoom(1);
@@ -403,6 +427,22 @@ export function PreviewColumn({
   const [commentsOn, setCommentsOn] = useState(false);
   const commentsRef = useRef(commentsOn);
   commentsRef.current = commentsOn;
+  const [pinIntro, setPinIntro] = useState(false);
+  useEffect(() => {
+    try {
+      setPinIntro(!localStorage.getItem(`colonova-design.pin-intro:${daemon.activeSlug}`));
+    } catch {
+      setPinIntro(true);
+    }
+  }, [daemon.activeSlug]);
+  const finishPinIntro = () => {
+    setPinIntro(false);
+    try {
+      localStorage.setItem(`colonova-design.pin-intro:${daemon.activeSlug}`, "seen");
+    } catch {
+      /* optional hint */
+    }
+  };
   const pinLocked = preparing || !previewUrl ? L.pin.lockedPreparing : null;
   useEffect(() => {
     if (pinLocked) setCommentsOn(false);
@@ -420,9 +460,10 @@ export function PreviewColumn({
       setFrozen(null);
       const next = on ?? !commentsRef.current;
       setCommentsOn(next);
+      if (next) finishPinIntro();
       if (next && narrowRef.current) showTab("preview");
     },
-    [pinLocked, toast, showTab],
+    [pinLocked, toast, showTab, daemon.activeSlug],
   );
 
   const sync = useMemo(() => pinsSync(pins.ghosts, pins.list), [pins.ghosts, pins.list]);
@@ -520,6 +561,7 @@ export function PreviewColumn({
   // biome-ignore lint/correctness/useExhaustiveDependencies: 사이클이 움직이면 얼린 얼굴은 거짓말이다.
   useEffect(() => setFrozen(null), [root, handoff?.state, handoff?.number]);
   const openFrozen = async () => {
+    ++viewEpoch.current;
     const route = herePath.split("?")[0] ?? "/";
     const shot = await api.handoffShot(route).catch(() => null);
     if (!shot) {
@@ -589,6 +631,7 @@ export function PreviewColumn({
   const [addrSignal, setAddrSignal] = useState(0);
   useEffect(() => {
     const onOpen = () => {
+      ++viewEpoch.current;
       setHistoryOpen(true);
       if (narrowRef.current) showTab("preview");
     };
@@ -643,7 +686,7 @@ export function PreviewColumn({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (sectionRef.current?.closest(".nx-offstage") != null) return;
-      if (document.querySelector(".modal, .nx-pal")) return;
+      if (document.querySelector(".modal, .nx-pal, .nx-modal-back")) return;
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       if (mod && event.shiftKey && !event.altKey && key === "p") {
@@ -678,10 +721,34 @@ export function PreviewColumn({
       <div className="nx-pv-placeholder">{L.slot.previewWaiting}</div>
     ) : null;
 
+  const review = useScreenReview();
+  const eligible =
+    hasScreen &&
+    !historyOpen &&
+    !overlay &&
+    !frozen &&
+    readyDevice === device &&
+    (native ? location?.kind === "preview" : Boolean(previewUrl));
+  const liveView = useRef({ eligible, route: herePath, device, root });
+  liveView.current = { eligible, route: herePath, device, root };
+  const reviewState = review?.status(herePath, device) ?? "unknown";
+  const markViewed = async () => {
+    const at = viewEpoch.current;
+    const asked = liveView.current;
+    const isCurrent = () =>
+      viewEpoch.current === at &&
+      liveView.current.eligible &&
+      liveView.current.route === asked.route &&
+      liveView.current.device === asked.device &&
+      liveView.current.root === asked.root;
+    const marked = await review?.mark(asked.route, asked.device, isCurrent);
+    toast(marked ? L.screenReview.marked : L.screenReview.changed);
+  };
   const pinCount = pins.list.length;
 
   return (
     <section ref={sectionRef} className={`nx-preview${historyOpen ? " nx-preview--hist" : ""}`}>
+      <ComparisonDialog daemon={daemon} />
       <PreviewBar
         canBack={native ? location?.canGoBack === true : trail.at > 0}
         canForward={native ? location?.canGoForward === true : trail.at < trail.list.length - 1}
@@ -702,18 +769,42 @@ export function PreviewColumn({
         onPin={() => togglePins()}
         historyOpen={historyOpen}
         historyBtn={historyBtn}
-        onHistory={() => setHistoryOpen((open) => !open)}
+        onHistory={() => {
+          ++viewEpoch.current;
+          setHistoryOpen((open) => !open);
+        }}
         native={native}
         zoom={zoom}
         onZoom={(kind) => void window.colonovaDesignDesktop?.preview?.zoom?.(kind)}
         frozenReady={frozenReady}
         onFrozen={() => void openFrozen()}
+        onCompare={() => openComparison({ route: herePath, title: screenName, submitted: true })}
         onShowAi={() => void showAi()}
         showAiBusy={lookBusy}
         onShortcuts={() => setSheetOpen(true)}
         addrSignal={addrSignal}
       />
 
+      {hasScreen && (
+        <div className="nx-live-review">
+          <ReviewBadges route={herePath} />
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm"
+            disabled={!eligible || reviewState !== "pending"}
+            onClick={() => void markViewed()}
+          >
+            {L.screenReview.mark}
+          </button>
+          <span>
+            {reviewState === "unknown"
+              ? review?.snapshot
+                ? L.screenReview.unknown
+                : L.screenReview.waiting
+              : L.screenReview.guide}
+          </span>
+        </div>
+      )}
       <PreviewHost
         url={previewUrl}
         epoch={epoch}
@@ -727,10 +818,14 @@ export function PreviewColumn({
         location={location}
         onPin={onPin}
         onPinFocus={openBubble}
-        onLocation={setLocation}
+        onLocation={(next) => {
+          ++viewEpoch.current;
+          setLocation(next);
+        }}
         onZoom={setZoom}
         onError={errors.report}
         onSelfReload={reload}
+        onReady={setReadyDevice}
         stageRef={stageRef}
       >
         {frozen && (
@@ -752,6 +847,22 @@ export function PreviewColumn({
         )}
         {overlay && (
           <div className={`nx-over${prepHold === "out" ? " nx-over--out" : ""}`}>{overlay}</div>
+        )}
+        {pinIntro && !pinLocked && !overlay && !commentsOn && !frozen && (
+          <div className="nx-pin-intro" role="status">
+            <PinSmallIcon />
+            <span>{L.pin.firstHint}</span>
+            <button type="button" className="nx-btn nx-btn--sm" onClick={() => togglePins(true)}>
+              {L.preview.pin}
+            </button>
+            <button
+              type="button"
+              className="nx-btn nx-btn--ghost nx-btn--sm"
+              onClick={finishPinIntro}
+            >
+              {L.pin.firstDismiss}
+            </button>
+          </div>
         )}
         {commentsOn && !overlay && (
           <div className="nx-pinstrip" role="status">

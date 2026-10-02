@@ -13,6 +13,7 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Attachment } from "../lib/attachment";
 import { shouldDiscardOnFirstFailure } from "../next/lib/session-discard";
+import { resolveSessionTarget } from "../next/lib/session-target";
 
 /**
  * 방에서 돌아온 보내기 하나 — 입력창을 그때 그대로 되살리는 데 필요한 전부.
@@ -79,6 +80,8 @@ function forgetLastThreads(slug: string | null) {
  * 인터페이스가 없던 시절의 결함이었다.
  */
 export interface ChipTarget {
+  loading?: boolean;
+  unknown?: boolean;
   subject: "next" | "session";
   /** 낙관 상태의 열쇠 — session 은 대화 id, next 는 `next:<provider>` */
   key: string;
@@ -743,26 +746,13 @@ export function useSessions(
    * create's setState landed and would open a second, nameless thread. */
   const targetSession = async (wanted?: string, name?: string): Promise<string> => {
     const id = wanted ?? activeId;
-    if (!id) return await startSession(undefined, name);
-    // A stored thread the planner picked from the list: continue it in place.
-    // Forking is a developer's concern, not theirs.
-    // 결함(죽은 질의에 말이 사라진다): a live thread whose CLI crashed —
-    // state error, the crash card's own state — must not be sent into.
-    // Nothing consumes that queue anymore, so the words would sink without an
-    // answer. Reopening resumes the stored transcript in a fresh CLI, which
-    // is the promise the crash card already made ("다시 보내면 이어집니다").
-    const picked = daemon.sessions[id];
-    // 지워진 자리(W4 가 첫 보내기 실패의 세션을 거둔 뒤)는 이어받을 것이
-    // 없다 — 새 대화로 태어난다.
-    if (!picked) return await startSession(undefined, name);
-    if (!picked.live || picked.state === "error") {
-      const revived = await startSession(id);
-      // 갓 태어난 대화가 죽은 몸으로 태어나 갈아끼워졌다면 갈아끼운 몸도 갓 태어난
-      // 대화다 — 첫 보내기의 감시(W4)가 이어진다.
-      if (newborn.current.has(id)) newborn.current.add(revived);
-      return revived;
-    }
-    return id;
+    return resolveSessionTarget(
+      id,
+      id ? daemon.sessions[id] : undefined,
+      newborn.current,
+      startSession,
+      name,
+    );
   };
 
   /**
@@ -944,6 +934,7 @@ export function useSessions(
       sentCount = (sendsBySession.current.get(id) ?? 0) + 1;
       sendsBySession.current.set(id, sentCount);
       await api.send(id, text, attachments, pins, undefined, pinHints);
+      void refresh();
       newborn.current.delete(id);
       sendsBySession.current.delete(id);
     } catch (e) {
@@ -1071,6 +1062,8 @@ export function useSessions(
     return {
       subject,
       key: activeId ?? "session:none",
+      loading: selector === null,
+      unknown: selector?.selectionKnown === false,
       provider,
       model: selector?.model ?? null,
       effort: selector?.effort ?? null,

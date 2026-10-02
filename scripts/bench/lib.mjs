@@ -285,10 +285,33 @@ export function summaryOf(entry) {
   const browserMs = turns.every((turn) => turn.browserMs === null || turn.browserMs === undefined)
     ? null
     : turns.reduce((acc, turn) => acc + (turn.browserMs ?? 0), 0);
+  // 비용 · 토큰(2026-10-02) — 턴 행의 costUsd · tokens 는 프로바이더가 알려 준 턴만 값이
+  // 있다. 하나도 없으면 null(모르는 것을 0 으로 적지 않는다). 캐시 적중률은 실행 전체의
+  // 가중 평균 — 입력 전체(새 입력 + 캐시 읽기 + 캐시 쓰기) 가운데 캐시에서 읽은 몫.
+  const costUsd = turns.every((turn) => turn.costUsd === null || turn.costUsd === undefined)
+    ? null
+    : turns.reduce((acc, turn) => acc + (turn.costUsd ?? 0), 0);
+  const measured = turns.filter((turn) => turn.tokens !== null && typeof turn.tokens === "object");
+  const outputTokens =
+    measured.length === 0
+      ? null
+      : measured.reduce((acc, turn) => acc + (turn.tokens.output ?? 0), 0);
+  const cacheDenominator = measured.reduce(
+    (acc, turn) =>
+      acc + (turn.tokens.input ?? 0) + (turn.tokens.cacheRead ?? 0) + (turn.tokens.cacheWrite ?? 0),
+    0,
+  );
+  const cacheHitRate =
+    cacheDenominator > 0
+      ? measured.reduce((acc, turn) => acc + (turn.tokens.cacheRead ?? 0), 0) / cacheDenominator
+      : null;
   return {
     id: entry.id,
     pass: entry.pass === true,
     ms: turns.reduce((acc, turn) => acc + (turn.durationMs ?? 0), 0),
+    costUsd,
+    outputTokens,
+    cacheHitRate,
     firstEditMs: turns[0]?.firstEditMs ?? null,
     contextTokens: turns.every(
       (turn) => turn.contextTokens === null || turn.contextTokens === undefined,
@@ -328,6 +351,7 @@ export function compareResults(a, b) {
       b: right.length === 0 ? null : median(right.map((r) => r[key])),
     });
     const ms = metric("ms");
+    const costUsd = metric("costUsd");
     rows.push({
       id,
       passA: left.filter((r) => r.pass).length,
@@ -335,6 +359,13 @@ export function compareResults(a, b) {
       countA: left.length,
       countB: right.length,
       ms,
+      costUsd,
+      outputTokens: metric("outputTokens"),
+      cacheHitRate: metric("cacheHitRate"),
+      costChange:
+        costUsd.a === null || costUsd.b === null || costUsd.a === 0
+          ? null
+          : (costUsd.b - costUsd.a) / costUsd.a,
       firstEditMs: metric("firstEditMs"),
       contextTokens: metric("contextTokens"),
       browser: metric("browser"),
@@ -357,6 +388,8 @@ const seconds = (ms) => (typeof ms === "number" ? `${(ms / 1000).toFixed(1)}s` :
 const num = (value) => (value === null || value === undefined ? "-" : String(value));
 const percent = (ratio) =>
   ratio === null ? "-" : `${ratio > 0 ? "+" : ""}${(ratio * 100).toFixed(0)}%`;
+const usd = (value) => (typeof value === "number" ? `$${value.toFixed(3)}` : "-");
+const share = (ratio) => (typeof ratio === "number" ? `${Math.round(ratio * 100)}%` : "-");
 
 /** run 결과 표 — 시나리오 한 줄. */
 export function renderSummaryTable(entries) {
@@ -371,6 +404,8 @@ export function renderSummaryTable(entries) {
     padStart("browserMs", 10),
     padStart("exec", 6),
     padStart("게이트 재개", 11),
+    padStart("비용", 8),
+    padStart("캐시", 5),
   ].join(" ");
   const line = (row) =>
     [
@@ -383,6 +418,8 @@ export function renderSummaryTable(entries) {
       padStart(seconds(row.browserMs), 10),
       padStart(String(row.exec), 6),
       padStart(row.reopened ? "있음" : "-", 11),
+      padStart(usd(row.costUsd), 8),
+      padStart(share(row.cacheHitRate), 5),
     ].join(" ");
   return [head, head.replace(/[^ ]/g, "-"), ...rows.map(line)].join("\n");
 }
@@ -398,6 +435,9 @@ export function renderCompareTable(rows, nameA = "a", nameB = "b") {
     padStart("첫 편집", 20),
     padStart("컨텍스트", 16),
     padStart("exec", 12),
+    padStart("비용", 18),
+    padStart("Δ", 7),
+    padStart("캐시", 12),
   ].join(" ");
   const line = (row) =>
     [
@@ -408,6 +448,9 @@ export function renderCompareTable(rows, nameA = "a", nameB = "b") {
       padStart(pair(row.firstEditMs), 20),
       padStart(`${num(row.contextTokens.a)} → ${num(row.contextTokens.b)}`, 16),
       padStart(`${num(row.exec.a)} → ${num(row.exec.b)}`, 12),
+      padStart(`${usd(row.costUsd.a)} → ${usd(row.costUsd.b)}`, 18),
+      padStart(percent(row.costChange), 7),
+      padStart(`${share(row.cacheHitRate.a)} → ${share(row.cacheHitRate.b)}`, 12),
     ].join(" ");
   return [head, head.replace(/[^ ]/g, "-"), ...rows.map(line)].join("\n");
 }

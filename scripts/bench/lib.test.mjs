@@ -280,6 +280,10 @@ test("요약 칸 — 합 · 첫 턴의 첫 편집 · 컨텍스트 최대 · 게�
   assert.equal(row.browserMs, 400);
   assert.equal(row.exec, 6);
   assert.equal(row.reopened, true);
+  // 비용 · 토큰을 모르는 턴뿐이면 0 이 아니라 null 이다.
+  assert.equal(row.costUsd, null);
+  assert.equal(row.outputTokens, null);
+  assert.equal(row.cacheHitRate, null);
 
   const unmeasured = summaryOf({
     id: "x",
@@ -289,6 +293,38 @@ test("요약 칸 — 합 · 첫 턴의 첫 편집 · 컨텍스트 최대 · 게�
   assert.equal(unmeasured.browserMs, null);
   assert.equal(unmeasured.contextTokens, null);
   assert.equal(summaryOf({ id: "x", pass: false, turns: [] }).ms, 0);
+});
+
+test("요약 칸 — 비용은 합, 출력 토큰은 합, 캐시 적중률은 입력 전체의 가중 평균(2026-10-02)", () => {
+  const priced = summaryOf({
+    id: "search",
+    pass: true,
+    turns: [
+      // 0.125 + 0.25 — 이진 소수로 정확히 떨어지는 값이라 합이 흔들리지 않는다.
+      turn({
+        costUsd: 0.125,
+        tokens: { input: 1_000, output: 500, cacheRead: 9_000, cacheWrite: 0 },
+      }),
+      // 캐시 쓰기를 모르는 프로바이더의 턴(cacheWrite: null)은 분모에 0 으로 든다.
+      turn({
+        costUsd: null,
+        tokens: { input: 2_000, output: 700, cacheRead: 8_000, cacheWrite: null },
+      }),
+      turn({ costUsd: 0.25 }),
+    ],
+  });
+  assert.equal(priced.costUsd, 0.375);
+  assert.equal(priced.outputTokens, 1_200);
+  // (9000 + 8000) / (1000 + 9000 + 2000 + 8000)
+  assert.equal(priced.cacheHitRate, 17_000 / 20_000);
+  // 토큰은 있는데 입력이 0 이면 비율은 성립하지 않는다.
+  const noInput = summaryOf({
+    id: "x",
+    pass: true,
+    turns: [turn({ tokens: { input: 0, output: 10, cacheRead: 0, cacheWrite: 0 } })],
+  });
+  assert.equal(noInput.cacheHitRate, null);
+  assert.equal(noInput.outputTokens, 10);
 });
 
 test("비교 — 중앙값 · 변화율 · 한쪽에만 있는 id", () => {
@@ -323,6 +359,16 @@ test("비교 — 중앙값 · 변화율 · 한쪽에만 있는 id", () => {
   assert.equal(fresh.ms.a, null);
   assert.equal(fresh.passA, 0);
   assert.equal(fresh.msChange, null);
+  // 비용 칸 — 없는 쪽은 null, 변화율은 양쪽이 있을 때만.
+  assert.deepEqual(search.costUsd, { a: null, b: null });
+  assert.equal(search.costChange, null);
+  const priced = compareResults(
+    { scenarios: [{ id: "s", pass: true, turns: [turn({ costUsd: 0.2 })] }] },
+    { scenarios: [{ id: "s", pass: true, turns: [turn({ costUsd: 0.1 })] }] },
+  )[0];
+  assert.equal(priced.costUsd.a, 0.2);
+  assert.equal(priced.costUsd.b, 0.1);
+  assert.equal(priced.costChange, -0.5);
   assert.equal(median([3, 1, 2]), 2);
   assert.equal(median([4, 1, 3, 2]), 2.5);
   assert.equal(median([]), null);

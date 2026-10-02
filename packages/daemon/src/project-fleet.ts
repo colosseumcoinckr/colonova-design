@@ -355,7 +355,11 @@ export class ProjectFleet {
         const commentsFile = join(paths.root, "comments.json");
         const anchor = await workspaces.repo.cycleAnchor().catch(() => null);
         return await this.deps.previewDrivers.captureHandoffShots(
-          captureTargets(readComments(commentsFile), anchor),
+          captureTargets(
+            readComments(commentsFile),
+            anchor,
+            workspaces.repo.repoCore().snapshot().cycleScreens,
+          ),
         );
       },
       logger: this.deps.logger,
@@ -845,10 +849,16 @@ export class ProjectFleet {
    * 커밋 게이트가 열리면 세션에 고침 브리프를 보내 화면 확인 게이트와 같은
    * 루프로 스스로 닫는다.
    */
-  async autoSaveTurn(sessionId: string, screenRoutes?: string[]): Promise<void> {
+  async autoSaveTurn(
+    sessionId: string,
+    screenRoutes?: string[],
+  ): Promise<{ sha: string; requestId: string | null } | undefined> {
     const workspaces = this.workspaceOfSession(sessionId);
     const session = this.deps.manager.get(sessionId);
     if (!workspaces || !session) return;
+    const requestId = session.lastRequestId;
+    const subject = turnSubjectOf(session.lastSentText);
+    const answer = session.lastAssistantText;
     // 충돌 정리 중(pendingOp)에는 자동 보관이 조용히 건너뛴다 — saveBlocked
     // 사건 · 실패 배너를 만들지 않는다. 감독자가 마무리한 뒤 5행이 보관한다.
     if (workspaces.supervisor.pendingOp !== null) return;
@@ -864,7 +874,7 @@ export class ProjectFleet {
     if (workspaces.repo.pendingChanges === 0) return;
     try {
       await workspaces.repo.save({
-        ...turnSubjectOf(session.lastSentText),
+        ...subject,
         sessionId,
         backgroundPush: true,
         onSessionTurn: (brief: string) => {
@@ -884,8 +894,8 @@ export class ProjectFleet {
       // 라우트↔파일 지도(2026-09-22): 커밋이 성공했을 때만 한 줄 — sha 와 그
       // 커밋이 건드린 파일, 그리고 이 턴이 가리킨 화면. 정체 검색이 빈손인
       // 핀의 마지막 길이 이 기록이다. 실패는 조용하다(지도는 판정이 아니다).
+      const head = await workspaces.repo.headCommitFiles().catch(() => null);
       if (screenRoutes !== undefined && screenRoutes.length > 0) {
-        const head = await workspaces.repo.headCommitFiles().catch(() => null);
         if (head !== null && head.files.length > 0) {
           // 바뀐 화면(PLAN-UI U2)의 재료 — 경로와, 답변 링크가 붙인 제목.
           const previewUrl = workspaces.repo.repoCore().previewUrl;
@@ -898,12 +908,15 @@ export class ProjectFleet {
           await appendScreenMap(workspaces.paths.root, {
             at: new Date().toISOString(),
             sha: head.sha,
+            sessionId,
+            ...(requestId ? { requestId } : {}),
             routes: screenRoutes,
             files: head.files,
-            screens: screensOfTurn(screenRoutes, session.lastAssistantText, origin),
+            screens: screensOfTurn(screenRoutes, answer, origin),
           }).catch(() => undefined);
         }
       }
+      return head ? { sha: head.sha, requestId } : undefined;
     } catch {
       // 진행 중 거절(사람의 제출이 먼저 움직인 것)과 실패 모두 조용하다:
       // DiffStatus 와 브리프가 이미 말한다.

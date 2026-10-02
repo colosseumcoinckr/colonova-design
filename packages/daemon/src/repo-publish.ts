@@ -542,13 +542,15 @@ export class PublishCycle {
               title,
               body,
             });
-      const handoff: HandoffStatus = pull;
-      // E4(초대 v2): 리뷰를 부탁할 개발자들이 정해져 있으면 GitHub 에 요청한다
-      // — 최선의 노력. 실패해도 넘기기는 이미 끝났고 칩의 리뷰어 줄이 비는
-      // 것이 전부다(레포의 자기 규칙이 있을 수 있는 자리).
+      let handoff: HandoffStatus = pull;
+      // 리뷰 요청이 실패해도 이미 열린 PR 은 기억해 다음 제출에 재사용한다.
+      this.core.setCycle(branch, handoff);
       const reviewers = this.core.reviewers?.() ?? [];
       if (reviewers.length > 0) {
-        await client.requestReviewers({ ...slug, number: handoff.number, reviewers });
+        handoff = {
+          ...handoff,
+          reviewers: await client.requestReviewers({ ...slug, number: handoff.number, reviewers }),
+        };
       }
       this.core.setCycle(branch, handoff);
       const status = this.core.setDiff({ stage: "handed-off", handoff });
@@ -964,7 +966,8 @@ export class PublishCycle {
         onSessionTurn?.(
           markTurn(
             { kind: "gate", step: GATE_STEP[gate] },
-            `${GATE_BRIEF[gate]} 아래 출력의 원인을 고친 뒤 다시 시도해 주세요.\n\n${detail}`,
+            // 끝의 기준(2026-10-02) — 원인이 사라지는 것. 다시 도는 쪽은 도구다.
+            `${GATE_BRIEF[gate]} 아래 출력의 원인을 고친 뒤 다시 시도해 주세요.\n\n${detail}\n\n끝의 기준: 아래 출력의 원인이 사라지는 것입니다 — 같은 단계는 도구가 다시 돕니다. 그 밖의 화면과 파일은 손대지 마세요.`,
           ),
         ),
       );

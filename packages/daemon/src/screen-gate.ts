@@ -421,6 +421,8 @@ export async function judgeScreen(
 
 /** `inspectScreens` 의 선택 사항. */
 export interface InspectOptions {
+  /** Callers verifying a repair distinguish an opened screen from a skipped one. */
+  opened?: Set<string>;
   /**
    * 접근성 점검을 켠다 — 화면 주소별로 지난번에 본 문제의 기억이다. 데스크톱 폭의 열기에서
    * 접근성의 재료를 모으고, 지난번에 못 본 **새** 문제만 문제로 센다. 없으면 접근성은 보지 않는다.
@@ -479,6 +481,7 @@ export async function inspectScreens(
       options.a11y !== undefined ? { a11y: true } : undefined,
     );
     if (!verdict.opened) continue;
+    options.opened?.add(screen.route);
     if (verdict.unsettled || verdict.blank || verdict.lines.length > 0) {
       troubles.push({
         route: verdict.route,
@@ -615,6 +618,14 @@ export function normalizeScreenCheckArgs(
 }
 
 /**
+ * 게이트 브리프의 마지막 줄 — 끝의 기준(2026-10-02, claude.dev 「Getting the most out of
+ * Opus 5.5」: 일을 통째로 주고 끝나는 선을 이름 붙이라). 고침 턴이 "고쳤다"가 아니라
+ * "다시 확인해 보니 없다"에서 멈추게 하고, 범위를 이 브리프의 문제로 묶는다.
+ */
+export const GATE_FINISH_LINE =
+  "끝의 기준: 위에 적힌 문제가 다시 확인했을 때(화면은 screen_check, 타입은 repo_diagnostics) 나오지 않는 것입니다 — 그 밖의 화면과 파일은 손대지 마세요.";
+
+/**
  * AI 에게 가는 턴. `gate` 마커를 달아 대화록이 카드로 그리고(components
  * 의 `${step}에서 멈췄습니다`), 본문은 화면 하나당 한 묶음이다. 파일 경로도
  * 컴포넌트 이름도 쓰지 않는다 — 다른 기계 턴들과 같은 규칙이다.
@@ -688,6 +699,6 @@ export function gateBrief(troubles: ScreenTrouble[], typeLines: string[] = []): 
       : null;
   return markTurn(
     { kind: "gate", step: "화면 확인" },
-    [head, ...blocks, ...(typeBlock !== null ? [typeBlock] : [])].join("\n\n"),
+    [head, ...blocks, ...(typeBlock !== null ? [typeBlock] : []), GATE_FINISH_LINE].join("\n\n"),
   );
 }

@@ -360,27 +360,42 @@ export class GitHubClient {
   }
 
   /**
-   * E4(초대 v2): 넘긴 요청의 리뷰를 부탁한다 — POST
-   * /repos/{owner}/{repo}/pulls/{number}/requested_reviewers. 최선의 노력이다:
-   * 실패는 넘기기를 막지 않는다(칩의 리뷰어 줄이 조용히 비는 것뿐).
+   * 초대 파일의 리뷰어에서 실제 PR 작성자를 제외해 요청한다. 토큰 소유자는
+   * 기존 PR 의 작성자와 다를 수 있으므로 /user 대신 PR 을 읽는다.
+   * 실패는 호출자에게 전달하고, 성공은 GitHub 이 보고한 리뷰어로 돌려준다.
    */
   async requestReviewers(input: {
     owner: string;
     repo: string;
     number: number;
     reviewers: string[];
-  }): Promise<boolean> {
-    try {
-      await this.sendJson(
-        "POST",
-        `/repos/${input.owner}/${input.repo}/pulls/${input.number}/requested_reviewers`,
-        { reviewers: input.reviewers },
-        "리뷰 요청",
-      );
-      return true;
-    } catch {
-      return false;
+  }): Promise<string[]> {
+    const path = `/repos/${input.owner}/${input.repo}/pulls/${input.number}`;
+    const pull = await this.getJson(path, "리뷰 요청 대상 확인");
+    const author = String(pull?.user?.login ?? "").toLowerCase();
+    if (!author)
+      throw new Error("리뷰 요청 대상 확인에 실패했습니다 — 작성자를 확인할 수 없습니다.");
+    const current = refOf(pull).reviewers;
+    const seen = new Set([author, ...current.map((login) => login.toLowerCase())]);
+    const reviewers = input.reviewers
+      .map((login) => login.trim())
+      .filter((login) => {
+        const key = login.toLowerCase();
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    if (reviewers.length === 0) return current;
+    const data = await this.sendJson(
+      "POST",
+      `${path}/requested_reviewers`,
+      { reviewers },
+      "리뷰 요청",
+    );
+    if (!Array.isArray(data?.requested_reviewers)) {
+      throw new Error("리뷰 요청에 실패했습니다 — GitHub 응답에서 리뷰어를 확인할 수 없습니다.");
     }
+    return refOf(data).reviewers;
   }
 
   /** Retitles/rewrites a standing pull request as later saves add pages to it. */

@@ -16,6 +16,7 @@
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { RepoCore } from "./repo-core.js";
+import { repoEventKind } from "./repo-event-kind.js";
 import { readScreenMap, type ScreenMapRow } from "./screen-map.js";
 
 export interface CycleScreen {
@@ -23,6 +24,10 @@ export interface CycleScreen {
   title: string;
   note: string;
   at: string;
+  kind?: "merge" | "restore" | "comment";
+  sha?: string;
+  sessionId?: string;
+  requestId?: string;
 }
 
 /** 사이클의 커밋 하나 — git log 의 sha · 제목 · 커밋 시각. */
@@ -30,6 +35,7 @@ export interface CycleCommit {
   sha: string;
   subject: string;
   at: string;
+  kind?: "merge" | "restore" | "comment";
 }
 
 /** 한 번에 읽는 커밋의 상한 — 사이클 하나가 이보다 길 일은 드물다. */
@@ -103,13 +109,18 @@ export function screensOfTurn(
   return out;
 }
 
-/** `git log --format=%H%x1f%s%x1f%cI` 의 출력 — 최근 커밋부터. */
+/** `git log` 의 커밋 제목 · 시각 · 부모 — 최근 커밋부터. */
 export function parseCycleLog(output: string): CycleCommit[] {
   return output
     .split(/\r?\n/)
     .map((line) => line.split("\x1f"))
     .filter((fields) => (fields[0] ?? "").trim() !== "")
-    .map(([sha = "", subject = "", at = ""]) => ({ sha: sha.trim(), subject, at: at.trim() }));
+    .map(([sha = "", subject = "", at = "", parents = ""]) => ({
+      sha: sha.trim(),
+      subject,
+      at: at.trim(),
+      ...(repoEventKind(subject, parents) ? { kind: repoEventKind(subject, parents) } : {}),
+    }));
 }
 
 /** 행의 화면 — 새 행은 screens 를, 옛 행은 날 routes 를 경로로 읽는다(제목 없음). */
@@ -128,10 +139,16 @@ export function deriveCycleScreens(
 ): CycleScreen[] {
   const bySha = new Map<string, ScreenMapRow>();
   const titleByRoute = new Map<string, string>();
+  const namesByPath = new Map<string, Set<string>>();
   for (const row of rows) {
     bySha.set(row.sha, row);
     for (const screen of rowScreens(row)) {
-      if (screen.title !== "") titleByRoute.set(screen.route, screen.title);
+      if (screen.title === "") continue;
+      titleByRoute.set(screen.route, screen.title);
+      const path = normalizePath(screen.route).split("?")[0] ?? "/";
+      const names = namesByPath.get(path) ?? new Set<string>();
+      names.add(screen.title);
+      namesByPath.set(path, names);
     }
   }
   const out: CycleScreen[] = [];
@@ -142,9 +159,24 @@ export function deriveCycleScreens(
     for (const screen of rowScreens(row)) {
       if (seen.has(screen.route)) continue;
       seen.add(screen.route);
-      const title = screen.title || titleByRoute.get(screen.route) || "";
+      const routeName = normalizePath(screen.route).split("?")[0] ?? "/";
+      const routeNames = namesByPath.get(routeName);
+      const title =
+        screen.title ||
+        titleByRoute.get(screen.route) ||
+        (routeNames?.size === 1 ? [...routeNames][0] : "") ||
+        "";
       if (title === "") continue;
-      out.push({ route: screen.route, title, note: commit.subject, at: commit.at });
+      out.push({
+        route: screen.route,
+        sha: commit.sha,
+        ...(row.sessionId ? { sessionId: row.sessionId } : {}),
+        ...(row.requestId ? { requestId: row.requestId } : {}),
+        title,
+        note: commit.subject,
+        at: commit.at,
+        ...(commit.kind ? { kind: commit.kind } : {}),
+      });
     }
   }
   return out;
@@ -237,7 +269,7 @@ export class CycleScreens {
         "log",
         "-n",
         String(MAX_COMMITS),
-        "--format=%H%x1f%s%x1f%cI",
+        "--format=%H%x1f%s%x1f%cI%x1f%P",
         `origin/${core.baseBranch}..HEAD`,
       ])
       .catch(() => "");

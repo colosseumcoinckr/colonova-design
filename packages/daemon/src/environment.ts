@@ -16,7 +16,8 @@ const run = promisify(execFile);
  * one thing to back up, explain, or delete — and the dot keeps a planner out
  * of files only the tool should write.
  */
-export const COLONOVA_DESIGN_DATA_DIR = join(homedir(), ".colonova-design");
+export const COLONOVA_DESIGN_DATA_DIR =
+  process.env.COLONOVA_DESIGN_DATA_DIR ?? join(homedir(), ".colonova-design");
 
 /** Daemon settings: `daemon.json`, `repo.json`, `projects.json`. */
 export const CONFIG_DIR = join(COLONOVA_DESIGN_DATA_DIR, "config");

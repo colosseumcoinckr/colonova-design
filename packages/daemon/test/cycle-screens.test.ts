@@ -95,8 +95,8 @@ test("deriveCycleScreens — 최근 커밋부터, 화면 없는 커밋은 빠지
     },
   ];
   assert.deepEqual(deriveCycleScreens(commits, rows), [
-    { route: "/coupon", title: "쿠폰 발급", note: "쿠폰 화면도", at: "T3" },
-    { route: "/member/list", title: "회원 목록", note: "회원 목록에 검색창", at: "T1" },
+    { route: "/coupon", sha: "c3", title: "쿠폰 발급", note: "쿠폰 화면도", at: "T3" },
+    { route: "/member/list", sha: "c1", title: "회원 목록", note: "회원 목록에 검색창", at: "T1" },
   ]);
 });
 
@@ -112,7 +112,7 @@ test("deriveCycleScreens — screens 가 없는 옛 행은 routes 를 읽고 제
     { at: "T1", sha: "legacy", routes: ["member/list"], files: ["a.tsx"] },
   ];
   assert.deepEqual(deriveCycleScreens([{ sha: "legacy", subject: "옛 커밋", at: "T1" }], rows), [
-    { route: "/member/list", title: "회원 목록", note: "옛 커밋", at: "T1" },
+    { route: "/member/list", sha: "legacy", title: "회원 목록", note: "옛 커밋", at: "T1" },
   ]);
 });
 

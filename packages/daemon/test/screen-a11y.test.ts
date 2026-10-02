@@ -602,6 +602,8 @@ test("gateBrief — 접근성은 이름 · 대비 · 범위 문장을 한 묶음
       "- p.hint — 대비 1.9:1 (16px, 2곳)",
       "글자색을 배경에서 더 벌려 주세요. 이 레포가 색을 정하는 방식(토큰 · 테마 · 클래스)이 있으면 그 안에서 더 진한 색을 고르고, 레포의 규칙이 정해 둔 색이라 바꿀 수 없으면 바꾸지 말고 답에 그 사실을 한 줄 남겨 주세요.",
       "이번 턴에 만들거나 고친 요소의 문제만 고치고, 원래 있던 요소는 그대로 두세요. 고친 뒤에는 screen_check 의 a11y: true 로 확인해 주세요.",
+      "",
+      "끝의 기준: 위에 적힌 문제가 다시 확인했을 때(화면은 screen_check, 타입은 repo_diagnostics) 나오지 않는 것입니다 — 그 밖의 화면과 파일은 손대지 마세요.",
     ].join("\n"),
   );
 });
@@ -698,7 +700,13 @@ test("screen_check 도구는 a11y · colorScheme 을 선언하고 공통 지침�
   assert.equal(tool.properties.a11y?.type, "boolean");
   assert.deepEqual(tool.properties.colorScheme?.enum, ["light", "dark"]);
   assert.match(tool.description, /a11y/);
-  assert.match(COMMON_INSTRUCTIONS, /a11y: true/, "고친 뒤의 확인 방법을 말한다");
+  // 확인 방법(a11y: true)은 도구 설명의 몫이다(2026-10-02) — 지침은 이름을 미리 다는 규칙만 말한다.
+  assert.doesNotMatch(
+    COMMON_INSTRUCTIONS,
+    /a11y: true/,
+    "공통 지침은 도구의 인자를 되풀이하지 않는다",
+  );
+  assert.match(tool.description, /a11y 를 켜면/, "도구 설명이 켜는 법을 말한다");
   assert.match(COMMON_INSTRUCTIONS, /aria-label/, "이름을 미리 다는 규칙을 말한다");
 });
 

@@ -97,6 +97,7 @@ export interface HandoffLike {
 }
 
 export interface HarnessCoreOptions {
+  reviewers?: string[];
   baseBranch?: string;
   /** 레지스트리가 기억하는 사이클 브랜치. */
   branch?: string | null;
@@ -123,6 +124,7 @@ export function makeCore(
     url: remote.path,
     onStatus: () => {},
     baseBranch: opts.baseBranch ?? "main",
+    reviewers: () => opts.reviewers ?? [],
     cycle: { branch: opts.branch ?? null, handoff: opts.handoff ?? null },
     gitHubClient: opts.github ? () => new GitHubClient("harness-token", opts.github) : undefined,
   });
@@ -133,6 +135,7 @@ export function makeCore(
 // ---------------------------------------------------------------------------
 
 interface MemPull {
+  reviewers: string[];
   number: number;
   title: string;
   body: string;
@@ -266,7 +269,15 @@ export class MemoryGitHub implements RestTransport {
           }
         }
         if (rest.length === 3 && rest[2] === "requested_reviewers" && input.method === "POST") {
-          return json(201, {});
+          if (!pull) return json(404, { message: "Not Found" });
+          const payload = JSON.parse(new TextDecoder().decode(input.body ?? new Uint8Array()));
+          if (
+            payload.reviewers.some((login: string) => login.toLowerCase() === "colonova-planner")
+          ) {
+            return json(422, { message: "Review cannot be requested from pull request author." });
+          }
+          pull.reviewers = [...new Set([...pull.reviewers, ...payload.reviewers])];
+          return json(201, this.pullJson(pull));
         }
         if (rest.length === 3 && rest[2] === "comments" && input.method === "GET") {
           return this.paged(input.url, path, this.commentJson(this.pullComments.get(number) ?? []));
@@ -431,7 +442,8 @@ export class MemoryGitHub implements RestTransport {
       merged: pull.merged,
       merged_at: pull.merged ? "2026-09-24T00:00:00Z" : null,
       mergeable_state: pull.mergeableState,
-      requested_reviewers: [],
+      user: { login: "colonova-planner" },
+      requested_reviewers: pull.reviewers.map((login) => ({ login })),
       head: { ref: pull.head, sha: pull.headSha },
       base: { ref: pull.base },
       closed_at: pull.closedAt,
@@ -497,6 +509,7 @@ export class MemoryGitHub implements RestTransport {
     ).trim();
     const number = this.nextNumber++;
     this.pulls.set(number, {
+      reviewers: [],
       number,
       title: input.title ?? "하네스 요청",
       body: "",
@@ -832,6 +845,7 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
   // PR 본문의 `> 작성:` 줄 — 장면의 authorName 을 워크스페이스도 읽는다.
   let authorOf: () => string | null = () => null;
   const workspace = new RepoWorkspace({
+    reviewers: () => opts.reviewers ?? [],
     authorName: () => authorOf(),
     root: clone.path,
     url: remote.path,

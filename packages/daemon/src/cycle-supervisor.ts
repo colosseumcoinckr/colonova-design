@@ -1680,7 +1680,7 @@ export class CycleSupervisor {
     }
 
     // 3) ensurePullRequest — 열린 PR 보장. 4) ensureReviewers — 초대 파일의
-    // 리뷰어(최선). 끝나면 의도를 지우고 사이클을 넘긴 상태로 적는다.
+    // 리뷰어. 끝나면 의도를 지우고 사이클을 넘긴 상태로 적는다.
     const slug = core.repoSlug();
     const client = this.deps.github();
     if (!slug || !client) {
@@ -1742,11 +1742,16 @@ export class CycleSupervisor {
               : await client.updatePullRequest({ ...slug, number: pull.number, body });
         }
       }
-      // 4) 리뷰어 — 요청한 목록이 바뀐 경우에만 다시 요청한다(최선 · 조용히).
+      // PR 생성은 먼저 보관한다 — 리뷰 요청 실패 뒤에도 같은 PR 로 이어간다.
+      core.setCycle(branch, handoff);
+      // 4) 리뷰어 — 실패하면 의도를 남겨 기존 제출 재시도 경로로 이어간다.
       const reviewers = core.reviewers?.() ?? [];
       const asked = intent.reviewers ?? [];
       if (reviewers.length > 0 && asked.join("\u0000") !== reviewers.join("\u0000")) {
-        await client.requestReviewers({ ...slug, number: handoff.number, reviewers });
+        handoff = {
+          ...handoff,
+          reviewers: await client.requestReviewers({ ...slug, number: handoff.number, reviewers }),
+        };
         const fresh = this.ledger.submit;
         if (fresh !== null) {
           this.ledger = { ...this.ledger, submit: { ...fresh, reviewers } };
@@ -1795,7 +1800,7 @@ export class CycleSupervisor {
     });
   }
 
-  /** 생성할 때만 정하는 제목 — 초안 → 프로젝트 이름 · 첫 커밋 제목 → 기본. */
+  /** 생성할 때만 정하는 제목 — 초안 → 첫 커밋 제목 → 기본. */
   private async submitTitle(branch: string): Promise<string> {
     const draft = await this.deps.workspace
       .handoffDraft({ commentsFile: this.deps.commentsFile() })
@@ -1810,7 +1815,6 @@ export class CycleSupervisor {
       .find((line) => line !== "");
     return pickHandoffTitle({
       draftTitle: draft?.title ?? null,
-      projectName: this.deps.projectName(),
       firstCommitSubject: first ?? null,
       fallback: DEFAULT_HANDOFF_TITLE,
     });

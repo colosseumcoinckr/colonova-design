@@ -1,4 +1,4 @@
-import type { HandoffShot, ScreenCheckReport } from "@colonova-design/protocol";
+import type { GateResult, HandoffShot, ScreenCheckReport } from "@colonova-design/protocol";
 import { type DaemonNotice, noticeForState } from "./notices.js";
 import type { PreviewDriverFactory } from "./preview-driver.js";
 import type { RepoWorkspace } from "./repo.js";
@@ -11,6 +11,7 @@ import {
   type ScreenTrouble,
   TROUBLE_LEVELS,
 } from "./screen-gate.js";
+import { normalizeRoute } from "./screen-map.js";
 import { NEW_SESSION_TITLE, type Session } from "./session.js";
 
 /**
@@ -131,6 +132,10 @@ export interface PreviewDriverDeps {
  * 있다: 게이트와 캡처는 제 창을 세웠다가 닫는다.
  */
 export class PreviewDrivers {
+  private readonly pendingGates = new Map<
+    string,
+    { screens: GateScreen[]; typeCheck: boolean; baseline: A11yBaseline }
+  >();
   /**
    * 이 턴이 가리킨 화면들 (게이트 재배선): 사람이 pin·화면 캡처로 보낸
    * 주소만 모은다. 턴이 시작할 때 비워지므로 언제나 "방금 가리킨 화면"이다.
@@ -166,6 +171,7 @@ export class PreviewDrivers {
   /** pin·캡처 하나 — 이 턴의 목록에 담는다. preview origin 밖의 주소는
    *  게이트가 재검증할 대상이 아니므로 runGate 에서 걸러진다. */
   notePinned(sessionId: string, route: string): void {
+    if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(route)) route = normalizeRoute(route);
     const pinned = this.pinnedThisTurn.get(sessionId) ?? new Map<string, GateScreen>();
     pinned.set(route, { route });
     this.pinnedThisTurn.set(sessionId, pinned);
@@ -253,6 +259,9 @@ export class PreviewDrivers {
       return done(), { status: "skipped", reason: "no-preview", ...typeFields };
     }
     const kept: GateScreen[] = [];
+    const beforeA11y = new Map(
+      [...this.a11yBaselineOf(repo?.root ?? "")].map(([route, seen]) => [route, new Set(seen)]),
+    );
     let troubles: ScreenTrouble[] = [];
     if (previewUrl) {
       // preview origin 밖의 주소는 게이트가 재검증할 대상이 아니다 — 허용된
@@ -306,6 +315,11 @@ export class PreviewDrivers {
       return done(), { status: "skipped", reason: "busy", ...typeFields };
     }
     this.gatedSessions.add(sessionId);
+    this.pendingGates.set(sessionId, {
+      screens: kept,
+      typeCheck: typeLines.length > 0,
+      baseline: beforeA11y,
+    });
     this.deps.notice({
       kind: "gate",
       sessionId,
@@ -332,6 +346,47 @@ export class PreviewDrivers {
       done();
     }
     return { status: "trouble", kept: kept.length, troubles, ...typeFields };
+  }
+
+  /** A stopped repair is not a successful repair; only a fresh check can confirm resolution. */
+  async verifyRepair(
+    sessionId: string,
+    changed: boolean,
+    end: "success" | "failed" | "interrupted",
+  ): Promise<GateResult> {
+    const pending = this.pendingGates.get(sessionId);
+    this.pendingGates.delete(sessionId);
+    if (end !== "success") return end;
+    if (!changed) return "unchanged";
+    const repo = this.deps.repoForSession?.(sessionId) ?? this.deps.activeRepo();
+    const url = (await repo?.status().catch(() => null))?.previewUrl;
+    const factory = this.deps.factory();
+    if (!pending || !factory || (!url && pending.screens.length > 0)) return "unverified";
+    let checked = false;
+    if (pending.screens.length > 0 && url) {
+      const driver = factory.forIsolated(url);
+      try {
+        const opened = new Set<string>();
+        const trouble = await inspectScreens(driver, pending.screens, {
+          a11y: pending.baseline,
+          opened,
+        });
+        if (opened.size !== pending.screens.length) return "unverified";
+        checked = true;
+        if (trouble.length > 0) return "remaining";
+      } catch {
+        return "unverified";
+      } finally {
+        await driver.destroy().catch(() => undefined);
+      }
+    }
+    if (pending.typeCheck) {
+      const types = await this.deps.typeTroubles?.(sessionId).catch(() => null);
+      if (!types) return "unverified";
+      checked = true;
+      if (types.errors > 0) return "remaining";
+    }
+    return checked ? "verified" : "unverified";
   }
 
   /**

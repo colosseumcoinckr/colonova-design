@@ -5,13 +5,13 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DiffFile, RepoHandoffDraft } from "@colonova-design/protocol";
 import { readComments } from "./comments.js";
-import { buildCommentsSection, buildFilesSection } from "./handoff-body.js";
+import { buildCommentsSection, buildFilesSection, formatHandoffTitle } from "./handoff-body.js";
 import { type MachineTurn, NO_MACHINE_TURN } from "./machine-provider.js";
 import { HANDOFF_DRAFT_TIMEOUT_MS, MEMO_TIMEOUT_MS, type RepoCore } from "./repo-core.js";
+import { parseUnifiedDiff } from "./repo-diff.js";
 import {
   HANDOFF_BODY_MAX_CHARS,
   HANDOFF_FILE_LIMIT,
-  HANDOFF_TITLE_MAX_CHARS,
   handoffPrompt,
   MEMO_MAX_CHARS,
   memoPrompt,
@@ -48,8 +48,8 @@ export class RepoSummarizer {
   /**
    * 개발자에게 넘기기의 초안 (비개발자 넘기기): the title and the paragraph a
    * developer reads first, written from what this cycle already said about
-   * itself — its 저장 메모 and the files those saves moved, never the whole
-   * diff. One agent turn on the same leash as the save memo's; anywhere it
+   * itself — 요청 메모 · 파일 목록 · 크기를 제한한 최종 diff.
+   * One agent turn on the same leash as the save memo's; anywhere it
    * cannot land the answer is empty, and the dialog keeps the browser's own
    * proposal, which is what it opened with before this existed.
    */
@@ -82,7 +82,20 @@ export class RepoSummarizer {
     // pins taken before the first 저장 ride the handoff too.
     if (memos.length === 0 && files.length === 0) return { ...empty, extras };
 
-    const draft = (await this.machineHandoffDraft(memos, files).catch(() => null)) ?? empty;
+    const diff = parseUnifiedDiff(
+      await this.core
+        .git([
+          "-c",
+          "core.quotepath=false",
+          "diff",
+          "--no-ext-diff",
+          "--no-textconv",
+          "--unified=2",
+          range,
+        ])
+        .catch(() => ""),
+    );
+    const draft = (await this.machineHandoffDraft(memos, files, diff).catch(() => null)) ?? empty;
     this.handoffDraftCache = { tip, draft };
     return { ...draft, extras };
   }
@@ -135,19 +148,18 @@ export class RepoSummarizer {
   private async machineHandoffDraft(
     memos: string[],
     files: string[],
+    diff: DiffFile[],
   ): Promise<RepoHandoffDraft | null> {
-    const answer = await this.oneTurn(handoffPrompt(memos, files), HANDOFF_DRAFT_TIMEOUT_MS);
-    const lines = (answer ?? "")
-      .split(/\r?\n/)
-      .map((line) => line.replace(/^\s*#+\s*/, "").trimEnd());
+    const answer = await this.oneTurn(handoffPrompt(memos, files, diff), HANDOFF_DRAFT_TIMEOUT_MS);
+    const lines = (answer ?? "").split(/\r?\n/).map((line) => line.trimEnd());
     const first = lines.findIndex((line) => line.trim() !== "");
     if (first === -1) return null;
     const title = (lines[first] ?? "")
+      .replace(/^\s*#+\s*/, "")
       .replace(/^[-·•*]\s*/, "")
       .replace(/^(제목|title)\s*[:：]\s*/i, "")
       .replace(/^["'`]+|["'`]+$/g, "")
-      .trim()
-      .slice(0, HANDOFF_TITLE_MAX_CHARS);
+      .trim();
     if (!title) return null;
     const body = lines
       .slice(first + 1)
@@ -155,7 +167,7 @@ export class RepoSummarizer {
       .replace(/^(내용|body)\s*[:：]\s*/i, "")
       .trim()
       .slice(0, HANDOFF_BODY_MAX_CHARS);
-    return { title, body, source: "machine" };
+    return { title: formatHandoffTitle(title), body, source: "machine" };
   }
 
   /**

@@ -121,6 +121,17 @@ interface TurnStatsRow {
   browserMs: number | null;
   /** 브라우저 op 실패 종류의 수 — 0인 종류는 칸에서 뺀다(비면 생략). */
   browserFail?: Partial<Record<BrowserFailKind, number>>;
+  /**
+   * 이 턴이 쓴 토큰(2026-10-02, claude.dev 「What a task costs」의 네 변수 가운데 셋 —
+   * 턴 수는 numTurns 가 이미 센다). `input` 은 캐시를 뺀 새 입력, `cacheRead` 는 캐시에서
+   * 읽은 입력, `cacheWrite` 는 캐시에 적은 입력(모르는 프로바이더는 null), `output` 은
+   * 생각을 포함한 출력. 프로바이더가 알려 주지 않은 턴은 null.
+   */
+  tokens: { input: number; output: number; cacheRead: number; cacheWrite: number | null } | null;
+  /** 이 턴의 추정 비용(USD, 정가 기준 — 구독에서는 일의 양을 재는 눈금이지 청구서가 아니다). 모르면 null. */
+  costUsd: number | null;
+  /** 입력 가운데 캐시에서 읽은 비율(0..1, 소수 셋째 자리) — "다른 어떤 설정도 입력 비용을 이만큼 움직이지 않는다". 입력이 없거나 모르면 null. */
+  cacheHitRate: number | null;
 }
 
 /** 턴이 끝난 뒤 게이트의 한 바퀴 — 판정이 turn.end 뒤에야 나오므로 제 행이다. */
@@ -205,6 +216,28 @@ function freshTurn(text: string): InFlight {
     pinHit: null,
     browserMs: null,
     browserFail: null,
+  };
+}
+
+/**
+ * turn.end 의 usage → 행의 세 칸. 캐시 적중률의 분모는 입력 전체(새 입력 + 캐시 읽기 +
+ * 캐시 쓰기)다 — 캐시 쓰기를 모르는 프로바이더(Codex)는 0 으로 세어 비율이 조금 후해진다.
+ */
+function usageColumns(
+  usage: (ChatEvent & { kind: "turn.end" })["usage"],
+): Pick<TurnStatsRow, "tokens" | "costUsd" | "cacheHitRate"> {
+  if (usage === undefined) return { tokens: null, costUsd: null, cacheHitRate: null };
+  const denominator = usage.input + usage.cacheRead + (usage.cacheWrite ?? 0);
+  return {
+    tokens: {
+      input: usage.input,
+      output: usage.output,
+      cacheRead: usage.cacheRead,
+      cacheWrite: usage.cacheWrite,
+    },
+    costUsd: usage.costUsd,
+    cacheHitRate:
+      denominator > 0 ? Math.round((usage.cacheRead / denominator) * 1000) / 1000 : null,
   };
 }
 
@@ -475,6 +508,7 @@ export class TurnStats {
       pinHit: turn.pinHit,
       browserMs: turn.browserMs,
       ...(turn.browserFail !== null ? { browserFail: turn.browserFail } : {}),
+      ...usageColumns(event.usage),
     };
     this.lastEndAt.set(sessionId, Date.now());
     this.write(row);

@@ -347,6 +347,8 @@ test("gateBrief — 넘침은 폭 · 삐져나온 요소 · 고치는 방향을 
       '- table.member-list "이름 이메일" — 오른쪽 끝 808px',
       "- div.toolbar — 오른쪽 끝 604px",
       "PC 화면은 그대로 두고 휴대폰 폭에서만 고쳐 주세요 — 넘치는 요소를 화면 폭 안에 맞추고(표처럼 넓은 것은 그 안에서만 가로로 스크롤되게), body 의 overflow-x: hidden 으로 가리지 마세요. 이 레포가 반응형을 다루는 방식(브레이크포인트 · 유틸리티 · 공용 컴포넌트)이 있으면 그것을 따르세요.",
+      "",
+      "끝의 기준: 위에 적힌 문제가 다시 확인했을 때(화면은 screen_check, 타입은 repo_diagnostics) 나오지 않는 것입니다 — 그 밖의 화면과 파일은 손대지 마세요.",
     ].join("\n"),
   );
 });
@@ -453,5 +455,11 @@ test("runGate — 두 폭 모두 멀쩡하면 통과다", async () => {
 test("screen_check 도구와 공통 지침은 overflow 칸을 AI 에게 알린다", () => {
   const tool = BROWSER_TOOLS.find((entry) => entry.name === "screen_check") as ToolDef;
   assert.match(tool.description, /overflow/, "도구 설명이 돌려주는 칸을 말한다");
-  assert.match(COMMON_INSTRUCTIONS, /overflow/, "공통 지침이 휴대폰 폭 확인의 뜻을 말한다");
+  // 인자 · 반환 칸은 도구 설명의 몫이다(2026-10-02) — 지침은 휴대폰 폭에서도 밀리지 않아야 한다는 뜻만 말한다.
+  assert.doesNotMatch(
+    COMMON_INSTRUCTIONS,
+    /overflow/,
+    "공통 지침은 도구의 반환 칸을 되풀이하지 않는다",
+  );
+  assert.match(COMMON_INSTRUCTIONS, /휴대폰 폭/, "공통 지침이 휴대폰 폭의 뜻을 말한다");
 });

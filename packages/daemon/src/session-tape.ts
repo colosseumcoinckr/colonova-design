@@ -93,6 +93,8 @@ export function dropTape(projectRoot: string, sessionId: string): void {
  */
 export function spliceTape(events: ChatEvent[], rows: TapeRow[]): ChatEvent[] {
   if (rows.length === 0) return events;
+  const prompts = rows.filter((row) => row.event.kind === "user.echo" && row.event.requestId);
+  rows = rows.filter((row) => row.event.kind !== "user.echo");
   const out: ChatEvent[] = [];
   let echoes = 0;
   let cursor = 0;
@@ -109,7 +111,27 @@ export function spliceTape(events: ChatEvent[], rows: TapeRow[]): ChatEvent[] {
       flush(echoes);
       echoes += 1;
     }
-    out.push(event);
+    if (event.kind === "user.echo") {
+      const match = [...prompts]
+        .reverse()
+        .find(
+          (row) =>
+            row.afterTurn === echoes &&
+            row.event.kind === "user.echo" &&
+            row.event.text === event.text,
+        );
+      out.push(
+        match
+          ? {
+              ...event,
+              requestId: (match.event as Extract<ChatEvent, { kind: "user.echo" }>).requestId,
+              gateResult: (match.event as Extract<ChatEvent, { kind: "user.echo" }>).gateResult,
+              changedScreens: (match.event as Extract<ChatEvent, { kind: "user.echo" }>)
+                .changedScreens,
+            }
+          : event,
+      );
+    } else out.push(event);
   }
   flush(Number.MAX_SAFE_INTEGER);
   return out;

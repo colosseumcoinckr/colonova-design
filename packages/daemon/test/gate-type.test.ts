@@ -35,6 +35,8 @@ test("gateBrief — 둘째 인자가 없으면 지금의 모양 그대로다", (
       "",
       "### /list",
       "error: 못 찾겠다",
+      "",
+      "끝의 기준: 위에 적힌 문제가 다시 확인했을 때(화면은 screen_check, 타입은 repo_diagnostics) 나오지 않는 것입니다 — 그 밖의 화면과 파일은 손대지 마세요.",
     ].join("\n"),
   );
 });
@@ -59,7 +61,9 @@ test("gateBrief — 화면 문제 뒤에 타입 절이 실린다", () => {
   const screenAt = brief.indexOf("### /list");
   const typeAt = brief.indexOf("### 타입 검사");
   assert.ok(screenAt > 0 && typeAt > screenAt);
-  assert.ok(brief.endsWith("- src/a.ts:3:7 TS2322 형식이 맞지 않습니다"));
+  assert.ok(brief.includes("- src/a.ts:3:7 TS2322 형식이 맞지 않습니다"));
+  // 끝의 기준 한 줄이 브리프를 닫는다(2026-10-02) — 타입 절 뒤에도.
+  assert.ok(brief.endsWith("그 밖의 화면과 파일은 손대지 마세요."));
 });
 
 // ————— runGate — 가짜 deps —————
@@ -212,4 +216,63 @@ test("runGate — 화면이 깨끗하고 타입 오류도 없으면 ok 에 0 을
   assert.equal(outcome.kept, 1);
   assert.equal(outcome.typeErrors, 0);
   assert.equal(deps.sent.length, 0);
+});
+
+test("root pin identity checks /, and a stopped or unchanged repair is never verified", async () => {
+  for (const [changed, end, expected] of [
+    [false, "success", "unchanged"],
+    [true, "failed", "failed"],
+    [true, "interrupted", "interrupted"],
+  ] as const) {
+    const deps = fakeDeps({ previewUrl: "http://127.0.0.1:8888", factory: noisyFactory() });
+    const drivers = new PreviewDrivers(deps);
+    drivers.notePinned("s1", "index");
+    assert.equal((await drivers.runGate("s1")).status, "trouble");
+    assert.ok(deps.sent[0]!.text.includes("### /\n"));
+    assert.equal(await drivers.verifyRepair("s1", changed, end), expected);
+  }
+});
+
+test("repair verification retains the original accessibility scope and refuses skipped checks", async () => {
+  for (const outcome of ["fixed", "remaining", "unopened"] as const) {
+    let stage = "old";
+    const deps = fakeDeps({
+      previewUrl: "http://127.0.0.1:8888",
+      factory: {
+        forIsolated: () =>
+          ({
+            open: async () =>
+              stage === "unopened"
+                ? { ok: false, error: "unavailable" }
+                : {
+                    ok: true,
+                    settled: true,
+                    a11y: {
+                      unnamed: [
+                        { role: "button", label: "old" },
+                        ...(stage === "new" ? [{ role: "button", label: "new" }] : []),
+                      ],
+                      unnamedTotal: stage === "new" ? 2 : 1,
+                      texts: [],
+                    },
+                  },
+            screenshot: async () => ({ data: "", mediaType: "image/png" }),
+            consoleLines: async () => [],
+            destroy: async () => {},
+          }) as PreviewDriver,
+      },
+    });
+    const drivers = new PreviewDrivers(deps);
+    drivers.notePinned("s1", "/");
+    await drivers.runGate("s1"); // establish tolerated old problem
+    drivers.gatedSessions.delete("s1");
+    stage = "new";
+    drivers.notePinned("s1", "/");
+    assert.equal((await drivers.runGate("s1")).status, "trouble");
+    stage = outcome === "fixed" ? "old" : outcome === "remaining" ? "new" : "unopened";
+    assert.equal(
+      await drivers.verifyRepair("s1", true, "success"),
+      outcome === "fixed" ? "verified" : outcome === "remaining" ? "remaining" : "unverified",
+    );
+  }
 });

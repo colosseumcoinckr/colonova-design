@@ -28,6 +28,8 @@ export const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 export interface ScreenMapRow {
   at: string;
   sha: string;
+  sessionId?: string;
+  requestId?: string;
   routes: string[];
   files: string[];
   /**

@@ -3,6 +3,7 @@
 // domain module speaks. Package-internal: only repo.ts and the repo-*.ts
 // modules import this.
 import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -34,6 +35,7 @@ import {
   unquoteGitPath,
   untrackedAsAdded,
 } from "./repo-diff.js";
+import { repoEventKind } from "./repo-event-kind.js";
 import { safeRepoPath } from "./repo-paths.js";
 export const INSTALL_MARKER = "colonova-design-install-hash";
 /**
@@ -157,6 +159,9 @@ export function conflictBrief(
   lines.push(
     "두 변경의 뜻을 모두 살려 표식을 지우고 파일을 정리해 주세요.",
     "git 명령은 쓰지 마세요 — 정리가 끝나면 도구가 마무리합니다.",
+    // 끝의 기준(2026-10-02, claude.dev 「Opus 5.5」: 끝나는 선을 이름 붙이라) — 표식이
+    // 남지 않는 것이지 "고쳤다"가 아니다. 범위도 여기서 묶는다.
+    "끝의 기준: 위 파일에 충돌 표식이 하나도 남지 않고 두 변경의 뜻이 모두 살아 있는 것입니다 — 그 밖의 파일은 손대지 마세요.",
   );
   return lines.join("\n");
 }
@@ -703,7 +708,7 @@ export class RepoCore {
    * 저장 기록 (PLAN D53): the cycle's saves, newest first, as the `저장
    * 기록` drawer lists them — the planner's own memos and times, no git.
    */
-  async history(): Promise<RepoHistory> {
+  async history(strict = false): Promise<RepoHistory> {
     if (!this.isCloned()) return { base: `origin/${this.baseBranch}`, entries: [] };
     const base = `origin/${this.baseBranch}`;
     // A clone that never fetched the base reads as an empty history, not as
@@ -712,26 +717,64 @@ export class RepoCore {
       "-c",
       "core.quotepath=false",
       "log",
-      "--pretty=format:%x1e%H%x1f%s%x1f%cI",
+      "--pretty=format:%x1e%H%x1f%s%x1f%cI%x1f%P",
       "--name-only",
       `${base}..HEAD`,
-    ]).catch(() => "");
+    ]).catch((error) => {
+      if (strict) throw error;
+      return "";
+    });
     const entries = output
       .split("\x1e")
       .map((chunk) => chunk.replace(/^\r?\n/, ""))
       .filter((chunk) => chunk.trim() !== "")
       .map((chunk) => {
         const [head = "", ...fileLines] = chunk.split(/\r?\n/);
-        const [sha = "", message = "", at = ""] = head.split("\x1f");
+        const [sha = "", message = "", at = "", parents = ""] = head.split("\x1f");
         return {
           sha,
           message,
           at,
           files: fileLines.map((line) => line.trim()).filter(Boolean),
+          ...(repoEventKind(message, parents) ? { kind: repoEventKind(message, parents) } : {}),
         };
       })
       .filter((entry) => entry.sha !== "");
     return { base, entries };
+  }
+
+  /** Fingerprint immutable endpoints and content, including binary changes. */
+  async submitPreviewToken(): Promise<string> {
+    const head = (await this.git(["rev-parse", "HEAD"])).trim();
+    const baseline = (await this.git(["rev-parse", `origin/${this.baseBranch}`])).trim();
+    const diff = await this.git([
+      "diff",
+      "--binary",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--no-color",
+      `${baseline}...${head}`,
+    ]);
+    return createHash("sha256")
+      .update(JSON.stringify([head, baseline, diff]))
+      .digest("hex");
+  }
+
+  /** Final outgoing content, independent of automatic sync and reverted history entries. */
+  async finalChangedFiles(): Promise<string[]> {
+    if (!this.isCloned()) return [];
+    return (
+      await this.git([
+        "-c",
+        "core.quotepath=false",
+        "diff",
+        "--name-only",
+        "-z",
+        `origin/${this.baseBranch}...HEAD`,
+      ])
+    )
+      .split("\0")
+      .filter(Boolean);
   }
 
   // -------------------------------------------------------------------------
@@ -1477,7 +1520,7 @@ export class RepoCore {
    * the caller — a stale count is a wrong button, a thrown error is a dead
    * session.
    */
-  async refreshPendingChanges(): Promise<void> {
+  async refreshPendingChanges(strict = false): Promise<void> {
     if (!this.isCloned()) return;
     let rows: Array<{ path: string; status: ChangedFileLite["status"] }> = [];
     try {
@@ -1486,7 +1529,8 @@ export class RepoCore {
       // Every file, its own row — the count's "files" stays literal.
       const out = await this.git(["-c", "core.quotepath=false", "status", "--porcelain", "-uall"]);
       rows = parseStatusRows(out);
-    } catch {
+    } catch (error) {
+      if (strict) throw error;
       return;
     }
     // The ± sizes need one more read — status says what changed, numstat says

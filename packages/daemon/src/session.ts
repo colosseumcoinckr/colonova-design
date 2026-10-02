@@ -145,6 +145,7 @@ export interface SessionEvents {
    * 판은 현 턴의 핀을 지웠고 게이트가 조용히 생략됐다. 턴의 시작을 아는 것은
    */
   onTurnStart?: (sessionId: string) => void;
+  beforeDeliver?: (sessionId: string, item: HeldSend) => Promise<void>;
   /**
    * 말이 실제로 CLI 로 나가는 시점(deliver)의 핀 목록 — 서버가 화면 게이트의
    * 입력으로 옮겨 적는다. 받은 시점이 아닌 나가는 시점인 이유는 HeldSend 의
@@ -343,6 +344,7 @@ export class Session {
    * 지나므로 여기 한 곳만 기억하면 된다.
    */
   lastSentText: string | null = null;
+  lastRequestId: string | null = null;
   /**
    * 이번 턴의 답변 문장 (PLAN L9) — 그 턴의 text.done 블록을 이어 붙인다.
    * 턴이 시작될 때 비우고, 리뷰 반영 턴이 끝나면 데몬이 읽어 코멘트별
@@ -1449,6 +1451,7 @@ export class Session {
     const { text, attachments, pins } = item;
     // 감독: 마지막으로 나간 말 — 실패한 턴의 재시도와 죽은 질의의 재개가 읽는다.
     this.lastDelivered = item;
+    if (readTurn(text).marker?.kind !== "gate") this.lastRequestId = item.id;
     // 이 말이 디스크에도 한 벌 남는다(베타 테스트 B15): 턴이 끝나기 전에
     // 데몬이 죽으면 벤더 기록이 아직 이 말을 갖고 있지 않을 수 있고 — 질문
     // 카드에서 멈춘 턴이 정확히 그랬다 — 그러면 카드와 말이 쌍으로 사라진다.
@@ -1493,6 +1496,7 @@ export class Session {
         });
     if (!replay) this.deliveredAny = true;
     const send = (): void => {
+      if (this.closed || this.interrupting || this.lastDelivered !== item) return;
       void this.agent?.send({ text, attachments }).catch((error: unknown) => {
         // 전송이 살아 있어도 보내기가 거절될 수 있다(codex 의 turn/start 거절,
         // 방금 닫힌 SDK 입력 큐). 삼키면 turnStartedAt 만 남고 turn.end 는
@@ -1517,17 +1521,25 @@ export class Session {
         });
       });
     };
-    if (pinEffort !== null && this.agent?.setEffort) {
-      void this.agent
-        .setEffort(pinEffort)
-        .then(() => {
-          this.selectedEffort = pinEffort;
-        })
-        .catch(() => undefined)
-        .then(send);
-    } else {
-      send();
-    }
+    const ready =
+      !replay && this.events.beforeDeliver
+        ? this.events.beforeDeliver(this.id, item).catch(() => undefined)
+        : null;
+    const deliverToAgent = (): void => {
+      if (pinEffort !== null && this.agent?.setEffort) {
+        void this.agent
+          .setEffort(pinEffort)
+          .then(() => {
+            this.selectedEffort = pinEffort;
+          })
+          .catch(() => undefined)
+          .then(send);
+      } else {
+        send();
+      }
+    };
+    if (ready) void ready.then(deliverToAgent);
+    else deliverToAgent();
 
     // The echo carries the person's own words. D87: the pin crops ride back
     // (capped) so the chat card can draw its thumbnails — live only; a
@@ -1551,6 +1563,7 @@ export class Session {
       .map((part) => part.name);
     this.events.onEvent(this.id, {
       kind: "user.echo",
+      requestId: item.id,
       text,
       images: attachments.length - files.length,
       ...(files.length > 0 ? { files } : {}),
@@ -1674,6 +1687,7 @@ export class Session {
   async setEffort(effort: EffortLevel | null): Promise<void> {
     if (!this.agent?.setEffort) throw new Error("이 에이전트는 노력 수준을 지원하지 않습니다.");
     await this.agent.setEffort(effort);
+    this.selectedEffort = effort;
     // 칩에서 온 호출은 사람의 뜻이다 — 고른 적이 있으면 이후 자동 기본값이
     // 덮지 않는다(null 로 되돌려도 손대던 사실은 남는다).
     if (effort !== null) this.effortExplicit = true;

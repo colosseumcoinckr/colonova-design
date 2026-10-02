@@ -262,7 +262,7 @@ export class CodexDriver implements AgentDriver {
         // The clone may not exist yet — compare the spelling we were given.
       }
       const rows: ImportableSession[] = [];
-      for (const path of await listRolloutFiles(codexHome())) {
+      for (const path of await listRolloutFiles(codexHome(), Number.POSITIVE_INFINITY)) {
         if (rows.length >= limit) break;
         const meta = await readSessionMeta(path);
         if (!meta || (meta.cwd !== real && meta.cwd !== cwd)) continue;
@@ -350,7 +350,9 @@ export class CodexDriver implements AgentDriver {
       for (const path of await listRolloutFiles(codexHome())) {
         const meta = await readSessionMeta(path);
         if (!meta || (meta.cwd !== real && meta.cwd !== cwd)) continue;
-        await unlink(path).catch(() => undefined);
+        await unlink(path).catch((error: NodeJS.ErrnoException) => {
+          if (error.code !== "ENOENT") throw error;
+        });
       }
     },
   };

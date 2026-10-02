@@ -1,3 +1,5 @@
+import { HANDOFF_TITLE_MAX_CHARS } from "./repo-prompts.js";
+
 /**
  * 넘기기 본문의 코멘트 절 (PLAN D93) — 개발자는 무엇이 바뀌었는지와 **왜**
  * 바뀌었는지를 풀 리퀘스트를 떠나지 않고 읽는다. 이 저장소의 유일한 독자가
@@ -206,19 +208,31 @@ function escapeRegExp(text: string): string {
 
 /**
  * PR 제목은 생성할 때만 정한다 (PLAN L6) — 순수 함수. 초안(handoffDraft 의
- * 8초 안에 나온 제목)이 없으면 `<프로젝트 이름> · <첫 커밋 제목>`, 그마저
- * 없으면 도구의 기본 제목이다. 입양한 PR 이나 다시 제출에서는 이 함수를
+ * 8초 안에 나온 제목)이 없으면 첫 커밋 제목, 그마저 없으면 도구의 기본
+ * 제목을 쓴다. 모든 자동 제목은 같은 형식이다. 입양 · 다시 제출에서는 이 함수를
  * 부르지 않는다 — 제목은 개발자의 것이다.
  */
 export function pickHandoffTitle(input: {
   draftTitle: string | null;
-  projectName: string;
   firstCommitSubject: string | null;
   fallback: string;
 }): string {
   const draft = input.draftTitle?.trim();
-  if (draft) return draft;
   const subject = input.firstCommitSubject?.trim();
-  if (subject) return `${input.projectName} · ${subject}`;
-  return input.fallback;
+  return formatHandoffTitle(draft || subject || input.fallback);
+}
+
+/** 형식 없는 초안 · 폴백은 타입을 추측하지 않고 chore로 둔다. */
+export function formatHandoffTitle(title: string): string {
+  const line =
+    title
+      .split(/\r?\n/)
+      .find((part) => part.trim() !== "")
+      ?.trim() ?? "";
+  const conventional = /^(feat|fix|refactor|style|docs|test|chore)(\([^()\r\n]+\))?!?:\s*\S/.test(
+    line,
+  );
+  return Array.from(conventional ? line : `chore: ${line}`)
+    .slice(0, HANDOFF_TITLE_MAX_CHARS)
+    .join("");
 }

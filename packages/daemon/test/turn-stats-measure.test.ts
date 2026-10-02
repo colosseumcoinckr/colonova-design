@@ -403,3 +403,76 @@ test("noteGateCheck — 타입 검사를 돌렸으면 오류 0 도 싣는다 (PL
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("turn.end 의 usage 는 토큰 · 비용 · 캐시 적중률 세 칸이 되고, 없으면 셋 다 null 이다 (2026-10-02)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
+  try {
+    const stats_ = stats(dir);
+    stats_.observe("s1", { kind: "user.echo", text: "검색창을 넣어 줘", images: 0 } as ChatEvent);
+    stats_.observe("s1", {
+      kind: "turn.end",
+      subtype: "success",
+      isError: false,
+      costUsd: 1.25, // SDK 의 누적치 — 행에는 턴의 몫(usage.costUsd)만 간다.
+      numTurns: 3,
+      durationMs: 900,
+      resultText: "넣었습니다",
+      usage: { input: 1_000, output: 400, cacheRead: 9_000, cacheWrite: 0, costUsd: 0.0123 },
+    } as ChatEvent);
+    stats_.observe("s1", { kind: "user.echo", text: "폭을 줄여 줘", images: 0 } as ChatEvent);
+    stats_.observe("s1", {
+      kind: "turn.end",
+      subtype: "success",
+      isError: false,
+      costUsd: null,
+      numTurns: 1,
+      durationMs: 300,
+      resultText: "줄였습니다",
+    } as ChatEvent);
+    const rows = (await untilRows(dir, 2)).filter((row) => row.kind === "user");
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows[0]?.tokens, {
+      input: 1_000,
+      output: 400,
+      cacheRead: 9_000,
+      cacheWrite: 0,
+    });
+    assert.equal(rows[0]?.costUsd, 0.0123);
+    assert.equal(rows[0]?.cacheHitRate, 0.9);
+    // 프로바이더가 말하지 않은 턴 — 0 이 아니라 모름이다.
+    assert.equal(rows[1]?.tokens, null);
+    assert.equal(rows[1]?.costUsd, null);
+    assert.equal(rows[1]?.cacheHitRate, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Codex 처럼 캐시 쓰기를 모르는 usage 도 적중률이 선다 — 쓰기는 분모에 0 으로 든다", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
+  try {
+    const stats_ = stats(dir);
+    stats_.observe("s1", { kind: "user.echo", text: "고쳐 줘", images: 0 } as ChatEvent);
+    stats_.observe("s1", {
+      kind: "turn.end",
+      subtype: "success",
+      isError: false,
+      costUsd: null,
+      numTurns: null,
+      durationMs: 500,
+      resultText: null,
+      usage: { input: 500, output: 100, cacheRead: 1_500, cacheWrite: null, costUsd: null },
+    } as ChatEvent);
+    const rows = (await untilRows(dir, 1)).filter((row) => row.kind === "user");
+    assert.deepEqual(rows[0]?.tokens, {
+      input: 500,
+      output: 100,
+      cacheRead: 1_500,
+      cacheWrite: null,
+    });
+    assert.equal(rows[0]?.cacheHitRate, 0.75);
+    assert.equal(rows[0]?.costUsd, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

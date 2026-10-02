@@ -10,6 +10,7 @@ import {
   PROTOCOL_VERSION,
   type ProjectSummary,
   parseClientMessage,
+  readTurn,
   type ServerMessage,
   type SessionPinHint,
   type SessionState,
@@ -50,6 +51,7 @@ import {
   migratePlaintextSecrets,
   migrateProjectPats,
 } from "./credentials.js";
+import { readHeadSha, screensOfTurn } from "./cycle-screens.js";
 import { AGENT_NOTICE_KEY_PREFIX, DeveloperNotice, describeProblem } from "./developer-notice.js";
 import { RequestRouter } from "./dispatch.js";
 import { buildStatus, resolveClaudeExecutable } from "./environment.js";
@@ -83,6 +85,7 @@ import { repoSettingsWarning, sanitizeRepoAgentSettings, trustWorkspace } from "
 import { repoCommandEnv } from "./repo-bringup.js";
 import { scopeOf } from "./repo-config.js";
 import { filesForRoute, routesForFiles } from "./route-index.js";
+import { ScreenComparisons } from "./screen-comparisons.js";
 import {
   a11yLines,
   judgeScreen,
@@ -92,6 +95,8 @@ import {
 import { observedFilesFor, readScreenMap } from "./screen-map.js";
 import { asPlannerFacingError, NEW_SESSION_TITLE } from "./session.js";
 import { SessionManager } from "./session-manager.js";
+import { appendTape, readTape } from "./session-tape.js";
+import { changedInTurn, type TurnSnapshot, turnSnapshot } from "./turn-changes.js";
 import { TurnStats } from "./turn-stats.js";
 import { diagnosticsAnswer, isTypeScriptFile, TypeChecker, typeTroublesOf } from "./type-check.js";
 import { serveWeb } from "./web-static.js";
@@ -401,6 +406,13 @@ export function registerAgentDrivers(
   registry.register(new CodexDriver());
 }
 
+/** Desktop reset runs before a daemon starts. Only conversations for this clone are erased. */
+export async function eraseProjectConversations(cwd: string): Promise<void> {
+  const drivers = new DriverRegistry();
+  registerAgentDrivers(drivers, { claudeExecutable: () => null });
+  for (const driver of drivers.all()) await driver.store?.deleteAll?.(cwd);
+}
+
 export class DaemonServer {
   private readonly clients = new Set<WebSocket>();
   /**
@@ -669,6 +681,15 @@ export class DaemonServer {
     this.manager = new SessionManager(
       {
         onEvent: (sessionId, event) => {
+          if (event.kind === "turn.end")
+            this.turnEnds.set(
+              sessionId,
+              event.subtype === "interrupted"
+                ? "interrupted"
+                : event.isError
+                  ? "failed"
+                  : "success",
+            );
           // 턴 통계 — 아래의 return 들보다 먼저: 모든 사건이 새겨져야 한다.
           this.stats.observe(sessionId, event);
           this.broadcast({ type: "session.event", sessionId, event });
@@ -767,21 +788,11 @@ export class DaemonServer {
           // 턴이 화면을 열어 봤다면 완료 알림은 게이트의 판정 뒤로 미룬다
           // (runScreenGate 가 둘 중 하나를 내보낸다). 여기서 먼저 부르면
           // 사용자는 `작업이 끝났습니다` 를 읽은 직후 다시 도는 대화를 본다.
-          if (state === "idle" && this.drivers.gatePossible(sessionId)) {
-            this.startGate(sessionId, turnDurationMs);
-          } else if (
+          if (
             state === "idle" &&
-            this.autoSaveDue.has(sessionId) &&
-            this.drivers.gateEligible(sessionId)
+            (this.autoSaveDue.has(sessionId) || this.gateRequests.has(sessionId))
           ) {
-            // 묶음 B(PLAN-HARNESS §3.B B-4): 이 턴이 가리킨 화면이 없어도 바뀐
-            // 파일에서 되짚는다 — 관찰 지도에 그 파일을 고친 화면이 있거나,
-            // 그 파일이 Next.js 의 고정 경로 page 파일일 때만(H-5 — 파일
-            // 이름에서 주소를 지어내지 않는다).
-            void this.gateFromChangedFiles(sessionId).then(
-              ({ tsChanged }) => this.gateAfterFallback(sessionId, turnDurationMs, tsChanged),
-              () => this.gateAfterFallback(sessionId, turnDurationMs, false),
-            );
+            void this.finishChangedTurn(sessionId, turnDurationMs);
           } else {
             this.finishWithoutGate(sessionId, state, turnDurationMs);
           }
@@ -791,6 +802,7 @@ export class DaemonServer {
             this.router?.forgetReviveBudget(sessionId);
             // P2-1: 주인을 잃은 자동 저장 표는 치르지 않는다 — 닫힌 대화의
             // 커밋 제목을 그 대화의 말에서 끌어올 수 없다.
+            this.comparisons.cancel(sessionId);
             this.autoSaveDue.delete(sessionId);
             this.screenMapDue.delete(sessionId);
             this.drivers.pinnedThisTurn.delete(sessionId);
@@ -828,6 +840,43 @@ export class DaemonServer {
               repoCommandEnv(process.env),
             );
           }
+        },
+        beforeDeliver: async (sessionId, item) => {
+          const workspace = this.workspaceOfSession(sessionId);
+          if (!workspace) return;
+          await this.comparisonSaves.get(workspace.slug);
+          this.turnBaselines.set(
+            sessionId,
+            await turnSnapshot(workspace.repo.repoCore()).catch(() => null),
+          );
+          this.turnEnds.delete(sessionId);
+          const map = await readScreenMap(workspace.paths.root).catch(() => []);
+          const known = map
+            .slice(-8)
+            .reverse()
+            .flatMap((row) => row.routes);
+          const afterTurn =
+            (await this.manager.promptCount(sessionId, workspace.paths.repoRoot)) + 1;
+          appendTape(workspace.paths.root, {
+            sessionId,
+            afterTurn,
+            event: { kind: "user.echo", text: item.text, images: 0, requestId: item.id },
+          });
+          if (readTurn(item.text).marker?.kind === "gate") {
+            this.gateRequests.set(sessionId, { requestId: item.id, afterTurn, text: item.text });
+            return;
+          }
+          this.gateRequests.delete(sessionId);
+          if (!this.drivers.gatedSessions.has(sessionId)) this.changedTurnFiles.delete(sessionId);
+          await this.comparisons.begin({
+            root: workspace.paths.root,
+            sessionId,
+            requestId: item.id,
+            head: readHeadSha(workspace.paths.repoRoot),
+            routes: [...item.pins.map((pin) => pin.screen), ...known, "/"],
+            url: workspace.repo.repoCore().previewUrl,
+            factory: this.config.previewDriverFactory,
+          });
         },
         onPinned: (sessionId, pins) => {
           for (const pin of pins) this.drivers.notePinned(sessionId, pin.screen);
@@ -927,10 +976,7 @@ export class DaemonServer {
       typeTroubles: async (sessionId) => {
         const workspaces = this.workspaceOfSession(sessionId);
         if (workspaces === null) return null;
-        const changed = await workspaces.repo
-          .diff()
-          .then((files) => files.map((file) => file.path))
-          .catch(() => [] as string[]);
+        const changed = this.changedTurnFiles.get(sessionId) ?? [];
         if (!changed.some((path) => isTypeScriptFile(path))) return null;
         // 첫 검사는 레포에 따라 수십 초라 완료 알림이 그만큼 늦어진다 — 게이트는
         // 예산 안에 답이 오지 않으면 이번은 타입을 보지 않은 것으로 한다(검사는
@@ -1032,6 +1078,7 @@ export class DaemonServer {
     // 슬라이스 5: 저장된 웹훅을 읽는다 — 상태 방송은 그 뒤에 일어난다.
     await this.escalation.load();
     this.router = new RequestRouter({
+      comparisonReady: (slug) => this.comparisonSaves.get(slug),
       manager: this.manager,
       fleet: this.fleet,
       previewDrivers: this.drivers,
@@ -1387,6 +1434,76 @@ export class DaemonServer {
     return this.fleet.workspaceOfSession(sessionId);
   }
 
+  private readonly turnBaselines = new Map<string, TurnSnapshot | null>();
+  private readonly changedTurnFiles = new Map<string, string[]>();
+  private readonly gateRequests = new Map<
+    string,
+    { requestId: string; afterTurn: number; text: string }
+  >();
+  private readonly turnEnds = new Map<string, "success" | "failed" | "interrupted">();
+
+  /** Gate eligibility comes from this request's content delta, never its wording or pins alone. */
+  private async finishChangedTurn(sessionId: string, duration: number | undefined): Promise<void> {
+    const baseline = this.turnBaselines.get(sessionId);
+    const workspace = this.workspaceOfSession(sessionId);
+    const after = workspace
+      ? await turnSnapshot(workspace.repo.repoCore()).catch(() => null)
+      : null;
+    if (
+      this.turnBaselines.get(sessionId) !== baseline ||
+      this.manager.get(sessionId)?.state !== "idle"
+    )
+      return;
+    const changed = after === null ? [] : changedInTurn(baseline ?? null, after);
+    const originalFiles = this.changedTurnFiles.get(sessionId) ?? [];
+    this.changedTurnFiles.set(sessionId, changed);
+    const gate = this.gateRequests.get(sessionId);
+    if (gate && workspace) {
+      this.changedTurnFiles.set(sessionId, [...new Set([...originalFiles, ...changed])]);
+      const result = await this.drivers.verifyRepair(
+        sessionId,
+        changed.length > 0,
+        this.turnEnds.get(sessionId) ?? "failed",
+      );
+      if (this.gateRequests.get(sessionId) !== gate) return;
+      appendTape(workspace.paths.root, {
+        sessionId,
+        afterTurn: gate.afterTurn,
+        event: {
+          kind: "user.echo",
+          text: gate.text,
+          images: 0,
+          requestId: gate.requestId,
+          gateResult: result,
+        },
+      });
+      this.broadcast({
+        type: "session.event",
+        sessionId,
+        event: { kind: "gate.result", requestId: gate.requestId, result },
+      });
+      this.gateRequests.delete(sessionId);
+      if (
+        this.turnBaselines.get(sessionId) !== baseline ||
+        this.manager.get(sessionId)?.state !== "idle"
+      )
+        return;
+      this.finishWithoutGate(sessionId, "idle", duration);
+      return;
+    }
+    if (changed.length === 0) {
+      this.autoSaveDue.delete(sessionId);
+      this.comparisons.cancel(sessionId);
+      this.drivers.pinnedThisTurn.delete(sessionId);
+      this.screenMapDue.delete(sessionId);
+      this.gateFallbackCount.delete(sessionId);
+      this.finishWithoutGate(sessionId, "idle", duration);
+    } else if (this.drivers.gateEligible(sessionId)) {
+      const { tsChanged } = await this.gateFromChangedFiles(sessionId);
+      this.gateAfterFallback(sessionId, duration, tsChanged);
+    } else this.finishWithoutGate(sessionId, "idle", duration);
+  }
+
   /**
    * 게이트의 첫 갈래 — 이 턴이 가리킨 화면이 있을 때(PLAN-HARNESS §3.B B-4 가
    * onState 의 if 몸통을 그대로 옮긴 자리다). 판정 → 알림 → 자동 보관의
@@ -1474,10 +1591,7 @@ export class DaemonServer {
   private async gateFromChangedFiles(sessionId: string): Promise<{ tsChanged: boolean }> {
     const workspaces = this.workspaceOfSession(sessionId);
     if (workspaces === null) return { tsChanged: false };
-    const changed = await workspaces.repo
-      .diff()
-      .then((files) => files.map((file) => file.path))
-      .catch(() => [] as string[]);
+    const changed = this.changedTurnFiles.get(sessionId) ?? [];
     if (changed.length === 0) return { tsChanged: false };
     const rows = await readScreenMap(workspaces.paths.root).catch(() => []);
     const routes = routesForFiles(changed, rows);
@@ -1517,15 +1631,56 @@ export class DaemonServer {
    * 쓴다 — 소비는 autoSaveTurn 안에서고, 표가 없으면 그냥 사라진다(다음
    * 턴이 제 것을 쌓는다).
    */
+  private readonly comparisons = new ScreenComparisons();
+  private readonly comparisonSaves = new Map<string, Promise<void>>();
+
   private runAutoSave(sessionId: string): void {
     const routes = this.screenMapDue.get(sessionId);
     this.screenMapDue.delete(sessionId);
     if (!this.autoSaveDue.delete(sessionId)) return;
     const workspaces = this.workspaceOfSession(sessionId);
-    void this.fleet.autoSaveTurn(sessionId, routes).finally(() => {
-      // 턴이 idle 이 되어 자동 보관이 끝난 뒤 — 감독자가 사이클을 한 번 본다.
-      void workspaces?.supervisor.tick("turn-idle");
-    });
+    const source = routes ?? [...(this.drivers.pinnedThisTurn.get(sessionId)?.keys() ?? [])];
+    const answer = this.manager.get(sessionId)?.lastAssistantText ?? null;
+    const saving = this.fleet
+      .autoSaveTurn(sessionId, source)
+      .then(async (saved) => {
+        if (!workspaces || !saved?.requestId) return;
+        const url = workspaces.repo.repoCore().previewUrl;
+        const changedScreens = screensOfTurn(source, answer, url ? new URL(url).origin : null);
+        const prompt = readTape(workspaces.paths.root, sessionId).find(
+          (row) => row.event.kind === "user.echo" && row.event.requestId === saved.requestId,
+        );
+        if (prompt && prompt.event.kind === "user.echo") {
+          appendTape(workspaces.paths.root, {
+            ...prompt,
+            event: { ...prompt.event, changedScreens },
+          });
+        }
+        await this.comparisons.finish({
+          sessionId,
+          requestId: saved.requestId,
+          sha: saved.sha,
+          screens: changedScreens,
+          url,
+          factory: this.config.previewDriverFactory,
+        });
+        this.broadcast({
+          type: "session.event",
+          sessionId,
+          event: { kind: "screens.saved", requestId: saved.requestId, screens: changedScreens },
+        });
+        this.broadcast({ type: "repo.status", status: workspaces.repo.repoCore().snapshot() });
+      })
+      .catch((error) =>
+        this.logger.info("Comparison capture unavailable", { error: String(error) }),
+      )
+      .finally(() => {
+        // 턴이 idle 이 되어 자동 보관이 끝난 뒤 — 감독자가 사이클을 한 번 본다.
+        if (workspaces && this.comparisonSaves.get(workspaces.slug) === saving)
+          this.comparisonSaves.delete(workspaces.slug);
+        void workspaces?.supervisor.tick("turn-idle");
+      });
+    if (workspaces) this.comparisonSaves.set(workspaces.slug, saving);
   }
 
   // -------------------------------------------------------------------------

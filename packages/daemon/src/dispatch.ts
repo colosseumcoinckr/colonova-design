@@ -37,6 +37,7 @@ import type { ProjectRegistry } from "./projects.js";
 import type { QueueDisk, QueueStore, StartupRecovery } from "./queue-store.js";
 import { assertClonableRepoUrl, type RepoWorkspace } from "./repo.js";
 import { ReviveBudget } from "./revive-budget.js";
+import { readComparison } from "./screen-comparisons.js";
 import type { Session } from "./session.js";
 import type { SessionManager } from "./session-manager.js";
 import { dropTape, readTape, spliceTape } from "./session-tape.js";
@@ -106,6 +107,8 @@ export interface RouterDeps {
    * 목업·서버 시험 깨지지 않게 하려는 것뿐이고, 서버는 항상 심는다.
    */
   appVersion?: () => string | null;
+  /** Wait for a turn's photos to finish persisting before serving its comparison. */
+  comparisonReady?: (slug: string) => Promise<void> | undefined;
 }
 
 /**
@@ -213,7 +216,13 @@ export class RequestRouter {
         // transcript — splice them in at the turn they followed.
         const tape = this.deps.fleet.workspacesForCwd(sessionCwd);
         const replayed = tape
-          ? spliceTape(events0, readTape(tape.paths.root, message.sessionId))
+          ? spliceTape(
+              events0,
+              readTape(
+                tape.paths.root,
+                this.deps.manager.canonicalId(message.sessionId, sessionCwd),
+              ),
+            )
           : events0;
         // 대기 줄과 lost room 은 기록이 아니라 지금의 상태 (PLAN D86 의
         // 확장): a window opened — or reloaded — must see both above the
@@ -434,12 +443,13 @@ export class RequestRouter {
 
       case "session.delete": {
         const cwd = await this.resolveSessionCwd(message.sessionId);
+        const canonicalId = this.deps.manager.canonicalId(message.sessionId, cwd);
         await this.deps.manager.remove(message.sessionId, cwd);
         // The thread is gone; its wait room, lost room and tape rows go with
         // it — 사람 메시지도 세션 소속이다 (hero-synthesis D1).
-        this.deps.queueStore.clear(message.sessionId);
+        this.deps.queueStore.clear(canonicalId);
         const tape = this.deps.fleet.workspacesForCwd(cwd);
-        if (tape) dropTape(tape.paths.root, message.sessionId);
+        if (tape) dropTape(tape.paths.root, canonicalId);
         this.touchThreadsCwd(cwd);
         return { ok: true };
       }
@@ -507,10 +517,12 @@ export class RequestRouter {
 
       case "session.setModel":
         await this.deps.manager.require(message.sessionId).setModel(message.model);
+        this.deps.manager.rememberIdentity(message.sessionId);
         return { ok: true };
 
       case "session.setEffort":
         await this.deps.manager.require(message.sessionId).setEffort(message.effort);
+        this.deps.manager.rememberIdentity(message.sessionId);
         return { ok: true };
 
       case "session.setFastMode":
@@ -518,9 +530,12 @@ export class RequestRouter {
         return { ok: true };
 
       case "session.selectors": {
-        const session = this.deps.manager.require(message.sessionId);
-        const selectors = await session.selectors();
-        this.deps.plans.rememberModels(session.provider, selectors.models);
+        const selectors = await this.deps.manager.selectors(
+          message.sessionId,
+          await this.resolveSessionCwd(message.sessionId),
+        );
+        if (selectors.provider && selectors.models.length)
+          this.deps.plans.rememberModels(selectors.provider, selectors.models);
         return selectors;
       }
       case "session.commands":
@@ -848,7 +863,11 @@ export class RequestRouter {
         // 핀 주도 (브리지 폐지): 이 사이클에 사람이 핀으로 가리킨 화면·상태만이
         // "보낸 화면"이다 — 선언된 목록은 더 이상 없다.
         const commentsFile = join(active.paths.root, "comments.json");
-        const targets = captureTargets(readComments(commentsFile), await active.repo.cycleAnchor());
+        const targets = captureTargets(
+          readComments(commentsFile),
+          await active.repo.cycleAnchor(),
+          active.repo.repoCore().snapshot().cycleScreens,
+        );
         const shots = await this.deps.previewDrivers.captureHandoffShots(targets);
         return await active.repo.handoff({
           title: message.title ?? this.deps.registry.get(active.slug)?.name ?? undefined,
@@ -869,7 +888,30 @@ export class RequestRouter {
         // 남아 다음 틱이 이어받는다.
         const active = this.requireActive();
         // 확인 창의 한마디(PLAN-UI U3)는 의도와 함께 원장에 적힌다 — 본문의 `> 한마디:`.
-        active.supervisor.submit("button", message.sessionId, message.note || undefined);
+        if (message.expectedHead || message.expectedPreview) {
+          this.refuseWhileTurnRuns();
+          await active.repo.repoCore().lane.run("submit", async () => {
+            const head = await active.repo.headCommitFiles();
+            await active.repo.repoCore().refreshPendingChanges(true);
+            this.refuseWhileTurnRuns();
+            if (
+              (message.expectedHead && head?.sha !== message.expectedHead) ||
+              active.repo.pendingChanges > 0 ||
+              (message.expectedPreview &&
+                (await active.repo.repoCore().submitPreviewToken()) !== message.expectedPreview)
+            ) {
+              throw new Error(
+                "SUBMIT_CHANGED: 확인한 뒤 작업 내용이 바뀌었어요. 변경 목록을 다시 확인해 주세요.",
+              );
+            }
+            if ((await active.repo.repoCore().finalChangedFiles()).length === 0) {
+              throw new Error("제출할 변경이 없어요.");
+            }
+            active.supervisor.submit("button", message.sessionId, message.note || undefined);
+          });
+        } else {
+          active.supervisor.submit("button", message.sessionId, message.note || undefined);
+        }
         await new Promise<void>((resolve) => {
           const timer = setTimeout(resolve, SUBMIT_WAIT_MS);
           void active.supervisor.settled().then(() => {
@@ -966,10 +1008,63 @@ export class RequestRouter {
         // The dialog's shot count reads the same pin-driven targets the
         // handoff itself will capture — the preview never promises a number
         // the handoff then fails to deliver.
-        const targets = captureTargets(readComments(commentsFile), await active.repo.cycleAnchor());
+        const targets = captureTargets(
+          readComments(commentsFile),
+          await active.repo.cycleAnchor(),
+          active.repo.repoCore().snapshot().cycleScreens,
+        );
         return await active.repo.handoffDraft({
           commentsFile,
           shotCount: await this.deps.previewDrivers.handoffShotCount(targets),
+        });
+      }
+
+      case "repo.comparison": {
+        const active = this.requireActive();
+        if (!message.submitted) {
+          await this.deps.comparisonReady?.(active.slug);
+          return readComparison(active.paths.root, message);
+        }
+        const route = message.route.split("?")[0] ?? "/";
+        if (!route.startsWith("/") || route.startsWith("//")) return null;
+        const before = await active.repo.handoffShot(route);
+        const shots = await this.deps.previewDrivers.captureHandoffShots([{ route }]);
+        const shot = shots[0];
+        const mediaType =
+          shot?.extension === ".png"
+            ? "image/png"
+            : shot?.extension === ".webp"
+              ? "image/webp"
+              : "image/jpeg";
+        return {
+          route,
+          requestId: "submitted",
+          sessionId: "",
+          sha: "",
+          title: "",
+          viewport: "desktop",
+          before: before ? { ...before, at: "" } : null,
+          after: shot
+            ? {
+                mediaType,
+                data: Buffer.from(shot.image).toString("base64"),
+                at: new Date().toISOString(),
+              }
+            : null,
+        };
+      }
+
+      case "repo.submitPreview": {
+        const active = this.requireActive();
+        return active.repo.repoCore().lane.run("submit", async () => {
+          const core = active.repo.repoCore();
+          const head = await core.headCommitFiles();
+          if (!head) throw new Error("제출할 작업을 읽지 못했어요.");
+          await core.refreshPendingChanges(true);
+          const history = await core.history(true);
+          const finalFiles = await core.finalChangedFiles();
+          const expectedPreview = await core.submitPreviewToken();
+          return { head: head.sha, expectedPreview, repo: core.snapshot(), history, finalFiles };
         });
       }
 

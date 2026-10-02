@@ -129,6 +129,8 @@ test("잔여 검사 — 옛 이름은 read-legacy 줄과 주석 안에만 있다
   // 날짜가 박힌 기록(§1.4)과 이 시험 자신은 검사 밖이다.
   const excluded = (path: string): boolean =>
     path.endsWith("RESULT-2026-09-25.md") ||
+    // Raw exported conversation: quoted connected-service source/logo is evidence, not product copy.
+    path === join(ROOT, "docs/qa/2026-10-02/implementation/abc-after-restart.md") ||
     path.endsWith(join("packages", "daemon", "test", "colonova-names.test.ts"));
   const pattern = new RegExp(`(?<!colo)${LEGACY}(?!te)`, "i");
   const offenders: string[] = [];

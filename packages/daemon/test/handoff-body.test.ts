@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  formatHandoffTitle,
   mergeToolBlock,
   noteLine,
   pickHandoffTitle,
@@ -59,24 +60,22 @@ test("mergeToolBlock — 같은 내용을 두 번 갱신해도 결과는 같다 
 test("pickHandoffTitle — 초안이 있으면 초안을 쓴다", () => {
   assert.equal(
     pickHandoffTitle({
-      draftTitle: "회원 목록 화면",
-      projectName: "쇼핑몰 관리자",
+      draftTitle: "feat(members): 회원 목록 추가",
       firstCommitSubject: "작업 1",
       fallback: "기본",
     }),
-    "회원 목록 화면",
+    "feat(members): 회원 목록 추가",
   );
 });
 
-test("pickHandoffTitle — 초안이 비면 프로젝트 이름 · 첫 커밋 제목 (8초 초과가 여기로 온다)", () => {
+test("pickHandoffTitle — 초안이 비면 첫 커밋 제목에 형식을 붙인다", () => {
   assert.equal(
     pickHandoffTitle({
       draftTitle: "", // handoffDraft 의 턴이 시간 안에 답하지 못한 모양
-      projectName: "쇼핑몰 관리자",
       firstCommitSubject: "회원 목록 만들기",
       fallback: "기본",
     }),
-    "쇼핑몰 관리자 · 회원 목록 만들기",
+    "chore: 회원 목록 만들기",
   );
 });
 
@@ -84,12 +83,22 @@ test("pickHandoffTitle — 커밋 제목마저 없으면 기본 제목", () => {
   assert.equal(
     pickHandoffTitle({
       draftTitle: null,
-      projectName: "쇼핑몰 관리자",
       firstCommitSubject: null,
       fallback: "ColoNova Design 화면 전달",
     }),
-    "ColoNova Design 화면 전달",
+    "chore: ColoNova Design 화면 전달",
   );
+});
+
+test("자동 제목 — 기존 타입 · scope · breaking 표식은 보존하고 한 줄 72자로 제한한다", () => {
+  assert.equal(
+    formatHandoffTitle("fix(submit)!: 중복 제출 방지\n본문"),
+    "fix(submit)!: 중복 제출 방지",
+  );
+  assert.equal(formatHandoffTitle("docs: 사용 안내 수정"), "docs: 사용 안내 수정");
+  const title = formatHandoffTitle(`feat: ${"😀".repeat(100)}`);
+  assert.equal(Array.from(title).length, 72);
+  assert.ok(title.endsWith("😀"), "유니코드 글자 중간을 자르지 않는다");
 });
 
 test("mergeToolBlock — 이미 표식으로 싸인 구간은 두 겹으로 싸지 않는다", () => {

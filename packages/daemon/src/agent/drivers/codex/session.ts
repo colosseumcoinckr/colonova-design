@@ -295,6 +295,12 @@ export class CodexAgentSession implements AgentSession {
   private currentModel: string | null;
   private currentEffort: EffortLevel | null;
   private lastContext: { used: number; size: number } | null = null;
+  /**
+   * 마지막 `thread/tokenUsage/updated` 의 `last`(직전 턴의 몫) — turn.end 가 `usage` 로
+   * 싣고 비운다(2026-10-02). Codex 의 inputTokens 는 캐시 읽기를 포함하므로 새 입력은
+   * 그 차이로, 캐시 쓰기와 비용은 모른다(null).
+   */
+  private lastTurnUsage: { input: number; output: number; cacheRead: number } | null = null;
   /** Items whose deltas already streamed — completed items don't re-emit. */
   private readonly streamedItems = new Set<string>();
   private readonly launch: LaunchConfig;
@@ -303,6 +309,10 @@ export class CodexAgentSession implements AgentSession {
 
   get alive(): boolean {
     return !this.closed && this.transport.alive;
+  }
+
+  get vendorId(): string | null {
+    return this.threadId;
   }
 
   constructor(
@@ -817,6 +827,15 @@ export class CodexAgentSession implements AgentSession {
           used: Number(last.totalTokens ?? 0),
           size: Number(usage.modelContextWindow ?? 0),
         };
+        if (usage.last !== undefined && usage.last !== null) {
+          const inputTokens = Number(last.inputTokens ?? 0);
+          const cached = Number(last.cachedInputTokens ?? 0);
+          this.lastTurnUsage = {
+            input: Math.max(0, inputTokens - cached),
+            output: Number(last.outputTokens ?? 0),
+            cacheRead: cached,
+          };
+        }
         break;
       }
       case "account/rateLimits/updated": {
@@ -1006,6 +1025,8 @@ export class CodexAgentSession implements AgentSession {
         : status === "interrupted"
           ? "interrupted"
           : "error_during_execution";
+    const usage = this.lastTurnUsage;
+    this.lastTurnUsage = null;
     this.hooks.onEvent({
       kind: "turn.end",
       subtype,
@@ -1019,6 +1040,7 @@ export class CodexAgentSession implements AgentSession {
             ? Date.now() - this.turnStartedAt
             : null,
       resultText: turn.error?.message ? String(turn.error.message) : null,
+      ...(usage !== null ? { usage: { ...usage, cacheWrite: null, costUsd: null } } : {}),
     });
     this.markTurnDone?.();
     for (const settle of this.turnSettlers) settle("answered");

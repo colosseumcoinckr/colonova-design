@@ -11,6 +11,48 @@ import { makeSupervisedScene, type SupervisedScene } from "./helpers/cycle-harne
 const BRANCH = "colonova-design/20260924-1";
 const DEAD_REMOTE = "http://127.0.0.1:1/nope.git";
 
+test("리뷰어 요청 실패 뒤 재시작해도 같은 PR 에 요청을 마치고 성공한다", async () => {
+  const scene = await makeSupervisedScene({
+    reviewers: ["colonova-planner", "yongilhong-colosseum"],
+  });
+  const request = scene.github.request.bind(scene.github);
+  let fail = true;
+  scene.github.request = async (input) => {
+    if (fail && input.url.endsWith("/requested_reviewers")) throw new Error("fetch failed");
+    return request(input);
+  };
+  try {
+    await cycleWith(scene);
+    scene.supervisor.submit("button");
+    await scene.supervisor.settled();
+    const number = scene.core.openHandoff?.number;
+    assert.ok(number, "리뷰 요청 전에 생성된 PR 을 기억한다");
+    const intent = ledgerOf(scene).submit;
+    assert.ok(intent?.nextAttemptAt, "리뷰 요청 실패도 재시도한다");
+    assert.equal(intent.reviewers, undefined, "실패한 요청을 성공으로 적지 않는다");
+    assert.equal(
+      scene.chatEvents.some((event) => event.kind === "cycle.handed"),
+      false,
+    );
+
+    fail = false;
+    scene.setNow(Date.parse(intent.nextAttemptAt) + 1000);
+    const reborn = scene.respawn();
+    await reborn.tick("manual");
+    assert.equal(ledgerOf(scene).submit, null);
+    assert.equal(scene.core.openHandoff?.number, number);
+    assert.equal(scene.github.pull(number + 1), undefined);
+    assert.deepEqual(scene.core.openHandoff?.reviewers, ["yongilhong-colosseum"]);
+    assert.ok(
+      scene.chatEvents.some(
+        (event) => event.kind === "cycle.handed" && event.reviewer === "yongilhong-colosseum",
+      ),
+    );
+  } finally {
+    await scene.dispose();
+  }
+});
+
 /** 클론에 커밋 — 도구의 자동 보관이 지나간 모양. */
 async function commit(scene: SupervisedScene, files: Record<string, string>, message: string) {
   for (const [name, body] of Object.entries(files)) {
@@ -47,8 +89,8 @@ test("제출 — 네 단계가 한 번에 서고 의도가 지워진다", async 
     const handoff = scene.core.openHandoff;
     assert.ok(handoff, "레지스트리에 넘긴 요청이 적혀야 한다");
     assert.equal(handoff.state, "open");
-    // 제목은 생성할 때만 — 초안(없음) → 프로젝트 이름 · 첫 커밋 제목.
-    assert.equal(scene.github.pull(handoff.number)?.title, `하네스 프로젝트 · 회원 목록 화면`);
+    // 초안이 없어도 자동 제목은 commit 형식을 쓴다.
+    assert.equal(scene.github.pull(handoff.number)?.title, "chore: 회원 목록 화면");
     const body = scene.github.pull(handoff.number)?.body ?? "";
     assert.ok(body.includes("colonova-design:start"), "본문에 도구 구간이 있어야 한다");
     assert.ok(body.includes("바뀐 파일"), "본문에 바뀐 파일 절이 있어야 한다");

@@ -12,7 +12,7 @@
  */
 import { type EffortLevel, effortLevelSchema } from "@colonova-design/protocol";
 
-/** 환경변수 이름 — 벤치(--pin-effort)가 같은 이름을 쥔다. */
+/** 환경변수 이름 — 데몬의 환경에 둔다. 벤치는 따로 받지 않으니 데몬을 띄울 때 세운다. */
 export const PIN_EFFORT_ENV = "COLONOVA_DESIGN_PIN_EFFORT";
 
 /** 판정의 재료 — 세션이 아는 것만, 읽기 쉽게. */

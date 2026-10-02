@@ -218,3 +218,30 @@ function minimalEvents() {
     onQuestionRequest: () => undefined,
   };
 }
+
+test("closing while the baseline photo is being captured never delivers the cancelled request", async () => {
+  let release!: () => void;
+  const baseline = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const delivered: string[] = [];
+  const session = new Session(
+    { cwd: tmpdir(), sessionId: "capture-cancel" },
+    {
+      ...minimalEvents(),
+      beforeDeliver: () => baseline,
+    },
+  );
+  session.attach({
+    send: async ({ text }: { text: string }) => {
+      delivered.push(text);
+    },
+    close: async () => {},
+  } as never);
+  session.send("취소할 요청");
+  assert.deepEqual(delivered, []);
+  await session.close();
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(delivered, []);
+});

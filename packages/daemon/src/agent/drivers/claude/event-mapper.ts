@@ -1,5 +1,14 @@
-import type { ChatEvent } from "@colonova-design/protocol";
+import type { ChatEvent, TurnUsage } from "@colonova-design/protocol";
 import { toolLabel } from "@colonova-design/protocol";
+
+/** result 의 modelUsage 를 모델 가리지 않고 합친 누적치. */
+interface UsageTotals {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  costUsd: number;
+}
 
 /** A wire number, or 0 — nothing here invents a count the CLI did not send. */
 function num(value: unknown): number {
@@ -36,6 +45,14 @@ export class MessageTranslator {
    * no stream events, never enter this set, and keep their one-shot emit.
    */
   private streamedThinkingByAgent = new Map<string | null, Set<string>>();
+  /**
+   * 직전 result 가 말한 누적 토큰 · 비용(modelUsage 의 합 — 서브에이전트 · 보조 호출
+   * 포함). SDK 의 result 는 스트리밍 입력 세션에서 누적치를 싣고 "최신 것을 읽으라"고
+   * 하므로 턴 하나의 몫은 차분이다(2026-10-02, claude.dev 「What a task costs」). 재개 ·
+   * /clear 로 누적이 되돌아가면 차분이 음수가 되므로 그때는 이번 값을 통째로 이 턴의
+   * 것으로 센다.
+   */
+  private usageTotals: UsageTotals | null = null;
 
   private nextSeq(agentId: string | null): number {
     const next = (this.seqByAgent.get(agentId) ?? 0) + 1;
@@ -413,16 +430,76 @@ export class MessageTranslator {
   private result(m: Record<string, any>): ChatEvent[] {
     // 표식은 턴 수명이다 — 턴이 끝나면 메시지 id 도 다시 시작된다.
     this.streamedThinkingByAgent.clear();
+    const usage = this.turnUsage(m);
     return [
       {
         kind: "turn.end",
         subtype: String(m.subtype ?? "unknown"),
         isError: Boolean(m.is_error),
+        // SDK 의 running total — 이 query() 의 누적이지 이 턴의 몫이 아니다. 턴의 몫은 usage.
         costUsd: typeof m.total_cost_usd === "number" ? m.total_cost_usd : null,
         numTurns: typeof m.num_turns === "number" ? m.num_turns : null,
         durationMs: typeof m.duration_ms === "number" ? m.duration_ms : null,
         resultText: typeof m.result === "string" ? m.result : null,
+        ...(usage !== undefined ? { usage } : {}),
       },
     ];
+  }
+
+  /**
+   * 이 턴의 토큰 · 비용. 첫째 길은 modelUsage(누적 · 서브에이전트 포함 — SDK 가 "토큰 ·
+   * 비용 셈에는 이것을 쓰라"고 한다)의 차분, 둘째 길은 main 루프만 센 per-turn `usage`
+   * (비용 없음), 둘 다 없으면 undefined. 크래시 · 시작 실패의 result 는 0 을 싣는다 —
+   * 그것은 모르는 것이지 0 이 아니므로 누적도 건드리지 않고 undefined 다.
+   */
+  private turnUsage(m: Record<string, any>): TurnUsage | undefined {
+    const models = m.modelUsage;
+    if (models !== null && typeof models === "object") {
+      const totals: UsageTotals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0 };
+      for (const entry of Object.values(models as Record<string, Record<string, unknown>>)) {
+        totals.input += num(entry?.inputTokens);
+        totals.output += num(entry?.outputTokens);
+        totals.cacheRead += num(entry?.cacheReadInputTokens);
+        totals.cacheWrite += num(entry?.cacheCreationInputTokens);
+        totals.costUsd += num(entry?.costUSD);
+      }
+      const empty =
+        totals.input === 0 &&
+        totals.output === 0 &&
+        totals.cacheRead === 0 &&
+        totals.cacheWrite === 0;
+      if (empty) return undefined;
+      const prev = this.usageTotals;
+      this.usageTotals = totals;
+      const delta: UsageTotals =
+        prev === null
+          ? totals
+          : {
+              input: totals.input - prev.input,
+              output: totals.output - prev.output,
+              cacheRead: totals.cacheRead - prev.cacheRead,
+              cacheWrite: totals.cacheWrite - prev.cacheWrite,
+              costUsd: totals.costUsd - prev.costUsd,
+            };
+      const mine = Object.values(delta).some((value) => value < 0) ? totals : delta;
+      return {
+        input: mine.input,
+        output: mine.output,
+        cacheRead: mine.cacheRead,
+        cacheWrite: mine.cacheWrite,
+        costUsd: Math.round(mine.costUsd * 1_000_000) / 1_000_000,
+      };
+    }
+    const usage = m.usage;
+    if (usage !== null && typeof usage === "object") {
+      return {
+        input: num(usage.input_tokens),
+        output: num(usage.output_tokens),
+        cacheRead: num(usage.cache_read_input_tokens),
+        cacheWrite: num(usage.cache_creation_input_tokens),
+        costUsd: null,
+      };
+    }
+    return undefined;
   }
 }

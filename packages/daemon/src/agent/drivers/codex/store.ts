@@ -151,6 +151,8 @@ export async function readRolloutLines(path: string): Promise<Wire[]> {
  */
 function isInjectedText(text: string): boolean {
   const trimmed = text.trimStart();
+  // App-authored pin and gate prompts are real turns, not injected context.
+  if (/^<!-- colonova-design:[a-z]+(?:\s|\s*-->)/.test(trimmed)) return false;
   return trimmed.startsWith("<") || trimmed.startsWith("# AGENTS.md");
 }
 

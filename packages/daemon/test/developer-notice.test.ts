@@ -128,7 +128,7 @@ test("composeAttention — 우선순위 reconnect > developer-notified > ai-fixi
       aiFixingSince: since,
       notices: { k: { via: "issue", raisedAt: since } },
     }),
-    { kind: "developer-notified", since, via: "issue" },
+    { kind: "developer-notified", since, via: "issue", key: "k" },
   );
   assert.deepEqual(
     composeAttention({
@@ -286,6 +286,7 @@ test("기계 전체 알림(slug null)은 machineNotices 에 서고 주의가 dev
   // status 의 machineAttention 이 읽는 것과 같은 합성 — 화면에 올라온다.
   assert.deepEqual(composeAttention({ notices: machines }), {
     kind: "developer-notified",
+    key: "github:auth",
     since: machines["github:auth"]?.raisedAt,
     via: "slack",
   });

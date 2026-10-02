@@ -27,11 +27,11 @@ function lsRemote(remotePath: string, ref: string): string {
 }
 
 /** 사이클 브랜치에 커밋하고 PublishCycle 을 세운 표준 시작. */
-async function setup() {
+async function setup(reviewers: string[] = []) {
   const remote = await makeRemote();
   const clone = await makeClone(remote);
   const github = new MemoryGitHub(remote);
-  const core = makeCore(clone, remote, { github });
+  const core = makeCore(clone, remote, { github, reviewers });
   execFileSync("git", ["checkout", "-b", BRANCH], { cwd: clone.path });
   writeFileSync(join(clone.path, "screen.tsx"), "export default () => null;\n");
   execFileSync("git", ["add", "-A"], { cwd: clone.path });
@@ -40,6 +40,30 @@ async function setup() {
   const publish = new PublishCycle(core, { machineMemo: async () => null });
   return { remote, clone, github, core, publish };
 }
+
+test("직접 제출도 작성자를 제외하고 실패한 리뷰 요청은 같은 PR 에 재시도한다", async () => {
+  const scene = await setup(["colonova-planner", "yongilhong-colosseum"]);
+  const request = scene.github.request.bind(scene.github);
+  let fail = true;
+  scene.github.request = async (input) => {
+    if (fail && input.url.endsWith("/requested_reviewers")) throw new Error("fetch failed");
+    return request(input);
+  };
+  try {
+    assert.equal((await scene.publish.runHandoff({})).stage, "failed");
+    const number = scene.core.openHandoff?.number;
+    assert.ok(number);
+    fail = false;
+    const status = await scene.publish.runHandoff({});
+    assert.equal(status.stage, "handed-off");
+    assert.equal(status.handoff?.number, number);
+    assert.deepEqual(status.handoff?.reviewers, ["yongilhong-colosseum"]);
+    assert.equal(scene.github.pull(number + 1), undefined);
+  } finally {
+    scene.clone.dispose();
+    scene.remote.dispose();
+  }
+});
 
 test("캡처는 colonova-design-assets 에 올라가고 사이클 브랜치 · 작업 트리는 깨끗하다", async () => {
   const scene = await setup();

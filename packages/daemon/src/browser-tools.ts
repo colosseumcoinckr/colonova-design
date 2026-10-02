@@ -69,8 +69,9 @@ export const BROWSER_TOOLS: ToolDef[] = [
     name: "browser_snapshot",
     op: "snapshot",
     description:
-      "페이지의 접근성 스냅샷 — 한 줄 표기 트리(기본 상한 400줄). 액션에는 줄의 ref를 쓴다. " +
-      "ref를 주면 그 요소의 부분 트리만, maxLines로 줄 수를 줄인다.",
+      "페이지의 접근성 스냅샷 — 한 줄 표기 트리(기본 상한 400줄). 화면 전체가 필요할 때(처음 한 번 · " +
+      "화면이 통째로 바뀐 뒤)만 부르고, 일부를 다시 읽을 때는 browser_find · browser_inspect 가 싸다. " +
+      "액션에는 줄의 ref를 쓴다. ref를 주면 그 요소의 부분 트리만, maxLines로 줄 수를 줄인다.",
     properties: {
       ref: { type: "string", description: "그 요소의 부분 트리만 읽을 때의 ref." },
       maxLines: { type: "number", description: "최대 줄 수 (기본 400)." },
@@ -301,7 +302,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
     description:
       "화면을 고친 파일 후보를 찾는다 — 레포의 파일 구조(주소와 같은 이름의 파일)와, " +
       "그 화면을 고친 커밋이 건드린 파일의 관찰 지도, 화면 제목이 코드에 적힌 자리에서. " +
-      "미리보기를 띄우지 않아도 돈다. 화면을 고치기 전에 파일을 찾을 때 먼저 부른다.",
+      "미리보기를 띄우지 않아도 돈다. 사용자가 핀 없이 화면을 이름 · 주소로 말했을 때 수정의 출발점으로 먼저 부른다.",
     properties: {
       route: {
         type: "string",

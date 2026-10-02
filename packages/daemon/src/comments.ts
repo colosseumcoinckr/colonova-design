@@ -96,8 +96,7 @@ export function recordComments(
 
 /**
  * 넘기기 캡처의 대상 (브리지 폐지): 이 사이클에 사람이 핀으로 가리킨
- * 화면. 선언된 화면 목록은 없다 — "보낸 화면"의 유일한 원천은
- * 사용자가 실제로 짚은 곳이다. `sinceIso` 는 사이클 앵커(`RepoCore.cycleAnchor`)
+ * 화면과 실제 변경으로 관찰된 화면. `sinceIso` 는 사이클 앵커(`RepoCore.cycleAnchor`)
  * — buildCommentsSection 과 같은 판정으로 이 사이클의 행만 고르고, 철자도
  * 같다(`/${screen}`, 슬래시 없는 행의 screen 에 슬래시를 얹는다). 같은 곳을
  * 여러 핀이 가리켰으면 한 장만 담는다. 순서는 기록 순서 — 사람이 본 순서다.
@@ -106,6 +105,7 @@ export function recordComments(
 export function captureTargets(
   rows: Array<Pick<CommentItem, "screen" | "at">>,
   sinceIso: string | null,
+  changedScreens: Array<{ route: string }> = [],
 ): Array<{ route: string }> {
   const sinceMs = sinceIso === null ? null : Date.parse(sinceIso);
   const seen = new Set<string>();
@@ -116,6 +116,13 @@ export function captureTargets(
     if (Number.isNaN(at)) continue;
     if (sinceMs !== null && !Number.isNaN(sinceMs) && at < sinceMs) continue;
     const route = `/${row.screen.replace(/^\/+/, "")}`;
+    if (seen.has(route)) continue;
+    seen.add(route);
+    targets.push({ route });
+  }
+  for (const screen of changedScreens) {
+    if (!screen.route.startsWith("/") || screen.route.startsWith("//")) continue;
+    const route = screen.route.split(/[?#]/)[0] ?? "/";
     if (seen.has(route)) continue;
     seen.add(route);
     targets.push({ route });

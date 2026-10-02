@@ -97,6 +97,22 @@ export function isBotRow(row: Record<string, any>): boolean {
  */
 const whoAmICache = new WeakMap<RestTransport, { token: string; login: Promise<string> }>();
 
+/**
+ * HTTP 실패의 구조 (PLAN-FEEDBACK) — 문장은 종전의 한국어 안내를 그대로
+ * 쓰고, 상태 코드를 `status` 로 함께 실어 호출자(기능 제안 접수)가
+ * browser/failed/uncertain 을 코드로 가를 수 있게 한다. `status` 가 2xx인
+ * 채로 던져지는 경우는 "성공이라 주장하지만 본문을 믿을 수 없다"는 뜻이다.
+ */
+export class HttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = "HttpError";
+  }
+}
+
 export class GitHubClient {
   constructor(
     private readonly token: string,
@@ -502,7 +518,18 @@ export class GitHubClient {
       { title: input.title, body: input.body },
       "개발자 알림 이슈 열기",
     );
-    const number = Number(data.number);
+    const raw = data?.number;
+    // 2xx 인데 이슈 번호가 양의 안전 정수가 아니면 성공이 아니다(PLAN-FEEDBACK) —
+    // 프록시의 로그인 페이지 같은 잘못된 성공 응답을 접수 완료로 세지 않게
+    // 호출자가 uncertain 로 가릴 수 있게 2xx 상태의 HttpError 로 던진다.
+    // typeof 로 먼저 거른다: Number() 는 true 나 "42" 도 숫자로 바꿔 버리고,
+    // 배열 · 스칼라 응답은 number 칸이 없어 같은 길로 떨어진다.
+    if (typeof raw !== "number" || !Number.isSafeInteger(raw) || raw <= 0)
+      throw new HttpError(
+        "개발자 알림 이슈 열기에 실패했습니다 — 응답에 유효한 이슈 번호가 없습니다",
+        200,
+      );
+    const number = raw;
     const decorate: Record<string, unknown> = {};
     if (input.labels && input.labels.length > 0) decorate.labels = input.labels;
     if (input.assignees && input.assignees.length > 0) decorate.assignees = input.assignees;
@@ -756,7 +783,8 @@ export class GitHubClient {
         url: next,
         headers: this.headers(),
       });
-      if (status < 200 || status >= 300) throw new Error(httpError(label, status, body));
+      if (status < 200 || status >= 300)
+        throw new HttpError(httpError(label, status, body), status);
       let data: unknown;
       try {
         data = JSON.parse(new TextDecoder().decode(body));
@@ -775,13 +803,13 @@ export class GitHubClient {
       url,
       headers: this.headers(),
     });
-    if (status < 200 || status >= 300) throw new Error(httpError(label, status, body));
+    if (status < 200 || status >= 300) throw new HttpError(httpError(label, status, body), status);
     try {
       return JSON.parse(new TextDecoder().decode(body));
     } catch {
       // A 2xx that is not JSON (a proxy's login page) is a failed call, not
       // a parse crash — the label and the body's first line say which.
-      throw new Error(httpError(label, status, body));
+      throw new HttpError(httpError(label, status, body), status);
     }
   }
 
@@ -797,11 +825,11 @@ export class GitHubClient {
       headers: { ...this.headers(), "content-type": "application/json" },
       body: new TextEncoder().encode(JSON.stringify(payload)),
     });
-    if (status < 200 || status >= 300) throw new Error(httpError(label, status, body));
+    if (status < 200 || status >= 300) throw new HttpError(httpError(label, status, body), status);
     try {
       return JSON.parse(new TextDecoder().decode(body));
     } catch {
-      throw new Error(httpError(label, status, body));
+      throw new HttpError(httpError(label, status, body), status);
     }
   }
 }
@@ -809,6 +837,7 @@ export class GitHubClient {
 /** owner/repo from an https or ssh GitHub remote, or null when it is not GitHub. */
 export function parseRepoSlug(url: string): { owner: string; repo: string } | null {
   const trimmed = url.trim();
+
   // scp-style ("git@github.com:org/repo.git") is not a url any parser takes,
   // and https remotes may carry a PAT as userinfo (authenticatedUrl builds
   // exactly that) — both are reduced to host + path here by hand.

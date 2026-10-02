@@ -1,0 +1,154 @@
+/*
+ * 기능 제안 대화상자(PLAN-FEEDBACK) — `.nx-modal`(onboarding.css)의 판을
+ * 480px 로 좁혀 쓴다. 색과 버튼은 팔레트 · ui.css 의 토큰을 그대로 물려받고,
+ * 여기는 배치와 입력란 · 확인용 덩어리만 새로 적는다.
+ */
+
+.nx-modal.nx-fb {
+  width: min(480px, calc(100% - 40px));
+}
+
+/* 사이드바 바닥의 `기능 제안` — 설정 줄 위에 사이드 행의 옷을 그대로 입는다. */
+.nx .nx-fb-row {
+  width: 100%;
+  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--ink2);
+}
+
+.nx-fb-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nx-fb-label {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 10px 0 4px;
+}
+
+.nx-fb-field {
+  font: inherit;
+  color: var(--ink);
+  background: var(--bg);
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 3em;
+}
+
+.nx-fb-field:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.nx-fb-field--err {
+  border-color: var(--red);
+}
+
+.nx-fb-count {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 16px;
+  font-size: 11px;
+  color: var(--ink3);
+}
+
+.nx-fb-err {
+  margin: 0;
+  font-size: 12px;
+  color: var(--red);
+}
+
+.nx-fb-head {
+  margin: 10px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink2);
+}
+
+.nx-fb-quote {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nx-fb-dest {
+  margin: 0;
+  font-size: 13px;
+}
+
+/* 전송 중의 흐름 — 끝없는 표시는 문장 아래의 가는 막대가 대신한다. */
+.nx-fb-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.nx-fb-bar > i {
+  display: block;
+  height: 100%;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--accent);
+  animation: nx-fb-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes nx-fb-slide {
+  from {
+    margin-left: -40%;
+  }
+  to {
+    margin-left: 100%;
+  }
+}
+
+.nx-fb-state {
+  margin: 8px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.nx-fb-pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.nx-fb-link {
+  align-self: center;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.nx-fb .nx-mfoot {
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx .nx-fb-bar > i {
+    animation: none;
+    margin-left: 30%;
+  }
+}

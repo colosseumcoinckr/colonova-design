@@ -838,6 +838,52 @@ export const L = {
     open: "열기",
     close: "닫기",
   },
+  // ── 기능 제안(PLAN-FEEDBACK) — 사이드바 바닥의 단추와 한 장의 대화상자
+  feedback: {
+    button: "기능 제안",
+    title: "기능 제안",
+    requestLabel: "어떤 기능이 있으면 좋겠어요?",
+    requestPlaceholder: "원하는 기능을 적어 주세요",
+    contextLabel: "지금 어떤 점이 불편한가요? (선택)",
+    contextPlaceholder: "버튼이 어디에 있는지, 화면이 어떻게 반응하는지 따위를 적어 주세요",
+    requestEmpty: "무엇을 제안할지 적어 주세요.",
+    requestTooLong: (max: number) => `글자 수가 너무 많아요 — ${max}자 이하로 줄여 주세요.`,
+    contextTooLong: (max: number) => `불편한 점은 ${max}자 이하로 적어 주세요.`,
+    count: (n: number, max: number) => `${n} / ${max}`,
+    toReview: "보낼 내용 확인",
+    edit: "수정하기",
+    submit: "제안 보내기",
+    sending: "보내는 중…",
+    destinationLabel: "접수 대상",
+    destination: "ColoNova Design 제작팀",
+    disclosure:
+      "제안은 제작팀의 게시판에 올라가며 다른 사람이 볼 수 있어요. 앱 버전과 운영체제만 함께 보내요.",
+    notAttached:
+      "대화, 화면, 프로젝트 이름, 소스, 기록, 연결 정보, 작성 이름은 함께 보내지 않아요.",
+    requestHeading: "하고 싶은 말",
+    contextHeading: "불편한 점",
+    sentTitle: "제안을 접수했어요",
+    sentLink: "보낸 제안 보기",
+    close: "닫기",
+    browserTitle: "브라우저에서 마무리해 주세요",
+    browserNote:
+      "아직 접수되지 않았어요. GitHub 로그인을 다시 하거나 내용을 확인해 올리면 접수가 끝나요.",
+    openBrowser: "브라우저에서 마무리",
+    copyTitle: "제목 복사",
+    copyBody: "내용 복사",
+    copied: "복사했어요",
+    copyFailed: "복사하지 못했어요 — 아래 내용을 직접 선택해 복사해 주세요.",
+    newIssueLink: "빈 작성 페이지 열기",
+    failedTitle: "제안을 보내지 못했어요",
+    failedNote: "접수가 거절됐어요. 내용을 고치거나 다시 시도해 주세요.",
+    retry: "다시 시도",
+    uncertainTitle: "접수 여부를 확인하지 못했어요",
+    uncertainNote:
+      "보내는 중에 연결이 끊겼을 수 있어요. 같은 제안을 다시 보내면 두 번 올라갈 수 있으니, 아래 목록에서 먼저 확인해 주세요.",
+    checkList: "제안 목록 확인",
+    copySubmitted: "보낸 내용 복사",
+    acknowledgeList: "목록을 확인했어요 · 새 제안 작성",
+  },
 } as const;
 
 /**

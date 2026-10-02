@@ -17,6 +17,7 @@ import type { DeveloperNotice } from "./developer-notice.js";
 import { describeProblem } from "./developer-notice.js";
 import { browseFiles, currentPlatform, listFiles } from "./environment.js";
 import type { Escalation } from "./escalation.js";
+import { submitFeatureRequest } from "./feedback.js";
 import type { GitHubBridge } from "./github-bridge.js";
 import type { HandoffPreviews } from "./handoff-preview.js";
 import type { DaemonLogger } from "./log.js";
@@ -100,6 +101,11 @@ export interface RouterDeps {
   status(): Promise<unknown>;
   /** 턴 통계 — 보내기 문에서 잰 핀 강화 시간만 흘려 준다. */
   stats: TurnStats;
+  /**
+   * 앱 버전 (PLAN-FEEDBACK) — 기능 제안 본문에 실린다. 선택인 이유는 기존
+   * 목업·서버 시험 깨지지 않게 하려는 것뿐이고, 서버는 항상 심는다.
+   */
+  appVersion?: () => string | null;
 }
 
 /**
@@ -985,6 +991,14 @@ export class RequestRouter {
         recordComments(join(this.requireActive().paths.root, "comments.json"), message.items);
         return { recorded: message.items.length };
       }
+
+      // --- 기능 제안 (PLAN-FEEDBACK) ---------------------------------------
+      // 앱 전체 기능: 활성 프로젝트·세션과 무관하므로 아무 준비도 묻지 않는다.
+      case "feedback.submit":
+        return await submitFeatureRequest(
+          { request: message.request, context: message.context },
+          { github: this.deps.github, appVersion: this.deps.appVersion },
+        );
     }
   }
 

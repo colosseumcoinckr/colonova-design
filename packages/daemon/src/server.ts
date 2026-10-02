@@ -1063,6 +1063,9 @@ export class DaemonServer {
       // 로그인이 끝나는 순간을 놓치지 않게 하는 길이다.
       afterAgentLogin: () => void this.flushLoginWatchers(),
       status: () => this.status(),
+      // 기능 제안 본문에 실릴 앱 버전 (PLAN-FEEDBACK) — 데스크톱은
+      // app.getVersion() 을, 단독 실행은 데몬 package.json 의 값으로 이미 들어있다.
+      appVersion: () => this.config.appVersion ?? null,
     });
 
     // 시작 복구 (PLAN L12): 라우터가 섰으니 아껴 둔 진행 중 턴을 되살려

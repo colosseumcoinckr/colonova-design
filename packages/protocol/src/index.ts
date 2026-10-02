@@ -17,6 +17,7 @@
  */
 
 export * from "./attention.js";
+export * from "./feedback.js";
 export * from "./invite.js";
 export * from "./messages.js";
 export * from "./preview.js";

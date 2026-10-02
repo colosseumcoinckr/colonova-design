@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { featureRequestInputSchema } from "./feedback.js";
 import type { AgentInstallKind, DaemonStatus, ProjectSummary } from "./project.js";
 import type { DiffStatus, RepoStatus } from "./repo.js";
 import type { ChatEvent } from "./session.js";
@@ -772,6 +773,16 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     ...withId,
     type: z.literal("repo.note"),
     text: z.string().min(1).max(2000),
+  }),
+  /**
+   * 기능 제안 접수 (PLAN-FEEDBACK) — 앱 전체 기능이다: 프로젝트·레포·세션을
+   * 전혀 건드리지 않고 데몬이 RELEASES_REPO 에 이슈로 올린다. 입력 검증은
+   * `featureRequestInputSchema` 를 그대로 펼친 것(공백 정리·길이 상한의 한 곳),
+   * `id` 는 멱등 키라 같은 id 의 재전송은 두 번 접수하지 않는다.
+   */
+  featureRequestInputSchema.extend({
+    ...withId,
+    type: z.literal("feedback.submit"),
   }),
 ]);
 

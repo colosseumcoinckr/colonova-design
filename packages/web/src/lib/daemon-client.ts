@@ -8,6 +8,8 @@ import type {
   DiffFile,
   DiffStatus,
   EffortLevel,
+  FeatureRequestInput,
+  FeatureRequestResult,
   GitHubRepoInspection,
   HandoffPreviewInfo,
   HandoffStatusReport,
@@ -828,6 +830,12 @@ interface DaemonApi {
   /** 한마디 더(U20): a note added to the OPEN request, no comment id. */
   noteToDeveloper: (text: string) => Promise<{ ok: true }>;
   /**
+   * 기능 제안 접수 (PLAN-FEEDBACK) — `commandId` 는 재시도가 같은 접수를 두 번
+   * 만들지 않게 하는 안정된 멱등 키다: 응답을 못 받은 재전송은 같은 id 로,
+   * 명시적 거절 뒤의 수정·재시도는 새 id 로 부른다.
+   */
+  feedbackSubmit: (input: FeatureRequestInput, commandId?: string) => Promise<FeatureRequestResult>;
+  /**
    * 여기서 새 대화(분기): keep this answer's memory in a NEW conversation —
    * the old one stays. The reply is the NEW session id; `memoryKept: false`
    * names the provider that could not fork the transcript.
@@ -1088,7 +1096,17 @@ function mintRequestId(): string {
 export function useDaemon(url: string | null): Daemon {
   const socket = useRef<WebSocket | null>(null);
   const pendingCalls = useRef(
-    new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>(),
+    new Map<
+      string,
+      {
+        resolve: (v: unknown) => void;
+        reject: (e: Error) => void;
+        /** 같은 id 로 두 번 부른 둘째 호출자가 함께 기다리는 약속. */
+        promise: Promise<unknown>;
+        /** 응답 지연의 시계 — 정산·연결 끊김에 함께 거둔다(고아 타이머 방지). */
+        timer: ReturnType<typeof setTimeout> | null;
+      }
+    >(),
   );
 
   const [connection, setConnection] = useState<ConnectionState>("idle");
@@ -1189,8 +1207,10 @@ export function useDaemon(url: string | null): Daemon {
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const flushPending = () => {
-      for (const call of pendingCalls.current.values())
+      for (const call of pendingCalls.current.values()) {
+        if (call.timer) clearTimeout(call.timer);
         call.reject(new Error("연결이 끊어졌습니다 — 잠시 뒤 대화나 화면을 다시 확인해 주세요"));
+      }
       pendingCalls.current.clear();
     };
 
@@ -1266,6 +1286,7 @@ export function useDaemon(url: string | null): Daemon {
       if (message.type === "ok" || message.type === "error") {
         const call = pendingCalls.current.get(message.id ?? "");
         if (call) {
+          if (call.timer) clearTimeout(call.timer);
           pendingCalls.current.delete(message.id!);
           if (message.type === "ok") call.resolve(message.data);
           else call.reject(new Error(message.message));
@@ -1457,29 +1478,57 @@ export function useDaemon(url: string | null): Daemon {
   }, []);
 
   const call = useCallback(
-    <T>(payload: Record<string, unknown>, timeoutMs = 60_000): Promise<T> => {
+    <T>(payload: Record<string, unknown>, timeoutMs = 60_000, commandId?: string): Promise<T> => {
       const ws = socket.current;
       if (!ws || ws.readyState !== ws.OPEN)
         return Promise.reject(new Error("아직 연결되지 않았습니다"));
-      const id = mintRequestId();
-      return new Promise<T>((resolve, reject) => {
-        pendingCalls.current.set(id, {
-          resolve: resolve as (v: unknown) => void,
-          reject,
-        });
-        // The correlation id rides LAST: a payload carrying its own `id` must
-        // never overwrite the return address the reply is matched by.
-        ws.send(JSON.stringify({ ...payload, id }));
-        setTimeout(() => {
-          // Not "retry": a blind resend here would still double a command the
-          // daemon has not answered yet. The honest line is that the reply is
-          // late — go look, then decide. When a retry IS offered (실패 카드의
-          // 다시 보내기), it must reuse the SAME id: the daemon dedupes by id
-          // and answers the remembered reply instead of running twice.
-          if (pendingCalls.current.delete(id))
-            reject(new Error("응답이 늦어졌습니다 — 잠시 뒤 대화나 화면을 다시 확인해 주세요."));
-        }, timeoutMs);
+      // 명시적 commandId (PLAN-FEEDBACK): 응답을 못 받은 뒤의 재전송이 같은
+      // id 로 가게 하는 안정된 열쇠 — 데몬이 id 로 멱등 답하므로 두 번 실행되지
+      // 않는다. 기본 발행은 그대로 새 id 다.
+      const id = commandId ?? mintRequestId();
+      // 같은 id 가 도는 중이면 첫 약속을 함께 기다린다 — 둘째 set 이 첫 상관
+      // 쌍을 덮어써 한쪽 답을 잃는 일이 없게 한다.
+      const inFlight = pendingCalls.current.get(id);
+      if (inFlight !== undefined) return inFlight.promise as Promise<T>;
+      let resolve!: (value: T) => void;
+      let reject!: (error: Error) => void;
+      const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
       });
+      // 정체를 쥐고 정산한다 — 이미 끝난 id 로 새 호출이 다시 들어와도 늙은
+      // 시계가 그 새 약속을 지우지 않게 map 의 이 항목과 같은 것일 때만 뺀다.
+      const entry: {
+        resolve: (v: unknown) => void;
+        reject: (e: Error) => void;
+        promise: Promise<unknown>;
+        timer: ReturnType<typeof setTimeout> | null;
+      } = { resolve: resolve as (v: unknown) => void, reject, promise, timer: null };
+      pendingCalls.current.set(id, entry);
+      // The correlation id rides LAST: a payload carrying its own `id` must
+      // never overwrite the return address the reply is matched by.
+      try {
+        ws.send(JSON.stringify({ ...payload, id }));
+      } catch (error) {
+        // send 는 동기적으로 던질 수 있다(연결이 막 꺼진 순간) — 약속을
+        // 정리하지 않으면 영영 매달린 채로 남는다.
+        if (pendingCalls.current.get(id) === entry) pendingCalls.current.delete(id);
+        reject(error instanceof Error ? error : new Error(String(error)));
+        return promise;
+      }
+      entry.timer = setTimeout(() => {
+        // Not "retry": a blind resend here would still double a command the
+        // daemon has not answered yet. The honest line is that the reply is
+        // late — go look, then decide. When a retry IS offered (실패 카드의
+        // 다시 보내기), it must reuse the SAME id: the daemon dedupes by id
+        // and answers the remembered reply instead of running twice.
+        if (pendingCalls.current.get(id) === entry) {
+          pendingCalls.current.delete(id);
+          entry.timer = null;
+          reject(new Error("응답이 늦어졌습니다 — 잠시 뒤 대화나 화면을 다시 확인해 주세요."));
+        }
+      }, timeoutMs);
+      return promise;
     },
     [],
   );
@@ -1866,6 +1915,16 @@ export function useDaemon(url: string | null): Daemon {
           };
         }>;
       }) => call<{ recorded: number }>({ type: "comments.record", items: input.items }),
+      feedbackSubmit: (input, commandId) =>
+        call<FeatureRequestResult>(
+          {
+            type: "feedback.submit",
+            request: input.request,
+            ...(input.context ? { context: input.context } : {}),
+          },
+          60_000,
+          commandId,
+        ),
       replyToReview: (id: number, body: string) =>
         call<{ ok: true }>({ type: "comments.reply", reviewId: id, body }, 60_000),
       noteToDeveloper: (text: string) => call<{ ok: true }>({ type: "repo.note", text }, 60_000),

@@ -19,6 +19,7 @@
 @import "./onboarding/onboarding.css";
 @import "./preview/preview.css";
 @import "./settings/settings.css";
+@import "./feedback/feedback.css";
 
 .nx {
   --side: var(--bg-2);

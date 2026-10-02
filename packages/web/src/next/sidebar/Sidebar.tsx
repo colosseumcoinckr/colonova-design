@@ -26,6 +26,7 @@ export function Sidebar({
   titleFor,
   nav,
   onPalette,
+  onFeedback,
   onCollapse,
   onRenameSession,
   hidden = false,
@@ -40,6 +41,8 @@ export function Sidebar({
   nav: ShellNav;
   /** ⌘K 팔레트를 연다. */
   onPalette: () => void;
+  /** 기능 제안 대화상자를 연다(PLAN-FEEDBACK) — 앱 전체 기능이라 활성 대화와 무관하다. */
+  onFeedback: () => void;
   /** 넓은 창의 접기 — 좁은 창에서는 서랍 닫기. */
   onCollapse: () => void;
   /** 이름 바꾸기 — 설정의 대화 제목에 남는다(셸의 `onRenameSession`). */
@@ -124,6 +127,9 @@ export function Sidebar({
         onToast={nav.toast}
       />
       <div className="nx-side-bottom">
+        <button type="button" className="nx-side-row nx-fb-row" onClick={onFeedback}>
+          {L.feedback.button}
+        </button>
         <button
           type="button"
           className="nx-me"

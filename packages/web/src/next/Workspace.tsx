@@ -5,6 +5,7 @@ import { Splitter } from "../components/shell/Splitter";
 import { usePins } from "../hooks/usePins";
 import { useSessions } from "../hooks/useSessions";
 import { ChatColumn } from "./chat/ChatColumn";
+import { FeedbackDialog } from "./feedback/FeedbackDialog";
 import { HomeView } from "./home/HomeView";
 import { L } from "./labels";
 import { deriveJourney } from "./lib/journey";
@@ -75,6 +76,28 @@ export function Workspace({
   // 설정 대화상자(단계 6) — 사이드바 바퀴 · ⌘, · 팔레트가 같은 문으로 연다.
   const [settingsOpen, setSettingsOpen] = useState(false);
   const openSettings = () => setSettingsOpen(true);
+  // 기능 제안(PLAN-FEEDBACK) — 좁은 창의 서랍 위에 겹치지 않게 서랍을 먼저 닫는다.
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const openFeedback = () => {
+    if (narrow) setDrawer(false);
+    setFeedbackOpen(true);
+  };
+  // 기능 제안을 닫으면 좁은 창에서는 서랍이 이미 닫혀 있어(열 때 먼저 닫는다) 화면의
+  // ≡ 단추로 초점을 되돌린다 — 대화상자의 초점 복구가 body 로 떨어지지 않게.
+  const closeFeedback = useCallback(() => {
+    setFeedbackOpen(false);
+    if (!narrow) return;
+    requestAnimationFrame(() => {
+      const menu = [...document.querySelectorAll<HTMLButtonElement>(".nx-main button")].find(
+        (button) =>
+          button.getAttribute("aria-label") === L.shell.menu &&
+          button.getClientRects().length > 0 &&
+          getComputedStyle(button).visibility !== "hidden" &&
+          !button.closest("[inert]"),
+      );
+      menu?.focus();
+    });
+  }, [narrow]);
   const { state, nav, toast, setCollapsed, setDrawer } = useShellNav({
     daemon,
     sessions,
@@ -144,7 +167,7 @@ export function Workspace({
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
       // 대화상자가 떠 있으면 물러선다 — 팔레트 자기 토글(⌘K)만 예외.
-      const modal = document.querySelector(".modal, .nx-pal, .nx-set") !== null;
+      const modal = document.querySelector(".modal, .nx-pal, .nx-set, .nx-modal-back") !== null;
       const key = event.key.toLowerCase();
       if (modal && key !== "k") return;
       if (key === "k") {
@@ -233,7 +256,7 @@ export function Workspace({
     sidebarRef.current?.querySelector<HTMLElement>(".nx-side-nav .nx-side-row")?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (document.querySelector(".modal, .nx-pal, .nx-set") !== null) return;
+      if (document.querySelector(".modal, .nx-pal, .nx-set, .nx-modal-back") !== null) return;
       setDrawer(false);
     };
     window.addEventListener("keydown", onKey);
@@ -275,6 +298,7 @@ export function Workspace({
           titleFor={titleForThread}
           nav={nav}
           onPalette={() => setPalette(true)}
+          onFeedback={openFeedback}
           onCollapse={() => (narrow ? setDrawer(false) : setCollapsed(true))}
           onRenameSession={onRenameSession}
           hidden={sidebarHidden}
@@ -425,6 +449,9 @@ export function Workspace({
             onClose={() => setSettingsOpen(false)}
           />
         )}
+        {/* 기능 제안은 늘 마운트된 채 `open` 만 그린다 — 전송이 도는 동안 닫았다
+            다시 열어도 약속이 죽지 않고 늦은 접수 확인이 초안을 지울 수 있다. */}
+        <FeedbackDialog daemon={daemon} open={feedbackOpen} onClose={closeFeedback} />
       </div>
 
       {/* 팔레트는 스스로 `.nx` 뿌리다(`palette.css`) — 앱 뿌리의 격자 · 100vh · 잘림에

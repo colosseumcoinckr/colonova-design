@@ -1,3 +1,4 @@
+import { SWAP_FAILED } from "./copy.js";
 import { resultLine, type SelfUpdatePlan } from "./self-update.js";
 
 /**
@@ -41,19 +42,19 @@ export function buildSwapScript(input: {
   const notQuitResult = resultLine({
     outcome: "failed",
     version,
-    reason: "앱이 끝나지 않아 교체를 포기했습니다",
+    reason: SWAP_FAILED.notQuit,
     logPath,
   });
   const installFailedResult = resultLine({
     outcome: "failed",
     version,
-    reason: `설치 프로그램이 오류로 끝났습니다 (종료 코드 ${EXIT_CODE_PLACEHOLDER})`,
+    reason: SWAP_FAILED.installerFailed(EXIT_CODE_PLACEHOLDER),
     logPath,
   });
   const launchFailedResult = resultLine({
     outcome: "failed",
     version,
-    reason: "설치 프로그램을 실행하지 못했습니다",
+    reason: SWAP_FAILED.installerLaunch,
     logPath,
   });
   return `# ColoNova Design 자가 교체(Windows) — 종료 대기 → 무인 설치 → 재실행.

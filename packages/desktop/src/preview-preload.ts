@@ -33,10 +33,18 @@ import { contextBridge, ipcRenderer } from "electron";
 // element-identity.ts now, spliced into this file at build time (§3.E-1).
 // ---------------------------------------------------------------------------
 
+// element-identity.ts 의 ownText 와 같은 판정이다 — 텍스트 노드 사이에 요소가 끼면 띄어쓴다.
 function ownText(element: Element): string {
   let text = "";
+  let gap = false;
   for (const child of Array.from(element.childNodes)) {
-    if (child.nodeType === Node.TEXT_NODE) text += child.textContent ?? "";
+    if (child.nodeType === Node.TEXT_NODE) {
+      if (gap && text !== "") text += " ";
+      text += child.textContent ?? "";
+      gap = false;
+    } else if (child.nodeType === Node.ELEMENT_NODE) {
+      gap = true;
+    }
   }
   return text.replace(/\s+/g, " ").trim().slice(0, 80);
 }

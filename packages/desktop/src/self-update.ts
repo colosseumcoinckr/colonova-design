@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { basename, join } from "node:path";
+import { UPDATE } from "./copy.js";
 
 /**
  * 자가 교체의 플랫폼 공통부: 계획 · sha256 검증 · 디스크 여유 ·
@@ -98,7 +99,7 @@ export function planSelfUpdate(input: {
     // Windows 의 교체 대상은 "지금 도는 exe" 뿐이다 — 설치 위치는 레지스트리가
     // 들고 있고 기본값을 추측하면 엉뚱한 자리를 다시 띄운다. 그래서 필수다.
     if (!input.target) {
-      throw new Error("Windows 자가 교체에는 교체 대상 실행 파일의 경로가 필요합니다");
+      throw new Error(UPDATE.noTarget);
     }
     const filename = `colonova-design-Setup-${input.version}.exe`;
     return {
@@ -115,7 +116,7 @@ export function planSelfUpdate(input: {
       ],
     };
   }
-  throw new Error(`이 운영체제(${input.platform})에서는 자가 교체를 지원하지 않습니다`);
+  throw new Error(UPDATE.unsupportedPlatform(input.platform));
 }
 
 /** 결과 JSON 한 줄 — 스크립트가 그대로 파일에 찍는다(이유는 고정 문구라 escaping 이 필요 없다). */
@@ -149,9 +150,7 @@ export async function sha256OfFile(path: string): Promise<string> {
 export async function verifyDownload(path: string, expectedSha256: string): Promise<boolean> {
   const actual = await sha256OfFile(path);
   if (actual !== expectedSha256.toLowerCase()) {
-    throw new Error(
-      `내려받은 파일의 무결성 검증에 실패했습니다 (${basename(path)}) — 릴리스를 다시 확인해 주세요.`,
-    );
+    throw new Error(UPDATE.verifyFailed(basename(path)));
   }
   return true;
 }
@@ -177,10 +176,6 @@ export async function requireDiskSpace(input: {
   const snapshot = await input.statfs(input.path);
   const freeBytes = snapshot.bsize * snapshot.bavail;
   if (freeBytes < input.minBytes) {
-    throw new Error(
-      `디스크 공간이 부족합니다 — 업데이트에는 최소 ${Math.round(
-        input.minBytes / 1024 ** 3,
-      )}GB 의 여유가 필요합니다. (${input.path})`,
-    );
+    throw new Error(UPDATE.diskLow(Math.round(input.minBytes / 1024 ** 3), input.path));
   }
 }

@@ -6,11 +6,11 @@ import type { DaemonNotice } from "@colonova-design/daemon/server";
  *
  * 규칙은 하나다: **부르는 값이 있는 순간은 언제나 부른다.** 확인 요청·중단·
  * 게이트 실패는 자리를 비운 사람이 돌아와야 하는 이유 그 자체라 시점 설정과
- * 무관하다. 고를 수 있는 것은 `완료`뿐이고, 그마저 기본은 "오래 걸린 턴만" —
- * 30초짜리 수정마다 울리는 알림은 곧 꺼지는 알림이기 때문이다.
+ * 무관하다. 고를 수 있는 것은 `완료`뿐이고, 그 기본은 "모든 턴"이다 — 완료를
+ * 놓치는 쪽이 잦은 울림보다 비싸다고 판단했다(2026-10-06 사용자 요청).
  */
 
-/** 완료 알림의 시점: 끔 / 오래 걸린 턴만(기본) / 모든 턴. */
+/** 완료 알림의 시점: 끔 / 오래 걸린 턴만 / 모든 턴(기본). */
 type NoticeTiming = "off" | "long" | "all";
 
 export interface NotificationPrefs {
@@ -18,7 +18,7 @@ export interface NotificationPrefs {
   sound: boolean;
 }
 
-export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = { done: "long", sound: true };
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = { done: "all", sound: true };
 
 /** "오래 걸린 턴"의 기준 — 웹 경로(daemon-client)와 같은 값이다. */
 const LONG_TURN_MS = 60_000;

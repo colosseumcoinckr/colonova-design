@@ -40,7 +40,7 @@ export interface MenuTargets {
   openSettings(): void;
   /** 새 대화 ⌘T — the web's own chord, replayed so focus does not matter. */
   newSession(): void;
-  /** 개발자 도구는 dev 에서만 — 사용자에게 필요 없고, 문제 해결은 설정에. */
+  /** 개발자 도구는 dev 에서만 — 사용자에게 필요 없고, 문제가 생기면 도움말의 `기록 폴더 열기` 가 있다. */
   packaged: boolean;
   /** 도움말의 `기록 폴더 열기` — 메인이 직접 여는 bridge 의 open-home("logs") 판본. */
   openLogs(): void;

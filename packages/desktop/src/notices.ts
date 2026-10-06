@@ -1,9 +1,16 @@
 import type { DaemonNotice } from "@colonova-design/daemon/server";
+import { NOTICE, type NoticeLine } from "./copy.js";
+
+/** `<이름> · <꼬리>` — 이름은 알림이 부르는 대화 · 프로젝트의 것이다. */
+function titled(name: string, line: NoticeLine): { title: string; body: string } {
+  return { title: `${name} · ${line.tail}`, body: line.body };
+}
 
 /**
  * 알림 한 장의 문구. 사용자의 어휘만 나간다 — 도구 이름도, git 도 없다.
  * 스레드 이름이 제목이 되고, 몸글은 창을 열면 무엇을 확인하게 되는지를
- * 한 문장으로 말한다. 데몬은 의미만 건넨다(DaemonNotice); 문장은 여기서 정한다.
+ * 한 문장으로 말한다. 데몬은 의미만 건넨다(DaemonNotice); 문장은 `copy.ts` 가 정한다 —
+ * 이 함수는 어느 사건이 어느 문장인가만 안다(순수 함수라 Electron 없이 시험이 돈다).
  */
 export function noticeCopy(notice: DaemonNotice): {
   title: string;
@@ -11,89 +18,33 @@ export function noticeCopy(notice: DaemonNotice): {
 } {
   switch (notice.kind) {
     case "done":
-      return {
-        title: `${notice.title} · 완료`,
-        body: "AI가 화면 작업을 마쳤습니다. 미리보기를 확인해 보세요.",
-      };
+      return titled(notice.title, NOTICE.done);
     case "crashed":
-      return {
-        title: `${notice.title} · 중단`,
-        body: "AI가 중단됐습니다. 대화에서 이유를 확인할 수 있습니다.",
-      };
+      return titled(notice.title, NOTICE.crashed);
     case "ask":
-      return notice.what === "question"
-        ? {
-            title: `${notice.title} · 답 필요`,
-            body: "AI가 질문에 대한 답을 기다리고 있습니다.",
-          }
-        : {
-            title: `${notice.title} · 확인 필요`,
-            body: "AI가 진행 허락을 기다리고 있습니다.",
-          };
+      return titled(
+        notice.title,
+        notice.what === "question" ? NOTICE.askQuestion : NOTICE.askPermission,
+      );
     case "gate":
-      return notice.stage === "save"
-        ? {
-            title: `${notice.title} · 저장 실패`,
-            body: "저장이 끝나지 못했습니다. AI에게 고치도록 맡겼습니다.",
-          }
-        : notice.stage === "handoff"
-          ? {
-              title: `${notice.title} · 넘기기 실패`,
-              body: "넘기기가 끝나지 못했습니다. AI에게 고치도록 맡겼습니다.",
-            }
-          : notice.stage === "screen"
-            ? {
-                title: `${notice.title} · 화면 확인`,
-                body: "만든 화면에서 오류를 찾았습니다. AI에게 고치도록 맡겼습니다.",
-              }
-            : {
-                title: `${notice.title} · 최신화 충돌`,
-                body: "최신 변경과 저장하지 않은 변경이 겹쳤습니다. AI에게 정리를 맡겼습니다.",
-              };
+      return titled(notice.title, NOTICE.gate[notice.stage]);
     case "handoff":
       // 커미티 B1+A (2026-09-15): 단위는 프로젝트다 — 한 사이클에 화면이
       // 여럿이라 첫 화면 하나만 부르면 나머지가 안 간 것처럼 읽힌다.
-      return notice.event === "merged"
-        ? {
-            title: `${notice.projectName} · 반영됨`,
-            body: "개발자가 이번 작업을 제품에 합쳤습니다. 다음 저장은 새 작업을 시작합니다.",
-          }
-        : notice.event === "closed"
-          ? {
-              title: `${notice.projectName} · 반려됨`,
-              body: "개발자가 이번 요청을 닫았습니다 — 상태 확인에서 이유를 읽어 보세요.",
-            }
-          : notice.event === "changes_requested"
-            ? {
-                title: `${notice.projectName} · 변경 요청`,
-                body: "개발자가 코멘트를 남겼습니다. AI에게 반영을 맡겼습니다 — 끝나면 알려 드립니다.",
-              }
-            : notice.event === "replied"
-              ? {
-                  title: `${notice.projectName} · 다시 보냄`,
-                  body: "개발자 코멘트를 AI가 반영해 같은 요청에 실어 보냈습니다.",
-                }
-              : {
-                  title: `${notice.projectName} · 개발자 코멘트`,
-                  body: `개발자 코멘트 ${notice.count ?? 1}건 — AI에게 반영을 맡겼습니다.`,
-                };
+      return titled(
+        notice.projectName,
+        notice.event === "comments"
+          ? NOTICE.comments(notice.count ?? 1)
+          : NOTICE.handoff[notice.event],
+      );
     case "ready":
-      return {
-        title: `${notice.title} · 준비됐어요`,
-        body: "처음 여는 준비가 끝났어요. 바로 말을 걸 수 있어요.",
-      };
+      return titled(notice.title, NOTICE.ready);
     case "submit-blocked":
-      return {
-        title: `${notice.title} · 제출하지 못했어요 — 개발자에게 알렸어요`,
-        body:
-          notice.reason === "auth"
-            ? "다시 연결이 필요해요. 계속 만들 수 있고, 풀리면 도구가 다시 제출해요."
-            : "계속 만들 수 있어요. 풀리면 도구가 다시 제출해요.",
-      };
+      return titled(
+        notice.title,
+        notice.reason === "auth" ? NOTICE.submitBlocked.auth : NOTICE.submitBlocked.notified,
+      );
     case "update-done":
-      return {
-        title: "AI를 업데이트했어요",
-        body: `${notice.agent === "claude" ? "Claude Code" : "Codex"} ${notice.version} — 다음 새 대화부터 써요.`,
-      };
+      return NOTICE.updateDone(notice.agent === "claude" ? "Claude Code" : "Codex", notice.version);
   }
 }

@@ -18,6 +18,7 @@ import {
   type UpdateCheckResult,
 } from "@colonova-design/protocol";
 import { app, net, shell } from "electron";
+import { UPDATE } from "./copy.js";
 import { buildSwapScript as buildMacSwapScript } from "./mac-self-update.js";
 import {
   parseSwapResult,
@@ -72,7 +73,7 @@ async function netFetch(
     request.once("error", reject);
     timer = setTimeout(() => {
       request.abort();
-      reject(new Error("업데이트 확인이 시간 안에 끝나지 않았습니다"));
+      reject(new Error(UPDATE.checkTimeout));
     }, UPDATE_CHECK_TIMEOUT_MS);
     request.end();
   }).finally(() => clearTimeout(timer));
@@ -99,7 +100,7 @@ async function downloadFile(url: string, destPath: string): Promise<void> {
     signal: AbortSignal.timeout(UPDATE_DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok || !response.body) {
-    throw new Error(`업데이트 파일을 내려받지 못했습니다 (HTTP ${response.status})`);
+    throw new Error(UPDATE.downloadFailed(response.status));
   }
   // Electron 의 body 는 DOM 계열 ReadableStream — Node 스트림으로 다리를 놓는다.
   const body = Readable.fromWeb(response.body as unknown as NodeWebReadableStream);
@@ -142,6 +143,11 @@ export class SelfUpdates {
 
   constructor(private readonly deps: UpdateDeps) {}
 
+  /** OS 알림 한 장 — 문장은 `copy.ts` 가 든다(말투 · 어휘를 시험이 한 곳에서 지킨다). */
+  private announce(text: { title: string; body: string }, onClick: () => void): void {
+    void this.deps.notify(text.title, text.body, onClick);
+  }
+
   /**
    * 자동 업데이트 확인: 새 버전이 있으면 알림을 띄워 설정까지 찾아가게
    * 하지 않는다 — 버전마다 한 번만. 실패는 언제나 조용히: 자동으로 떠드는 오류는
@@ -165,11 +171,7 @@ export class SelfUpdates {
         const feed = await checkForUpdate(app.getVersion(), RELEASES_FEED_URL, netFetch);
         if (!feed.updateAvailable || feed.version === this.notifiedVersion) return;
         this.notifiedVersion = feed.version;
-        void this.deps.notify(
-          "새 버전이 있습니다",
-          `ColoNova Design ${feed.version} — 설정 → 문제 해결의 업데이트 확인에서 설치할 수 있습니다.`,
-          this.deps.focusMain,
-        );
+        this.announce(UPDATE.available(feed.version), this.deps.focusMain);
       } catch {
         // 자동 확인의 실패는 조용히 넘어간다 — 수동 확인 버튼이 오류를 보여준다.
       }
@@ -203,20 +205,12 @@ export class SelfUpdates {
     if (!result) return;
     if (result.outcome === "done") {
       if (result.version !== app.getVersion()) return;
-      void this.deps.notify(
-        "업데이트 완료",
-        `ColoNova Design ${result.version}으로 갈아입었습니다.`,
-        this.deps.focusMain,
-      );
+      this.announce(UPDATE.swapDone(result.version), this.deps.focusMain);
       return;
     }
-    void this.deps.notify(
-      "업데이트하지 못했습니다",
-      `${result.reason ?? "알 수 없는 실패"} — 클릭하면 기록을 보여줍니다.`,
-      () => {
-        void shell.openPath(result.logPath);
-      },
-    );
+    this.announce(UPDATE.swapFailed(result.reason), () => {
+      void shell.openPath(result.logPath);
+    });
   }
 
   /** desktop:update-check — 수동 확인. */
@@ -260,9 +254,7 @@ export class SelfUpdates {
     // 실었으면) 설치할 것이 없다.
     const asset = platformAsset(feed);
     if (!feed.updateAvailable || !asset.url || !asset.sha256) {
-      return {
-        error: "설치할 업데이트가 확인되지 않았습니다 — 업데이트 확인을 다시 눌러 주세요.",
-      };
+      return { error: UPDATE.nothingToInstall };
     }
     // 실제 교체는 패키징된 앱에서만 — 개발 실행에서는 계획만 돌려준다.
     if (!app.isPackaged) {
@@ -276,16 +268,13 @@ export class SelfUpdates {
           // Windows 는 교체 대상이 필수다 — 개발 실행도 지금 도는 exe 를 건넨다.
           target: process.platform === "win32" ? process.execPath : undefined,
         }),
-        guarded: "개발 실행에서는 교체를 실행하지 않습니다",
+        guarded: UPDATE.devGuarded,
       };
     }
     // mac 한정: DMG 안에서 실행 중이면 교체 대상이 읽기 전용 볼륨이다 — 헛돌고
     // 롤백으로 끝나기 전에 막고 옮기라고 먼저 말한다.
     if (process.platform === "darwin" && process.execPath.startsWith("/Volumes/")) {
-      return {
-        error:
-          "앱이 디스크 이미지(DMG)에서 실행 중입니다 — 응용 프로그램 폴더로 옮긴 뒤 다시 시도해 주세요.",
-      };
+      return { error: UPDATE.fromDiskImage };
     }
     // 실행 중 세션이 있으면 설치를 연기한다(P0#6) — 돌아가는 턴을 업데이트가
     // 끊지 않는다. 모든 세션이 내려앉는 순간 준비(내려받기·검증)가 끝나고,
@@ -312,13 +301,7 @@ export class SelfUpdates {
     const feed = this.pending;
     this.pending = null;
     const result = await this.prepare(feed);
-    if ("error" in result) {
-      void this.deps.notify(
-        "업데이트를 준비하지 못했습니다",
-        `${result.error} — 설정 → 문제 해결에서 다시 시도할 수 있습니다.`,
-        this.deps.focusMain,
-      );
-    }
+    if ("error" in result) this.announce(UPDATE.prepareFailed(result.error), this.deps.focusMain);
   }
 
   /**
@@ -326,13 +309,9 @@ export class SelfUpdates {
    * 설정의 설치 버튼이 같은 자리(prepared)로 이어 준다.
    */
   private announcePrepared(version: string): void {
-    void this.deps.notify(
-      "새 버전이 준비됐습니다",
-      `ColoNova Design ${version} — 재시작하면 설치됩니다. 클릭하면 지금 재시작합니다.`,
-      () => {
-        void this.installPrepared();
-      },
-    );
+    this.announce(UPDATE.prepared(version), () => {
+      void this.installPrepared();
+    });
   }
 
   /**
@@ -412,7 +391,7 @@ export class SelfUpdates {
 
   private async runInstallPrepared(): Promise<Record<string, unknown>> {
     const prepared = this.prepared;
-    if (!prepared) return { error: "준비된 업데이트가 없습니다 — 업데이트 확인을 눌러 주세요." };
+    if (!prepared) return { error: UPDATE.nothingPrepared };
     if (this.deps.sessionsBusy()) {
       this.installOnIdle = true;
       this.deps.focusMain();

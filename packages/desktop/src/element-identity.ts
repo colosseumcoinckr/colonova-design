@@ -23,11 +23,21 @@ export function describeElementInPage(
   this: unknown,
   el?: unknown,
 ): ColoNovaDesignCommentTarget | null {
-  /** 요소의 직접 텍스트 노드만 — 공백을 누르고 400자에서 자른다. */
+  /** 요소의 직접 텍스트 노드만 — 공백을 누르고 400자에서 자른다. 텍스트 노드 사이에 요소
+   *  (`<br>` · `<span>`)가 끼어 있으면 그 자리는 띄어쓰기다 — 그냥 이으면
+   *  `서비스를<br>선택하세요` 가 `서비스를선택하세요` 로 남았다(2026-10-06 채팅 결과창 개선).
+   *  요소 없이 맞붙은 텍스트 노드(`{count}개`)는 붙인 채로 둔다. */
   const ownText = (element: Element): string => {
     let text = "";
+    let gap = false;
     for (const child of Array.from(element.childNodes)) {
-      if (child.nodeType === Node.TEXT_NODE) text += child.textContent ?? "";
+      if (child.nodeType === Node.TEXT_NODE) {
+        if (gap && text !== "") text += " ";
+        text += child.textContent ?? "";
+        gap = false;
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        gap = true;
+      }
     }
     return text.replace(/\s+/g, " ").trim().slice(0, 400);
   };

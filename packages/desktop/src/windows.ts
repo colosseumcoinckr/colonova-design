@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { DaemonServer } from "@colonova-design/daemon/server";
 import { app, BrowserWindow, dialog, screen, shell } from "electron";
+import { ANSWER, crashLoopOptions, unresponsiveOptions } from "./copy.js";
 
 const OPEN_SESSION_CHANNEL = "colonovadesign:open-session";
 const OPEN_PROJECT_CHANNEL = "colonovadesign:open-project";
@@ -140,20 +141,12 @@ export class MainWindowHost {
       }
       crashes.push(at);
       if (crashes.length > RENDER_CRASH_LIMIT) {
-        void dialog
-          .showMessageBox({
-            type: "warning",
-            title: "화면이 계속 꺼져요",
-            message: "화면이 10분 안에 여러 번 꺼졌어요. 다시 열면 대화와 작업은 그대로예요.",
-            buttons: ["다시 열기", "끝내기"],
-            defaultId: 0,
-            cancelId: 0,
-          })
-          .then(({ response }) => {
-            if (window.isDestroyed()) return;
-            if (response === 0) window.webContents.reload();
-            else app.quit();
-          });
+        // 문장과 단추의 문법은 copy.ts — 다시 열기가 첫 단추 · 기본 · Esc 의 답이다.
+        void dialog.showMessageBox(crashLoopOptions()).then(({ response }) => {
+          if (window.isDestroyed()) return;
+          if (response === ANSWER.safe) window.webContents.reload();
+          else app.quit();
+        });
         return;
       }
       window.webContents.reload();
@@ -162,19 +155,11 @@ export class MainWindowHost {
     contents.on("unresponsive", () => {
       if (window.isDestroyed()) return;
       recovered = false;
-      void dialog
-        .showMessageBox({
-          type: "question",
-          title: "화면이 멈췄어요",
-          message: "잠시 기다리면 저절로 돌아올 수 있어요.",
-          buttons: ["기다리기", "다시 열기"],
-          defaultId: 0,
-          cancelId: 0,
-        })
-        .then(({ response }) => {
-          if (recovered || window.isDestroyed()) return;
-          if (response === 1) window.webContents.reload();
-        });
+      // 기다리기가 첫 단추 · 기본 · Esc 의 답이다 — 다시 열기는 사용자가 골라야만 간다.
+      void dialog.showMessageBox(unresponsiveOptions()).then(({ response }) => {
+        if (recovered || window.isDestroyed()) return;
+        if (response === ANSWER.other) window.webContents.reload();
+      });
     });
     contents.on("responsive", () => {
       recovered = true;

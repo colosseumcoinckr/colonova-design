@@ -17,6 +17,14 @@ import { SelfUpdates } from "./app-updates.js";
 import { loadAppZoom, saveAppZoom, stepZoom } from "./app-zoom.js";
 import { benchEndpointBody, benchEndpointPath, benchEndpointPid } from "./bench-endpoint.js";
 import { registerDesktopBridge } from "./bridge.js";
+import {
+  ANSWER,
+  quitOptions,
+  resetOptions,
+  resetUnfinished,
+  START_ANSWER,
+  startFailedOptions,
+} from "./copy.js";
 import { loadNotificationPrefs, loadStoredPort, saveDesktopSettings } from "./desktop-settings.js";
 import { APP_BUNDLE_ID } from "./identity.js";
 import { buildMenuTemplate } from "./menu.js";
@@ -57,6 +65,34 @@ const LOGS_DIR = join(COLONOVA_DESIGN_DATA_DIR, "logs");
 
 function desktopSettingsPath(): string {
   return join(app.getPath("userData"), "desktop-settings.json");
+}
+
+/**
+ * 기록 폴더를 연다 — 첫 줄이 나가기 전에는 없을 수 있어 만든 뒤에 연다. 렌더러 없이 메인이 직접
+ * 여는 길이다(창이 없어도 · 렌더러가 죽어 있어도 닿는다). 도움말 메뉴와 시작 실패 상자가 함께 쓴다.
+ * bridge 의 desktop:open-home("logs") 이 여는 것과 같은 폴더다.
+ */
+async function openLogsFolder(): Promise<void> {
+  try {
+    mkdirSync(LOGS_DIR, { recursive: true });
+    await shell.openPath(LOGS_DIR);
+  } catch {
+    // 폴더를 못 열어도 앱이 할 수 있는 일은 없다 — 상자가 폴더의 자리를 글로 적어 둔다.
+  }
+}
+
+/**
+ * 시작하지 못했을 때의 상자 — 막다른 길에 출구를 단다(2026-10-06 겹판 조사): 날 오류만 던지던
+ * showErrorBox 는 단추가 하나라 기록 폴더로 데려갈 수 없었다. 상자가 닫힐 때까지 기다린다 —
+ * 어느 단추든 앱은 끝나고, 첫 단추는 끝내기 전에 기록 폴더를 연다.
+ */
+async function showStartFailure(reason: string): Promise<void> {
+  try {
+    const { response } = await dialog.showMessageBox(startFailedOptions(reason, LOGS_DIR));
+    if (response === START_ANSWER.openLogs) await openLogsFolder();
+  } catch {
+    // 상자를 못 띄워도 끝내는 일은 막지 않는다.
+  }
 }
 
 let daemonServer: DaemonServer | null = null;
@@ -101,13 +137,10 @@ if (underTest || app.requestSingleInstanceLock()) {
     void app
       .whenReady()
       .then(() => bootApp())
-      .catch((error: unknown) => {
+      .catch(async (error: unknown) => {
         // 준비 중 폭발한 오류는 창도 오류 상자도 없이 조용히 사라진다 —
         // 잡아서 보여주고 끝낸다.
-        dialog.showErrorBox(
-          "ColoNova Design",
-          `시작하지 못했습니다: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        await showStartFailure(error instanceof Error ? error.message : String(error));
         app.quit();
       });
   }
@@ -204,9 +237,7 @@ async function bootApp(): Promise<void> {
       }
     },
   }).catch((error: unknown) => {
-    throw new Error(
-      `초기화를 마치지 못했어요. 일부 데이터는 이미 지워졌을 수 있어요. 앱을 다시 실행하면 남은 정리를 이어갑니다.\n${error instanceof Error ? error.message : String(error)}`,
-    );
+    throw new Error(resetUnfinished(error instanceof Error ? error.message : String(error)));
   });
   // Windows 토스트 알림은 시작 메뉴 바로 가기의 AUMID 로 귀속된다. NSIS 템플릿은
   // 바로 가기에 appId 를 새기므로 같은 문자열을 여기서 직접 건다 — Squirrel 이
@@ -284,15 +315,10 @@ async function bootApp(): Promise<void> {
   try {
     server = await startDaemonServer(makeServer, storedPort);
   } catch (error) {
-    // 데몬이 뜨지 못하면 창을 띄워도 빈 화면이다 — 원인과 기록 폴더를 알리고
-    // 끝낸다. showErrorBox 는 닫힐 때까지 막는 대화상자라 exit 이 뒤에서 기다린다.
-    // 기록 폴더는 bridge 의 desktop:open-home("logs") 이 여는 것과 같은 자리다.
+    // 데몬이 뜨지 못하면 창을 띄워도 빈 화면이다 — 상자로 알리고 끝낸다. 상자는 닫힐 때까지
+    // 기다리므로 exit 이 뒤에서 기다리고, 그 안에 기록 폴더를 여는 단추가 있다(showStartFailure).
     if (!underTest) {
-      const reason = error instanceof Error ? error.message : String(error);
-      dialog.showErrorBox(
-        "ColoNova Design을 시작하지 못했습니다",
-        `원인: ${reason}\n\n자세한 기록은 이 폴더에 있습니다:\n${LOGS_DIR}`,
-      );
+      await showStartFailure(error instanceof Error ? error.message : String(error));
     }
     app.exit(1);
     return;
@@ -369,12 +395,8 @@ async function bootApp(): Promise<void> {
             key: "t",
             meta: true,
           }),
-        // 도움말의 `기록 폴더 열기` — bridge 의 desktop:open-home("logs") 이
-        // 여는 것과 같은 폴더를 메인이 직접 연다(렌더러가 죽어 있어도 닿는다).
-        openLogs: () => {
-          mkdirSync(LOGS_DIR, { recursive: true });
-          void shell.openPath(LOGS_DIR);
-        },
+        // 도움말의 `기록 폴더 열기` — 메인이 직접 연다(렌더러가 죽어 있어도 닿는다).
+        openLogs: () => void openLogsFolder(),
         packaged: app.isPackaged,
       }),
     ),
@@ -408,21 +430,13 @@ async function bootApp(): Promise<void> {
     lastRendererCrash: () => host.takeRendererCrash(),
     requestReset: async () => {
       assertResetPaths(resetPaths, process.env);
-      const options = {
-        type: "warning" as const,
-        title: "처음부터 다시 시작",
-        message: "이 컴퓨터의 모든 프로젝트와 설정을 지울까요?",
-        detail:
-          "프로젝트 파일, 대화와 작업 기록, 앱 설정, 초대장 연결 정보를 지워요. 목록에서 삭제했지만 컴퓨터에 남아 있는 프로젝트도 포함돼요. 제출하지 않은 작업은 되돌릴 수 없어요.\n\n이미 개발자에게 제출한 작업과 Claude·Codex 로그인은 유지돼요. 앱이 다시 열리면 새 초대 파일을 넣어 주세요.",
-        buttons: ["취소", "모두 지우고 다시 시작"],
-        defaultId: 0,
-        cancelId: 0,
-        noLink: true,
-      };
+      // 취소가 첫 단추 · 기본 · Esc 의 답이다(종료 확인과 같은 문법 — copy.ts). 도는 AI 일이 있으면
+      // 그 일도 멈춘다고 말한다.
+      const options = resetOptions(daemonServer?.anySessionBusy() ?? false);
       const result = host.window
         ? await dialog.showMessageBox(host.window, options)
         : await dialog.showMessageBox(options);
-      if (result.response !== 1) return { cancelled: true };
+      if (result.response !== ANSWER.other) return { cancelled: true };
       requestAppReset(resetPaths, process.env);
       stopUnderTurnAllowed = true;
       app.relaunch();
@@ -455,17 +469,11 @@ function guardStopUnderTurn(event: { preventDefault(): void }, proceed: () => vo
   }
   event.preventDefault();
   stopDialogOpen = true;
+  // 취소가 첫 단추 · 기본 · Esc 의 답이다 — 초기화 확인과 같은 문법(copy.ts).
   void dialog
-    .showMessageBox({
-      type: "question",
-      title: "작업이 진행 중입니다",
-      message: "AI가 작업 중입니다. 지금 끝내면 이 작업은 멈춥니다.",
-      buttons: ["그만두고 끝내기", "취소"],
-      defaultId: 1,
-      cancelId: 1,
-    })
+    .showMessageBox(quitOptions())
     .then(({ response }) => {
-      if (response === 0) {
+      if (response === ANSWER.other) {
         stopUnderTurnAllowed = true;
         proceed();
       }

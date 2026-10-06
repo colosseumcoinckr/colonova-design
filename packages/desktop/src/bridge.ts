@@ -6,6 +6,7 @@ import { COLONOVA_DESIGN_DATA_DIR } from "@colonova-design/daemon/environment";
 import { ipcMain, shell } from "electron";
 import type { PlannerNotices } from "./app-notify.js";
 import type { SelfUpdates } from "./app-updates.js";
+import { BRIDGE } from "./copy.js";
 import { saveDesktopSettings } from "./desktop-settings.js";
 import { inviteDiscardRefusal } from "./invite-discard.js";
 import { normalizeNotificationPrefs } from "./notify-policy.js";
@@ -71,7 +72,7 @@ export function registerDesktopBridge(deps: BridgeDeps): void {
     } catch {
       // 없는 파일 — 아래의 거절로.
     }
-    if (!isFile) throw new Error("지울 초대 파일을 찾지 못했어요.");
+    if (!isFile) throw new Error(BRIDGE.inviteMissing);
     await shell.trashItem(path as string);
   });
 
@@ -85,12 +86,9 @@ export function registerDesktopBridge(deps: BridgeDeps): void {
   // 렌더러가 부팅 때 저장값을 묻는다 — 새 origin 의 기본값이 디스크를 덮지 않게.
   ipcMain.handle("desktop:notify-prefs:get", () => notices.prefs);
 
+  // 시험 알림의 문장은 웹 설정의 `시험 알림` 줄과 같은 말이다(copy.ts BRIDGE.testNotice).
   ipcMain.handle("desktop:notify-test", () =>
-    notices.show(
-      "알림 시험",
-      "실제 알림은 이렇게 도착합니다 — 소리 설정도 같이 적용됩니다.",
-      deps.focusMain,
-    ),
+    notices.show(BRIDGE.testNotice.title, BRIDGE.testNotice.body, deps.focusMain),
   );
 
   // 직전 렌더러 사망(3.A 층 3) — 렌더러가 부팅 때 물으면 알리고 비운다.
@@ -108,7 +106,7 @@ export function registerDesktopBridge(deps: BridgeDeps): void {
         : process.platform === "win32"
           ? "ms-settings:notifications"
           : null;
-    if (!target) return { error: "이 시스템에는 알림 설정 화면이 없습니다." };
+    if (!target) return { error: BRIDGE.noNotifySettings };
     try {
       await shell.openExternal(target);
       return { opened: target };

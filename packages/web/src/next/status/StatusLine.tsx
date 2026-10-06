@@ -542,6 +542,8 @@ export function StatusLine({
             changed={reviewChanged}
             lockReason={submit.enabled ? null : submit.reason}
             since={submitCopy.lastAt}
+            loadDraft={() => daemon.api.handoffDraft()}
+            openTitle={daemon.repo?.handoff?.title ?? null}
             leaveToken={leaveToken}
             onRefresh={loadSubmission}
             reviewers={reviewers}

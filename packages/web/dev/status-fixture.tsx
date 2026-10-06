@@ -16,6 +16,9 @@
  *     `changed`(읽는 동안 내용이 바뀜) · `sendfail`(보내기 실패) · `conflict`(보내는 순간 내용이 바뀜) ·
  *     `many`(화면 8개) · `outside`(화면 밖 변경만) · `empty`(제출할 변경 없음) · `more`(열린 요청에 더하는 제출 —
  *     화면 5개 중 둘은 앞서 제출한 것). 보내기가 성공하면 여정이 따라온다.
+ *   `?draft=` 제출 확인의 「개발자에게는 이렇게 보여요」 — 가짜 데몬이 주는 요청 초안: `ready`(기본, 1.2초 뒤) ·
+ *     `slow`(영영 읽는 중) · `empty`(AI 가 못 씀 → 첫 보관의 제목이 대신) · `fail`(읽기 실패 → 상자가 안 선다) ·
+ *     `long`(긴 설명 → 세 줄에서 잘린다). `?submit=more` 는 이미 열린 요청의 제목이 선다.
  *   `?ledger=` `이번 작업` 의 장부 — `ready`(기본, 코멘트 둘) · `loading`(영영 읽는 중) · `failed`(읽기 실패) · `empty`.
  *     `hook-*` 는 진짜 장부 훅(`useWorkLedger`)을 돌린다 — `hook-slow`(영영 읽는 중) · `hook-fail`(늘 실패) ·
  *     `hook-failthen`(열고 4초 안에는 실패, 그 뒤 성공 — `다시 시도` 가 고치는 길) · `hook-ok`.
@@ -63,6 +66,7 @@ const project = {
 const SUBMIT = query.get("submit") ?? "ready";
 const LOADED_AT = Date.now();
 const LEDGER = query.get("ledger") ?? "ready";
+const DRAFT = query.get("draft") ?? "ready";
 const MINUTE = 60_000;
 const ago = (minutes: number) => new Date(Date.now() - minutes * MINUTE).toISOString();
 const later = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -161,7 +165,7 @@ const ledgerOf = (handedAt: string | null) => ({
 const handoff = (state: "open" | "merged") => ({
   number: 7,
   url: "https://example.com/pull/7",
-  title: "t",
+  title: "feat(members): 회원 목록에 이름 검색 추가 (작성: 정인권)",
   state,
   branch: "colonova-design/20261006-1",
   reviewers: ["dev1"],
@@ -362,6 +366,30 @@ function Row({ spec }: { spec: Case }) {
           : SUBMIT === "fail"
             ? later(400).then(() => Promise.reject(new Error("read")))
             : later(400).then(() => previewOf(repoRef.current)),
+      // 요청 초안 — AI 한 번이라 느리다. `empty` 는 AI 가 못 쓴 초안(제목 · 설명이 빔).
+      handoffDraft: () =>
+        DRAFT === "slow"
+          ? new Promise(() => {})
+          : DRAFT === "fail"
+            ? later(1200).then(() => Promise.reject(new Error("draft")))
+            : later(1200).then(() =>
+                DRAFT === "empty"
+                  ? {
+                      title: "",
+                      body: "",
+                      source: "fallback" as const,
+                      extras: { commentsSection: null, filesSection: null, shotCount: 0 },
+                    }
+                  : {
+                      title: "feat(members): 회원 목록에 이름으로 찾는 검색창 추가 (작성: 정인권)",
+                      body:
+                        DRAFT === "long"
+                          ? "회원 목록 맨 위에 검색창을 넣고 이름 일부만 쳐도 결과가 바로 걸러지게 했습니다. 결과가 없을 때는 안내 문구를 보여 주고, 휴대폰 폭에서도 검색창이 옆으로 밀리지 않도록 폭을 맞췄습니다. 검색어를 지우면 전체 목록으로 돌아오고, 목록의 정렬은 그대로 유지됩니다. 접근성을 위해 검색창에 이름표를 달았고 키보드만으로도 조작할 수 있습니다."
+                          : "회원 목록 맨 위에 검색창을 넣어 이름으로 거를 수 있게 했습니다.\n\n- 검색 결과가 없으면 안내 문구를 보여 줍니다\n- 휴대폰 폭에서도 옆으로 밀리지 않습니다",
+                      source: "machine" as const,
+                      extras: { commentsSection: null, filesSection: null, shotCount: 3 },
+                    },
+              ),
       noteToDeveloper: async () => {
         await later(300);
       },

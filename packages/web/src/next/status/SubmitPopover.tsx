@@ -1,14 +1,17 @@
-import type { SubmitPreview } from "@colonova-design/protocol";
+import type { RepoHandoffDraft, SubmitPreview } from "@colonova-design/protocol";
 import { type CSSProperties, type RefObject, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { composing } from "../../lib/ime";
 import { L } from "../labels";
+import { firstSubjectOf, handoffPreviewOf, previewTitle } from "../lib/handoff-preview";
 import type { Journey } from "../lib/journey";
 import { type SubmitNotice, submitView } from "../lib/submit-view";
+import { useHandoffDraft } from "../lib/use-handoff-draft";
 import type { CycleScreen } from "../lib/work-ledger";
 import { finalOutgoingChanges, outgoingScreens } from "../lib/work-ledger";
 import { ChevronRightIcon, Spin } from "../ui/icons";
 import { ModalBody, ModalFoot, ModalFrame, ModalHead, useModalClose } from "../ui/ModalFrame";
+import { HandoffPreviewBox } from "./HandoffPreviewBox";
 import { FailIcon, LockIcon, ScreenRow, SentIcon, SubmitIcon } from "./parts";
 
 interface SubmitPopoverProps {
@@ -28,6 +31,10 @@ interface SubmitPopoverProps {
   lockReason: string | null;
   /** 마지막 제출의 시각 — 이번에 새로 바뀐 화면을 앞에 세우는 기준(2026-10-04 ux-plan PR1). */
   since: string | null;
+  /** 요청의 초안(제목 · 설명)을 읽는 길 — 개발자에게 보이는 모습의 재료. */
+  loadDraft: () => Promise<RepoHandoffDraft>;
+  /** 이미 열린 요청의 지금 제목 — 더해 제출하면 이 제목이 그대로 남는다. 없으면 null. */
+  openTitle: string | null;
   /** 보내기가 끝났다 — 값이 올라가면 판이 닫는 모션으로 물러난다(잠금도 풀린다). */
   leaveToken: number;
   onRefresh: () => void;
@@ -88,6 +95,8 @@ function SubmitBody({
   changed,
   lockReason,
   since,
+  loadDraft,
+  openTitle,
   leaving,
   summaryId,
   onRefresh,
@@ -137,6 +146,18 @@ function SubmitBody({
       : outsideFiles > 0
         ? L.submitConfirm.summaryOutside(outsideFiles, names)
         : null;
+
+  // 개발자가 처음 읽는 제목과 설명 — 첫 제출에만 읽는다(더하는 제출은 개발자의 글이 그대로다). 데몬의 초안은
+  // 짧은 AI 한 번이라 제출을 붙잡지 않고 따로 읽으며, 작업이 달라져 목록을 다시 읽으면(보관의 끝 표식이 바뀜) 함께 다시 읽는다.
+  const draft = useHandoffDraft(
+    loadDraft,
+    view.showList && !more && !leaving && snapshot !== null,
+    snapshot?.head ?? null,
+  );
+  const preview =
+    draft.status === "ready"
+      ? handoffPreviewOf(draft.draft, firstSubjectOf(snapshot?.history.entries ?? []))
+      : null;
 
   // 눌렸는데 조건이 안 맞을 때의 목적지 — 알림 줄이다. 조용히 끝내지 않는다(2026-10-04 ux-review).
   const notices = useRef<HTMLDivElement>(null);
@@ -278,6 +299,15 @@ function SubmitBody({
             )}
             {view.notices.map(noticeRow)}
           </div>
+        )}
+
+        {view.showList && (
+          <HandoffPreviewBox
+            more={more}
+            openTitle={openTitle === null ? null : previewTitle(openTitle)}
+            loading={draft.status === "loading"}
+            preview={preview}
+          />
         )}
 
         {view.showList && screens.length > 0 && (

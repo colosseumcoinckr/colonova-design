@@ -1313,6 +1313,53 @@
   }
 }
 
+/* 개발자에게는 이렇게 보여요 — 개발자가 처음 읽는 제목과 설명(2026-10-07 UX 점검 3단계). 읽는 중에는 흔한 높이(제목 한 줄 +
+   설명 한 줄)를 비워 두어, 글이 들어와도 아래 목록이 크게 밀리지 않는다. */
+.nx-sub-preview {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+
+.nx-sub-preview--load {
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+}
+
+.nx-sub-pt {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.nx-sub-ps {
+  display: -webkit-box;
+  margin: 4px 0 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink2);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.nx-sub-pm {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink3);
+  word-break: keep-all;
+}
+
 /* 제출할 화면 — 한 줄이 한 화면이고 단추 둘이 줄 끝에 선다. 자리가 모자라면 단추가 아래 줄로 감긴다. */
 .nx-sub-list {
   margin-top: 18px;

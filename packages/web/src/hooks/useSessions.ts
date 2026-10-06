@@ -12,6 +12,11 @@ import type {
 } from "@colonova-design/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Attachment } from "../lib/attachment";
+import {
+  SENT_ORIGINAL_MAX_BYTES,
+  type SentOriginal,
+  sentOriginalBytes,
+} from "../next/lib/retry-send";
 import { shouldDiscardOnFirstFailure } from "../next/lib/session-discard";
 import { resolveSessionTarget } from "../next/lib/session-target";
 
@@ -212,6 +217,12 @@ export interface Sessions {
     pins?: Array<{ screen: string }>,
     pinHints?: SessionPinHint[],
   ) => Promise<void>;
+  /**
+   * 이 앱 실행에서 이 대화로 마지막에 보낸 말의 원본(글 · 첨부의 바이트 · 핀) — `다시 시도` 가
+   * 첨부를 되살리는 몫이다. 대화 기록에는 첨부의 바이트가 없다(개수와 이름뿐). 앱을 다시 켜면
+   * 없다 — 그때는 호출한 쪽이 말만 돌려주고 다시 붙이게 한다.
+   */
+  sentOriginal: (sessionId: string | null) => SentOriginal | null;
   /**
    * 여기서 새 대화(분기): 이 답까지의 기억을 이어받은 새 대화로 갈아탄다 —
    * 원래 대화는 목록에 그대로 남는다. 답은 하나도 나가지 않는다.
@@ -848,6 +859,25 @@ export function useSessions(
     void refresh();
   };
 
+  /**
+   * 보낸 말의 원본 — 대화마다 마지막 하나, 세 대화까지(가장 오래 쓰지 않은 것부터 거둔다).
+   * 첨부가 크면(`SENT_ORIGINAL_MAX_BYTES`) 쥐지 않는다: 메모리를 붙잡는 값이 대화 기록의 몫이 아니다.
+   */
+  const sentOriginals = useRef(new Map<string, SentOriginal>());
+  const rememberSent = (sessionId: string, original: SentOriginal) => {
+    const kept = sentOriginals.current;
+    kept.delete(sessionId);
+    if (sentOriginalBytes(original) > SENT_ORIGINAL_MAX_BYTES) return;
+    kept.set(sessionId, original);
+    while (kept.size > 3) {
+      const oldest = kept.keys().next();
+      if (oldest.done === true) break;
+      kept.delete(oldest.value);
+    }
+  };
+  const sentOriginal = (sessionId: string | null): SentOriginal | null =>
+    sessionId === null ? null : (sentOriginals.current.get(sessionId) ?? null);
+
   const submit = async (
     text: string,
     attachments: Attachment[],
@@ -877,6 +907,13 @@ export function useSessions(
       // 답이 나올 자리가 생겼다 — 갓 태어난 세션의 감시를 푼다.
       newborn.current.delete(target);
       sendsBySession.current.delete(target);
+      // 다시 시도가 첨부를 되살릴 수 있게 원본을 쥔다(수락된 보내기만).
+      rememberSent(target, {
+        text,
+        attachments,
+        ...(pins ? { pins } : {}),
+        ...(pinHints ? { pinHints } : {}),
+      });
       void refresh();
     } catch (e) {
       // 수락이 거절된 보내기엔 대기 표시의 근거가 없다 — 컴포저의 경고 줄이
@@ -1176,6 +1213,7 @@ export function useSessions(
     cancelClear,
     acceptClear,
     submit,
+    sentOriginal,
     branchFrom,
     sendTurn,
     queue,

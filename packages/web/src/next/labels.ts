@@ -473,6 +473,8 @@ export const L = {
     failLimit: "사용량을 다 썼어요. 다시 채워지면 다시 시도로 같은 말을 이어서 물어요.",
     failNotified: "개발자에게도 알렸어요.",
     retryLive: "지금은 스스로 다시 묻는 중이에요",
+    /** 첨부를 되살릴 수 없을 때 — 말만 다시 보내면 AI 가 없는 그림을 어림짐작한다(2026-10-06 UX 점검). */
+    retryReattach: "첨부는 다시 붙여 주세요 · 말은 입력창에 담아 뒀어요",
     historyFailed: "대화 기록을 읽지 못했어요",
     reopen: "다시 열기",
     newContent: "새 내용",

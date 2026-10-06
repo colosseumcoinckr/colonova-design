@@ -17,6 +17,7 @@ import type { TurnScreen } from "../../lib/turn-screens";
 import { L } from "../labels";
 import { connectionLock } from "../lib/connection-copy";
 import { isPreparing } from "../lib/project-note";
+import { planRetry } from "../lib/retry-send";
 import { dedupeScreens } from "../lib/thread";
 import type { ChatColumnProps } from "../slots";
 import { Elapsed } from "../status/Elapsed";
@@ -184,13 +185,16 @@ export function ChatColumn({
       : [marker.screen];
     return [...new Set(words.map(idOf))].map((screen) => ({ screen }));
   };
-  // 다시 시도 — 같은 말을 한 번만(두 번 눌러도 두 번 가지 않게). 원래 말의 몫을
-  // 트랜스크립트가 가진 만큼 되살린다: 핀 묶음의 화면(게이트 입력)과 찍은
-  // 그림, 그리고 표석째의 글(핀의 행은 그 안에 산다).
+  // 다시 시도 — 같은 말을 한 번만(두 번 눌러도 두 번 가지 않게). 대화 기록에는 첨부의 바이트가
+  // 없어서(개수와 이름뿐) 길이 셋이다(2026-10-06 UX 점검):
+  //  · 이 실행에서 보낸 원본을 쥐고 있으면 글 · 첨부 · 핀을 그대로 다시 보낸다.
+  //  · 원본이 없고 되살릴 수 없는 첨부가 있으면 보내지 않는다 — 말만 가면 AI 가 없는 그림을
+  //    어림짐작한다. 말을 입력창에 돌려주고 다시 붙이라고 알린다.
+  //  · 잃는 것이 없으면 기록이 가진 몫으로 다시 짠다: 핀 묶음의 화면(게이트 입력)과 찍은 그림,
+  //    그리고 표석째의 글(핀의 행은 그 안에 산다).
   const retrying = useRef(false);
   const retry = (send: Extract<Block, { type: "user" }>) => {
     if (retrying.current) return;
-    retrying.current = true;
     const { marker } = readTurn(send.text);
     const pins = marker?.kind === "comments" ? pinScreens(marker) : undefined;
     // 되살린 찍은 그림 — 이 창의 화면 응답이 실어 준 몫(라이브 화면에서 본 것).
@@ -206,8 +210,24 @@ export function ChatColumn({
               size: 0,
             }))
         : [];
-    void sessions
-      .submit(send.text, shots, undefined, pins)
+    const plan = planRetry(send, sessions.sentOriginal(sessions.activeId), shots.length);
+    if (plan.kind === "putBack") {
+      putBack(send);
+      nav.toast(L.chat.retryReattach);
+      return;
+    }
+    retrying.current = true;
+    const { original } = plan.kind === "replay" ? plan : { original: null };
+    const run = original
+      ? sessions.submit(
+          original.text,
+          original.attachments,
+          undefined,
+          original.pins,
+          original.pinHints,
+        )
+      : sessions.submit(send.text, shots, undefined, pins);
+    void run
       .catch(() => undefined)
       .finally(() => {
         retrying.current = false;
@@ -251,25 +271,29 @@ export function ChatColumn({
     const branched =
       prompt > 1 ? sessions.branchFrom(prompt - 1) : Promise.resolve(sessions.fresh());
     void branched.then(() => {
-      const { marker } = readTurn(send.text);
-      if (marker?.kind === "comments") {
-        // 핀 묶음 — 문장만 입력창으로 오고, 몫(표석 · 찍은 그림 · 화면)은 다음
-        // 보내기에 원래 턴에서 온다(2026-10-04 ux-plan PR1).
-        pinReplay.current = {
-          sessionId: sessions.activeId,
-          turn: send.text,
-          thumbs: alignThumbs(marker.items, send.thumbs).filter(
-            (thumb): thumb is string => thumb !== null,
-          ),
-          screens: pinScreens(marker),
-        };
-        fill(marker.note ?? "");
-      } else {
-        fill(send.text);
-      }
+      putBack(send);
       setEditHint(true);
       nav.toast(L.transcript.editResendToast);
     });
+  };
+  // 보낸 말을 입력창으로 돌려 놓는다 — 고쳐서 다시 보내기와, 첨부를 되살릴 수 없는 다시 시도가
+  // 같은 길이다. 핀 묶음은 문장만 입력창으로 오고, 몫(표석 · 찍은 그림 · 화면)은 다음 보내기에
+  // 원래 턴에서 온다(2026-10-04 ux-plan PR1).
+  const putBack = (send: Extract<Block, { type: "user" }>) => {
+    const { marker } = readTurn(send.text);
+    if (marker?.kind === "comments") {
+      pinReplay.current = {
+        sessionId: sessions.activeId,
+        turn: send.text,
+        thumbs: alignThumbs(marker.items, send.thumbs).filter(
+          (thumb): thumb is string => thumb !== null,
+        ),
+        screens: pinScreens(marker),
+      };
+      fill(marker.note ?? "");
+    } else {
+      fill(send.text);
+    }
   };
   const fork = (turn: number) => {
     void sessions.branchFrom(turn).then(() => nav.toast(L.transcript.forkToast));

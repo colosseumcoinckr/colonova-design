@@ -164,6 +164,10 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 - `roving.ts` · `use-roving.ts` — 라디오 군의 화살표 걸음 · 로빙 탭 순서(모델 칩의 AI · 모델 · 생각 시간).
 - `use-copied.ts` — 복사 뒤 1.5초만 `복사했어요` 로 바뀌는 단추의 손(`useCopied`). 낭독은 부르는 쪽이 실린다.
 - `use-closing.ts` — 겹판이 닫히는 동안의 모션 타이머 한 곳(`useClosing`).
+- `retry-send.ts` — `planRetry(send, original, restoredShots)` · `SentOriginal`: `다시 시도` 의 길 셋 — 보낸
+  원본을 그대로 다시 · 입력창에 말을 돌려주고 다시 붙이게 · 기록이 가진 몫으로 다시 짜기. 대화 기록에는 첨부의
+  바이트가 없어(개수와 이름뿐) `useSessions.sentOriginal` 이 대화마다 마지막으로 보낸 원본을 쥔다(세 대화 ·
+  `SENT_ORIGINAL_MAX_BYTES` 까지, 앱을 다시 켜면 없다).
 - `agent-fix.ts` · `settings-shell.ts` · `reset-scope.ts` — 설정의 판정: AI 카드의 설치 · 로그인 진행과 실패 ·
   닫기 보호와 이름 칸의 Esc · 전체 초기화가 지우는 것의 크기.
 - `shortcut-sheet.ts` — 단축키 시트의 묶음 · 키캡 조각(`keyHint` 로 이 컴퓨터에 맞춘 표기를 받아 쪼갠다).

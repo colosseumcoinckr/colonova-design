@@ -1095,7 +1095,8 @@ export const L = {
       "github-light": "GitHub 밝음",
       github: "GitHub 어두움",
     },
-    notifySub: "확인 요청과 멈춤은 언제나 알려요",
+    /** 고를 수 있는 것은 `다 만들었을 때` 뿐이다 — 나머지(확인 요청 · 멈춤 · 게이트 실패 · 제출 막힘 · 개발자 쪽 사건)는 언제나 온다(notify-policy.ts). */
+    notifySub: "내가 봐야 할 일과 개발자 쪽 소식은 언제나 알려요",
     notifyDone: "다 만들었을 때",
     notifyOff: "끔",
     notifyLong: "오래 걸린 답만",
@@ -1163,7 +1164,7 @@ export const L = {
     nameSaving: "이름을 저장하는 중…",
     nameSaveFailed: "이름을 저장하지 못했어요 — 다시 시도해 주세요",
     authorPlaceholder: "비워 둘 수도 있어요",
-    notifyOffNote: "끝났다는 알림은 없어요 — 확인 요청과 멈춤은 계속 와요",
+    notifyOffNote: "끝났다는 알림은 없어요 — 내가 봐야 할 일과 개발자 쪽 소식은 계속 와요",
     notifyLongNote: (minutes: number) => `${minutes}분 넘게 걸린 답만 알려요`,
     notifyAllNote: "답이 끝날 때마다 알려요",
     testSending: "보내는 중…",

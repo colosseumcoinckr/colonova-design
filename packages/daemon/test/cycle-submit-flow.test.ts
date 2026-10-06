@@ -418,6 +418,31 @@ test("확인한 화면 — 막혀 재시도하는 동안 다시 누르면 새 �
   }
 });
 
+test("요청이 열린 때 — 만들 때 GitHub 의 created_at 이 since 로 서고, 모르는 옛 기록은 다음 틱이 채운다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    scene.supervisor.submit("chat");
+    await scene.supervisor.settled();
+    const opened = scene.core.openHandoff;
+    assert.ok(opened);
+    assert.equal(opened.since, "2026-09-24T09:00:00.000Z", "요청을 만든 응답의 created_at");
+
+    // 이 변경 전에 열린 요청은 since 가 없다 — 레지스트리가 쥔 값에서 빠뜨린 채 다음 관찰을 맞는다.
+    const { since: _gone, ...old } = opened;
+    scene.core.setCycle(scene.core.branch, old);
+    assert.equal(scene.core.openHandoff?.since, undefined);
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.core.openHandoff?.since, "2026-09-24T09:00:00.000Z");
+    // 알고 있는 값은 건드리지 않는다.
+    const known = scene.core.openHandoff;
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.core.openHandoff?.since, known?.since);
+  } finally {
+    await scene.dispose();
+  }
+});
+
 test("채팅 제출은 한마디 없이 그대로 간다 — 줄도 사건의 note 도 없다", async () => {
   const scene = await makeSupervisedScene();
   try {

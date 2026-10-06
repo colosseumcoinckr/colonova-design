@@ -199,6 +199,8 @@ interface Case {
   repo?: Partial<RepoStatus>;
   running?: boolean;
   comments?: number;
+  /** 요청이 열린 지 달력으로 며칠인가(0 = 오늘) — 코멘트가 없는 기다림의 `N일째`. */
+  waitingDays?: number;
   phase?: "read" | "file" | "command" | null;
   width?: number;
   narrow?: boolean;
@@ -235,6 +237,13 @@ const BASE_CASES: Case[] = [
     title: "결제 내역 표를 월별로 묶어 줘",
     repo: { handoff: handoff("open"), cycleScreens: SCREENS },
     comments: 2,
+  },
+  {
+    id: "q",
+    label: "q · 제출함 · 개발자 확인을 기다려요 · 3일째(코멘트 없음)",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: { handoff: handoff("open"), cycleScreens: SCREENS },
+    waitingDays: 2,
   },
   {
     id: "f",
@@ -300,7 +309,7 @@ const BASE_CASES: Case[] = [
 /** `?sweep=1` — 같은 상태(a · d · e · g)를 여러 막대 폭으로 늘어놓는다. 접히는 순서와 겹침을 본다. */
 const SWEEP_WIDTHS = [1500, 1300, 1150, 1000, 900, 800, 700, 620, 540];
 const SWEEP: Case[] = SWEEP_WIDTHS.flatMap((width) =>
-  BASE_CASES.filter((spec) => ["a", "d", "e", "g"].includes(spec.id)).map((spec) => ({
+  BASE_CASES.filter((spec) => ["a", "d", "e", "g", "q"].includes(spec.id)).map((spec) => ({
     ...spec,
     id: `${spec.id}-${width}`,
     label: `${spec.id} @ ${width}`,
@@ -344,6 +353,7 @@ function Row({ spec }: { spec: Case }) {
       diffStatus: null,
       running: spec.running ?? false,
       comments: spec.comments ?? 0,
+      ...(spec.waitingDays === undefined ? {} : { waitingDays: spec.waitingDays }),
       submitCopy: copy,
     },
     L,

@@ -90,6 +90,11 @@ export interface HandoffStatus {
    * (`undefined`), which the UI treats like empty.
    */
   reviewers?: string[];
+  /**
+   * 요청이 열린 때 (2026-10-07 UX 점검 3단계) — GitHub 의 `created_at`, ISO 8601. 상태 줄이 `N일째` 를 말하는
+   * 재료다. 옛 기록에는 없고(`undefined`) 다음 관찰 틱이 채운다 — 없으면 며칠째인지 말하지 않는다.
+   */
+  since?: string;
 }
 
 /**

@@ -150,6 +150,8 @@ interface MemPull {
   mergeableState: string | null;
   /** 닫힘(병합 · 반려) 시각 — 반려 이유의 7일 창 재료 (PLAN L9). */
   closedAt: string | null;
+  /** 요청이 열린 때 — GitHub 의 created_at(2026-10-07: 며칠째의 재료). */
+  createdAt: string;
 }
 
 interface MemIssue {
@@ -449,6 +451,7 @@ export class MemoryGitHub implements RestTransport {
       head: { ref: pull.head, sha: pull.headSha },
       base: { ref: pull.base },
       closed_at: pull.closedAt,
+      created_at: pull.createdAt,
     };
   }
 
@@ -522,6 +525,7 @@ export class MemoryGitHub implements RestTransport {
       merged: false,
       mergeableState: null,
       closedAt: null,
+      createdAt: "2026-09-24T09:00:00.000Z",
     });
     return number;
   }

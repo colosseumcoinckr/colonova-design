@@ -340,6 +340,7 @@ export async function observeCycle(
         // 없는 sha 는 빈 문자열로 — countAfterPrHead 의 넉넉한 규칙이 이어받는다.
         headSha: detail.headSha ?? "",
         mergeableState: detail.mergeableState,
+        ...(detail.since === undefined ? {} : { since: detail.since }),
       };
     } catch {
       pr = null;

@@ -111,6 +111,41 @@ test("개발자 확인 — 둘째 점이 지금 점, 코멘트 수가 붙는다"
   }
 });
 
+test("개발자 확인 — 코멘트가 없는 기다림에는 며칠째가 붙는다 — 제출한 날이 1일째", () => {
+  const label = (
+    days: number | null | undefined,
+    comments = 0,
+    state: HandoffStatus["state"] = "open",
+  ) =>
+    run(
+      { branch: "b", handoff: handoff(state) },
+      { comments, ...(days === undefined ? {} : { waitingDays: days }) },
+    ).points[1].label;
+  // 오늘 낸 것(0)과 때를 모르는 것(null · 없음)은 말할 것이 없다 — 지금의 문장 그대로다.
+  assert.equal(label(0), L.journey.reviewing);
+  assert.equal(label(null), L.journey.reviewing);
+  assert.equal(label(undefined), L.journey.reviewing);
+  // 어제 낸 것은 오늘 2일째, 엿새 전이면 7일째.
+  assert.equal(label(1), "개발자 확인을 기다려요 · 2일째");
+  assert.equal(label(6), "개발자 확인을 기다려요 · 7일째");
+  assert.equal(label(1), L.journey.reviewingDays(2));
+});
+
+test("개발자 확인 — 코멘트가 오면 그 수가 며칠째보다 앞선다, 열린 요청이 아니면 며칠째를 말하지 않는다", () => {
+  const label = (state: HandoffStatus["state"], comments: number) =>
+    run({ branch: "b", handoff: handoff(state) }, { comments, waitingDays: 4 }).points[1].label;
+  assert.equal(label("open", 2), "개발자 확인을 기다려요 · 코멘트 2");
+  // 변경이 청해진 요청은 공이 우리 쪽에 있고, 닫힌 요청은 기다리는 것이 아니다.
+  assert.equal(label("changes_requested", 0), L.journey.reviewing);
+  assert.equal(label("closed", 0), L.journey.reviewing);
+});
+
+test("며칠째 문장은 코멘트 문장보다 짧다 — 상태 줄의 접힘 문턱이 가장 긴 문장으로 재어져 있다", () => {
+  // `@container nxwork` 문턱은 `· 코멘트 N` 변형이 가장 긴 것으로 쟀다(status.css). 세 자리 날수도 넘지 않는다.
+  assert.ok(L.journey.reviewingDays(100).length <= L.journey.reviewingComments(10).length);
+  assert.ok(L.journey.reviewingDays(12).length < L.journey.reviewingComments(12).length);
+});
+
 test("열린 요청 — 보낸 뒤 바뀐 화면을 세고, 없으면 잠근다", () => {
   const log = [{ at: "2026-09-25T02:00:00Z", text: "제출했어요" }];
   const base = {

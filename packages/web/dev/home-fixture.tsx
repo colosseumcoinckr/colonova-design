@@ -123,6 +123,20 @@ const view = (more: Record<string, unknown> = {}) => ({
   ...more,
 });
 
+/** 개발자에게 넘긴 요청 — `daysAgo` 일 전에 열렸다(null 이면 때를 모른다). */
+const requestOpen = (
+  daysAgo: number | null,
+  state: "open" | "changes_requested" | "merged" = "open",
+) => ({
+  number: 12,
+  url: "https://github.com/example/app/pull/12",
+  title: "feat(members): 회원 목록 검색",
+  state,
+  branch: "colonova-design/20261001-1",
+  reviewers: ["kim"],
+  ...(daysAgo === null ? {} : { since: new Date(Date.now() - daysAgo * 86_400_000).toISOString() }),
+});
+
 const CASES: Case[] = [
   {
     id: "a",
@@ -271,6 +285,43 @@ const CASES: Case[] = [
       { route: "/members", title: "회원 목록", note: "검색창", at: ago(30) },
       { route: "/payments", title: "결제 내역", note: "월별", at: ago(95) },
     ],
+  },
+  {
+    id: "g",
+    label:
+      "g · 개발자 확인을 기다리는 요청 — `지금 진행 중` 에 며칠째로 선다(오래 기다린 것이 먼저 · 때를 모르는 것은 맨 뒤 · 변경이 청해졌거나 반영된 요청은 안 선다) · 답을 기다려요 수에는 안 센다",
+    projects: [
+      project(
+        "colonova-cdp",
+        "colonova-cdp",
+        rowsOf([
+          {
+            id: "w1",
+            title: "대시보드 카드 색을 브랜드 색으로 맞춰 줘",
+            at: ago(1),
+            state: "running",
+          },
+          ...HISTORY.slice(0, 2),
+        ]),
+        { handoff: requestOpen(2) },
+      ),
+      project("billing-web", "billing-web", [], { handoff: requestOpen(0) }),
+      project("marketing-site", "marketing-site", [], { handoff: requestOpen(7) }),
+      project("admin-console", "admin-console", [], { handoff: requestOpen(null) }),
+      project("docs-portal", "docs-portal", [], { handoff: requestOpen(9, "merged") }),
+      project("legacy-app", "legacy-app", [], { handoff: requestOpen(4, "changes_requested") }),
+    ],
+    activeSlug: "colonova-cdp",
+  },
+  {
+    id: "h",
+    label: "h · 기다리는 요청 하나뿐 — 다른 일은 없어서 `지금 진행 중` 이 이 한 줄로만 선다",
+    projects: [
+      project("colonova-cdp", "colonova-cdp", rowsOf(HISTORY.slice(0, 3)), {
+        handoff: requestOpen(1),
+      }),
+    ],
+    activeSlug: "colonova-cdp",
   },
 ];
 

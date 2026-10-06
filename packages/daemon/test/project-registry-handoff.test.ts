@@ -9,7 +9,10 @@ import { test } from "node:test";
 import { ProjectRegistry } from "../dist/projects.js";
 
 /** 데몬이 쓴 projects.json 의 모습 — 손으로 쓴 파일이 아니라 도구의 출력이다. */
-function registryWithHandoff(reviewers: unknown): { registry: ProjectRegistry; dir: string } {
+function registryWithHandoff(
+  reviewers: unknown,
+  extra: Record<string, unknown> = {},
+): { registry: ProjectRegistry; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "project-registry-handoff-"));
   const file = join(dir, "projects.json");
   writeFileSync(
@@ -28,6 +31,7 @@ function registryWithHandoff(reviewers: unknown): { registry: ProjectRegistry; d
               state: "open",
               branch: "colonova-design/20260924-1",
               reviewers,
+              ...extra,
             },
           },
         },
@@ -72,5 +76,27 @@ test("문자열 배열이 아니면 필드만 버린다 — handoff 자체는 �
     assert.equal(handoff?.number, 7);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("handoff 의 since 가 왕복한다 — 재시작 뒤에도 며칠째가 산다", () => {
+  const { registry, dir } = registryWithHandoff(["dev1"], { since: "2026-10-01T01:35:00Z" });
+  try {
+    assert.equal(registry.get("a")?.repo.handoff?.since, "2026-10-01T01:35:00Z");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("읽히지 않는 since 는 필드만 버린다 — 깨진 날짜로 며칠째를 말하지 않는다", () => {
+  for (const bad of ["어제", "", 7, null, { at: 1 }]) {
+    const { registry, dir } = registryWithHandoff(["dev1"], { since: bad });
+    try {
+      const handoff = registry.get("a")?.repo.handoff;
+      assert.equal(handoff?.number, 7, "handoff 자체는 산다");
+      assert.equal(handoff?.since, undefined);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 });

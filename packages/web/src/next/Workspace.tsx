@@ -17,6 +17,8 @@ import { CHAT_MIN, PREVIEW_MIN } from "./lib/shell-metrics";
 import { submitCopy } from "./lib/submit-copy";
 import { useNarrow, useShellNav } from "./lib/use-shell-nav";
 import { useSidebarWidth } from "./lib/use-sidebar-width";
+import { useToday } from "./lib/use-today";
+import { daysSince } from "./lib/waiting";
 import { commentCount, outsideChanges } from "./lib/work-ledger";
 import type { NextShellProps } from "./NextShell";
 import { PreviewColumn } from "./preview/PreviewColumn";
@@ -156,6 +158,8 @@ export function Workspace({
   // 단계 4 — 제출 상태의 문장과 이번 작업의 장부(코멘트 수가 여정의 둘째 점에 붙는다).
   const ledger = useWorkLedger(daemon);
   const copy = submitCopy(daemon.repo?.submit, L);
+  // 오늘의 자정 — 자정이 지나면 갈아 끼워 `N일째` 가 저절로 는다(2026-10-07 UX 점검 3단계).
+  const today = useToday();
   const journey = deriveJourney(
     {
       repo: daemon.repo,
@@ -164,6 +168,7 @@ export function Workspace({
       reconnect: attention?.kind === "reconnect",
       comments: commentCount(ledger.reviews),
       outsideChanges: outsideChanges(ledger.history, daemon.repo?.cycleScreens, copy.lastAt),
+      waitingDays: daysSince(daemon.repo?.handoff?.since, today),
       submitCopy: copy,
     },
     L,

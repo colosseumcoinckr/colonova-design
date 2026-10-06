@@ -88,6 +88,7 @@ export function HomeView({
           titleFor={titleFor}
           onOpenThread={nav.openThread}
           onSwitch={nav.switchProject}
+          onOpenWork={nav.showThread}
         />
       </div>
     </div>

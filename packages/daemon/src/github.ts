@@ -33,6 +33,8 @@ export interface PullRequestRef {
   branch: string;
   /** Who the repo's own rules asked to review, as reported on the PR itself. */
   reviewers: string[];
+  /** 요청이 열린 때(GitHub 의 `created_at`) — 읽을 수 없으면 없다. */
+  since?: string;
 }
 /**
  * getPullRequest 의 관찰 확장 (PLAN L2 · 단계 2b) — 감독자(cycle-observe)가
@@ -1015,12 +1017,18 @@ function refOf(data: Record<string, any>): Omit<PullRequestRef, "state"> {
         .map((row: Record<string, any>) => String(row?.login ?? ""))
         .filter((login: string) => login !== "")
     : [];
+  // created_at 이 ISO 로 읽히지 않으면 없는 것이다 — 깨진 날짜로 며칠째를 말하지 않는다.
+  const since =
+    typeof data.created_at === "string" && !Number.isNaN(Date.parse(data.created_at))
+      ? data.created_at
+      : undefined;
   return {
     number: Number(data.number),
     url: String(data.html_url ?? ""),
     title: String(data.title ?? ""),
     branch: String(data.head?.ref ?? ""),
     reviewers,
+    ...(since === undefined ? {} : { since }),
   };
 }
 

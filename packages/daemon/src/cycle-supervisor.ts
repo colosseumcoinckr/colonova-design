@@ -617,13 +617,17 @@ export class CycleSupervisor {
         snapshot.pr !== null &&
         snapshot.pr.state !== "merged" &&
         snapshot.pr.state !== "closed" &&
-        openHandoff !== null &&
-        snapshot.pr.state !== snapshot.handoffState
+        openHandoff !== null
       ) {
-        this.deps.core.setCycle(this.deps.core.branch, {
-          ...openHandoff,
-          state: snapshot.pr.state,
-        });
+        // 요청이 열린 때를 모르는 옛 기록은 이 틱이 채운다 — 며칠째인지 말하는 재료다(2026-10-07).
+        const since = openHandoff.since === undefined ? snapshot.pr.since : undefined;
+        if (snapshot.pr.state !== snapshot.handoffState || since !== undefined) {
+          this.deps.core.setCycle(this.deps.core.branch, {
+            ...openHandoff,
+            state: snapshot.pr.state,
+            ...(since === undefined ? {} : { since }),
+          });
+        }
       }
       for (let round = 0; round < MAX_TICK_ROUNDS; round++) {
         const decision = nextCycleAction(snapshot, this.ledger);

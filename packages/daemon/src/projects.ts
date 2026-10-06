@@ -190,6 +190,8 @@ function parseHandoff(raw: unknown): HandoffStatus | null {
     return null;
   }
   const reviewers = parseHandoffReviewers(value.reviewers);
+  const sinceText = cleanString(value.since);
+  const since = sinceText !== null && !Number.isNaN(Date.parse(sinceText)) ? sinceText : undefined;
   return {
     number: value.number,
     url,
@@ -199,6 +201,8 @@ function parseHandoff(raw: unknown): HandoffStatus | null {
     // 데몬이 쓴 reviewers 도 왕복한다 — 읽는 쪽이 버리면 재시작 뒤 리뷰어
     // 줄이 사라진다(PLAN L10 · 단계 0).
     ...(reviewers === undefined ? {} : { reviewers }),
+    // 요청이 열린 때(2026-10-07) — 읽는 쪽이 버리면 재시작 뒤 며칠째가 사라진다.
+    ...(since === undefined ? {} : { since }),
   };
 }
 

@@ -63,6 +63,11 @@ export const L = {
     // 열린 요청이 있다는 것만 안다 — 개발자가 실제로 열어 봤는지는 모른다. 아는 만큼만 말한다.
     reviewing: "개발자 확인을 기다려요",
     reviewingComments: (n: number) => `개발자 확인을 기다려요 · 코멘트 ${n}`,
+    /**
+     * 코멘트가 아직 없는 기다림에 며칠째인지 붙는다(2026-10-07 UX 점검 3단계) — 제출한 날이 1일째, 자정이 지나면 하루씩 는다.
+     * 코멘트 변형보다 짧아 상태 줄의 접힘 문턱을 건드리지 않는다.
+     */
+    reviewingDays: (n: number) => `개발자 확인을 기다려요 · ${n}일째`,
     reviewed: "확인됨",
     merged: "개발자 반영",
     mergedNow: "개발자 반영 완료",
@@ -130,6 +135,8 @@ export const L = {
     waiting: "답을 기다려요",
     calm: "기다리는 일이 없어요",
     running: "지금 진행 중",
+    /** 개발자 확인을 기다리는 요청의 며칠째 — 오늘 낸 것은 `오늘 제출`, 그 뒤로는 제출한 날이 1일째(2026-10-07). */
+    waitingFor: (days: number) => (days >= 1 ? `${days + 1}일째` : "오늘 제출"),
     recent: "방금 있던 일",
     workingTool: (tool: string) => `${tool} 하는 중이에요`,
     working: "작업하는 중이에요",

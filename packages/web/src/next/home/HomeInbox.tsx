@@ -10,6 +10,8 @@ import { type AskingItem, buildHomeFeed } from "../lib/home-feed";
 import { isPreparing } from "../lib/project-note";
 import { agentUpdateEvents } from "../lib/update-row";
 import { useFreshKeys } from "../lib/use-fresh-keys";
+import { useToday } from "../lib/use-today";
+import { waitingRows } from "../lib/waiting";
 import { Elapsed } from "../status/Elapsed";
 import { Count } from "../ui/Count";
 import {
@@ -122,18 +124,25 @@ function Row({
  *
  * 비어 있는 묶음은 서지 않는다(2026-10-06) — `지금 진행 중 0` · `도는 작업이 없어요` 를 홈이 늘 말하던
  * 것을, 있는 것만 서고 모두 비면 차분한 한 줄만 남긴다.
+ *
+ * 개발자 확인을 기다리는 요청(2026-10-07 UX 점검 3단계)은 `지금 진행 중` 에 한 줄로 선다 — `개발자 확인을 기다려요`
+ * 와 며칠째. 사용자의 손이 필요한 일이 아니라서 `답을 기다려요` 의 수에도, 사이드바의 배지에도 세지 않고 눌러서 그
+ * 프로젝트로 갈 뿐이다. 도는 표식이 없는 줄이라 AI 가 일하는 줄과 눈으로 갈린다.
  */
 export function HomeInbox({
   daemon,
   titleFor,
   onOpenThread,
   onSwitch,
+  onOpenWork,
 }: {
   daemon: Daemon;
   /** 대화의 표시 이름 — 사용자가 바꾼 이름을 따른다(사이드바와 같은 이름). */
   titleFor?: (thread: ThreadSummary) => string;
   onOpenThread: (slug: string, threadId: string) => void;
   onSwitch: (slug: string) => void;
+  /** 이미 열려 있는 프로젝트의 작업 보기로 간다 — `onSwitch` 는 같은 프로젝트면 아무 데도 가지 않는다. */
+  onOpenWork: () => void;
 }) {
   const feed = useMemo(
     () =>
@@ -161,7 +170,10 @@ export function HomeInbox({
       (a, b) => (Date.parse(b.lastEventAt ?? "") || 0) - (Date.parse(a.lastEventAt ?? "") || 0),
     );
   const waitCount = feed.asking.length + otherWaiting.length;
-  const runCount = feed.running.length + preparing.length + otherWorking.length;
+  // 자정이 지나면 갈아 끼워 며칠째가 저절로 는다.
+  const today = useToday();
+  const waitingDev = useMemo(() => waitingRows(daemon.projects, today), [daemon.projects, today]);
+  const runCount = feed.running.length + preparing.length + otherWorking.length + waitingDev.length;
   // 도구가 스스로 한 일(J6) — AI 프로그램 업데이트는 할 일이 아니라 한 줄 소식이다.
   const updateEvents = agentUpdateEvents(
     daemon.status?.agentUpdates,
@@ -181,6 +193,7 @@ export function HomeInbox({
     ...feed.running.map((item) => `run-${item.sessionId}`),
     ...preparing.map((project) => `prep-${project.slug}`),
     ...otherWorking.map((project) => `work-${project.slug}`),
+    ...waitingDev.map((row) => `dev-${row.slug}`),
     ...feed.resume.map((item) => `resume-${item.sessionId}`),
     ...feed.done.map((item) => `done-${item.sessionId}`),
     ...otherEvents.map((project) => `event-${project.slug}`),
@@ -410,6 +423,17 @@ export function HomeInbox({
                 </>
               }
               onClick={() => onSwitch(project.slug)}
+            />
+          ))}
+          {waitingDev.map((row) => (
+            <Row
+              key={`dev-${row.slug}`}
+              className={rowClass(`dev-${row.slug}`)}
+              lead={<ProjectMark slug={row.slug} name={row.name} size="sm" />}
+              title={row.name}
+              sub={L.cycle.review}
+              meta={row.days !== null && L.home.waitingFor(row.days)}
+              onClick={() => (row.slug === active?.slug ? onOpenWork() : onSwitch(row.slug))}
             />
           ))}
         </details>

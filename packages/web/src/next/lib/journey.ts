@@ -60,6 +60,11 @@ export interface JourneyInput {
   comments?: number;
   /** 마지막 제출 뒤 저장된 변경 중 화면 목록에 나타나지 않는 기록 수. */
   outsideChanges?: number;
+  /**
+   * 요청이 열린 지 달력으로 며칠인가(0 = 오늘) — 개발자 확인을 기다리는 동안 코멘트가 아직 없으면 `N일째` 가 붙는다
+   * (2026-10-07 UX 점검 3단계). 모르면 붙이지 않는다. 계산은 `lib/waiting.ts`, 오늘의 자정은 부르는 쪽의 것이다.
+   */
+  waitingDays?: number | null;
   /** 제출 상태의 문장 — `submitCopy(repo?.submit, L)`(U13). 막힘 · 도는 중을 이것이 말한다. */
   submitCopy: SubmitCopy;
 }
@@ -92,6 +97,10 @@ export function deriveJourney(input: JourneyInput, words: JourneyWords): Journey
   const copy = input.submitCopy;
   const blocked = copy.phase === "blocked";
   const comments = input.comments ?? 0;
+  // 며칠째는 코멘트가 아직 없고 개발자의 확인을 기다리는 요청(`open`)에만 붙는다 — 코멘트가 오면 그 수가 더 급한 말이고,
+  // 변경이 청해졌거나 닫힌 요청은 기다리는 것이 아니다. 제출한 날(0)은 말할 것이 없다.
+  const days = input.waitingDays ?? null;
+  const waitingDays = handoff?.state === "open" && days !== null && days >= 1 ? days + 1 : null;
 
   // 병합 뒤에 쌓인 작업은 새 사이클이다 — `반영됐어요` 가 넘길 일감을 가리지 않는다.
   const cycle: JourneyCycle =
@@ -116,7 +125,12 @@ export function deriveJourney(input: JourneyInput, words: JourneyWords): Journey
         ? [
             { label: J.submittedDone, state: "done" },
             {
-              label: comments > 0 ? J.reviewingComments(comments) : J.reviewing,
+              label:
+                comments > 0
+                  ? J.reviewingComments(comments)
+                  : waitingDays !== null
+                    ? J.reviewingDays(waitingDays)
+                    : J.reviewing,
               state: "cur",
             },
             { label: J.merged, state: "todo" },

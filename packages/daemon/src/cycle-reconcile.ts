@@ -54,6 +54,8 @@ export interface CycleSnapshot {
     state: "open" | "changes_requested" | "merged" | "closed";
     headSha: string;
     mergeableState: string | null;
+    /** 요청이 열린 때 — 레지스트리가 모르면(옛 기록) 감독자가 이것으로 채운다. */
+    since?: string;
   };
   /** 병합은 rev-list <prHead>..HEAD 수, 반려는 브랜치 전체 커밋 수. */
   commitsAfterPrHead: number | null;

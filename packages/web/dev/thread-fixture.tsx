@@ -357,6 +357,45 @@ const queueItems = [
   { id: "qi2", text: "", images: 1, files: 1 },
 ];
 
+/**
+ * `?scene=receipt` — 제출 영수증. 첫 제출에는 소식이 오는 길 한 줄(`개발자 소식은 앱이 켜져 있으면…`)이 서고,
+ * 같은 요청에 더한 제출에는 그 줄이 없다(2026-10-06).
+ */
+const done = (id: string): Block => ({
+  type: "turn",
+  id,
+  subtype: "success",
+  isError: false,
+  costUsd: null,
+  durationMs: null,
+  resultText: null,
+});
+const receipts: Block[] = [
+  user("rc1", "회원 목록에 검색창을 넣어 줘."),
+  answer("rc1a", "검색창을 넣었어요."),
+  done("rce1"),
+  {
+    type: "milestone",
+    id: "rcm1",
+    subtype: "handed",
+    at: "2026-10-06T10:00:00+09:00",
+    pr: 12,
+    reviewer: "kim",
+    note: "급하지 않아요",
+  },
+  user("rc2", "빈 결과 안내도 넣어 줘."),
+  answer("rc2a", "안내 문구를 넣었어요."),
+  done("rce2"),
+  {
+    type: "milestone",
+    id: "rcm2",
+    subtype: "handed",
+    at: "2026-10-06T11:00:00+09:00",
+    pr: 12,
+    reviewer: "kim",
+  },
+];
+
 const scene = query.get("scene");
 
 /** 도는 답 견본 — 사람 말이 올라온 뒤 글이 이어지고 마감까지를 시간대로 밟는다. */
@@ -468,7 +507,15 @@ function Fixture() {
       <section className="nx-chat" style={{ width: COLUMN, margin: "0 auto" }}>
         <div className="nx-transcript">
           <Thread
-            blocks={scene === "repro" ? repro : scene === "queue" ? queued : blocks}
+            blocks={
+              scene === "repro"
+                ? repro
+                : scene === "queue"
+                  ? queued
+                  : scene === "receipt"
+                    ? receipts
+                    : blocks
+            }
             live={scene === "queue"}
             showThinking={false}
             showTools={false}

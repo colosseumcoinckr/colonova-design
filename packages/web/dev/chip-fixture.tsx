@@ -19,6 +19,8 @@
  *   ?usage=ok|loading|failed|empty  사용량 읽기 — ok(0.7초 뒤 읽힘) · loading(끝내 안 옴) · failed · empty(요금제에 한도 없음)
  *   ?models=few|many             모델 줄 수 — many 는 거르는 칸이 서는 길이(기본 few)
  *   ?w=460                       입력창 칸의 폭
+ *   ?pins=7                      핀 N개를 입력창에 담아 본다(첫 핀만 메모가 있다) — 여섯을 넘으면 사진 한도 안내가 선다
+ *   ?notes=0                     핀 메모를 모두 비운다 — 보내기를 누르면 `말 없는 핀` 안내가 선다
  */
 
 import type { EffortLevel, PlanUsage, SessionModelInfo } from "@colonova-design/protocol";
@@ -43,6 +45,20 @@ const AI_COUNT = query.get("ai") === "1" ? 1 : 2;
 const USAGE = query.get("usage") ?? "ok";
 const MANY = query.get("models") === "many";
 const WIDTH = Number(query.get("w")) || 460;
+const PIN_COUNT = Number(query.get("pins")) || 0;
+const PIN_NOTES = query.get("notes") !== "0";
+/** `?pins=N` — 입력창의 핀 줄 견본. 첫 핀만 메모가 있어 `말 없는 핀` 판정도 눈으로 본다. */
+const PINS = Array.from({ length: PIN_COUNT }, (_, index) => ({
+  id: `p${index + 1}`,
+  screen: "members",
+  note: index === 0 && PIN_NOTES ? "버튼을 더 크게" : "",
+  element: {
+    component: "button",
+    text: `단추 ${index + 1}`,
+    path: `body > main > button:nth-of-type(${index + 1})`,
+    rect: { x: 10, y: 10 + index * 30, width: 80, height: 24 },
+  },
+}));
 
 const row = (parts: Partial<SessionModelInfo>): SessionModelInfo => ({
   value: "opus",
@@ -241,6 +257,11 @@ function Case({
           subject={chip.subject}
           draftKey={`fixture-${id}`}
           placeholder="무엇을 만들까요?"
+          pins={PINS}
+          onPinNote={() => {}}
+          onPinRemove={() => {}}
+          onPinFocus={() => {}}
+          onToast={() => {}}
           onSend={async () => {}}
         />
       </div>

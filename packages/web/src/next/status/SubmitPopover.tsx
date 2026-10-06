@@ -1,5 +1,5 @@
 import type { RepoHandoffDraft, SubmitPreview, SubmitSent } from "@colonova-design/protocol";
-import { type CSSProperties, type RefObject, useEffect, useId, useRef } from "react";
+import { type CSSProperties, type RefObject, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { composing } from "../../lib/ime";
 import { L } from "../labels";
@@ -151,9 +151,11 @@ function SubmitBody({
 
   // 개발자가 처음 읽는 제목과 설명 — 첫 제출에만 읽는다(더하는 제출은 개발자의 글이 그대로다). 데몬의 초안은
   // 짧은 AI 한 번이라 제출을 붙잡지 않고 따로 읽으며, 작업이 달라져 목록을 다시 읽으면(보관의 끝 표식이 바뀜) 함께 다시 읽는다.
+  // 첫 제출이 성공하면 요청이 열려 `more` 가 켜진다 — 닫히는 동안 상자가 `이미 열린 요청` 으로 바뀌지 않게 열릴 때의 값을 쥔다.
+  const [moreAtOpen] = useState(more);
   const draft = useHandoffDraft(
     loadDraft,
-    view.showList && !more && !leaving && snapshot !== null,
+    view.showList && !moreAtOpen && snapshot !== null,
     snapshot?.head ?? null,
   );
   const preview =
@@ -305,7 +307,7 @@ function SubmitBody({
 
         {view.showList && (
           <HandoffPreviewBox
-            more={more}
+            more={moreAtOpen}
             openTitle={openTitle === null ? null : previewTitle(openTitle)}
             loading={draft.status === "loading"}
             preview={preview}

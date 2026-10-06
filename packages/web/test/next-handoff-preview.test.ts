@@ -154,8 +154,11 @@ test("제출 확인은 첫 제출에만 초안을 읽고, 보관의 끝 표식�
   const popover = read("../src/next/status/SubmitPopover.tsx");
   assert.match(
     popover,
-    /useHandoffDraft\(\s*loadDraft,\s*view\.showList && !more && !leaving && snapshot !== null,\s*snapshot\?\.head \?\? null,\s*\)/,
+    /useHandoffDraft\(\s*loadDraft,\s*view\.showList && !moreAtOpen && snapshot !== null,\s*snapshot\?\.head \?\? null,\s*\)/,
   );
+  // 열릴 때의 값을 쥔다 — 제출이 성공해 요청이 열려도 닫히는 동안 상자가 바뀌지 않는다.
+  assert.match(popover, /const \[moreAtOpen\] = useState\(more\);/);
+  assert.match(popover, /more=\{moreAtOpen\}/);
   // 더하는 제출은 개발자의 글이 그대로라 지금 제목만 말한다.
   assert.match(popover, /openTitle=\{openTitle === null \? null : previewTitle\(openTitle\)\}/);
 });

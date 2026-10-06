@@ -19,6 +19,7 @@ import { replyFooter } from "./developer-replies.js";
 import {
   buildCommentsSection,
   buildFilesSection,
+  formatHandoffTitle,
   noteLine,
   TOOL_BLOCK_END,
   TOOL_BLOCK_START,
@@ -445,7 +446,6 @@ export class PublishCycle {
     }
 
     this.core.setDiff({ stage: "handing-off" });
-    const title = options.title?.trim() || DEFAULT_HANDOFF_TITLE;
     let body = options.body ?? "";
     // P1-3: 작성자 줄 — 요청은 봇 계정으로 열리므로 이름이 없으면 개발자가 누구
     // 작업인지 모른다. 본문 서두 다음, `### 바뀐 파일` 절보다 앞에 인용문 한 줄로.
@@ -532,14 +532,13 @@ export class PublishCycle {
           ? await client.updatePullRequest({
               ...slug,
               number: open.number,
-              title,
               body,
             })
           : await client.createPullRequest({
               ...slug,
               head: branch,
               base: this.core.baseBranch,
-              title,
+              title: formatHandoffTitle(options.title?.trim() || DEFAULT_HANDOFF_TITLE, author),
               body,
             });
       let handoff: HandoffStatus = pull;

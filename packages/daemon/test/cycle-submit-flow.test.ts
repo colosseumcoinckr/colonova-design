@@ -213,11 +213,13 @@ test("끝난 PR (merged) 이 레지스트리에 남은 채 제출 — 새 PR, �
 test("개발자가 구간 밖에 쓴 글과 제목은 다시 제출해도 그대로다", async () => {
   const scene = await makeSupervisedScene();
   try {
+    scene.authorName = "김기획";
     await cycleWith(scene);
     scene.supervisor.submit("button");
     await scene.supervisor.settled();
     const number = scene.core.openHandoff?.number;
     assert.ok(number);
+    assert.equal(scene.github.pull(number)?.title, "chore: 회원 목록 화면 (작성: 김기획)");
 
     // 개발자가 본문의 도구 구간 밖에 글을 쓰고 제목도 고친다.
     const before = scene.github.pull(number)?.body ?? "";

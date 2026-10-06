@@ -31,14 +31,24 @@ async function setup(reviewers: string[] = []) {
   const remote = await makeRemote();
   const clone = await makeClone(remote);
   const github = new MemoryGitHub(remote);
-  const core = makeCore(clone, remote, { github, reviewers });
+  let authorName: string | null = null;
+  const core = makeCore(clone, remote, { github, reviewers, authorName: () => authorName });
   execFileSync("git", ["checkout", "-b", BRANCH], { cwd: clone.path });
   writeFileSync(join(clone.path, "screen.tsx"), "export default () => null;\n");
   execFileSync("git", ["add", "-A"], { cwd: clone.path });
   execFileSync("git", ["commit", "-m", "화면"], { cwd: clone.path });
   core.setCycle(BRANCH, null);
   const publish = new PublishCycle(core, { machineMemo: async () => null });
-  return { remote, clone, github, core, publish };
+  return {
+    remote,
+    clone,
+    github,
+    core,
+    publish,
+    setAuthor: (name: string) => {
+      authorName = name;
+    },
+  };
 }
 
 test("직접 제출도 작성자를 제외하고 실패한 리뷰 요청은 같은 PR 에 재시도한다", async () => {
@@ -50,13 +60,17 @@ test("직접 제출도 작성자를 제외하고 실패한 리뷰 요청은 같�
     return request(input);
   };
   try {
+    scene.setAuthor("김기획");
     assert.equal((await scene.publish.runHandoff({})).stage, "failed");
     const number = scene.core.openHandoff?.number;
     assert.ok(number);
+    assert.ok(scene.github.pull(number)?.title.endsWith(" (작성: 김기획)"));
+    scene.github.editPull(number, { title: "개발자가 고친 제목" });
     fail = false;
     const status = await scene.publish.runHandoff({});
     assert.equal(status.stage, "handed-off");
     assert.equal(status.handoff?.number, number);
+    assert.equal(scene.github.pull(number)?.title, "개발자가 고친 제목");
     assert.deepEqual(status.handoff?.reviewers, ["yongilhong-colosseum"]);
     assert.equal(scene.github.pull(number + 1), undefined);
   } finally {

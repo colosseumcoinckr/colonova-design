@@ -216,14 +216,15 @@ export function pickHandoffTitle(input: {
   draftTitle: string | null;
   firstCommitSubject: string | null;
   fallback: string;
+  authorName?: string | null;
 }): string {
   const draft = input.draftTitle?.trim();
   const subject = input.firstCommitSubject?.trim();
-  return formatHandoffTitle(draft || subject || input.fallback);
+  return formatHandoffTitle(draft || subject || input.fallback, input.authorName);
 }
 
 /** 형식 없는 초안 · 폴백은 타입을 추측하지 않고 chore로 둔다. */
-export function formatHandoffTitle(title: string): string {
+export function formatHandoffTitle(title: string, authorName?: string | null): string {
   const line =
     title
       .split(/\r?\n/)
@@ -232,7 +233,14 @@ export function formatHandoffTitle(title: string): string {
   const conventional = /^(feat|fix|refactor|style|docs|test|chore)(\([^()\r\n]+\))?!?:\s*\S/.test(
     line,
   );
-  return Array.from(conventional ? line : `chore: ${line}`)
-    .slice(0, HANDOFF_TITLE_MAX_CHARS)
-    .join("");
+  // 2026-10-06 사용자 요청: 작성자는 도구가 붙인다. 긴 이름도 변경 제목의 자리를 남긴다.
+  const author = Array.from((authorName ?? "").replace(/\s+/g, " ").trim());
+  const name = author.length > 32 ? `${author.slice(0, 31).join("")}…` : author.join("");
+  const suffix = name ? ` (작성: ${name})` : "";
+  return (
+    Array.from(conventional ? line : `chore: ${line}`)
+      .slice(0, HANDOFF_TITLE_MAX_CHARS - Array.from(suffix).length)
+      .join("")
+      .trimEnd() + suffix
+  );
 }

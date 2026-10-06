@@ -98,6 +98,7 @@ export interface HandoffLike {
 
 export interface HarnessCoreOptions {
   reviewers?: string[];
+  authorName?: () => string | null;
   baseBranch?: string;
   /** 레지스트리가 기억하는 사이클 브랜치. */
   branch?: string | null;
@@ -125,6 +126,7 @@ export function makeCore(
     onStatus: () => {},
     baseBranch: opts.baseBranch ?? "main",
     reviewers: () => opts.reviewers ?? [],
+    authorName: opts.authorName,
     cycle: { branch: opts.branch ?? null, handoff: opts.handoff ?? null },
     gitHubClient: opts.github ? () => new GitHubClient("harness-token", opts.github) : undefined,
   });
@@ -210,7 +212,7 @@ export class MemoryGitHub implements RestTransport {
 
     if (input.method === "GET" && path === "/user") {
       this.userCallCount += 1;
-      return json(200, { login: "colonova-planner" });
+      return json(200, { login: "colonova-planner", id: 12345 });
     }
     if (seg[0] === "repos" && seg.length >= 3) {
       const rest = seg.slice(3);

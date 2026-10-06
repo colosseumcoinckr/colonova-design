@@ -95,7 +95,10 @@ export function isBotRow(row: Record<string, any>): boolean {
  * 캐시는 전송에 산다. 토큰이 바뀌면 항목을 덮어 캐시를 버리고, 실패는
  * 담지 않아 다음 부름이 다시 본다.
  */
-const whoAmICache = new WeakMap<RestTransport, { token: string; login: Promise<string> }>();
+const whoAmICache = new WeakMap<
+  RestTransport,
+  { token: string; login: Promise<string>; id?: number }
+>();
 
 /**
  * HTTP 실패의 구조 (PLAN-FEEDBACK) — 문장은 종전의 한국어 안내를 그대로
@@ -160,7 +163,7 @@ export class GitHubClient {
         detail: httpError("GitHub 확인", status, body),
       };
     }
-    let data: { login?: string } = {};
+    let data: { login?: string; id?: number } = {};
     try {
       data = JSON.parse(new TextDecoder().decode(body));
     } catch {
@@ -173,8 +176,26 @@ export class GitHubClient {
         detail: "GitHub 응답을 읽지 못했습니다.",
       };
     }
-    whoAmICache.set(this.transport, { token: this.token, login: Promise.resolve(data.login) });
+    whoAmICache.set(this.transport, {
+      token: this.token,
+      login: Promise.resolve(data.login),
+      id: data.id,
+    });
     return { ok: true, login: data.login };
+  }
+
+  /** 토큰 계정으로 기록한다. 개인 이메일 조회 권한은 요구하지 않는다(2026-10-06). */
+  async commitIdentity(): Promise<{ name: string; email: string }> {
+    const user = await this.whoAmI();
+    if (!user.ok) throw new Error(user.detail);
+    const cached = whoAmICache.get(this.transport);
+    const id = cached?.token === this.token ? cached.id : undefined;
+    if (!Number.isSafeInteger(id) || (id ?? 0) <= 0) {
+      // 불완전한 응답은 다음 시도에서 다시 읽는다.
+      if (cached?.token === this.token) whoAmICache.delete(this.transport);
+      throw new Error("GitHub 계정 정보를 읽지 못했습니다. 다시 시도해 주세요.");
+    }
+    return { name: user.login, email: `${id}+${user.login}@users.noreply.github.com` };
   }
 
   /**

@@ -225,7 +225,7 @@ export class ProjectFleet {
         // The machine turn rides whichever driver the daemon picked
         // (machine-provider.ts) — the workspace stays provider-blind.
         machineTurn: this.deps.machineTurn,
-        // PR 본문의 `> 작성:` 줄과 커밋 fallback 이름이 읽는다(P1-3).
+        // PR 본문의 `> 작성:` 줄이 읽는다(P1-3).
         authorName: () => this.deps.authorName(),
         // E4(초대 v2): 리뷰를 부탁할 개발자들 — 레지스트리가 기억한 목록.
         reviewers: () => this.deps.registry.get(slug)?.reviewers ?? [],

@@ -101,6 +101,16 @@ test("자동 제목 — 기존 타입 · scope · breaking 표식은 보존하�
   assert.ok(title.endsWith("😀"), "유니코드 글자 중간을 자르지 않는다");
 });
 
+test("자동 제목 — 작성자 자리를 남겨 72자로 제한하고 이름은 한 줄로 표시한다", () => {
+  const title = formatHandoffTitle(`feat: ${"😀".repeat(100)}`, "  김기획\n 운영  ");
+  assert.equal(Array.from(title).length, 72);
+  assert.ok(title.endsWith("😀 (작성: 김기획 운영)"));
+  assert.equal(formatHandoffTitle("fix: 검색 오류", " \n "), "fix: 검색 오류");
+  const longName = formatHandoffTitle(`feat: ${"화면".repeat(100)}`, "😀".repeat(80));
+  assert.equal(Array.from(longName).length, 72);
+  assert.ok(longName.endsWith(` (작성: ${"😀".repeat(31)}…)`));
+});
+
 test("mergeToolBlock — 이미 표식으로 싸인 구간은 두 겹으로 싸지 않는다", () => {
   const once = mergeToolBlock("본문.", wrap(BLOCK));
   assert.equal(once, `본문.\n\n${wrap(BLOCK)}`);

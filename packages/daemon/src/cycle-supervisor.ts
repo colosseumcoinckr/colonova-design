@@ -1817,6 +1817,7 @@ export class CycleSupervisor {
       draftTitle: draft?.title ?? null,
       firstCommitSubject: first ?? null,
       fallback: DEFAULT_HANDOFF_TITLE,
+      authorName: this.deps.core.authorName?.(),
     });
   }
 

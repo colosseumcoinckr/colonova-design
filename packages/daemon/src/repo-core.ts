@@ -5,7 +5,7 @@
 import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import {
   type Attention,
   type ChangedFileLite,
@@ -270,8 +270,8 @@ export interface RepoWorkspaceOptions {
   machineTurn?: MachineTurn;
   /**
    * 넘긴 요청에 적을 작성자 이름(P1-3) — 온보딩이 machine.json 에 저장한 값.
-   * 읽어가는 곳은 커밋 identity(fallback 이름)과 PR 본문의 `> 작성:` 줄 둘뿐.
-   * 없으면 도구 이름(ColoNova Design)이 지난날처럼 쓰인다.
+   * 새 PR 제목과 본문의 `> 작성:` 줄이 읽는다. 없으면 작성자를 생략한다.
+   * 커밋 작성자는 이 이름과 별개로 연결 코드의 GitHub 계정을 쓴다.
    */
   authorName?: () => string | null;
   /**
@@ -493,7 +493,7 @@ export class RepoCore {
   readonly attention: (() => Attention | null) | null;
   /** 이번 작업의 두 조각 (PLAN-UI U2 · U13) — 스냅샷이 싣는다. */
   readonly cycleView: (() => Pick<RepoStatus, "cycleScreens" | "submit">) | null;
-  /** 넘긴 요청에 적을 작성자 이름 — 커밋 fallback 이름과 PR 본문이 읽는다(P1-3). */
+  /** 넘긴 요청에 적을 작성자 이름 — PR 제목·본문이 읽는다(P1-3). */
   readonly authorName: (() => string | null) | null;
 
   /** E4(초대 v2): 넘긴 요청의 리뷰를 부탁할 개발자들 — 레지스트리가 기억한다. */
@@ -522,7 +522,7 @@ export class RepoCore {
     }) => void;
     /** Built per call so a PAT changed mid-run reaches the next request. */
     gitHubClient?: () => GitHubClient | null;
-    /** 넘긴 요청에 적을 작성자 이름 — 없으면 도구 이름이 쓰인다(P1-3). */
+    /** 넘긴 요청에 적을 작성자 이름 — 없으면 표기를 생략한다(P1-3). */
     authorName?: () => string | null;
     /** E4(초대 v2): 리뷰를 부탁할 개발자들 — 레지스트리의 목록을 읽어간다. */
     reviewers?: () => string[];
@@ -653,9 +653,20 @@ export class RepoCore {
     if (scope !== "https://github.com" && scope !== "https://www.github.com") return {};
     const basic = Buffer.from(`x-access-token:${this.pat}`).toString("base64");
     return {
-      GIT_CONFIG_COUNT: "1",
+      GIT_CONFIG_COUNT: "5",
       GIT_CONFIG_KEY_0: `http.${scope}/.extraheader`,
-      GIT_CONFIG_VALUE_0: `AUTHORIZATION: basic ${basic}`,
+      GIT_CONFIG_VALUE_0: "",
+      GIT_CONFIG_KEY_1: `http.${scope}/.extraheader`,
+      GIT_CONFIG_VALUE_1: `AUTHORIZATION: basic ${basic}`,
+      GIT_CONFIG_KEY_2: "credential.helper",
+      GIT_CONFIG_VALUE_2: "",
+      GIT_CONFIG_KEY_3: "push.gpgSign",
+      GIT_CONFIG_VALUE_3: "false",
+      GIT_CONFIG_KEY_4: "core.askPass",
+      GIT_CONFIG_VALUE_4: "",
+      GIT_ASKPASS: undefined,
+      SSH_ASKPASS: undefined,
+      GIT_TERMINAL_PROMPT: "0",
     };
   }
 
@@ -1068,23 +1079,33 @@ export class RepoCore {
       .filter(Boolean);
   }
 
-  /**
-   * A planner's machine may have no git identity; the commits this tool
-   * makes on the planner's behalf (saves, cycle merges, stashes) invent one
-   * rather than fail over a name nobody reads. 온보딩이 작성자 이름을 받아 뒀으면
-   * 그 이름이 도구 이름을 대신한다(P1-3) — 이메일은 여전히 이 도구의 것이고,
-   * 개발자는 PR 의 `> 작성:` 줄과 같은 이름을 커밋에서도 읽는다.
-   */
+  /** 토큰 계정으로 작성자·기록자를 고정한다(2026-10-06 사용자 요청). */
   async identityArgs(): Promise<string[]> {
-    const fallback = () => {
-      const name = this.authorName?.() ?? "ColoNova Design";
-      return ["-c", `user.name=${name}`, "-c", "user.email=colonova-design@localhost"];
-    };
-    try {
-      return (await this.git(["config", "user.email"])).trim() ? [] : fallback();
-    } catch {
-      return fallback();
+    const client = this.gitHubClient?.();
+    const local = this.url === null || isAbsolute(this.url) || this.url.startsWith("file://");
+    if (!client && (this.gitHubClient || this.pat || !local)) {
+      throw new Error("연결 코드가 없습니다. 초대 파일을 다시 열어 주세요.");
     }
+    // GitHub 없는 로컬 시험·진단도 개인 설정을 기록하지 않는다.
+    const { name, email } = client
+      ? await client.commitIdentity()
+      : { name: "ColoNova Design", email: "colonova-design@localhost" };
+    return [
+      "-c",
+      `user.name=${name}`,
+      "-c",
+      `user.email=${email}`,
+      "-c",
+      `author.name=${name}`,
+      "-c",
+      `author.email=${email}`,
+      "-c",
+      `committer.name=${name}`,
+      "-c",
+      `committer.email=${email}`,
+      "-c",
+      "commit.gpgSign=false",
+    ];
   }
 
   /**
@@ -1361,6 +1382,13 @@ export class RepoCore {
     const { args: argv, stallMs } = armGitNetworkWatchdog(args);
     this.guardLane(argv);
     const windows = currentPlatform() === "win32";
+    const githubNetwork = stallMs !== undefined && parseRepoSlug(this.url ?? "") !== null;
+    if (githubNetwork && !this.pat) {
+      throw new Error("연결 코드가 없습니다. 초대 파일을 다시 열어 주세요.");
+    }
+    if (githubNetwork && !this.url?.startsWith("https://")) {
+      throw new Error("프로젝트 연결 주소를 HTTPS로 바꾼 초대 파일을 요청해 주세요.");
+    }
     // The same binary the onboarding gate judged: on a Finder-launched app
     // whose PATH stops at /usr/bin, a Homebrew-only git is exactly the one
     // the resolver found and the one the clone below needs.
@@ -1376,8 +1404,18 @@ export class RepoCore {
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
+          // 환경변수의 개인 identity 는 -c 설정보다 우선한다. 앱 호출에서만 비운다.
+          GIT_AUTHOR_NAME: undefined,
+          GIT_AUTHOR_EMAIL: undefined,
+          GIT_COMMITTER_NAME: undefined,
+          GIT_COMMITTER_EMAIL: undefined,
+          EMAIL: undefined,
           ANTHROPIC_API_KEY: undefined,
           ...this.gitAuthEnv(),
+          // 개인 insteadOf·SSH 설정으로 토큰 인증이 바뀌지 않게 한다.
+          ...(githubNetwork
+            ? { GIT_CONFIG_GLOBAL: windows ? "NUL" : "/dev/null", GIT_CONFIG_PARAMETERS: undefined }
+            : {}),
           ...env,
         },
       },

@@ -103,6 +103,8 @@ contextBridge.exposeInMainWorld("colonovaDesignDesktop", {
     }>("colonova-preview:location"),
     onPin: subscribe<ColoNovaDesignPinEnvelope>("colonova-preview:pin"),
     onPinFocus: subscribe<{ id: string }>("colonova-preview:pin-focus"),
+    /** 문지기가 핀 봉투를 버렸다 — 렌더러가 한 줄 안내를 띄운다(까닭은 기록에만 있다). */
+    onPinDropped: subscribe<{ reason: string }>("colonova-preview:pin-dropped"),
     onError: subscribe<{
       kind: string;
       message: string;

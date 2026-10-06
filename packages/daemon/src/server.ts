@@ -1321,6 +1321,15 @@ export class DaemonServer {
   }
 
   /**
+   * 호스트(데스크톱 메인)가 이 데몬의 기록에 남기는 한 줄. 앱 안의 console 은 사용자에게 없는
+   * 출력이라 지원에 필요한 흔적은 데몬의 파일 기록으로 모은다. 종류와 숫자만 싣는다 —
+   * 사용자의 말 · 파일 경로 · 값은 남기지 않는다.
+   */
+  hostLog(message: string, fields?: Record<string, string | number>): void {
+    this.logger.info(message, fields);
+  }
+
+  /**
    * Shutdown, asked for as many times as anyone likes. A second call joins
    * the first instead of running the sequence again: the old one re-entered
    * `http.close()` on a listener already closed (and already nulled), whose

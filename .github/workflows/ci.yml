@@ -165,4 +165,5 @@ jobs:
           packages/desktop/test/app-reset.test.ts
           packages/desktop/test/notices.test.ts
           packages/desktop/test/pin-envelope.test.ts
+          packages/desktop/test/pin-envelope-overlay.test.ts
           scripts/bench/lib.test.mjs

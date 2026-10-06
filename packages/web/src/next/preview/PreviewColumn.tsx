@@ -822,6 +822,7 @@ export function PreviewColumn({
         location={location}
         onPin={onPin}
         onPinFocus={openBubble}
+        onPinDropped={() => toast(L.pin.dropped)}
         onLocation={(next) => {
           ++viewEpoch.current;
           setLocation(next);

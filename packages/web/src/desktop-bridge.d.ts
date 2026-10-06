@@ -126,6 +126,8 @@ declare global {
         ) => Unsubscribe;
         onPin?: (callback: (payload: ColoNovaDesignPinEnvelope) => void) => Unsubscribe;
         onPinFocus?: (callback: (payload: { id: string }) => void) => Unsubscribe;
+        /** 문지기가 핀 봉투를 버렸다 — 까닭은 데몬의 기록에만 있고, 화면은 한 줄로 알린다. */
+        onPinDropped?: (callback: (payload: { reason: string }) => void) => Unsubscribe;
         onError?: (
           callback: (payload: {
             kind: "runtime" | "build";

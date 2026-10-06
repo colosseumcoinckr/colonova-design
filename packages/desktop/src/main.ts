@@ -334,7 +334,11 @@ async function bootApp(): Promise<void> {
   host.adopt(window, url);
   // 사용자의 미리보기 (PLAN D64 → webview): 렌더러의 <webview> 게스트를
   // 클레임하는 주인이다 — 펜스와 클레임을 창의 webContents에 건다.
-  const plannerPreview = new PlannerPreviewView(() => host.window);
+  const plannerPreview = new PlannerPreviewView(
+    () => host.window,
+    // 미리보기의 기록 한 줄은 데몬의 파일 기록으로 모은다(종류와 숫자만).
+    (message, fields) => daemonServer?.hostLog(message, fields),
+  );
   // 앱 배율(U19) — ⌘= · ⌘- · ⌘0 이 앱 전체를 키운다. 창의 webContents 와
   // 미리보기 게스트(미리보기 배율과 곱해)가 함께 움직이고 값은
   // desktop-settings.json 에 남는다 — 포트가 실행마다 바뀌는 origin 에

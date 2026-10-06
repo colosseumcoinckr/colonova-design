@@ -8,7 +8,7 @@ import type {
 import { type BrowserWindow, ipcMain, nativeImage, shell, type WebContents } from "electron";
 import { ownersOfElement } from "./element-identity.js";
 import { VIEWPORT_METRICS } from "./emulation.js";
-import { isPinEnvelope, isPinFocus } from "./pin-envelope.js";
+import { isPinFocus, type PinRejection, readPinEnvelope } from "./pin-envelope.js";
 
 /**
  * 사용자의 미리보기 (PLAN D64 → webview 전환). The planner's preview pane is
@@ -295,7 +295,15 @@ export class PlannerPreviewView {
   /** Resolved when the overlay acknowledges a capture hide/show (D87). */
   private captureAck: (() => void) | null = null;
 
-  constructor(private readonly window: () => BrowserWindow | null) {}
+  constructor(
+    private readonly window: () => BrowserWindow | null,
+    /** 기록 한 줄 — 종류와 숫자만 싣는다(사용자의 말 · 경로 · 값은 남기지 않는다). */
+    private readonly log: (message: string, fields: Record<string, string | number>) => void = () =>
+      undefined,
+  ) {}
+
+  /** 문지기가 버린 핀 봉투의 종류별 수 — 이번 실행 동안의 숫자다. */
+  private readonly pinDrops = new Map<PinRejection, number>();
 
   /**
    * Puts the page for a serving preview url on screen. A page the pane kept
@@ -1042,16 +1050,32 @@ export class PlannerPreviewView {
       // (베타 테스트 #2).
       if (this.agentInputDepth > 0) return;
       // inside is logged, never an unhandled rejection.
-      // 페이지 스크립트가 만들 수 있는 payload 를 검증 없이 믿지 않는다
-      // (2026-10-02) — 봉투의 모양 · 크기가 아니면 통째로 버린다.
-      if (!isPinEnvelope(payload)) return;
-      void this.relayPin(payload).catch((error) => {
+      // 페이지 스크립트가 만들 수 있는 payload 를 검증 없이 믿지 않는다(2026-10-02) —
+      // 필수 칸의 모양이 아니면 버리고, 보강 칸은 자른 새 봉투를 넘긴다. 버릴 때는 말없이
+      // 사라지지 않게 알린다(2026-10-06: 클래스 있는 요소의 핀이 조용히 사라지던 회귀).
+      const read = readPinEnvelope(payload);
+      if (!read.ok) {
+        this.dropPin(read.reason);
+        return;
+      }
+      void this.relayPin(read.envelope).catch((error) => {
         console.error("preview pin relay failed", error);
       });
     } else if (type === "colonova-design.pin-focus" && this.activePage === page) {
       if (!isPinFocus(payload)) return;
       this.send("colonova-preview:pin-focus", payload);
     }
+  }
+
+  /**
+   * 문지기가 핀 봉투를 버렸다 — 종류와 숫자를 데몬의 기록에 남기고 렌더러에 알린다(렌더러는
+   * 한 줄 안내를 띄운다). 기록에는 사용자의 말 · 경로 · 값이 없다.
+   */
+  private dropPin(reason: PinRejection): void {
+    const count = (this.pinDrops.get(reason) ?? 0) + 1;
+    this.pinDrops.set(reason, count);
+    this.log("핀 봉투를 버렸습니다", { reason, count });
+    this.send("colonova-preview:pin-dropped", { reason });
   }
 
   /**

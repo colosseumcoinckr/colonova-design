@@ -45,6 +45,7 @@ export function PreviewHost({
   location,
   onPin,
   onPinFocus,
+  onPinDropped,
   onLocation,
   onZoom,
   onError,
@@ -68,6 +69,7 @@ export function PreviewHost({
   location: PreviewLocation | null;
   onPin: (pin: ColoNovaDesignPinEnvelope["pin"]) => void;
   onPinFocus: (id: string) => void;
+  onPinDropped?: () => void;
   onLocation: (location: PreviewLocation | null) => void;
   onZoom: (factor: number) => void;
   onError: (error: StageError) => void;
@@ -201,6 +203,7 @@ export function PreviewHost({
             sync={sync}
             onPin={onPin}
             onPinFocus={onPinFocus}
+            onPinDropped={onPinDropped}
             onError={onError}
             onLoading={setLoading}
             onZoom={onZoom}

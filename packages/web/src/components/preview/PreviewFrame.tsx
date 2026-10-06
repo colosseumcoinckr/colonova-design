@@ -50,6 +50,7 @@ export function PreviewFrame({
   sync,
   onPin,
   onPinFocus,
+  onPinDropped,
   onError,
   onLoading,
   onZoom,
@@ -79,6 +80,8 @@ export function PreviewFrame({
   onPin: (pin: ColoNovaDesignPinEnvelope["pin"]) => void;
   /** 배지 클릭 — the planner wants that pin's memo input (PageWorkspace holds the state). */
   onPinFocus: (id: string) => void;
+  /** 문지기가 핀 봉투를 버렸다 — 찍은 자리가 말없이 사라지지 않게 알린다. */
+  onPinDropped?: () => void;
   onError: (error: { kind: "runtime" | "build"; message: string; route: string }) => void;
   /** The view is loading — the frame's reload button spins. */
   onLoading: (on: boolean) => void;
@@ -194,6 +197,7 @@ export function PreviewFrame({
     onLocation,
     onPin,
     onPinFocus,
+    onPinDropped,
     onError,
     onLoading,
     onZoom,
@@ -202,6 +206,7 @@ export function PreviewFrame({
     onLocation,
     onPin,
     onPinFocus,
+    onPinDropped,
     onError,
     onLoading,
     onZoom,
@@ -229,6 +234,7 @@ export function PreviewFrame({
       // id is usePins's to ignore.
       bridge.onPin?.((payload: ColoNovaDesignPinEnvelope) => handlers.current.onPin(payload.pin)),
       bridge.onPinFocus?.((payload: { id: string }) => handlers.current.onPinFocus(payload.id)),
+      bridge.onPinDropped?.(() => handlers.current.onPinDropped?.()),
       bridge.onError?.((payload: { kind: "runtime" | "build"; message: string; route: string }) =>
         handlers.current.onError(payload),
       ),

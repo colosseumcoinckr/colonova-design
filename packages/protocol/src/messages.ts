@@ -113,6 +113,13 @@ const clientMessageSchema = z.discriminatedUnion("type", [
      */
     pinHints: z.array(sessionPinHintSchema).optional(),
     /**
+     * The preview page the planner was looking at when this was sent (2026-10-06): the daemon takes
+     * ITS 수정 전 사진 too, so a request made in words alone still gets a before for the screen it is
+     * about. Never the gate's input — only pins and 화면 캡처 name the screens the gate re-opens.
+     * Absent when the pane showed no project page (a link out, no server).
+     */
+    viewing: z.object({ path: z.string().min(1).max(2000) }).optional(),
+    /**
      * 도는 턴에 온 말의 길. `queue`(기본)는 대기 줄에 세워 다음 턴에
      * 보내고, `steer`는 도는 턴에 그대로 실어 보낸다 — 드라이버가 그 길을
      * 내주지 않으면(codex 외) 데몬이 대기 줄로 물러난다.

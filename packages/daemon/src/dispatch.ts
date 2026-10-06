@@ -391,7 +391,7 @@ export class RequestRouter {
             : {}),
         });
       }
-      carrier.send(text, message.attachments, message.pins, message.mode);
+      carrier.send(text, message.attachments, message.pins, message.mode, message.viewing);
       return { ok: true };
     },
     "session.interrupt": async (message) => {

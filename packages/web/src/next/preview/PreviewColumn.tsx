@@ -289,6 +289,15 @@ export function PreviewColumn({
   useEffect(() => {
     onScreenName(hasScreen ? screenName : null);
   }, [hasScreen, screenName, onScreenName]);
+  // 지금 보는 화면의 경로를 보내기에 실리게 알린다 — 말로만 부탁한 요청도 이 화면의 수정 전 사진을
+  // 얻는다(2026-10-06 UX 점검). 링크 너머 페이지를 보거나 서버가 없는 동안은 비운다.
+  // 쿼리와 해시는 떼고 경로만 — 수정 전 사진은 바뀐 화면의 경로로 짝을 찾고, 쿼리의 값은 선로에 나갈 일이 없다.
+  const { setViewing } = sessions;
+  const viewingPath = hasScreen ? herePath.split(/[?#]/, 1)[0] || "/" : null;
+  useEffect(() => {
+    setViewing(viewingPath);
+    return () => setViewing(null);
+  }, [viewingPath, setViewing]);
 
   const rows = useMemo(() => {
     const mine: ScreenRow[] = convScreens.map((s) => ({

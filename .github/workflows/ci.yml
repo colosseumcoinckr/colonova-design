@@ -148,6 +148,7 @@ jobs:
           packages/web/test/next-retry-send.test.ts
           packages/web/test/next-bridge-coverage.test.ts
           packages/web/test/next-pin-words.test.ts
+          packages/web/test/next-viewing.test.ts
           packages/web/test/next-settings-close.test.ts
           packages/web/test/next-settings-reset.test.ts
           packages/web/test/next-settings-css.test.ts

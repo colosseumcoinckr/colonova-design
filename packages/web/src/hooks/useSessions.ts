@@ -224,6 +224,11 @@ export interface Sessions {
    */
   sentOriginal: (sessionId: string | null) => SentOriginal | null;
   /**
+   * 미리보기가 지금 보여 주는 화면의 경로(없으면 null) — 미리보기 칸이 알리고, 다음 보내기마다 `viewing` 으로
+   * 실린다. 말로만 부탁한 요청도 보던 화면의 수정 전 사진을 얻는다(2026-10-06 UX 점검).
+   */
+  setViewing: (path: string | null) => void;
+  /**
    * 여기서 새 대화(분기): 이 답까지의 기억을 이어받은 새 대화로 갈아탄다 —
    * 원래 대화는 목록에 그대로 남는다. 답은 하나도 나가지 않는다.
    */
@@ -875,6 +880,10 @@ export function useSessions(
       kept.delete(oldest.value);
     }
   };
+  const viewingRef = useRef<string | null>(null);
+  const setViewing = useCallback((path: string | null) => {
+    viewingRef.current = path;
+  }, []);
   const sentOriginal = (sessionId: string | null): SentOriginal | null =>
     sessionId === null ? null : (sentOriginals.current.get(sessionId) ?? null);
 
@@ -903,6 +912,7 @@ export function useSessions(
         pins,
         chat.midturn === "steer" ? "steer" : undefined,
         pinHints,
+        viewingRef.current ?? undefined,
       );
       // 답이 나올 자리가 생겼다 — 갓 태어난 세션의 감시를 푼다.
       newborn.current.delete(target);
@@ -1214,6 +1224,7 @@ export function useSessions(
     acceptClear,
     submit,
     sentOriginal,
+    setViewing,
     branchFrom,
     sendTurn,
     queue,

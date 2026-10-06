@@ -648,6 +648,8 @@ interface DaemonApi {
     pins?: Array<{ screen: string }>,
     mode?: "queue" | "steer",
     pinHints?: SessionPinHint[],
+    /** 보낸 순간 미리보기가 보여 주던 경로 — 수정 전 사진의 재료다(게이트 입력이 아니다). */
+    viewing?: string,
   ) => Promise<unknown>;
   interrupt: (sessionId: string) => Promise<unknown>;
   /**
@@ -1654,6 +1656,7 @@ export function useDaemon(url: string | null): Daemon {
         pins?: Array<{ screen: string }>,
         mode?: "queue" | "steer",
         pinHints?: SessionPinHint[],
+        viewing?: string,
       ) => {
         // Speaking into a thread is looking at it, and the first send
         // is the one moment the browser may ask about notifications.
@@ -1667,6 +1670,7 @@ export function useDaemon(url: string | null): Daemon {
           ...(pins?.length ? { pins } : {}),
           ...(mode ? { mode } : {}),
           ...(pinHints?.length ? { pinHints } : {}),
+          ...(viewing ? { viewing: { path: viewing } } : {}),
         });
       },
       interrupt: (sessionId: string) => call({ type: "session.interrupt", sessionId }),

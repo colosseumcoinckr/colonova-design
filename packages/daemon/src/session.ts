@@ -93,6 +93,11 @@ interface HeldSend {
   attachments: Array<{ name: string; mediaType: string; data: string }>;
   pins: SessionPin[];
   /**
+   * 보낸 순간 사용자가 보던 미리보기 경로 — 수정 전 사진의 재료일 뿐 게이트 입력이 아니다(2026-10-06).
+   * 대기 방의 디스크 판에는 싣지 않는다 — 재시작을 건너면 사진 한 장의 단서를 잃을 뿐이다.
+   */
+  viewing?: { path: string };
+  /**
    * 기계가 세운 알림 턴(지금 보내기의 끊김 알림) — 대기 방을 거치지 않고
    * `cutNotice` 로만 살며, 재시도 · 회복 · 인플라이트 구조의 몫이 아니다.
    */
@@ -1441,6 +1446,7 @@ export class Session {
     attachments?: Array<{ name: string; mediaType: string; data: string }>,
     pins?: SessionPin[],
     mode: "queue" | "steer" = "queue",
+    viewing?: { path: string },
   ): void {
     if (this.closed) throw new Error("닫힌 대화입니다 — 목록에서 다시 열면 이어갑니다.");
     if (this.aborted)
@@ -1457,6 +1463,7 @@ export class Session {
       text,
       attachments: attachments ?? [],
       pins: pins ?? [],
+      ...(viewing ? { viewing } : {}),
     };
     // 다음 턴에 보내기: 턴이 도는 중에 온 말은 여기서 기다린다(`held`) — 아직
     // 아무 일도 일어나지 않은 채로. CLI 로 곧장 가는 건 도는 턴이 없을 때뿐이다.

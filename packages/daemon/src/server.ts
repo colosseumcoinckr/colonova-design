@@ -85,7 +85,7 @@ import { repoSettingsWarning, sanitizeRepoAgentSettings, trustWorkspace } from "
 import { repoCommandEnv } from "./repo-bringup.js";
 import { scopeOf } from "./repo-config.js";
 import { filesForRoute, routesForFiles } from "./route-index.js";
-import { ScreenComparisons } from "./screen-comparisons.js";
+import { beforeRoutes, ScreenComparisons } from "./screen-comparisons.js";
 import {
   a11yLines,
   judgeScreen,
@@ -881,7 +881,7 @@ export class DaemonServer {
             sessionId,
             requestId: item.id,
             head: readHeadSha(workspace.paths.repoRoot),
-            routes: [...item.pins.map((pin) => pin.screen), ...known, "/"],
+            routes: beforeRoutes({ pins: item.pins, viewing: item.viewing, known }),
             url: workspace.repo.repoCore().previewUrl,
             factory: this.config.previewDriverFactory,
           });

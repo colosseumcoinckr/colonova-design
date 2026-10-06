@@ -63,6 +63,29 @@ async function pictures(
   return result;
 }
 
+/**
+ * 수정 전 사진을 찍을 길의 차례(2026-10-06). 사진은 앞 `MAX_ROUTES` 장까지라 차례가 곧 우선순위다 —
+ * 사용자가 가리킨 화면(핀) · 지금 보던 화면(`viewing`) · 최근에 고쳐진 화면(관찰 지도) · 루트. 예전에는
+ * 보던 화면이 없어서, 처음 만지는 화면을 말로만 부탁하면 그 화면의 수정 전 사진이 비었다. 같은 화면을
+ * 한 번만 세는 일은 `begin` 이 한다(표기가 달라도 같은 경로면 같은 화면이다).
+ *
+ * 보던 경로는 쿼리와 해시를 뗀다 — `finish` 는 바뀐 화면의 경로(쿼리 없음)와 같은 열쇠로만 수정 전 사진을
+ * 짝짓는다. `/members?tab=2` 로 찍으면 사진은 있어도 짝을 못 찾는다.
+ */
+export function beforeRoutes(input: {
+  pins: ReadonlyArray<{ screen: string }>;
+  viewing?: { path: string } | undefined;
+  known: readonly string[];
+}): string[] {
+  const viewing = input.viewing?.path.split(/[?#]/, 1)[0] ?? "";
+  return [
+    ...input.pins.map((pin) => pin.screen),
+    ...(viewing !== "" ? [viewing] : []),
+    ...input.known,
+    "/",
+  ];
+}
+
 export class ScreenComparisons {
   private pending = new Map<string, Pending>();
   private key(sessionId: string, requestId: string): string {

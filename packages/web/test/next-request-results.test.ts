@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { requestResults } from "../src/next/lib/request-results.ts";
+import { latestResult, requestResults } from "../src/next/lib/request-results.ts";
 
 test("recorded changed request and automatic repair produce one result with original literal explanation", () => {
   const blocks = [
@@ -114,4 +114,63 @@ test("pinned changed requests display literal planner words, never injected inst
     ).size,
     0,
   );
+});
+
+test("latestResult: 마지막 턴이 낸 결과만 `방금 한 것` 이다", () => {
+  const first = [
+    {
+      type: "user",
+      id: "u1",
+      requestId: "a",
+      text: "First",
+      changedScreens: [{ route: "/", title: "Home" }],
+    },
+    { type: "text", text: "Done one", agentId: null },
+    { type: "turn", id: "t1", isError: false },
+  ];
+  assert.equal(latestResult(first as never, [])?.requestId, "a");
+  // 그 뒤에 새 요청이 왔다 — 아직 답이 없어도 `방금 한 것` 은 이제 그 요청이다.
+  const asked = [...first, { type: "user", id: "u2", requestId: "b", text: "Second" }];
+  assert.equal(latestResult(asked as never, []), null);
+  // 화면을 안 건드린 설명이 마지막이면 마지막 결과가 아니다.
+  const explained = [
+    ...asked,
+    { type: "text", text: "Just words", agentId: null },
+    { type: "turn", id: "t2", isError: false },
+  ];
+  assert.equal(latestResult(explained as never, []), null);
+  // 마지막 턴이 실패했거나 중단됐으면 되돌릴 방금의 결과가 없다.
+  const failed = [...first, { type: "turn", id: "t3", isError: true }];
+  assert.equal(latestResult(failed as never, []), null);
+  assert.equal(latestResult([] as never, []), null);
+});
+
+test("latestResult: 자동 고침 턴이 끝난 요청도 마지막 결과다 — 고침 중에는 아니다", () => {
+  const repairing = [
+    {
+      type: "user",
+      id: "u1",
+      requestId: "a",
+      text: "First",
+      changedScreens: [{ route: "/", title: "Home" }],
+    },
+    { type: "text", text: "Done", agentId: null },
+    { type: "turn", id: "t1", isError: false },
+    {
+      type: "user",
+      text: '<!-- colonova-design:gate {"step":"screen"} -->\nrepair',
+      requestId: "g",
+    },
+  ];
+  assert.equal(
+    latestResult(repairing as never, []),
+    null,
+    "고치는 중에는 마지막이 사람의 말이 아니어도 아직 턴이 없다",
+  );
+  const repaired = [
+    ...repairing,
+    { type: "text", text: "Fixed", agentId: null },
+    { type: "turn", id: "t2", isError: false },
+  ];
+  assert.equal(latestResult(repaired as never, [])?.requestId, "a");
 });

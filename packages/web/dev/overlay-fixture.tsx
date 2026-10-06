@@ -692,7 +692,8 @@ function CompareMoreCase() {
 
 /**
  * `?col=360`(칸의 폭 — 480 이하면 시트) · `?hist=loading|fail|empty|now|rich|user`(읽기) · `?restore=fail|slow`(되돌리기)
- * · `?working=1`(AI 작업 중이라 잠김). 단추 셋 — `홈으로`(칸이 숨는다 — 열린 서랍은 접혀야 한다) ·
+ * · `?working=1`(AI 작업 중이라 잠김) · `?arm=a2&count=1`(결과 카드의 `방금 한 것 되돌리기` 가 건넨 되돌아갈 곳 — 그 줄의
+ * 확인이 `방금 한 것을 되돌릴까요?` 로 미리 열린다. `count` 가 지금 기록과 안 맞으면 줄의 제목으로 묻는다). 단추 셋 — `홈으로`(칸이 숨는다 — 열린 서랍은 접혀야 한다) ·
  * `작업으로` · `프로젝트 바꾸기`(다른 프로젝트의 기록은 0.6초 뒤에 온다 — 그동안 지난 프로젝트의 줄이 비치면 안 된다).
  */
 function HistoryCase() {
@@ -720,6 +721,10 @@ function HistoryCase() {
   const [open, setOpen] = useState(true);
   const opener = useRef<HTMLButtonElement>(null);
   const col = Number(query.get("col")) || 520;
+  const armQuery = query.get("arm");
+  const armOf = () =>
+    armQuery ? { sha: armQuery, count: Number(query.get("count") ?? "-1") } : null;
+  const [arm, setArm] = useState(armOf);
   return (
     <div style={{ padding: 24 }}>
       <button
@@ -731,6 +736,19 @@ function HistoryCase() {
       >
         작업 기록 열기
       </button>
+      {armQuery && (
+        <button
+          type="button"
+          className="nx-btn"
+          id="arm"
+          onClick={() => {
+            setArm(armOf());
+            setOpen(true);
+          }}
+        >
+          방금 한 것 되돌리기
+        </button>
+      )}
       <button type="button" className="nx-btn" id="go-home" onClick={() => setHome(true)}>
         홈으로
       </button>
@@ -762,6 +780,8 @@ function HistoryCase() {
             onRestored={() => calls.push("restored")}
             toast={(text) => calls.push(`toast:${text}`)}
             returnRef={opener}
+            arm={arm}
+            onArmed={() => setArm(null)}
           />
         </section>
       </div>

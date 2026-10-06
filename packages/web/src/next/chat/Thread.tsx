@@ -41,7 +41,16 @@ import {
   ReviewCard,
   reviewParts,
 } from "./cards";
-import { CheckIcon, ClockIcon, EditIcon, FwdIcon, InfoIcon, ScreenIcon, SparkIcon } from "./icons";
+import {
+  CheckIcon,
+  ClockIcon,
+  EditIcon,
+  FwdIcon,
+  InfoIcon,
+  ScreenIcon,
+  SparkIcon,
+  UndoIcon,
+} from "./icons";
 import { type LoadComparison, ResultScreen } from "./ResultScreens";
 import { SettleLine } from "./SettleLine";
 
@@ -105,6 +114,11 @@ export interface ThreadProps {
   onAdditionalEdit: (screen: TurnScreen) => void;
   loadComparison: LoadComparison;
   onOpenHistory: () => void;
+  /**
+   * `방금 한 것 되돌리기` — 마지막 결과(그 요청의 보관이 프로젝트 기록의 맨 위일 때)에만 선다. 없으면 단추도 없고
+   * 작업 기록이 맡는다(`lib/undo-last.ts`).
+   */
+  undoLast?: { requestId: string; onUndo: () => void } | null;
   onReply: (id: number, text: string) => Promise<void>;
   /** 영수증의 `한마디 더`(U20) — 열린 요청에 코멘트로 남긴다. */
   onNote: (text: string) => Promise<void>;
@@ -569,6 +583,21 @@ export function Thread(props: ThreadProps) {
                   <InfoIcon />
                   <span>{L.requestResult.historical}</span>
                 </p>
+                {props.undoLast != null &&
+                  props.undoLast.requestId === requestByTurn.get(block.id) &&
+                  !live && (
+                    <div className="nx-results-undo">
+                      <button
+                        type="button"
+                        className="nx-btn nx-btn--sm nx-btn--ghost"
+                        title={L.requestResult.undoTip}
+                        onClick={props.undoLast.onUndo}
+                      >
+                        <UndoIcon />
+                        {L.requestResult.undo}
+                      </button>
+                    </div>
+                  )}
               </section>
             )}
             <SettleLine

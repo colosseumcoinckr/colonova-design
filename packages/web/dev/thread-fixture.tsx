@@ -422,6 +422,23 @@ const receipts: Block[] = [
   },
 ];
 
+/**
+ * `?scene=undo` — 마지막 결과에만 `방금 한 것 되돌리기` 가 선다(2026-10-06). 앞선 결과의 카드에는 없다 — 작업 기록의
+ * 되돌리기는 「그 시점 이후 전부」 라서 옛 카드에 달면 이름이 거짓이 된다.
+ */
+const undoScene: Block[] = [
+  withResult("uu1", "회원 목록 맨 위에 검색창을 넣어 줘.", "req-prev", [
+    { route: "member/list", title: "회원 목록" },
+  ]),
+  answer("uu1a", "검색창을 넣었어요."),
+  turn("uue1", 31000),
+  withResult("uu2", "검색창 옆에 초기화 단추도 달아 줘.", "req-u", [
+    { route: "member/list", title: "회원 목록" },
+  ]),
+  answer("uu2a", "초기화 단추를 달았어요."),
+  turn("uue2", 22000),
+];
+
 const scene = query.get("scene");
 
 /** 도는 답 견본 — 사람 말이 올라온 뒤 글이 이어지고 마감까지를 시간대로 밟는다. */
@@ -540,7 +557,9 @@ function Fixture() {
                   ? queued
                   : scene === "receipt"
                     ? receipts
-                    : blocks
+                    : scene === "undo"
+                      ? undoScene
+                      : blocks
             }
             live={scene === "queue"}
             showThinking={false}
@@ -561,6 +580,9 @@ function Fixture() {
             onRetryDropped={() => {}}
             onOpenScreen={() => {}}
             onOpenHistory={() => calls.push("history")}
+            undoLast={
+              scene === "undo" ? { requestId: "req-u", onUndo: () => calls.push("undo") } : null
+            }
             onReply={async () => {}}
             onNote={async () => {}}
             onToast={(text) => calls.push(`toast:${text}`)}

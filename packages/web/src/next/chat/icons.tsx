@@ -27,6 +27,7 @@ import {
   RotateCcw,
   Sparkle,
   Square,
+  Undo2,
   X,
   Zap,
 } from "lucide-react";
@@ -71,6 +72,7 @@ export const CompareIcon = make(Columns2, 14);
 export const NoPhotoIcon = make(ImageOff, 16);
 export const InfoIcon = make(Info, 13);
 export const RedoIcon = make(RotateCcw, 12);
+export const UndoIcon = make(Undo2, 13);
 
 // 프로바이더 표식 — 모델 칩이 지금 AI 의 제 얼굴을 입어 Codex 대화가 Claude 의
 // 것으로 읽히지 않게 한다. lucide 에는 상표 그림이 없어 두 벤더 표식을 그대로

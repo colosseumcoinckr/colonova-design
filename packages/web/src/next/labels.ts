@@ -679,6 +679,9 @@ export const L = {
     edit: "추가 수정",
     draft: (title: string) => `${title} 화면을 추가로 수정해 주세요.\n원하는 수정: `,
     draftReady: "수정할 내용을 입력창에서 다듬어 보내 주세요",
+    /** 마지막 결과에만 서는 단추 — 작업 기록의 「이후 전부」 되돌리기가 아니라 이 요청 하나일 때만 이름이 맞다(2026-10-06 UX 점검). */
+    undo: "방금 한 것 되돌리기",
+    undoTip: "이 요청이 바꾼 것만 되돌려요 · 되돌린 것도 작업 기록에 남아요",
   },
   compare: {
     open: "수정 전·후 보기",
@@ -764,6 +767,8 @@ export const L = {
     /** 확인 카드 — 시각이 아니라 제목으로 묻고, 되돌리는 일의 크기를 칩으로 말한다. */
     confirmAsk: (title: string) => `「${title}」 직후의 화면으로 되돌릴까요?`,
     confirmAskEvent: "이 시점의 화면으로 되돌릴까요?",
+    /** 결과 카드의 `방금 한 것 되돌리기` 가 연 확인 — 되돌아갈 곳의 제목이 아니라 되돌리는 일을 말한다. */
+    confirmAskLast: "방금 한 것을 되돌릴까요?",
     chipScreens: (n: number) => `화면 ${n}곳`,
     chipChanges: (n: number) => `변경 ${n}가지`,
     chipComments: "코멘트 반영 포함",

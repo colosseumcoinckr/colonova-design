@@ -74,3 +74,19 @@ export function requestResults(
       .map((group) => [group.turnId, group]),
   );
 }
+
+/**
+ * 대화의 마지막 결과 — 마지막 턴이 낸 결과(고친 화면이 있는 요청)이고, 그 턴이 끝난 답일 때만. 그 뒤에 다른 요청이
+ * 왔거나(화면을 안 건드린 설명이라도) 마지막 턴이 실패 · 중단이면 `방금 한 것` 이 아니므로 null 이다.
+ */
+export function latestResult(
+  blocks: readonly Block[],
+  saved: RepoStatus["cycleScreens"],
+): RequestResult | null {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    if (block?.type === "user") return null;
+    if (block?.type === "turn") return requestResults(blocks, saved).get(block.id) ?? null;
+  }
+  return null;
+}

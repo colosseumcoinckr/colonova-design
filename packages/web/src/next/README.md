@@ -164,6 +164,8 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 - `roving.ts` · `use-roving.ts` — 라디오 군의 화살표 걸음 · 로빙 탭 순서(모델 칩의 AI · 모델 · 생각 시간).
 - `use-copied.ts` — 복사 뒤 1.5초만 `복사했어요` 로 바뀌는 단추의 손(`useCopied`). 낭독은 부르는 쪽이 실린다.
 - `use-closing.ts` — 겹판이 닫히는 동안의 모션 타이머 한 곳(`useClosing`).
+- `undo-last.ts` — `undoTargetFor(entries, screens, requestId)`: `방금 한 것 되돌리기` 가 돌아갈 곳(`{ sha, count }`) — 그 요청의 보관이
+  기록의 맨 위부터 이어질 때만. `request-results.ts` 의 `latestResult` 가 「마지막 턴이 낸 결과」 를 고른다.
 - `result-photos.ts` — `readPhotos(record, { requestId, route })` · `photoUrl`: `고친 화면` 카드가 읽는 수정 전 · 수정 후 사진.
   요청이나 화면이 다른 기록 · 그릴 수 없는 형식 · 한도(`MAX_PHOTO_CHARS`)를 넘는 사진은 없는 것으로 친다. 카드가 둘 다 쥐고
   수정 전이 있으면 사진 위 토글(`nx-result-ba`)로 넘겨 본다.

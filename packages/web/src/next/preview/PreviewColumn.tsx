@@ -672,11 +672,20 @@ export function PreviewColumn({
   // --- 서랍 · 단축키 -----------------------------------------------
   const [historyOpen, setHistoryOpen] = useState(false);
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
+  // 결과 카드의 `방금 한 것 되돌리기` 가 서랍을 열며 건넨 되돌아갈 곳 — 서랍이 그 줄의 확인을 미리 연다.
+  const [arm, setArm] = useState<{ sha: string; count: number } | null>(null);
+  const clearArm = useCallback(() => setArm(null), []);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [addrSignal, setAddrSignal] = useState(0);
   useEffect(() => {
-    const onOpen = () => {
+    const onOpen = (event: Event) => {
       ++viewEpoch.current;
+      const detail = (event as CustomEvent<{ restoreTo?: unknown; count?: unknown } | null>).detail;
+      setArm(
+        typeof detail?.restoreTo === "string"
+          ? { sha: detail.restoreTo, count: typeof detail.count === "number" ? detail.count : -1 }
+          : null,
+      );
       setHistoryOpen(true);
       if (narrowRef.current) showTab("preview");
     };
@@ -929,6 +938,8 @@ export function PreviewColumn({
         onRestored={reload}
         toast={toast}
         returnRef={historyBtn}
+        arm={arm}
+        onArmed={clearArm}
       />
 
       {sheetOpen &&

@@ -18,8 +18,10 @@ import { L } from "../labels";
 import { connectionLock } from "../lib/connection-copy";
 import { PIN_SHOT_MAX } from "../lib/pin-words";
 import { isPreparing } from "../lib/project-note";
+import { latestResult } from "../lib/request-results";
 import { planRetry } from "../lib/retry-send";
 import { dedupeScreens } from "../lib/thread";
+import { undoTargetFor } from "../lib/undo-last";
 import type { ChatColumnProps } from "../slots";
 import { Elapsed } from "../status/Elapsed";
 import { Composer, type ComposerHandle } from "./Composer";
@@ -32,10 +34,12 @@ import { Thread } from "./Thread";
  * 확인 카드 · 진행 시계 · 입력창. 훅은 셸이 한 번 부른 것을 받는다(`SlotProps`) —
  * 미리보기 칸과 같은 세션 · 같은 핀을 본다.
  *
- * 밖으로 나가는 신호 둘: `nx:history:open`(작업 기록 서랍 — 단계 3 이 듣는다),
+ * 밖으로 나가는 신호 둘: `nx:history:open`(작업 기록 서랍 — 단계 3 이 듣는다. `방금 한 것 되돌리기` 는
+ * `detail: { restoreTo, count }` 로 되돌아갈 곳의 확인을 미리 열어 달라고 부탁한다),
  * `nx:pins:toggle`(좁은 창의 찍기 — 미리보기 탭을 앞에 세운 뒤 단계 3 이 찍기를 켠다).
  * 들어오는 신호 둘(입력창이 듣는다): `nx:pins:send`(말풍선의 지금 보내기) ·
- * `nx:composer:attach`(미리보기의 AI에게 이 화면 보여 주기).
+ * `nx:composer:attach`(미리보기의 AI에게 이 화면 보여 주기). 그리고 서랍이 되돌리기를 마치면 보내는
+ * `nx:history:changed` 를 이 칸이 듣고 되돌아갈 곳을 다시 읽는다.
  */
 export function ChatColumn({
   daemon,
@@ -62,6 +66,55 @@ export function ChatColumn({
     },
     [narrow, nav],
   );
+
+  // --- 방금 한 것 되돌리기 ---------------------------------------------------
+  // 마지막 결과 카드에만 선다 — 그 요청의 보관이 프로젝트 기록의 맨 위일 때만, 그래서 되돌리면 정확히 그 요청만
+  // 사라질 때만(`lib/undo-last.ts`). 기록은 도는 답이 끝났을 때 · 새 보관이 쌓일 때 · 되돌린 뒤(`nx:history:changed`)에
+  // 다시 읽는다. 단추는 서랍을 열어 그 되돌아갈 곳의 확인을 미리 열어 줄 뿐 — 되돌리는 일은 서랍의 확인이 한다.
+  const cycleScreens = daemon.repo?.cycleScreens;
+  const lastRequestId = sessions.running
+    ? null
+    : (latestResult(blocks, cycleScreens)?.requestId ?? null);
+  // 읽어 온 되돌아갈 곳은 어느 요청의 것인지 함께 든다 — 마지막 결과가 바뀐 직후 옛 요청의 곳이 새 카드에 서지 않게.
+  const [undoTarget, setUndoTarget] = useState<{
+    requestId: string;
+    sha: string;
+    count: number;
+  } | null>(null);
+  const [historyTick, setHistoryTick] = useState(0);
+  useEffect(() => {
+    const bump = () => setHistoryTick((n) => n + 1);
+    window.addEventListener("nx:history:changed", bump);
+    return () => window.removeEventListener("nx:history:changed", bump);
+  }, []);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 기록을 다시 읽어야 하는 때(요청 · 보관 수 · 기록이 바뀐 신호)만 센다.
+  useEffect(() => {
+    if (lastRequestId === null) {
+      setUndoTarget(null);
+      return undefined;
+    }
+    let cancelled = false;
+    api
+      .saveHistory()
+      .then(({ entries }) => {
+        if (cancelled) return;
+        const target = undoTargetFor(entries, cycleScreens, lastRequestId);
+        setUndoTarget(target === null ? null : { requestId: lastRequestId, ...target });
+      })
+      .catch(() => {
+        if (!cancelled) setUndoTarget(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    api,
+    lastRequestId,
+    cycleScreens?.length,
+    daemon.repo?.pendingChanges,
+    daemon.repo?.branch,
+    historyTick,
+  ]);
 
   // 보낸 핀의 회색 배지는 답이 끝나면 떠난다 — 답의 끝을 아는 것은 이 칸이다.
   const wasRunning = useRef(sessions.running);
@@ -481,6 +534,19 @@ export function ChatColumn({
             onOpenScreen={openScreen}
             loadComparison={api.comparison}
             onOpenHistory={() => window.dispatchEvent(new CustomEvent("nx:history:open"))}
+            undoLast={
+              lastRequestId !== null && undoTarget?.requestId === lastRequestId
+                ? {
+                    requestId: lastRequestId,
+                    onUndo: () =>
+                      window.dispatchEvent(
+                        new CustomEvent("nx:history:open", {
+                          detail: { restoreTo: undoTarget.sha, count: undoTarget.count },
+                        }),
+                      ),
+                  }
+                : null
+            }
             onReply={async (id, text) => {
               await api.replyToReview(id, text);
             }}

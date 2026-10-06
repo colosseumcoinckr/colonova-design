@@ -543,7 +543,13 @@ inert 조상 · hidden)을 가두지 않고, 초점을 옮겨 보고서야 Tab �
 말을 품게). 확인을 연 동안 사라질 구간은 **불투명도가 아니라 색으로** 흐린다(불투명도 .45 는 글자가 2.0~2.8:1 이었다) —
 선은 흐리지 않고 포인트색으로 이어 구분선 · 날의 머리와 어긋난 바늘땀이 서지 않는다. 서랍 안의 12px 글자색은
 `--hist-accent · --hist-green · --hist-amber · --hist-quiet`(잉크를 섞어 한 단 깊게)로 여섯 팔레트에서 4.5:1 을 넘는다
-(측정). 순수 판정(날 묶음 · 반영 차례 접힘)은 `lib/revert-summary.ts` 의 `historyDays` 다: 접힘은 반영 차례끼리만 일어나
+(측정). (g) 결과 카드의 `방금 한 것 되돌리기`(`lib/undo-last.ts` 의 `undoTargetFor`)는 서랍을 `nx:history:open` 의
+`detail: { restoreTo, count }` 로 열어 되돌아갈 줄의 확인을 미리 연다 — 되돌리는 일은 서랍의 확인이 하고 카드는
+되돌리는 로직을 두 벌 두지 않는다. 단추의 조건은 마지막 턴이 낸 결과이고(`latestResult`) 그 요청의 보관(`cycleScreens` 의
+`requestId` · `sha`)이 `repo.history` 맨 위부터 이어질 때뿐이다(고침 턴이 보관을 둘 남기면 둘 다 지난 곳이 돌아갈 곳이다).
+`count` 는 카드가 본 그 차례 수라서 서랍이 지금 읽은 기록과 맞을 때만 확인이 `방금 한 것을 되돌릴까요?` 로 묻는다(맞지
+않으면 줄의 제목으로). 서랍이 되돌리기를 마치면 `nx:history:changed` 를 보내 카드가 되돌아갈 곳을 다시 읽는다.
+순수 판정(날 묶음 · 반영 차례 접힘)은 `lib/revert-summary.ts` 의 `historyDays` 다: 접힘은 반영 차례끼리만 일어나
 요청 · 코멘트 · 되돌림 · 제출 구분선은 줄에서 사라지지 않는다(되돌아갈 곳이므로 — 접힘이 아무 줄이나 삼키던 틈을 닫았다).
 
 견본은 `dev/overlay-fixture.html?case=` 한 장이다 — `sheet`(단축키) · `palette` · `crash` · `connecting` · `toast` ·

@@ -39,8 +39,17 @@ import {
   UndoIcon,
 } from "./icons";
 
-/** `nx:history:open` — 정산 줄의 메뉴(단계 2)와 `이번 작업`(단계 4)이 서랍을 연다. */
+/**
+ * `nx:history:open` — 정산 줄의 메뉴(단계 2)와 `이번 작업`(단계 4)이 서랍을 연다. 결과 카드의 `방금 한 것 되돌리기` 는
+ * `detail: { restoreTo, count }` 로 되돌아갈 곳(보관의 sha)과 그 위로 쌓인 차례 수를 건네 그 줄의 확인을 미리 열어 달라고
+ * 부탁한다.
+ */
 export const HISTORY_OPEN_EVENT = "nx:history:open";
+/**
+ * `nx:history:changed` — 되돌리기가 기록을 바꿨다. 결과 카드가 `방금 한 것` 의 되돌아갈 곳을 다시 읽는다(되돌리면 맨 위가
+ * 새 `되돌렸어요` 차례가 되어 그 요청의 단추가 사라진다).
+ */
+export const HISTORY_CHANGED_EVENT = "nx:history:changed";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 /** 시각 한 마디 — `14:05`. */
@@ -126,6 +135,8 @@ export function HistoryDrawer({
   onRestored,
   toast,
   returnRef,
+  arm = null,
+  onArmed,
 }: {
   /** 서랍의 id — 여는 단추의 `aria-controls` 가 가리킨다. */
   id?: string;
@@ -142,6 +153,13 @@ export function HistoryDrawer({
   toast: (text: string) => void;
   /** 닫히면 초점이 되돌아가는 단추 — 서랍을 연 곳(시계). */
   returnRef?: RefObject<HTMLElement | null>;
+  /**
+   * 열면서 받은 되돌아갈 곳(결과 카드의 `방금 한 것 되돌리기`) — 기록을 읽어 온 뒤 그 줄의 확인을 연다. `count` 는 그 곳
+   * 위로 쌓였을 것이라 카드가 본 차례 수다(-1 이면 모른다) — 지금 읽은 기록과 맞을 때만 확인이 `방금 한 것` 이라 말한다.
+   */
+  arm?: { sha: string; count: number } | null;
+  /** 건넨 곳을 썼거나 버렸다 — 다음 열기에 낡은 것이 남지 않게 부른 쪽이 비운다. */
+  onArmed?: () => void;
 }) {
   const { api } = daemon;
   const slug = daemon.activeSlug;
@@ -160,6 +178,8 @@ export function HistoryDrawer({
   const [restoreFailed, setRestoreFailed] = useState(false);
   // 확인이 열린 줄은 자리(index)가 아니라 보관의 이름(sha)으로 안다 — 새 차례가 쌓여 줄이 밀려도 확인이 옆 줄로 옮겨 앉지 않는다.
   const [confirm, setConfirm] = useState<string | null>(null);
+  // `방금 한 것` 으로 연 확인의 줄 — 그 줄의 확인만 되돌아갈 곳의 제목 대신 `방금 한 것을 되돌릴까요?` 로 묻는다.
+  const [lastSha, setLastSha] = useState<string | null>(null);
   const [restoring, setRestoring] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const now = useClock(open);
@@ -332,6 +352,7 @@ export function HistoryDrawer({
           return;
         }
         setConfirm(null);
+        window.dispatchEvent(new CustomEvent(HISTORY_CHANGED_EVENT));
         toast(L.history.revertedToast(clockOf(entry.at)));
         // 미리보기를 다시 읽는 일은 되돌린 프로젝트가 아직 열려 있을 때만이다.
         if (nowSlug.current === project) onRestored();
@@ -362,6 +383,30 @@ export function HistoryDrawer({
   const workingWhy = lockWhy !== null ? workingWhyId : undefined;
   const merged = repo?.handoff?.state === "merged";
   const list = entries ?? [];
+  // 확인이 닫히면 `방금 한 것` 표지도 버린다 — 다른 줄을 고르면 그 줄의 제목으로 묻는다.
+  useEffect(() => {
+    if (confirm === null) setLastSha(null);
+  }, [confirm]);
+  // 결과 카드가 건넨 되돌아갈 곳을 읽어 온 기록에서 찾아 그 줄의 확인을 연다 — 줄을 찾아 누르는 걸음을 줄인다. 낡은 목록(지난번에
+  // 읽어 둔 것)에 아직 없으면 새로 읽은 목록을 기다리고, 서랍이 열리지 않았거나 닫히면 건넨 곳을 버린다. AI 가 일하는 중이면 확인
+  // 없이 서랍만 열린다(줄이 잠겨 있고 이유는 머리의 한 줄이 말한다).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 건넨 곳 · 열림 · 읽은 기록이 바뀔 때만 본다.
+  useEffect(() => {
+    if (arm === null) return;
+    if (!open) {
+      onArmed?.();
+      return;
+    }
+    if (entries === null) return;
+    const at = entries.findIndex((entry) => entry.sha === arm.sha);
+    if (at === -1) return;
+    onArmed?.();
+    if (working) return;
+    setRestoreFailed(false);
+    setConfirm(arm.sha);
+    // 카드가 본 차례 수와 지금 읽은 기록이 맞을 때만 `방금 한 것` 이라 말한다 — 그사이 쌓인 것이 있으면 줄의 제목으로 묻는다.
+    setLastSha(arm.count === at ? arm.sha : null);
+  }, [arm, open, entries, working]);
   // 새로 쌓인 줄만 내려앉는다 — 처음 읽어 온 줄은 새것이 아니다(읽는 중 → 읽음으로 scope 가 바뀐다).
   const fresh = useFreshKeys(
     list.map((entry) => entry.sha),
@@ -661,6 +706,7 @@ export function HistoryDrawer({
                             entry={entry}
                             list={list}
                             index={row.index}
+                            last={lastSha === entry.sha}
                             askEvent={row.node !== "request"}
                             title={originalTitle}
                             cycleScreens={repo?.cycleScreens}
@@ -717,6 +763,7 @@ function RevertCard({
   entry,
   list,
   index,
+  last,
   askEvent,
   title,
   cycleScreens,
@@ -730,6 +777,8 @@ function RevertCard({
   entry: RepoHistoryEntry;
   list: RepoHistoryEntry[];
   index: number;
+  /** 결과 카드의 `방금 한 것 되돌리기` 로 열렸다 — 되돌아갈 곳의 제목 대신 되돌리는 일을 말한다. */
+  last: boolean;
   /** 제목이 앱이 만든 사건(가져옴 · 되돌림 · 코멘트)이면 제목으로 묻지 않는다. */
   askEvent: boolean;
   title: string;
@@ -747,7 +796,13 @@ function RevertCard({
     <InlineConfirm
       className="nx-hconfirm"
       tone="neutral"
-      title={askEvent ? L.history.confirmAskEvent : L.history.confirmAsk(title)}
+      title={
+        last
+          ? L.history.confirmAskLast
+          : askEvent
+            ? L.history.confirmAskEvent
+            : L.history.confirmAsk(title)
+      }
       confirmLabel={
         restoring ? (
           L.history.restoring

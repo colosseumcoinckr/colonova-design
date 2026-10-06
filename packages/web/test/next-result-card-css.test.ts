@@ -32,7 +32,8 @@ test("전/후 토글은 카드를 덮는 ::after 위에 선다", () => {
 });
 
 test("토글은 수정 전 사진이 있을 때만 서고, 없으면 이름표다", () => {
-  assert.match(card, /\{before \? \(\s*<div className="nx-result-ba"/);
+  // 린트 예외 주석(`biome-ignore`)이 여는 괄호와 요소 사이에 서도 구조는 같다 — 분절 묶음이 `fieldset` 이 아닌 이유를 거기 적는다.
+  assert.match(card, /\{before \? \(\s*(?:\/\/[^\n]*\n\s*)*<div className="nx-result-ba"/);
   assert.match(card, /\) : \(\s*<span className="nx-result-photo-label">/);
 });
 

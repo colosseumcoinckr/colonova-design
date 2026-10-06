@@ -683,7 +683,7 @@ const clientMessageSchema = z.discriminatedUnion("type", [
   }),
   /**
    * 넘긴 요청에 적을 작성자 이름(P1-3): 모든 요청이 봇 계정으로 열리므로
-   * 본문의 `> 작성:` 줄과 커밋 이름이 유일한 구분이다. `null` 이면 지운다.
+   * 제목의 `(작성: 이름)`, 본문의 `> 작성:` 줄과 커밋 이름으로 구분한다. `null` 이면 지운다.
    */
   z.object({
     ...withId,

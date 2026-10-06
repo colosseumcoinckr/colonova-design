@@ -27,7 +27,7 @@
 
 import type { DeveloperReview } from "./repo.js";
 
-type TurnMarkerKind = "comments" | "brief" | "gate" | "error" | "review";
+type TurnMarkerKind = "comments" | "brief" | "gate" | "error" | "review" | "notice";
 
 /**
  * How the preview failed: the page threw, or the dev build serving it did.
@@ -37,7 +37,7 @@ type TurnMarkerKind = "comments" | "brief" | "gate" | "error" | "review";
  */
 type ErrorMarkerKind = "runtime" | "build" | "look";
 
-const KINDS: readonly TurnMarkerKind[] = ["comments", "brief", "gate", "error", "review"];
+const KINDS: readonly TurnMarkerKind[] = ["comments", "brief", "gate", "error", "review", "notice"];
 
 /** One pinned element, as the card lists it. */
 export interface CommentMarkerItem {
@@ -111,6 +111,17 @@ interface BriefMarker {
   purpose?: "bootstrap" | "refresh" | "conventions";
 }
 
+/**
+ * A machine notice the agent must read but not act on (지금 보내기's cut):
+ * `text` is the one line the card shows. Older builds that do not know the
+ * kind fall back to the raw turn — the marker line shows, nothing breaks.
+ */
+interface NoticeMarker {
+  kind: "notice";
+  /** The one line the planner reads on the card, in the planner's words. */
+  text: string;
+}
+
 interface GateMarker {
   kind: "gate";
   /** The step that failed, in the planner's own words ("저장한 내용 올리기"). */
@@ -155,7 +166,13 @@ interface ReviewMarker {
   id?: number;
 }
 
-export type TurnMarker = CommentsMarker | BriefMarker | GateMarker | ErrorMarker | ReviewMarker;
+export type TurnMarker =
+  | CommentsMarker
+  | BriefMarker
+  | GateMarker
+  | ErrorMarker
+  | ReviewMarker
+  | NoticeMarker;
 
 interface MarkedTurn {
   /** Null when this is an ordinary typed message. */
@@ -231,6 +248,8 @@ function hydrate(kind: TurnMarkerKind, data: Record<string, unknown>): TurnMarke
       };
     case "gate":
       return { kind, step: str(data.step) };
+    case "notice":
+      return { kind, text: str(data.text) };
     case "review": {
       const pr = Number(data.pr);
       const marker: ReviewMarker = {

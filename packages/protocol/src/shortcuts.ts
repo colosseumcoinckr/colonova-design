@@ -25,6 +25,9 @@ export const APP_SHORTCUTS: AppShortcut[] = [
     accelerator: "CmdOrCtrl+T",
   },
   { id: "settings", label: "설정", keys: "⌘,", accelerator: "CmdOrCtrl+," },
+  // 웹 워크스페이스가 혼자 처리하는 코드(Workspace keydown 의 ⌘B)라 가속키가 없다 — 메뉴가
+  // 읽어도 click 없는 항목이 되니 일부러 밖에 둔다. 시트에는 있어야 찾을 수 있다(2026-10-06).
+  { id: "sidebar", label: "사이드바 접기 · 펴기", keys: "⌘B" },
   {
     id: "address",
     label: "주소로 이동",
@@ -52,15 +55,16 @@ export const APP_SHORTCUTS: AppShortcut[] = [
   // id 를 부르지 않으므로 메뉴는 읽지 않는다).
   { id: "preview-zoom", label: "미리보기 배율", keys: "··· 메뉴" },
   { id: "pin", label: "핀 찍기", keys: "⌥+클릭 · 끌면 영역" },
-  // 웹 워크스페이스가 혼자 처리하는 코드(PageWorkspace keydown의 ⌘⇧P)라
-  // 가속키가 없다 — 데스크톱 메뉴가 읽어도 click 없는 항목이 되니 일부러
-  // 밖에 둔다. 아래 ⌘/ 와 같은 판이다.
+  // 웹이 혼자 처리하는 코드(PreviewColumn keydown의 ⌘⇧P)라 가속키가 없다 —
+  // 데스크톱 메뉴가 읽어도 click 없는 항목이 되니 일부러 밖에 둔다.
+  // 아래 ⌘/ 와 같은 판이다.
   { id: "pin-mode", label: "핀 모드", keys: "⌘⇧P" },
   // 입력창이 혼자 처리하는 키(Composer 의 onKeyDown) — 빈 입력창에서 보낸
   // 말을 하나씩 거슬러 불러온다. 맨 화살표는 커서의 것이라 ⌥ 와 함께다.
+  // 동작은 2026-10-04 ux-plan PR 2 에서 만들었다.
   { id: "recall", label: "보낸 말 다시 불러오기", keys: "⌥↑ · ⌥↓" },
-  // 시트 자신의 행 — 가속키가 없다: ⌘/ 는 웹(워크스페이스 keydown)이
-  // 혼자 처리하고, 데스크톱 메뉴에는 앉지 않는다(메뉴가 읽어도 click 이
-  // 없는 항목이 되니 일부러 밖에 둔다).
+  // 시트 자신의 행 — 가속키가 없다: ⌘/ 는 웹(Workspace keydown)이 혼자
+  // 처리하고, 데스크톱 메뉴에는 앉지 않는다(메뉴가 읽어도 click 이 없는
+  // 항목이 되니 일부러 밖에 둔다). 처리기는 2026-10-04 ux-plan PR 2 의 몫.
   { id: "shortcuts", label: "단축키", keys: "⌘/" },
 ];

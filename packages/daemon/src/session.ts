@@ -14,7 +14,7 @@ import type {
   SessionSelectors,
   SessionState,
 } from "@colonova-design/protocol";
-import { readTurn } from "@colonova-design/protocol";
+import { markTurn, readTurn } from "@colonova-design/protocol";
 import type { AgentSession, DriverHooks, PermissionVerdict, ToolClass } from "./agent/driver.js";
 import { GIT_WRITE_REFUSAL, gitWriteDenied } from "./git-guard.js";
 import { sanitizeText } from "./log.js";
@@ -46,6 +46,15 @@ export function asPlannerFacingError(error: unknown): Error {
     "에이전트와의 대화가 방금 끊겼습니다 — 입력창의 말을 잠시 뒤 다시 보내면 이어집니다.",
   );
 }
+
+/**
+ * 지금 보내기의 끊김 알림(2026-10-04 ux-plan PR1) — 돌아가던 답을 자른다는
+ * 사실을 표식 턴 하나로 대화록에 세운다. 카드의 한 줄은 사용자의 몫, 몸은
+ * AI 의 몫이고 끝의 기준으로 닫는다(AGENTS.md 표식 규칙).
+ */
+const HELD_NOW_LINE = "돌아가는 답을 멈추고 이 말을 먼저 보내요";
+const HELD_NOW_BODY =
+  "사용자가 기다리던 말을 먼저 보내기로 해 방금 답을 여기서 멈췄습니다. 방금 답은 여기까지가 전부입니다.\n\n끝의 기준: 멈춘 답을 이어 하지 말고, 다음에 오는 사용자의 말만 다루는 것입니다.";
 
 interface PendingRequest {
   requestId: string;
@@ -83,6 +92,11 @@ interface HeldSend {
   text: string;
   attachments: Array<{ name: string; mediaType: string; data: string }>;
   pins: SessionPin[];
+  /**
+   * 기계가 세운 알림 턴(지금 보내기의 끊김 알림) — 대기 방을 거치지 않고
+   * `cutNotice` 로만 살며, 재시도 · 회복 · 인플라이트 구조의 몫이 아니다.
+   */
+  machine?: boolean;
 }
 
 /** The wire shape of a waiting send: words and counts, never the bytes. */
@@ -299,6 +313,19 @@ export { GIT_WRITE_REFUSAL, gitWriteDenied };
 export const NEW_SESSION_TITLE = "새 화면";
 
 /**
+ * 대화 제목은 첫 말의 첫 문장이다 — 줄바꿈과 문장 끝(마침표 · 물음표 ·
+ * 느낌표)에서 끊고, 첫 문장이 길면 기존 80자 상한으로 자른다(2026-10-04
+ * ux-plan PR3). 마침표 뒤에 글자가 붙어 있으면(`app.tsx` · `v1.2`) 문장 끝이
+ * 아니므로 거기서 끊지 않는다. 상태 줄 · 사이드바 · 홈이 같은 이름을 읽으므로
+ * 이 태생 한 곳에서만 자른다 — 웹에서 다시 자르지 않는다.
+ */
+function firstSentenceTitle(text: string): string {
+  const end = text.search(/\r?\n|[.?!](?=\s|$)/);
+  const sentence = (end === -1 ? text : text.slice(0, end + 1)).trim();
+  return sentence.slice(0, 80);
+}
+
+/**
  * /compact 뒤 재전송의 마지막 파수 — compact 사건도 턴 끝도 오지 않는 세계에서
  * 3분 안에 원래 말을 다시 세운다 (PLAN L12). 시계의 만료가 곧 신호다.
  */
@@ -450,6 +477,12 @@ export class Session {
   // -------------------------------------------------------------------------
   /** 마지막으로 나간 말 — 실패한 턴의 재시도와 죽은 질의의 재개가 다시 쓴다. */
   private lastDelivered: HeldSend | null = null;
+  /**
+   * 지금 보내기가 세운 끊김 알림 턴 — 다음 턴 끝의 `release` 가 대기 말보다
+   * 먼저 나간다. 대기 방에 섞지 않으므로 대기 줄 · 회복 패널에 사람의 말로
+   * 보이는 일이 없다.
+   */
+  private cutNotice: HeldSend | null = null;
   /** 지금의 논리적 턴이 이미 쓴 재시도 수 — 상한은 retryDelays 의 길이다. */
   private retryAttempt = 0;
   /** 예약된 재시도 — 사람의 중지 · 닫힘이 언제나 우선한다. */
@@ -844,6 +877,9 @@ export class Session {
     if (this.closed || !this.sendable || this.turnStartedAt !== null) return;
     const item = this.lastDelivered;
     if (!item) return;
+    // 같은 말이 대기 방에 살아 있으면 큐가 그 순서를 지킨다 — 지금 보내기의
+    // 끊김 뒤처럼 lastDelivered 가 대기 말과 같은 세계에서 두 번 나가지 않게.
+    if (this.held.some((held) => held.id === item.id)) return;
     this.turnStartedAt = Date.now();
     // 새 턴의 답변 문장은 여기서 시작한다 (PLAN L9).
     this.lastAssistantText = null;
@@ -951,6 +987,17 @@ export class Session {
     this.hurrying = false;
     // 준비가 끝나지 않은 폴더로는 보내지 않는다(PLAN-UI U8) — setPreparing(false) 가 다시 부른다.
     if (this.preparing) return;
+    // 끊김 알림이 대기 말보다 먼저 선다 — 카드가 끊긴 자리를 말한 뒤 그 말이 나간다.
+    const notice = this.cutNotice;
+    if (notice) {
+      this.cutNotice = null;
+      this.turnStartedAt = Date.now();
+      this.lastAssistantText = null;
+      this.events.onTurnStart?.(this.id);
+      this.setState("running");
+      this.deliver(notice);
+      return;
+    }
     if (this.held.length === 0) return;
     const [item] = this.held.splice(0, 1);
     if (!item) return;
@@ -1060,6 +1107,17 @@ export class Session {
     if (!item) return;
     this.held.splice(this.held.indexOf(item), 1);
     this.held.unshift(item);
+    // 끊긴다는 사실을 먼저 적는다(2026-10-04 ux-plan PR1) — 알림 턴 하나가
+    // 대화록의 카드로 끊긴 자리를 말하고, 끝의 기준은 다음 턴이 지킨다.
+    // 대기 방이 아니라 `cutNotice` 에 두는 이유: 알림은 대기 줄이나 회복
+    // 패널에 사람의 말로 섞이면 안 된다.
+    this.cutNotice = {
+      id: randomUUID(),
+      text: markTurn({ kind: "notice", text: HELD_NOW_LINE }, HELD_NOW_BODY),
+      attachments: [],
+      pins: [],
+      machine: true,
+    };
     this.hurrying = true;
     this.disk?.saveHeld(this.held);
     this.announceHeld();
@@ -1450,14 +1508,18 @@ export class Session {
    */
   private deliver(item: HeldSend, replay = false): void {
     const { text, attachments, pins } = item;
-    // 감독: 마지막으로 나간 말 — 실패한 턴의 재시도와 죽은 질의의 재개가 읽는다.
-    this.lastDelivered = item;
-    if (readTurn(text).marker?.kind !== "gate") this.lastRequestId = item.id;
-    // 이 말이 디스크에도 한 벌 남는다(베타 테스트 B15): 턴이 끝나기 전에
-    // 데몬이 죽으면 벤더 기록이 아직 이 말을 갖고 있지 않을 수 있고 — 질문
-    // 카드에서 멈춘 턴이 정확히 그랬다 — 그러면 카드와 말이 쌍으로 사라진다.
-    // 기동 청소가 이 한 벌을 회복 패널로 옮긴다. 턴이 무사히 끝나면 지워진다.
-    this.disk?.saveInflight(item);
+    // 기계 알림 턴은 감독의 몫이 아니다 — 재시도 · 회복이 다시 쓸 마지막 말은
+    // 사람의 말이어야 하고, 죽었을 때 회복 패널에 알림이 말로 섞이지 않게 둔다.
+    if (!item.machine) {
+      // 감독: 마지막으로 나간 말 — 실패한 턴의 재시도와 죽은 질의의 재개가 읽는다.
+      this.lastDelivered = item;
+      if (readTurn(text).marker?.kind !== "gate") this.lastRequestId = item.id;
+      // 이 말이 디스크에도 한 벌 남는다(베타 테스트 B15): 턴이 끝나기 전에
+      // 데몬이 죽으면 벤더 기록이 아직 이 말을 갖고 있지 않을 수 있고 — 질문
+      // 카드에서 멈춘 턴이 정확히 그랬다 — 그러면 카드와 말이 쌍으로 사라진다.
+      // 기동 청소가 이 한 벌을 회복 패널로 옮긴다. 턴이 무사히 끝나면 지워진다.
+      this.disk?.saveInflight(item);
+    }
     // A fresh turn is a fresh failure domain: an old interrupt's flag must
     // not swallow this turn's real error (결함①).
     this.interrupting = false;
@@ -1480,7 +1542,7 @@ export class Session {
       const title = text.trim();
       const unnamed = this.title === NEW_SESSION_TITLE;
       if (unnamed && title && !machine) {
-        this.title = title.slice(0, 80);
+        this.title = firstSentenceTitle(title);
       }
     }
     // 핀으로 여는 첫 턴의 자세(2' 측정, pin-effort.ts) — 사람이 고르지

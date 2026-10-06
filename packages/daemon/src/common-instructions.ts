@@ -109,7 +109,13 @@ export function meaningfulFirstLine(text: string): string {
  */
 export function turnSubjectOf(text: string | null): { message: string } | Record<string, never> {
   const { marker } = readTurn(text ?? "");
-  if (marker?.kind === "gate" || marker?.kind === "error" || marker?.kind === "brief") return {};
+  if (
+    marker?.kind === "gate" ||
+    marker?.kind === "error" ||
+    marker?.kind === "brief" ||
+    marker?.kind === "notice"
+  )
+    return {};
   // 코멘트 반영 턴은 제목이 고정된 모양이다(PLAN-UI U9) — 작업 기록이 이 머리로 센다.
   if (marker?.kind === "review")
     return { message: commentReflectionSubject(firstReviewBody(text ?? "")) };

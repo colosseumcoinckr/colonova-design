@@ -29,6 +29,11 @@ function realPathOf(path: string): string {
   }
 }
 
+/** 꼬리 판정이 읽는 대화록 이벤트 상한 — 마지막 턴 하나를 보는 창이다. */
+const TAIL_EVENTS = 200;
+/** 꼬리 판정 기억의 상한 — 넘치면 가장 오래된 것부터 거둔다. */
+const TAIL_MEMO_MAX = 512;
+
 export class SessionManager {
   private readonly identities = new SessionIdentities();
   private readonly live = new Map<string, Session>();
@@ -38,8 +43,18 @@ export class SessionManager {
    * so a live thread sitting idle after its answer reads as finished while
    * one nobody has spoken to since launch reads as idle. Closing a thread
    * takes the mark with it: the planner ended that conversation on purpose.
+   * 이 명단은 살아 있는 동안의 빠른 길일 뿐이다 — 재시작 뒤엔 비어 있으므로,
+   * 저장 대화의 finished 는 tape 의 마지막 이벤트로 판정한다(tapeSettled,
+   * 2026-10-04 ux-plan PR3).
    */
   private readonly settledTurns = new Set<string>();
+  /**
+   * tape 꼬리 판정의 기억 — (클론, 대화, 마지막 활동) 이 키다. 대화록은
+   * 덧붙는 기록이라 lastModified 가 같으면 꼬리도 같다. 이벤트마다 도는
+   * refreshThreads 가 대화록을 매번 다시 읽지 않게 발밑에 쌓는다
+   * (2026-10-04 ux-plan PR3).
+   */
+  private readonly settledTails = new Map<string, boolean>();
   /**
    * The per-clone thread cache (PLAN D59). The sidebar tree shows every
    * project's conversations at once, but `projectSummaries()` is a
@@ -686,28 +701,64 @@ export class SessionManager {
    * One clone's conversations, tree-shaped (PLAN D59). The session state maps
    * onto the four words a child row draws: a turn on → `running`; a permission
    * or question up → `awaiting`; a turn that ended with nothing after it →
-   * `finished`; everything else — old stored threads mostly — `idle`.
+   * `finished`; everything else reads its tape — 저장 대화록 꼬리가 끝난 턴이면
+   * `finished`, 아니면 `idle`(2026-10-04 ux-plan PR3).
    */
   async refreshThreads(cwd: string, limit = 50): Promise<ThreadSummary[]> {
     cwd = realPathOf(cwd);
-    const threads = (await this.list(cwd, limit)).map((summary): ThreadSummary => {
-      const state: ThreadSummary["state"] =
-        summary.state === "running" || summary.state === "starting"
-          ? "running"
-          : summary.state === "waiting_permission" || summary.state === "waiting_question"
-            ? "awaiting"
-            : summary.live && this.settledTurns.has(summary.sessionId)
-              ? "finished"
-              : "idle";
-      return {
-        id: summary.sessionId,
-        title: summary.title,
-        state,
-        updatedAt: new Date(summary.lastModified).toISOString(),
-      };
-    });
+    const threads = await Promise.all(
+      (await this.list(cwd, limit)).map(async (summary): Promise<ThreadSummary> => {
+        const state: ThreadSummary["state"] =
+          summary.state === "running" || summary.state === "starting"
+            ? "running"
+            : summary.state === "waiting_permission" || summary.state === "waiting_question"
+              ? "awaiting"
+              : summary.live && this.settledTurns.has(summary.sessionId)
+                ? "finished"
+                : !summary.live && (await this.tapeSettled(cwd, summary))
+                  ? "finished"
+                  : "idle";
+        return {
+          id: summary.sessionId,
+          title: summary.title,
+          state,
+          updatedAt: new Date(summary.lastModified).toISOString(),
+        };
+      }),
+    );
     this.threadCache.set(cwd, threads);
     return threads;
+  }
+
+  /**
+   * 저장 대화록(테이프)의 마지막 이벤트가 끝난 턴인가 — 재시작 뒤에는 살아 있는
+   * 동안의 명단(settledTurns)이 비어 홈의 「방금 있던 일」이 빈다(2026-10-04
+   * ux-plan PR3). 꼬리를 재생해 turn.end 가 서면 끝난 턴다. 읽기가 실패하면
+   * finished 가 아니다 — 보수적 귀결이다.
+   */
+  private async tapeSettled(cwd: string, summary: SessionSummary): Promise<boolean> {
+    const key = JSON.stringify([cwd, summary.sessionId, summary.lastModified]);
+    const known = this.settledTails.get(key);
+    if (known !== undefined) return known;
+    let settled = false;
+    try {
+      const live = this.get(summary.sessionId);
+      const provider = live?.provider ?? (await this.findStoredProvider(summary.sessionId, cwd));
+      // history() 와 같은 키 — 벤더가 자기 대화록 이름(ACP)을 부른다.
+      const storeId = this.storeId(summary.sessionId, cwd);
+      const replayed =
+        (await this.driverFor(provider).store?.import?.(storeId, cwd, TAIL_EVENTS)) ?? [];
+      const closed = closeReplayTurns(replayed, { open: false });
+      settled = closed[closed.length - 1]?.kind === "turn.end";
+    } catch {
+      settled = false;
+    }
+    this.settledTails.set(key, settled);
+    if (this.settledTails.size > TAIL_MEMO_MAX) {
+      const oldest = this.settledTails.keys().next();
+      if (oldest.done !== true) this.settledTails.delete(oldest.value);
+    }
+    return settled;
   }
 
   /** The last computed threads of a clone, for the synchronous summaries.

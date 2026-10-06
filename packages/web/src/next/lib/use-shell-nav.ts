@@ -218,6 +218,21 @@ export function useShellNav({
     });
   }, []);
 
+  // 개발자 쪽 사건 알림(넘김 · 준비 끝 · 제출 막힘)을 누르면 데스크톱이 프로젝트 slug 를 건넨다 —
+  // 그 프로젝트의 홈으로 간다(소식은 홈의 받은 편지함에 선다). 다른 프로젝트면 옮기고(옮겨 앉으면 셸이
+  // 홈부터 연다), 이미 거기면 홈으로 돌아온다. 옛 UI 에는 있던 구독이 `next/` 로 옮기며 빠져, 알림을
+  // 눌러도 창만 앞으로 오고 프로젝트는 그대로였다(2026-10-06 UX 점검). 못 옮기면 `switchProject` 가 한
+  // 문장으로 말한다.
+  useEffect(() => {
+    const bridge = window.colonovaDesignDesktop;
+    if (!bridge?.onOpenProject) return;
+    return bridge.onOpenProject((slug) => {
+      const { nav: now, daemon: current } = latest.current;
+      if (slug === current.activeSlug) now.goHome();
+      else void now.switchProject(slug);
+    });
+  }, []);
+
   const setCollapsed = useCallback(
     (value: boolean) => {
       dispatch({ type: "collapse", collapsed: value });

@@ -7,6 +7,12 @@ export interface RequestResult {
   explanation: string;
   turnId: string;
   screens: Array<{ route: string; title: string }>;
+  /**
+   * 화면 확인이 문제를 찾아 AI 가 스스로 고친 요청이다(게이트 턴이 끼었다). 카드가 선 자리는 고침 턴의 끝이라
+   * 원래 요청 · 답과 사이에 고침 카드가 있다 — 그때만 카드가 요청과 설명을 다시 적는다. 끼지 않았으면 카드 바로
+   * 위가 요청의 답이라 되풀이일 뿐이다(2026-10-06 UX 점검).
+   */
+  repaired: boolean;
 }
 
 /** One recorded user request, including its automatic repair, has one result section. */
@@ -21,7 +27,10 @@ export function requestResults(
     if (block.type === "user") {
       const marked = readTurn(block.text);
       gate = marked.marker?.kind === "gate";
-      if (gate) continue;
+      if (gate) {
+        if (group) group.repaired = true;
+        continue;
+      }
       const marker = marked.marker;
       const prompt =
         marker?.kind === "comments"
@@ -40,6 +49,7 @@ export function requestResults(
               prompt: prompt.slice(0, 240),
               explanation: "",
               turnId: "",
+              repaired: false,
               screens:
                 block.changedScreens ??
                 saved?.filter((screen) => screen.requestId === block.requestId) ??

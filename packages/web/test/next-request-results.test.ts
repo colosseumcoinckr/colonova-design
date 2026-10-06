@@ -26,6 +26,43 @@ test("recorded changed request and automatic repair produce one result with orig
   assert.equal(result.get("repair")?.requestId, "a");
   assert.equal(result.get("repair")?.explanation, "The title is now smaller.");
   assert.equal(result.get("repair")?.prompt, "Make the title smaller");
+  // 자동 고침이 끼었으므로 카드가 요청과 설명을 다시 적는다(2026-10-06).
+  assert.equal(result.get("repair")?.repaired, true);
+});
+
+test("a request nobody repaired is not marked repaired — the card sits right under its own answer", () => {
+  const blocks = [
+    {
+      type: "user",
+      id: "u",
+      requestId: "a",
+      text: "Make the title smaller",
+      changedScreens: [{ route: "/", title: "Home" }],
+    },
+    { type: "text", text: "The title is now smaller.", agentId: null },
+    { type: "turn", id: "done", isError: false },
+    // 다음 요청의 고침은 앞 요청의 표식이 아니다.
+    {
+      type: "user",
+      id: "u2",
+      requestId: "b",
+      text: "Next",
+      changedScreens: [{ route: "/", title: "Home" }],
+    },
+    { type: "text", text: "Done", agentId: null },
+    { type: "turn", id: "done2", isError: false },
+    {
+      type: "user",
+      text: '<!-- colonova-design:gate {"step":"screen"} -->\nrepair',
+      requestId: "gate",
+    },
+    { type: "text", text: "Repaired", agentId: null },
+    { type: "turn", id: "repair2", isError: false },
+  ] as never;
+  const result = requestResults(blocks, []);
+  assert.equal(result.get("done")?.repaired, false);
+  assert.equal(result.get("repair2")?.requestId, "b");
+  assert.equal(result.get("repair2")?.repaired, true, "고침은 그 앞의 요청에 붙는다");
 });
 test("read-only answer links and legacy unknown requests never invent recorded changes", () => {
   const blocks = [

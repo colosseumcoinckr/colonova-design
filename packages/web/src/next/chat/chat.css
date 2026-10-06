@@ -622,6 +622,48 @@
   font-weight: 500;
 }
 
+/* 카드 안 전/후(2026-10-06 UX 점검) — 사진 위 왼쪽 아래의 두 칸 알약. 카드를 덮는 제목 단추의 ::after 보다
+   위(z-index)에 서야 눌린다. 고른 쪽은 잉크색으로 차 올라 어느 사진인지 한눈에 읽힌다. */
+.nx-result-ba {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  /* 고정 — 사진 위의 알약 테두리는 팔레트를 따르지 않는 얇은 그림자다. */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+.nx .nx-result-ba button {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--r-pill);
+  color: var(--ink2);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.nx .nx-result-ba button:hover {
+  background: var(--nx-hover);
+  color: var(--ink);
+}
+
+.nx .nx-result-ba button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.nx .nx-result-ba button:focus-visible {
+  outline-offset: -2px;
+}
+
 /* 사진을 기다리는 동안 — 사진이 설 자리의 비율을 그대로 잡아 두고(사진이 와도 카드가
    밀리지 않는다) 연한 빛이 지나간다. */
 .nx-result-photo--loading {

@@ -37,7 +37,7 @@ Object.assign(window, { __calls: calls });
 const PREVIEW_URL = "http://127.0.0.1:5274";
 
 /** 견본 사진 — 데몬 없이 `고친 화면` 카드가 사진을 그리도록 캔버스로 화면 하나를 그린다. */
-function drawShot(title: string, width = 960, height = 600): HTMLCanvasElement {
+function drawShot(title: string, width = 960, height = 600, before = false): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -50,13 +50,16 @@ function drawShot(title: string, width = 960, height = 600): HTMLCanvasElement {
   ctx.fillStyle = "#1f2430";
   ctx.font = "600 24px sans-serif";
   ctx.fillText(title, 36, 42);
-  ctx.fillStyle = "#2f6fed";
-  ctx.fillRect(width - 150, 18, 110, 34);
+  // 수정 전에는 오른쪽 위의 단추가 없고 둘째 줄도 강조되지 않았다 — 전 · 후를 넘겨 볼 때 달라진 곳이 눈에 띄게.
+  if (!before) {
+    ctx.fillStyle = "#2f6fed";
+    ctx.fillRect(width - 150, 18, 110, 34);
+  }
   for (let row = 0; row < 6; row += 1) {
     const y = 104 + row * 78;
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(36, y, width - 72, 62);
-    ctx.fillStyle = row === 1 ? "#ffe9b8" : "#e4e7ee";
+    ctx.fillStyle = row === 1 && !before ? "#ffe9b8" : "#e4e7ee";
     ctx.fillRect(56, y + 18, 40 + ((row * 37) % 90), 12);
     ctx.fillStyle = "#c9ced9";
     ctx.fillRect(width - 260, y + 22, 150, 10);
@@ -67,6 +70,9 @@ function drawShot(title: string, width = 960, height = 600): HTMLCanvasElement {
 const SHOTS: Record<string, string> = {
   "member/list": drawShot("회원 목록").toDataURL("image/png").split(",")[1] ?? "",
   "member/1": drawShot("김기획 회원 상세").toDataURL("image/png").split(",")[1] ?? "",
+};
+const BEFORE_SHOTS: Record<string, string> = {
+  "member/list": drawShot("회원 목록", 960, 600, true).toDataURL("image/png").split(",")[1] ?? "",
 };
 const THUMBS = [
   drawShot("서비스", 120, 80).toDataURL("image/jpeg", 0.7).split(",")[1] ?? "",
@@ -93,7 +99,8 @@ const loadComparison: ComponentProps<typeof Thread>["loadComparison"] = async ({
     route,
     title: route,
     viewport: "desktop",
-    before: null,
+    // 새 화면(`member/1`)은 수정 전 사진이 없다 — 토글 없이 `수정 후 모습` 이름표만 서는 모양.
+    before: BEFORE_SHOTS[key] ? { at: "", mediaType: "image/png", data: BEFORE_SHOTS[key] } : null,
     after: { at: "", mediaType: "image/png", data: SHOTS[key] ?? SHOTS["member/list"] ?? "" },
   };
 };
@@ -248,6 +255,25 @@ const blocks: Block[] = [
     ].join("\n"),
   ),
   turn("e5", 52000),
+
+  // ⑤' 자동 고침이 끼인 요청 — 카드와 원래 요청 사이에 고침 카드가 있어 요청과 설명을 다시 적는다
+  // (끼지 않은 ⑤ 의 카드에는 그 줄이 없다 — 카드 바로 위가 그 요청의 답이다, 2026-10-06).
+  withResult("u5r", "회원 목록의 표 아래에 쪽 번호를 붙여 줘.", "req-5r", [
+    { route: "member/list", title: "회원 목록" },
+  ]),
+  answer("t5ra", "표 아래에 쪽 번호를 붙였어요."),
+  turn("e5ra", 31000),
+  {
+    type: "user",
+    id: "u5rg",
+    text: markTurn(
+      { kind: "gate", step: "화면 확인" },
+      "회원 목록을 다시 열어 보니 쪽 번호를 계산하다 오류가 났어요. 고쳐 주세요.",
+    ),
+    images: 0,
+  },
+  answer("t5rb", "쪽 번호 계산에서 나던 오류를 고쳤어요. 이제 화면이 잘 열려요."),
+  turn("e5rb", 18000),
 
   // ⑥ 핀 세 개 — 긴 이름표 · 긴 메모 · 사진이 있는 핀과 없는 핀이 한 말풍선에.
   user("u6", pinsMany, THUMBS),

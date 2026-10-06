@@ -502,11 +502,13 @@ export function Thread(props: ThreadProps) {
         const turnNo = turnNumbers.get(block.id) ?? 1;
         const whole = turnAnswers.get(block.id) ?? block.resultText ?? null;
         const screens = screensByTurn.get(block.id) ?? [];
-        const requestText = results.get(block.id)?.prompt.trim() ?? "";
+        const result = results.get(block.id);
+        const requestText = result?.prompt.trim() ?? "";
         const excerpt =
-          screens.length > 0
-            ? plainExcerpt(plainAnswer(results.get(block.id)?.explanation ?? ""), 200)
-            : "";
+          screens.length > 0 ? plainExcerpt(plainAnswer(result?.explanation ?? ""), 200) : "";
+        // 요청과 설명은 화면 확인이 문제를 찾아 AI 가 스스로 고친 요청에서만 다시 적는다 — 그때는 카드와 원래 요청 ·
+        // 답 사이에 고침 카드가 끼어 어느 요청의 카드인지 멀어진다. 끼지 않았으면 카드 바로 위가 그 요청의 답이다.
+        const showContext = result?.repaired === true && (requestText !== "" || excerpt !== "");
         // 이번 창에서 막 끝난 답 — 보상(카드 · 체크)은 이 답에만 한 번.
         const fresh = !historyTurns.current?.has(block.id);
         return (
@@ -521,7 +523,7 @@ export function Thread(props: ThreadProps) {
                   <span>{L.transcript.shotLabel}</span>
                   <span className="nx-results-count">{screens.length}</span>
                 </div>
-                {(requestText !== "" || excerpt !== "") && (
+                {showContext && (
                   <dl className="nx-result-context">
                     {requestText !== "" && (
                       <div>

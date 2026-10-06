@@ -16,6 +16,7 @@ import { tailMoving } from "../../lib/tape-visibility";
 import type { TurnScreen } from "../../lib/turn-screens";
 import { L } from "../labels";
 import { connectionLock } from "../lib/connection-copy";
+import { PIN_SHOT_MAX } from "../lib/pin-words";
 import { isPreparing } from "../lib/project-note";
 import { planRetry } from "../lib/retry-send";
 import { dedupeScreens } from "../lib/thread";
@@ -97,7 +98,7 @@ export function ChatColumn({
     shown: Array<{ screen: string }>,
   ) => {
     // 핀의 크롭은 그림으로 함께 간다 — 맨 앞에 세운다(데몬이 앞 여섯 장을 카드 썸네일로 쓴다).
-    const pinImages: Attachment[] = sent.slice(0, 6).flatMap((pin) =>
+    const pinImages: Attachment[] = sent.slice(0, PIN_SHOT_MAX).flatMap((pin) =>
       pin.shot
         ? [
             {

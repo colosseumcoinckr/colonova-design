@@ -26,6 +26,7 @@ const RESIZABLE: Record<string, true> = {
 
 /** 입력창의 초안은 옛 입력창과 같은 열쇠를 쓴다 — 두 셸이 같은 대화의 같은 초안을 본다. */
 import { appendScreenDraft, DraftScreenHints } from "../lib/draft-screens";
+import { pinsBeyondShots, pinsWordless } from "../lib/pin-words";
 import { clearSentDraft } from "../lib/sent-draft";
 
 const DRAFT_PREFIX = "colonova-design.draft.";
@@ -375,6 +376,12 @@ export function Composer({
     if (sendingRef.current || locked) return;
     const text = editor.text.trim();
     if (!text && editor.attachments.length === 0 && pins.length === 0) return;
+    // 핀만 있고 말이 어디에도 없다 — 보내지 않고 한 줄로 묻는다(말풍선의 `지금 보내기` 도 이 길을 지난다).
+    if (pinsWordless(text, pins)) {
+      setNotice({ tone: "warn", text: L.composer.pinNeedsWords });
+      area.current?.focus();
+      return;
+    }
     sendingRef.current = true;
     setSending(true);
     setNotice(null);
@@ -627,6 +634,11 @@ export function Composer({
               </button>
             </div>
           ))}
+          {pinsBeyondShots(pins.length) > 0 && (
+            <div className="nx-cmp-note nx-cmp-note--warn" role="status">
+              {L.composer.pinShotCap(pinsBeyondShots(pins.length))}
+            </div>
+          )}
         </div>
       )}
       {editor.attachments.length > 0 && (

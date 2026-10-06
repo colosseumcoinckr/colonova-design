@@ -1,9 +1,88 @@
-import type { KeyboardEvent, ReactNode } from "react";
+import { createContext, type KeyboardEvent, type ReactNode, type UIEvent, useContext } from "react";
 import { themePeekHalves } from "../onboarding/motion";
 
-/** 한 쪽의 상자 — 줄들이 가는 선으로 나뉜 한 장의 카드다. */
-export function SGroup({ children }: { children: ReactNode }) {
-  return <div className="nx-sgroup">{children}</div>;
+/**
+ * 낭독 한 곳 — 늘 마운트된 `role="status"` 칸에 문장을 올린다. 내용과 함께 새로 그려지는 상태 칸은
+ * 낭독기가 놓치기 쉬워서(2026-10-06 설정 손질), 상태의 변화는 이 길로 말한다. 실패는 눈에 보이는
+ * 칸의 `role="alert"` 가 따로 말한다.
+ */
+export const AnnounceContext = createContext<(text: string) => void>(() => undefined);
+
+export function useAnnounce(): (text: string) => void {
+  return useContext(AnnounceContext);
+}
+
+/** 한 쪽의 상자 — 줄들이 가는 선으로 나뉜 한 장의 카드다. `danger` 는 되돌릴 수 없는 일의 구역. */
+export function SGroup({ children, danger = false }: { children: ReactNode; danger?: boolean }) {
+  return <div className={`nx-sgroup${danger ? " nx-sgroup--dng" : ""}`}>{children}</div>;
+}
+
+/** 쪽 하나 — 탭의 몸이다. 모두 그려 둔 채 고른 쪽만 보이고, 굴리면 머리 아래에 가는 선이 선다. */
+export function SPage({
+  id,
+  active,
+  onScroll,
+  children,
+}: {
+  id: string;
+  active: boolean;
+  onScroll?: (event: UIEvent<HTMLDivElement>) => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="nx-set-page"
+      role="tabpanel"
+      id={`nx-set-page-${id}`}
+      aria-labelledby={`nx-set-tab-${id}`}
+      hidden={!active}
+      onScroll={onScroll}
+    >
+      {children}
+    </div>
+  );
+}
+
+export type BandTone = "plain" | "blue" | "amber" | "green" | "red";
+
+/**
+ * 쪽 위의 띠 — 상태를 한눈에 말한다(업데이트 요약 · AI 로그인 만료 · 연결 끊김). 색은 뜻의 보조일
+ * 뿐이고 말이 따로 선다. `bar` 는 흐르는 진행 막대, 오른쪽 칸(`children`)은 그 상태의 손이다.
+ */
+export function SBand({
+  tone = "plain",
+  icon,
+  title,
+  sub,
+  bar = false,
+  role,
+  id,
+  children,
+}: {
+  tone?: BandTone;
+  icon?: ReactNode;
+  title: ReactNode;
+  sub?: ReactNode;
+  bar?: boolean;
+  role?: "alert";
+  id?: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={`nx-sband nx-sband--${tone}`} role={role} id={id}>
+      {icon && (
+        <span className="nx-sband-ic" aria-hidden="true">
+          {icon}
+        </span>
+      )}
+      <div className="nx-sband-txt">
+        <b className="nx-sband-t">{title}</b>
+        {sub && <span className="nx-sband-s">{sub}</span>}
+      </div>
+      {children && <div className="nx-sband-act">{children}</div>}
+      {bar && <div className="nx-upd-bar" aria-hidden="true" />}
+    </div>
+  );
 }
 
 /**
@@ -13,12 +92,15 @@ export function SGroup({ children }: { children: ReactNode }) {
 export function SRow({
   title,
   sub,
+  subId,
   id,
   htmlFor,
   children,
 }: {
   title: ReactNode;
   sub?: ReactNode;
+  /** 한 줄 설명의 id — 조절 장치가 `aria-describedby` 로 잇는다. */
+  subId?: string;
   id?: string;
   htmlFor?: string;
   children?: ReactNode;
@@ -35,7 +117,11 @@ export function SRow({
             {title}
           </span>
         )}
-        {sub && <span className="nx-sitem-sub">{sub}</span>}
+        {sub && (
+          <span className="nx-sitem-sub" id={subId}>
+            {sub}
+          </span>
+        )}
       </div>
       {children && <div className="nx-sitem-ctl">{children}</div>}
     </div>

@@ -15,7 +15,7 @@ export type ThemeId = "dark" | "light" | "github" | "github-light" | "claude" | 
 export type ThemeChoice = "system" | ThemeId;
 /** Which keypress sends a message. The other one inserts a newline. */
 export type SendKey = "enter" | "modEnter";
-/** 완료 알림의 시점: 끔 / 오래 걸린 턴만(기본) / 모든 턴. */
+/** 완료 알림의 시점: 끔 / 오래 걸린 턴만 / 모든 턴(기본). */
 export type NoticeTiming = "off" | "long" | "all";
 
 const NOTICE_TIMINGS: NoticeTiming[] = ["off", "long", "all"];
@@ -88,8 +88,11 @@ export interface LayoutSettings {
  */
 export const PREVIEW_WIDTH_BOUNDS = { min: 340, max: 1440 } as const;
 
-/** The sidebar's drag bounds. */
-export const SIDEBAR_WIDTH_BOUNDS = { min: 200, max: 360 } as const;
+/**
+ * The sidebar's drag bounds. 2026-10-06: 220 is as narrow as the brand row and the project card
+ * still read; 420 shows about thirty Korean characters of a conversation title.
+ */
+export const SIDEBAR_WIDTH_BOUNDS = { min: 220, max: 420 } as const;
 
 /**
  * How the agent answers in this planner's conversations.
@@ -221,6 +224,8 @@ export interface Settings {
   /** Type sizes in px — the size each axis' base token resolves to. They
       land on <html> as --*-scale custom properties (px ÷ base) that the
       stylesheet's font tokens multiply by. */
+  // 2026-10-04 ux-review: 살아 있는 경로(main.tsx 의 applyStoredTypeScale · useSettings
+  // 의 적용 효과 · styles.css 의 --font-ui-* 소비) — 제거 보류.
   uiSize: number;
   contentSize: number;
   codeSize: number;
@@ -255,8 +260,8 @@ const DEFAULT_SETTINGS: Settings = {
   uiSize: SIZE_PX.ui.base,
   contentSize: SIZE_PX.content.base,
   codeSize: SIZE_PX.code.base,
-  /** 기본은 "오래 걸린 턴만 + 소리" — 모든 턴마다 알림이 울리는 것부터 막는다. */
-  notifications: { done: "long", sound: true },
+  /** 기본은 "모든 턴 + 소리" — 완료를 놓치는 쪽이 잦은 울림보다 비싸다(2026-10-06 사용자 요청). */
+  notifications: { done: "all", sound: true },
   chat: DEFAULT_CHAT_SETTINGS,
   layout: { previewWidth: null, sidebarWidth: null, sidebarCollapsed: false },
   sessionTitles: {},
@@ -273,6 +278,13 @@ export const THEMES: ThemeChoice[] = [
 ];
 
 const KEY = "colonova-design.settings";
+
+/**
+ * 저장 블롭의 지문 — update() 가 찍고, loadSettings 는 이것으로 옛 저장을 안다.
+ * 지문이 없으면 테마 줄이 없던 시절(v1)의 저장이다. 값만 바뀐 자리이음이 매
+ * 재시작마다 도는 일을 막는다(2026-10-04 ux-plan PR3).
+ */
+const BLOB_VERSION = 2;
 
 /**
  * 설정의 테마 줄이 보여주는 목록 — 팔레트 자체는 styles.css 에 있고(THEMES와 같은
@@ -316,9 +328,12 @@ function loadSettings(): Settings {
   const stored = (raw ?? {}) as Record<string, unknown>;
 
   // `light` 는 테마 줄이 없던 시절의 흔적이다 — 고르는 칸이 없어도 모든 저장이
-  // 그 값을 함께 남겼으므로 사람의 고름이 아니다. 새 기본(Claude)으로 옮겨
-  // 적는다; 밝음을 원하면 테마 줄에서 다시 고르면 그때부터는 남는다.
-  const storedTheme = stored.theme === "light" ? "claude" : stored.theme;
+  // 그 값을 함께 남겼으므로 사람의 고름이 아니다. 새 기본(Claude)으로 옮겨 적는
+  // 다; 밝음을 원하면 테마 줄에서 다시 고르면 그때부터는 남는다.
+  // (2026-10-04 ux-plan PR3) 자리이음은 지문 없는 저장에만 한 번 돈다 — 지문이
+  // 찍힌 뒤 다시 고른 light 는 매 재시작마다 삼켜지지 않는다.
+  const storedTheme =
+    stored.v === BLOB_VERSION || stored.theme !== "light" ? stored.theme : "claude";
 
   return {
     theme: oneOf(THEMES, storedTheme, DEFAULT_SETTINGS.theme),
@@ -537,6 +552,7 @@ export function applyStoredTypeScale(): void {
     data attribute into calc(), and the inline property wins over the
     stylesheet's :root default the same way the attribute rules did. */
 function applyTypeScale(uiSize: number, contentSize: number, codeSize: number): void {
+  // 2026-10-04 ux-review: 살아 있는 경로 — 제거 보류.
   const style = document.documentElement.style;
   style.setProperty("--ui-scale", String(uiSize / SIZE_PX.ui.base));
   style.setProperty("--content-scale", String(contentSize / SIZE_PX.content.base));
@@ -570,7 +586,9 @@ export function useSettings(): {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
       try {
-        localStorage.setItem(KEY, JSON.stringify(next));
+        // 지문을 함께 찍는다 — 이 저장부터는 loadSettings 가 값이 사람의
+        // 고름임을 믿는다(2026-10-04 ux-plan PR3).
+        localStorage.setItem(KEY, JSON.stringify({ ...next, v: BLOB_VERSION }));
       } catch {
         // Private-browsing quotas can refuse the write. The choice still
         // applies to this tab, it just will not survive a reload.

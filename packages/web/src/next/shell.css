@@ -4,7 +4,8 @@
   position: relative;
   height: 100vh;
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
+  /* 사이드바 열 — 끌어 바꾼 폭(`--nx-side-w`, Workspace 가 단다)이 없으면 264px. */
+  grid-template-columns: var(--nx-side-w, 264px) minmax(0, 1fr);
   overflow: hidden;
 }
 
@@ -17,6 +18,34 @@
 .nx--resizing {
   cursor: col-resize;
   user-select: none;
+}
+
+/* 사이드바와 본문 사이의 끌 수 있는 경계(Splitter, 2026-10-06) — 사이드바 자신의 1px 테두리가
+   평소의 경계다: 분리봉은 그 위에 덧그리지 않고(투명) 손이 닿거나 끌 때만 제 선을 낸다. 손이 닿는
+   9px 은 사이드바 밖(본문 쪽)에 서서 사이드바 안의 굴림 막대를 가리지 않고, 상태 줄(z 20)에
+   가려 위쪽 52px 이 끌리지 않는 일이 없게 그보다 높이 선다. */
+.nx > .planner__split--sidebar {
+  z-index: 30;
+}
+
+.nx > .planner__split--sidebar::after {
+  left: -1px;
+  background: transparent;
+}
+
+.nx > .planner__split--sidebar:hover::after {
+  background: var(--line-hover);
+}
+
+/* 초점은 전역 고리(분리봉 상자를 둘러 두 줄로 보인다) 대신 경계선이 포인트 색의 굵은 선이 되어 말한다. */
+.nx > .planner__split--sidebar:focus-visible {
+  outline: none;
+}
+
+.nx > .planner__split--sidebar:focus-visible::after,
+.nx > .planner__split--sidebar.planner__split--drag::after {
+  width: 2px;
+  background: var(--accent);
 }
 
 /* 부팅 표지(shell-pane 의 `boot`) — 첫 상태가 오기 전의 조용한 한 장. 체크리스트를
@@ -112,6 +141,7 @@
 
 .nx .nx-tabs button {
   flex: 1;
+  min-width: 0;
   height: 32px;
   border-radius: var(--r);
   font-weight: 500;
@@ -121,6 +151,21 @@
   justify-content: center;
   gap: 6px;
   text-align: center;
+  /* 2026-10-04 ux-review(2차): 긴 화면 이름이 탭을 넘치지 않게 — 말줄임으로 자리를
+     지키고 배지(`Count`)가 밀려 나가지 않게 한다. */
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* 2026-10-04 ux-review(2차): 이름 칸이 줄며 말줄임으로 — 배지는 자리를 지킨다. */
+.nx-tabs .nx-tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-tabs .nx-cnt {
+  flex: none;
 }
 
 .nx .nx-tabs button.nx-tab--on {
@@ -128,7 +173,7 @@
   color: var(--ink);
   box-shadow:
     0 0 0 1px var(--line),
-    0 1px 2px rgba(0, 0, 0, 0.05);
+    /* 고정 — 고른 탭의 그림자. */ 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .nx-scrim {
@@ -148,26 +193,46 @@
   width: 284px;
   z-index: 40;
   transform: translateX(-104%);
-  transition: transform 0.22s ease;
+  /* 겹판과 같은 박자 — 그림자도 함께 걷혀 닫히는 동안 서랍 가장자리에 옛 그림자가 남지 않는다. */
+  transition:
+    transform var(--nx-t-move) var(--drift),
+    box-shadow var(--nx-t-move) var(--drift);
 }
 
+/* 서랍의 그림자 — 겹판과 같은 토큰(--shadow-float)에 옆으로 번지는 한 겹을 더한다. 옛 고정 검정은 어두운
+   팔레트에서 보이지 않았다(2026-10-06 겹판 조사). 옆 한 겹의 색은 테마가 정한 스크림 색이다. */
 .nx--drawer .nx-sidebar {
   transform: none;
-  box-shadow: 14px 0 40px rgba(0, 0, 0, 0.18);
+  box-shadow:
+    var(--shadow-float),
+    12px 0 32px -8px var(--scrim);
 }
 
-.nx--drawer .nx-scrim {
+/* 스크림 — 겹판(overlay.css)과 같은 옷: 테마가 정한 색에 흐림이 더해진다. 좁은 창에서는 늘 서 있고 서랍이
+   열릴 때만 보인다 — 닫힐 때 서랍이 미끄러지는 동안 불투명도로 걷히고, 걷힌 뒤에는 보이지도 눌리지도
+   초점을 받지도 않는다(visibility 가 전환이 끝난 뒤에 바뀐다). */
+.nx--narrow .nx-scrim {
   display: block;
   position: absolute;
   inset: 0;
-  background: rgba(24, 22, 19, 0.34);
   z-index: 39;
-  animation: nx-fade 0.2s;
+  background: var(--scrim);
+  -webkit-backdrop-filter: blur(var(--nx-blur)) saturate(1.1);
+  backdrop-filter: blur(var(--nx-blur)) saturate(1.1);
   cursor: default;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity var(--nx-t-move) var(--drift),
+    visibility 0s linear var(--nx-t-move);
 }
 
-.nx--narrow .nx-collapse-btn {
-  display: none;
+.nx--drawer .nx-scrim {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition-delay: 0s;
 }
 
 .nx--narrow .nx-body {

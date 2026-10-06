@@ -2,14 +2,27 @@ import type {
   DeveloperReview,
   PermissionSuggestion,
   ProjectSummary,
+  ThreadSummary,
 } from "@colonova-design/protocol";
 import type { PendingPermission, PendingQuestion, SessionView } from "../../lib/daemon-client";
 import { toolLabel } from "../../lib/labels";
+import {
+  type HiddenThreads,
+  SYSTEM_THREAD_TITLES,
+  visibleThreads,
+} from "../../lib/thread-visibility";
 import type { L } from "../labels";
+import { type ResumeItem, resumeItems } from "./home-resume";
 
 type Pending = PendingPermission | PendingQuestion;
+
+/** 「방금 있던 일」의 상한 — 최근 10개까지만 선다(2026-10-04 ux-review(2차)). */
+const DONE_LIMIT = 10;
+/** 이보다 오래된 끝난 줄은 「방금」이 아니다 — 이틀. */
+const DONE_MAX_AGE_MS = 2 * 24 * 60 * 60 * 1000;
 /** 문장의 주인 — `L.home`. 칸을 통째로 건네므로 죽은 문장 시험이 지킨다. */
-export type HomeFeedWords = Pick<typeof L, "home">;
+// 2026-10-04 ux-review: doneArrived 를 지우고 inbox.answered 를 쓴다 — 자격에 inbox 를 더한다.
+export type HomeFeedWords = Pick<typeof L, "home" | "inbox">;
 
 /** 질문형 결정 카드 — 즉답 칩은 단일 질문·단일 선택일 때만 있다. */
 interface AskingQuestion {
@@ -84,6 +97,8 @@ export interface HomeFeed {
   asking: AskingItem[];
   running: RunningItem[];
   done: DoneItem[];
+  /** 이어서 하기 — 다른 묶음에 서지 않은 가장 최근의 사람 대화(2026-10-06 홈 개선). */
+  resume: ResumeItem[];
   /** 활성 프로젝트를 뺀 나머지 — pending 도 마지막 사건도 없는 프로젝트는
       0건 숨김 규칙을 따라 걸러진다. */
   otherProjects: OtherProjectItem[];
@@ -122,11 +137,23 @@ export function buildHomeFeed(
   projects: ProjectSummary[],
   activeSlug: string | null,
   words: HomeFeedWords,
+  options: {
+    /** 지워 낸 대화 — 데몬의 목록이 따라오기 전에도 홈에서 거둔다(사이드바와 같은 판정). */
+    hidden?: HiddenThreads;
+    /** 대화의 표시 이름 — 사용자가 바꾼 이름을 따른다(사이드바와 같은 이름). */
+    titleOf?: (thread: ThreadSummary) => string;
+  } = {},
 ): HomeFeed {
   const activeProject = projects.find((project) => project.slug === activeSlug) ?? null;
-  const threads = activeProject?.threads ?? [];
+  const threads = activeProject
+    ? visibleThreads(activeProject.threads, options.hidden ?? {}, activeProject.slug)
+    : [];
+  const titleOf = options.titleOf ?? ((thread: ThreadSummary) => thread.title);
   const threadById = new Map(threads.map((thread) => [thread.id, thread]));
-  const titleFor = (sessionId: string) => threadById.get(sessionId)?.title ?? words.home.untitled;
+  const titleFor = (sessionId: string) => {
+    const thread = threadById.get(sessionId);
+    return thread ? titleOf(thread) : words.home.untitled;
+  };
 
   // 질문형·권한형: 데몬이 준 순서는 도착 순이지 발생 순이 아니다 —
   // 타임스탬프가 없는 한 "최신이 맨 위"는 근사값일 뿐이니, 도착이 늦은
@@ -186,24 +213,35 @@ export function buildHomeFeed(
     if (view?.state === "running") {
       running.push({
         sessionId: thread.id,
-        title: thread.title,
+        title: titleOf(thread),
         line: lastActionLine(view, words),
         turnStartedAt: view.turnStartedAt,
       });
-    } else if (thread.state === "finished") {
+    } else if (
+      thread.state === "finished" &&
+      // 도구가 스스로 연 대화(`리뷰 반영` …)가 조용히 끝난 것은 사용자가 확인할 답이 아니다 —
+      // 못 끝낸 것만 남는다(다시 시도할 수 있다).
+      (!SYSTEM_THREAD_TITLES[thread.title] || view?.state === "error")
+    ) {
       // ThreadSummary.updatedAt 은 실제 타임스탬프다(pending 과 달리) — 근사가
       // 아니라 정확한 "얼마 전"을 보일 수 있다. 선로의 요약은 실패도 finished 로
       // 부르므로, 살아 있는 세션 뷰가 error 를 말하면 사이드바와 같은 말을 쓴다(U10).
       done.push({
         sessionId: thread.id,
-        title: thread.title,
-        line: view?.state === "error" ? words.home.doneFailed : words.home.doneArrived,
+        title: titleOf(thread),
+        line: view?.state === "error" ? words.home.doneFailed : words.inbox.answered,
         at: Date.parse(thread.updatedAt) || 0,
       });
     }
   }
   running.sort((a, b) => (b.turnStartedAt ?? 0) - (a.turnStartedAt ?? 0));
   done.sort((a, b) => b.at - a.at);
+  // 2026-10-04 ux-review(2차): 「방금 있던 일」은 최근 것만 머문다 — 최대 10개(기존
+  // 상수 스타일: 파일 머리의 상수), 그리고 이틀이 지난 줄은 거둔다. 몇 주 전 문장이
+  // 진짜 방금 있던 일을 밀어 내지 않게.
+  const recentDone = done
+    .slice(0, DONE_LIMIT)
+    .filter((item) => Date.now() - item.at < DONE_MAX_AGE_MS);
 
   // 크로스 프로젝트 인박스(PLAN P3-2): 활성 프로젝트를 뺀 나머지
   // 중 pending 도 마지막 사건도 없는 프로젝트는 그룹별 0건 숨김 규칙을
@@ -224,10 +262,20 @@ export function buildHomeFeed(
       return (Date.parse(b.lastEventAt ?? "") || 0) - (Date.parse(a.lastEventAt ?? "") || 0);
     });
 
+  const asking = [...askingFromPending, ...askingFromReviews];
+  // 이어서 하기 — 이미 다른 묶음에 선 대화는 뺀다. 이틀이 지나 「방금」에서 거둔 끝난 대화는 여기로 온다.
+  const taken = new Set([
+    ...asking.map((item) => item.sessionId),
+    ...running.map((item) => item.sessionId),
+    ...recentDone.map((item) => item.sessionId),
+  ]);
+  const resume = resumeItems(threads, taken, SYSTEM_THREAD_TITLES, titleOf);
+
   return {
-    asking: [...askingFromPending, ...askingFromReviews],
+    asking,
     running,
-    done,
+    done: recentDone,
+    resume,
     otherProjects,
   };
 }

@@ -3,36 +3,47 @@
 .nx-home {
   flex: 1;
   overflow: auto;
+  /* 인사와 입력창 뒤에 번지는 포인트 색 기운 — 바닥 위에 한 겹 깊이를 더한다. 배경은 스크롤 상자 자신의
+     것이라 굴러도 위에 머문다. 팔레트의 포인트 색을 섞으므로 어느 테마에서나 그 테마의 빛이다. */
+  background: radial-gradient(
+      ellipse 70% 440px at 50% 0,
+      color-mix(in srgb, var(--accent) 6%, transparent) 0%,
+      color-mix(in srgb, var(--accent) 3.5%, transparent) 38%,
+      color-mix(in srgb, var(--accent) 1%, transparent) 70%,
+      transparent 100%
+    )
+    no-repeat;
+}
+
+/* Codex 팔레트의 포인트 색은 거의 검정이라 번지면 빛이 아니라 회색 얼룩이다 — 이 팔레트는 기운을 걷는다. */
+html[data-theme="codex"] .nx-home {
+  background: none;
 }
 
 .nx-home-inner {
   max-width: 700px;
   margin: 0 auto;
-  padding: 10vh 24px 48px;
+  padding: 10vh 24px 56px;
 }
 
 .nx--narrow .nx-home-inner {
   padding-top: 7vh;
 }
 
-/* 홈이 앞에 설 때 — 인사 · 입력창 · 안내 · 받은 편지함이 위에서 아래로 한 박자씩 뜬다.
+/* 홈이 앞에 설 때 — 인사 · 입력창(과 시작점) · 받은 편지함이 위에서 아래로 한 박자씩 뜬다.
    홈은 들어올 때마다 새로 그려지므로(nx-work 가 뜨는 것과 짝) 돌아올 때마다 한 번 선다.
    채움은 backwards 만 — 끝난 뒤에도 남는 transform 애니메이션은 쌓임 맥락을 만들어 입력창의
-   팝이 아래 받은 편지함에 깔린다. 뒤의 세 자식은 지연 동안 첫 모양(흐림)으로 기다린다. */
+   팝이 아래 받은 편지함에 깔린다. 뒤의 두 자식은 지연 동안 첫 모양(흐림)으로 기다린다. */
 .nx-home-inner > * {
   animation: nx-home-in 0.36s var(--drift) backwards;
 }
 
 .nx-home-inner > :nth-child(2) {
-  animation-delay: 50ms;
+  animation-delay: 60ms;
 }
 
 .nx-home-inner > :nth-child(3) {
-  animation-delay: 100ms;
-}
-
-.nx-home-inner > :nth-child(4) {
-  animation-delay: 150ms;
+  animation-delay: 140ms;
 }
 
 @keyframes nx-home-in {
@@ -42,7 +53,21 @@
   }
 }
 
+/* 인사 곁의 반짝이 — 처음 설 때 한 번 튀어 오른다. */
+@keyframes nx-greet-spark {
+  from {
+    opacity: 0;
+    transform: scale(0.4) rotate(-40deg);
+  }
+
+  60% {
+    transform: scale(1.15) rotate(8deg);
+  }
+}
+
 .nx-greet {
+  /* 반짝이의 크기 — 좁은 창에서는 인사와 함께 줄어든다. */
+  --nx-spark: 20px;
   font-family: var(--serif);
   font-weight: 400;
   font-size: 34px;
@@ -56,28 +81,167 @@
 }
 
 .nx--narrow .nx-greet {
+  --nx-spark: 17px;
   font-size: 27px;
 }
 
 .nx-greet .nx-i {
+  flex: none;
+  width: var(--nx-spark);
+  height: var(--nx-spark);
   color: var(--accent);
+  animation: nx-greet-spark 0.7s var(--spring) 0.2s backwards;
 }
 
-.nx-composer--home {
-  padding: 14px 12px 10px 16px;
-  border-radius: 20px;
+/* ---------- 입력창 · 안내 · 시작점 ---------- */
+
+.nx-hc {
+  position: relative;
 }
 
-.nx-composer--home textarea {
-  min-height: 52px;
+/* 홈의 입력창 — 대화 칸의 입력창(chat.css 의 .nx-composer)을 키운 것. 한 클래스짜리 규칙은 chat.css 가
+   뒤에 와서 특이도가 같을 때 지므로(옛 `.nx-composer--home` 규칙은 이렇게 통째로 죽어 있었다)
+   `.nx` 를 앞에 세워 이긴다. 손을 올리면 테두리가 짙어지고, 초점이 오면 포인트 색 고리가 번진다. */
+.nx .nx-composer--home {
+  padding: 16px 14px 12px 18px;
+  border-radius: 22px;
+  /* 고정 — 입력창의 그림자는 테마를 따르지 않는 따뜻한 검은 빛이다. */
+  box-shadow:
+    0 1px 2px rgba(40, 30, 20, 0.05),
+    0 14px 32px -18px rgba(40, 30, 20, 0.24);
+  transition:
+    border-color var(--nx-t-touch) var(--drift),
+    box-shadow var(--nx-t-move) var(--drift);
+}
+
+.nx .nx-composer--home:hover {
+  border-color: var(--line2);
+}
+
+.nx .nx-composer--home:focus-within {
+  border-color: var(--accent-line);
+  /* 고정 — 위와 같은 빛에 포인트 색 고리를 둘렀다. 홈은 열리자마자 초점이 와 있어 늘 보이는 고리라
+     살짝만 — 포인트 색 6% 로 번진다. */
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 6%, transparent),
+    0 16px 36px -18px rgba(40, 30, 20, 0.28);
+}
+
+.nx .nx-composer--home textarea {
+  min-height: 56px;
   font-size: 15px;
+  line-height: 1.55;
+}
+
+/* 파일을 끌어 홈 위에 올려 둔 동안 입력창을 덮는다 — 놓을 자리를 말할 뿐 손길은 받지 않는다. */
+.nx-hdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 2px dashed var(--accent);
+  border-radius: 22px;
+  background: color-mix(in srgb, var(--cmp) 88%, transparent);
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+  animation: nx-fade var(--nx-t-touch) var(--drift);
 }
 
 .nx-home-hint {
   font-size: 12.5px;
   color: var(--ink3);
   text-align: center;
-  margin: 10px 0 36px;
+  margin: 12px 0 0;
+}
+
+/* 시작점 칩 — 입력창에 말이 생기면 접혀 물러난다(grid 행을 0 으로: 높이를 재지 않고도 접힌다).
+   접힌 동안 아래 받은 편지함이 부드럽게 올라온다. */
+.nx-starters {
+  display: grid;
+  grid-template-rows: 1fr;
+  margin-top: 16px;
+  transition:
+    grid-template-rows var(--nx-t-move) var(--drift),
+    margin-top var(--nx-t-move) var(--drift),
+    opacity var(--nx-t-move) var(--drift);
+}
+
+.nx-starters--away {
+  grid-template-rows: 0fr;
+  margin-top: 0;
+  opacity: 0;
+}
+
+/* 칩의 호버 들림 · 그림자 · 초점 고리가 접는 상자에 잘리지 않게 안쪽 여백을 두고(그림자가 아래로
+   번지므로 아래를 더 넓게) 바깥 여백으로 되돌린다. */
+.nx-starters-in {
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 4px 14px;
+  margin: -4px -4px -14px;
+}
+
+.nx .nx-starter {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 14px 0 11px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--cmp) 70%, transparent);
+  color: var(--ink2);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.nx .nx-starter-i {
+  display: grid;
+  color: var(--ink3);
+  transition:
+    color var(--nx-t-touch) var(--drift),
+    transform var(--nx-t-move) var(--spring);
+}
+
+.nx .nx-starter:hover {
+  background: var(--cmp);
+  border-color: var(--line2);
+  color: var(--ink);
+  transform: translateY(-1px);
+  /* 고정 — 칩이 들릴 때의 그림자. */
+  box-shadow: 0 6px 14px -8px rgba(40, 30, 20, 0.3);
+}
+
+.nx .nx-starter:hover .nx-starter-i {
+  color: var(--accent);
+  transform: scale(1.12);
+}
+
+/* ---------- 받은 편지함 ---------- */
+
+.nx-inbox {
+  margin-top: 40px;
+}
+
+/* 칩을 감싼 닻도 줄어들어야 칩의 말줄임이 선다 — 닻이 내용의 폭을 고집하면 긴 이름이 모델 칩과 보내기
+   단추를 도구 줄 밖으로 밀어 낸다. */
+.nx-pchip-wrap {
+  min-width: 0;
+}
+
+/* 좁은 입력창에서는 프로젝트 칩이 말줄임으로 줄고 모델 칩은 온전히 선다. 도구 단추는 줄어들지 않으므로
+   모델 칩의 닻만 줄어들면 단추가 닻 밖으로 넘쳐 보내기 단추를 덮는다. */
+.nx .nx-composer--home .nx-model {
+  flex: none;
 }
 
 .nx .nx-pchip {
@@ -85,11 +249,25 @@
   align-items: center;
   gap: 6px;
   height: 30px;
+  /* 좁은 창에서 도구 줄이 모자라면 이름이 줄을 바꾸는 대신 말줄임으로 줄어든다. */
+  min-width: 0;
   padding: 0 8px 0 5px;
   border-radius: var(--r);
   border: 1px solid var(--line);
   font-size: 12.5px;
   color: var(--ink2);
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.nx-pchip-n {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nx-pchip > svg {
+  flex: none;
 }
 
 .nx .nx-pchip:hover {
@@ -106,37 +284,53 @@
   color: var(--ink2);
 }
 
+/* 답을 기다리는 카드 — 내 손이 필요한 일이라 이 면에서 가장 무겁다: 입력창과 같은 바탕(Claude 는
+   흰 종이)에 포인트 색 테두리와 왼쪽 띠. 띠는 안쪽 그림자라 둥근 모서리를 따라 휜다. */
 .nx-dcard {
-  background: var(--card);
+  background: var(--cmp);
   border: 1px solid var(--accent-line);
-  border-radius: 14px;
-  padding: 14px 16px;
+  border-radius: 16px;
+  padding: 14px 16px 14px 18px;
   margin-bottom: 10px;
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    var(--shadow-card);
 }
 
 .nx-dmeta {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
   font-size: 12.5px;
   color: var(--ink3);
 }
 
-.nx-time {
-  margin-left: auto;
+/* 긴 대화 제목이 시각을 밀어 내지 않게 — 이름 칸만 말줄임으로 줄어든다. */
+.nx-dwhere {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 시각은 chat.css 의 `.nx-time`(오른쪽 끝으로 민다)을 함께 쓴다 — 여기서는 줄어들지 않게만. */
+.nx-dmeta .nx-time {
+  flex: none;
 }
 
 .nx-dq {
   display: flex;
   gap: 8px;
-  margin: 9px 0 12px;
+  margin: 10px 0 14px;
   line-height: 1.5;
-  font-size: 14px;
+  font-size: 14.5px;
 }
 
 .nx-dq .nx-i {
+  flex: none;
   color: var(--accent);
-  margin-top: 3px;
+  margin-top: 4px;
 }
 
 .nx-dopts {
@@ -145,6 +339,8 @@
   flex-wrap: wrap;
 }
 
+/* 기다리는 일이 없다는 한 줄 — 초록 표시가 「다 챙겼다」를 말한다. 연결이 끊긴 동안에는 같은 자리가 이유를
+   호박색으로 말한다(「비었음」을 알 수 없다). */
 .nx-calm {
   display: flex;
   align-items: center;
@@ -154,14 +350,21 @@
   padding: 6px 2px 16px;
 }
 
-.nx-calm--inner {
-  padding: 8px 2px 0;
+.nx-calm-i {
+  display: grid;
 }
 
+.nx-calm--ok .nx-calm-i {
+  color: var(--green);
+}
+
+.nx-calm--lock {
+  color: var(--amber);
+}
+
+/* 묶음 — 선으로 가르지 않고 간격과 머리로 가른다. 머리는 낮게 말하고 줄이 앞선다. */
 .nx-fold {
-  margin-top: 14px;
-  border-top: 1px solid var(--line);
-  padding-top: 12px;
+  margin-top: 24px;
 }
 
 .nx-fold summary {
@@ -170,8 +373,13 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  padding: 2px 2px 4px;
+  font-size: 12.5px;
   font-weight: 600;
+  color: var(--ink3);
+}
+
+.nx-fold summary:hover {
   color: var(--ink2);
 }
 
@@ -188,37 +396,76 @@
   transform: rotate(90deg);
 }
 
+/* 한 줄 — 앞 그림 · 제목(+ 아래 한 줄) · 오른쪽 말. */
 .nx .nx-irow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 9px 10px;
+  padding: 8px 10px;
   border-radius: var(--r-md);
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .nx .nx-irow:hover {
   background: var(--nx-hover);
 }
 
-.nx-it {
-  flex: 1;
-  min-width: 0;
-  font-size: 13.5px;
+.nx-ilead {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  color: var(--ink3);
 }
 
-.nx-it span {
+/* 앞 그림의 색 — 기본은 연한 잉크, 줄의 뜻이 있으면 그 색을 입는다(AI 의 답 · 끝난 일). */
+.nx-ilead.nx-tone--accent {
+  color: var(--accent);
+}
+
+.nx-ilead.nx-tone--green {
+  color: var(--green);
+}
+
+.nx-itext {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1px;
+}
+
+.nx-it,
+.nx-isub {
+  /* 2026-10-04 ux-review(2차): 사이드바 `.nx-conv-t` 와 같은 말줄임 — 긴 제목이
+     줄 끝의 숫자 · 문장을 밀어 내지 않게. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-it {
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.nx-isub {
+  font-size: 12px;
+  line-height: 1.4;
   color: var(--ink3);
 }
 
 .nx-ir {
-  font-size: 12px;
-  color: var(--ink3);
-  white-space: nowrap;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
+  font-size: 12px;
+  color: var(--ink3);
+  white-space: nowrap;
+  /* 도는 시계가 매초 폭을 흔들지 않게. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* 답을 보낸 카드는 접히며 사라진다 — 갑자기 사라져 나머지 카드가 튀지 않게.
@@ -260,6 +507,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .nx-dfold {
+    transition: none;
+  }
+
+  .nx-starters {
     transition: none;
   }
 

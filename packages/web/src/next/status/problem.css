@@ -68,8 +68,9 @@
 }
 
 /* 「다 고쳤어요」 앞의 초록 체크(.nx-problem-fixed)도 span 이다 — 본문 규칙이 그것까지 잡으면
-   (0-1-1 이 0-1-0 을 이긴다) 체크가 회색으로 한 줄 폭만큼 늘어난다. 본문 span 만 겨눈다. */
-.nx-problem span:not(.nx-problem-fixed) {
+   (0-1-1 이 0-1-0 을 이긴다) 체크가 회색으로 한 줄 폭만큼 늘어난다. 본문 span 만 겨눈다.
+   끝의 `+N`(.nx-problem-more)도 본문이 아니라 표시다. */
+.nx-problem span:not(.nx-problem-fixed):not(.nx-problem-more) {
   color: var(--ink2);
   min-width: 0;
   flex: 1;
@@ -81,6 +82,13 @@
   width: 26px;
   padding: 0;
   flex: none;
+}
+
+/* 줄에 선 문제 외의 열린 문제 수(`+N`) — 본문 칸을 잡지 않는 작은 표시다. */
+.nx-problem-more {
+  flex: none;
+  font-weight: 600;
+  color: var(--ink2);
 }
 
 .nx-problem--fixing {
@@ -110,8 +118,19 @@
   color: var(--red);
 }
 
-.nx--narrow .nx-problem span:not(.nx-problem-fixed) {
-  display: none;
+.nx--narrow .nx-problem {
+  /* 숨기지 않고 줄을 바꿔 담는다 — 본문은 두 줄까지 감기고 손은 아래 줄로
+     내려온다(2026-10-04 ux-review). */
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.nx--narrow .nx-problem span:not(.nx-problem-fixed):not(.nx-problem-more) {
+  flex: 1 1 100%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .nx--narrow .nx-problem b {
@@ -120,5 +139,5 @@
 
 .nx-problem--blocked {
   color: var(--red);
-  background: var(--red-bg);
+  background: var(--red-soft);
 }

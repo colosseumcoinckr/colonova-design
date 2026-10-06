@@ -7,6 +7,9 @@
 
 export type InstallStep = "download" | "install" | "verify";
 
+/** 파이프라인의 차례 — 처음 체크리스트의 세 칸 막대가 지금 어느 칸인지 읽는다(2026-10-06 온보딩 손질). */
+export const INSTALL_STEPS: readonly InstallStep[] = ["download", "install", "verify"];
+
 /** 배열의 앞일수록 파이프라인의 뒤 걸음이다 — 한 줄에 여러 단계의 말이 섞이면 뒤 걸음을 택한다.
  *  한글의 말모이는 이스케이프로 적는다 — 문장 검사가 정규식 리터럴 안도 본다. */
 const STEPS: ReadonlyArray<readonly [InstallStep, RegExp]> = [

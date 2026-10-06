@@ -38,12 +38,17 @@ export const L = {
     reconnectInvite:
       "연결 코드가 만료됐어요. 개발자에게 받은 새 초대 파일을 열어 주세요. 대화와 작업은 그대로예요.",
     reconnectLogin: "AI 로그인이 끝났어요. 브라우저에서 한 번만 다시 로그인해 주세요.",
+    /** 로그인 단추를 누른 뒤 — 브라우저가 열렸고, 다 마치면 `다시 확인` 을 누르라는 말(단추만 바뀌던 것). */
+    loginWaiting: "브라우저에서 로그인을 마치면 다시 확인해요",
     openInvite: "초대 파일 열기",
     loginInBrowser: "브라우저에서 로그인",
     /** `개발자에게 알렸어요` 줄의 ✕ — 같은 문제를 이 탭이 사는 동안 숨긴다. */
     dismiss: "이 문제 알림 닫기",
     /** `AI가 고치는 중` 이 저절로 풀릴 때 — 접히기 전 초록 체크와 함께 선다. */
     fixed: "다 고쳤어요",
+    /** 줄에 선 문제 외에 열린 문제가 더 있을 때 줄 끝의 `+N`. */
+    more: (n: number) => `+${n}`,
+    moreCount: (n: number) => `이 외에 열린 문제가 ${n}개 있어요`,
   },
   /** 여정 세 점(U2) — `제출 전 ─ 개발자 확인 ─ 반영됨`. */
   journey: {
@@ -60,6 +65,8 @@ export const L = {
     merged: "개발자 반영",
     mergedNow: "개발자 반영 완료",
     projectWork: (name: string) => `${name} · 프로젝트 전체 작업`,
+    /** 상태 줄에서 프로젝트 이름 옆에 서는 범위의 말 — 폭이 모자라면 이름만 남고, 둘 다 `projectWork` 로 툴팁에 산다. */
+    projectScope: "프로젝트 전체 작업",
     openWork: "이번 작업 보기",
     makingRead: "화면을 살펴보는 중",
     makingFile: "화면 파일을 고치는 중",
@@ -68,6 +75,8 @@ export const L = {
     /** 여정 단추의 접근 이름 — 시계가 매초 이름을 갈아 놓지 않게 보이는 몸과
        갈라 쓴다. */
     openWorkNow: (point: string) => `이번 작업 보기 · ${point}`,
+    /** 보이지 않는 낭독 칸 — 점이 앞으로 오를 때만 한 번 말한다(첫 마운트는 조용하다). */
+    nowPoint: (point: string) => `지금은 ${point}`,
   },
 
 
@@ -95,6 +104,15 @@ export const L = {
     waitingAnswerCount: (n: number) => `답을 기다려요 ${n}`,
     comments: (n: number) => `코멘트 ${n}`,
     aiFailedRetry: "AI가 답을 못 했어요 — 다시 시도할 수 있어요",
+    /** 대화 목록의 날짜 머리 — 이 컴퓨터의 달력으로 오늘 · 어제 · 지난 7일 · 그 이전(2026-10-06). */
+    groups: { today: "오늘", yesterday: "어제", week: "지난 7일", older: "이전" },
+    /** 프로젝트 목록 맨 아래의 두 줄 — 지금 프로젝트의 카드, 새 프로젝트 들이기(2026-10-06). */
+    projectInfo: "프로젝트 정보",
+    addProject: "초대 파일로 프로젝트 추가…",
+    /** `다른 프로젝트` 는 가장 급한 셋만 세운다 — 나머지는 이 줄이 전환기 목록으로 연다(2026-10-06 겹판 조사). */
+    moreProjects: (n: number) => `프로젝트 ${n}개 더 보기`,
+    /** 맨 위 `새 대화 · 홈 · 찾기` 줄들의 이름 — 대화 목록(`convs`)과 갈리는 내비게이션이다. */
+    nav: "바로 가기",
   },
   /** 사이클 상태의 한 단어 — 사이드바 · 전환기 · 팔레트가 함께 쓴다. */
   cycle: {
@@ -115,7 +133,44 @@ export const L = {
     working: "작업하는 중이에요",
     untitled: "대화",
     doneFailed: "AI가 답을 못 했어요 — 다시 시도할 수 있어요",
-    doneArrived: "답이 왔어요 — 확인해 보세요",
+    // 2026-10-04 ux-review: doneArrived 는 inbox.answered 와 같은 문장 — 하나로 쓴다.
+    /** 이 프로젝트에서 나눈 최근 대화 — 눌러 이어 한다(2026-10-06 홈 개선). */
+    resume: "이어서 하기",
+    /** 입력창 아래 시작점 칩 묶음의 이름 — 칩은 보내지 않고 고쳐 쓸 초안만 담는다. */
+    startersLabel: "이렇게 시작해 보세요",
+    /** 칩마다의 이름과 초안 — `screen` 은 이번 작업이 만진 화면의 이름(모르면 null), `blank` 는 이름을 모를 때 그 자리에 서는 낱말. */
+    starters: {
+      words: {
+        label: "문구 다듬기",
+        blank: "화면",
+        draft: (screen: string | null) =>
+          `${screen ? `‘${screen}’ 화면의` : "화면의"} 문구를 더 쉽고 부드럽게 다듬어 줘`,
+      },
+      empty: {
+        label: "빈 화면 안내",
+        blank: "목록",
+        draft: (screen: string | null) =>
+          screen
+            ? `‘${screen}’ 화면에 내용이 없을 때 보여 줄 안내 문구와 버튼을 넣어 줘`
+            : "목록이 비어 있을 때 보여 줄 안내 문구와 버튼을 넣어 줘",
+      },
+      phone: {
+        label: "휴대폰에서 확인",
+        blank: "화면",
+        draft: (screen: string | null) =>
+          screen
+            ? `‘${screen}’ 화면이 휴대폰 크기에서 깨지는 곳이 없는지 확인하고 고쳐 줘`
+            : "휴대폰 크기에서 화면이 깨지는 곳이 없는지 확인하고 고쳐 줘",
+      },
+      tidy: {
+        label: "간격 정리",
+        blank: "화면",
+        draft: (screen: string | null) =>
+          `${screen ? `‘${screen}’ 화면의` : "화면의"} 간격과 정렬을 깔끔하게 정리해 줘`,
+      },
+    },
+    /** 파일을 끌어 홈 위에 올렸을 때 입력창을 덮는 한 줄. */
+    dropHere: "여기에 놓으면 첨부돼요",
   },
   narrow: {
     chatTab: "대화",
@@ -125,11 +180,19 @@ export const L = {
   toast: {
     switched: (name: string) => `옮겼어요 · ${name} · 미리보기는 보던 자리 그대로예요`,
     switchedPreparing: (name: string) => `옮겼어요 · ${name} · 준비가 계속 돌고 있어요`,
+    /** 프로젝트를 못 옮겼을 때 — 사이드바 · 찾기 · 홈이 한 문장을 쓴다(2026-10-06 겹판 조사). */
+    switchFailed: "프로젝트로 옮기지 못했어요 — 잠시 뒤 다시 시도해 주세요",
+    close: "알림 닫기",
+  },
+  /** 겹판(대화상자) 공용 — `ui/ModalFrame` 이 읽는다. */
+  modal: {
+    close: "닫기",
   },
   /** 셸의 틀 — 상태 줄 · 좁은 창 · 열 경계. */
   shell: {
     menu: "메뉴 열기",
     chatWidth: "대화 너비",
+    sidebarWidth: "사이드바 너비",
     closeMenu: "메뉴 닫기",
     projectMenu: "프로젝트 고르기",
     /** 화면 수를 모를 때(데몬이 아직 화면 목록을 싣지 않음)의 제출 이유. */
@@ -138,6 +201,8 @@ export const L = {
     commentsArrived: "코멘트가 왔어요",
     /** 열 경계(Splitter)의 접근 값 — 화면 낭독이 폭을 말로 읽는다. */
     pixels: (n: number) => `${n}픽셀`,
+    // 2026-10-04 ux-review: 되돌림이 더블클릭 전용이라 접근 이름에 힌트를 붙인다.
+    chatWidthReset: "Enter 누르면 원래 폭",
   },
 
   /** 홈의 받은 편지함(U6). */
@@ -149,14 +214,12 @@ export const L = {
     askMany: "물어볼 것이 여러 개예요 — 대화에서 답해 주세요",
     askPermission: (what: string) => `AI가 이것을 하려고 해요 · ${what}`,
     reviewArrived: "개발자가 코멘트를 남겼어요 — 대화에서 볼 수 있어요",
-    nothingRunning: "도는 작업이 없어요",
     firstPrepare: "처음 켜는 준비",
     answered: "답이 왔어요 — 확인해 보세요",
     eventMerged: "개발자 반영 완료",
     eventComments: "코멘트가 왔어요",
     eventClosed: "개발자가 요청을 닫았어요",
     eventReplied: "개발자가 답을 달았어요",
-    nothingRecent: "아직 있던 일이 없어요",
     stepNames: ["내려받기", "설치하기", "미리보기 켜기"],
   },
   /** 뼈대의 자리 표시 — 단계 2·3 이 채우기 전의 대화 · 미리보기 칸. */
@@ -174,14 +237,16 @@ export const L = {
     guideNote: "새로 시작하는 대화부터 적용돼요. 비우면 규칙도 사라져요.",
     guideSavedToast: "저장했어요 — 새로 시작하는 대화부터 적용돼요",
     guideSaveFailed: "지켜 줄 것을 저장하지 못했어요",
-    remove: "프로젝트 삭제",
-    removeConfirm: (name: string) =>
-      `‘${name}’ 프로젝트를 목록에서 삭제할까요? 대화와 작업 파일은 이 컴퓨터에 보관돼요.`,
+    /** 데몬의 `project.remove` 는 파일을 지우지 않는다 — 대화와 작업 파일은 이 컴퓨터에 남는다. 그래서 「삭제」가 아니라 「빼기」다(2026-10-06 겹판 조사). */
+    remove: "목록에서 빼기",
+    removeTitle: (name: string) => `‘${name}’ 프로젝트를 목록에서 뺄까요?`,
+    removeBody: "대화와 작업 파일은 이 컴퓨터에 그대로 있어요. 다시 쓰려면 초대 파일로 추가하세요.",
+    removeLast: "마지막 프로젝트예요 — 빼면 초대 파일을 여는 화면으로 돌아가요.",
     removeCancel: "그만두기",
-    removeBusy: "AI 작업이나 제출이 끝난 뒤 삭제할 수 있어요.",
-    removing: "삭제 중…",
-    removeDone: (name: string) => `‘${name}’ 프로젝트를 목록에서 삭제했어요`,
-    removeFailed: "프로젝트를 삭제하지 못했어요 — 다시 시도해 주세요",
+    removeBusy: "AI 작업이나 제출이 끝난 뒤에 뺄 수 있어요.",
+    removing: "빼는 중…",
+    removeDone: (name: string) => `‘${name}’ 프로젝트를 목록에서 뺐어요`,
+    removeFailed: "프로젝트를 빼지 못했어요 — 다시 시도해 주세요",
   },
   /** 대화 줄의 `···` 메뉴 — 이름 바꾸기 · 내보내기 · 지우기(확인은 메뉴 안의 한 줄). */
   convMenu: {
@@ -192,8 +257,14 @@ export const L = {
     exportDone: (file: string) => `${file} 파일로 내보냈어요`,
     exportFailed: "내보내지 못했어요",
     remove: "지우기",
-    removeConfirm: "이 대화를 목록에서 지울까요? 화면은 그대로예요",
+    /** `···` 단추에 손을 올리면 — 이름(대화 메뉴)이 이미 말하는 것 대신 안에 든 것을 말한다(2026-10-06 겹판 조사). */
+    hint: "이름 바꾸기 · 내보내기 · 지우기",
+    /** 지우기 확인 — 제목은 일을, 본문은 영향의 크기와 남는 것을 말한다(데몬의 `session.delete` 가 그대로다). */
+    removeTitle: "이 대화를 지울까요?",
+    removeBody: "말과 답이 이 컴퓨터에서 영구히 지워져요 — 되돌릴 수 없어요. 만든 화면 작업은 그대로 남아요.",
+    removeRunning: "지금 답하는 중이에요 — 멈추고 지우고, 기다리던 말도 함께 사라져요.",
     removeCancel: "그만두기",
+    removeDone: "대화를 지웠어요",
     removeFailed: "지우지 못했어요",
   },
 
@@ -215,6 +286,10 @@ export const L = {
     pinNote: "어떻게 바꿀까요? (선택)",
     pinRemove: "빼기",
     tooBig: (name: string) => `${name} — 8MB 보다 큰 파일은 보낼 수 없어요`,
+    /** 입력칸의 고정 접근 이름 — placeholder 는 상태마다 바뀌므로 이름에서 뺐다(2026-10-04 ux-review). */
+    message: "AI에게 보내는 말",
+    /** 답하기 · 한마디 더 입력칸의 고정 접근 이름 — 바뀌는 자리 표시는 힌트로 묶는다. */
+    noteToDev: "개발자에게 남기는 말",
   },
   model: {
     loading: "AI 정보를 확인하는 중…",
@@ -251,7 +326,14 @@ export const L = {
     otherModels: (count: number) => `다른 모델 ${count}개 더 보기`,
     fewerModels: "모델 목록 접기",
     usage: "사용량",
+    // 2026-10-04 ux-review(2차): 사용량 칸은 팝에서 상시 선다 — 실패와 빈 요금제도 한 줄로 말한다.
+    // 머리 줄(`사용량`) 오른쪽에서 말한다(2026-10-06) — 곁에 다시 시도 단추가 선다.
+    usageFailed: "읽지 못했어요",
+    usageEmpty: "읽은 사용량이 없어요 — 무료 요금제이거나 한도가 없는 계정이에요.",
     auto: "자동 선택 (추천)",
+    // 2026-10-06 겹판 조사: 팝의 이름(낭독이 팝이 무엇인지 말한다) · 읽는 중 표시의 낭독 문장.
+    popLabel: "모델과 생각 시간",
+    usageReading: "사용량을 읽는 중이에요",
   },
   /**
    * 빠르게의 문장 묶음(§5.4) — 칩의 이름 · 툴팁 카드 · 토스트. `FastWords`
@@ -263,16 +345,16 @@ export const L = {
     offTitle: "빠르게 — 같은 모델이 더 빨리 답해요",
     nextTitle: "다음 대화부터 빠르게 — 같은 모델이 더 빨리 답해요",
     onTitle: "빠르게 켜짐 · 누르면 꺼요",
-    costClaude: "요금제 사용량과 별도로 사용량 크레딧에서 빠져요 · 같은 답에 약 2배",
+    costClaude: "요금제 사용량과 별도로 빠르게에 쓰는 남은 양에서 빠져요 · 같은 답에 약 2배",
     costMidway: "대화 중간에 켜면 지금까지의 대화도 한 번 더 계산해요",
     costOther: "사용량이 더 빨리 닳아요",
     blocked: {
-      creditsGone: "사용량 크레딧이 다 떨어져 보통 속도로 답해요",
-      credits: "사용량 크레딧을 켜야 빠르게를 쓸 수 있어요 — claude.ai 설정 → 사용량",
+      creditsGone: "빠르게에 쓰는 남은 양이 다 떨어져 보통 속도로 답해요",
+      credits: "빠르게에 쓰는 남은 양을 켜 두어야 빠르게를 쓸 수 있어요 — claude.ai 설정 → 사용량",
       org: "조직 설정이 빠르게를 막아 두었어요",
       orgModels: "조직이 허용한 모델에 빠르게 모델이 없어요",
       network: "연결 문제로 지금은 빠르게를 쓸 수 없어요",
-      evaluation: "평가 플랜에서는 빠르게를 쓸 수 없어요",
+      evaluation: "무료로 써 보는 요금제에서는 빠르게를 쓸 수 없어요",
       cooldown: "빠르게 한도에 닿아 잠시 보통 속도로 답해요 · 풀리면 저절로 다시 켜져요",
     },
     /** 켜는 순간 한 번은 비용을 말한다 — 토스트가 그 자리다. */
@@ -302,16 +384,15 @@ export const L = {
     shotNoPhoto: "사진이 없는 화면이에요",
     shotFailed: "사진을 불러오지 못했어요",
     took: (secs: string) => `${secs} 걸렸어요`,
+    /** 걸린 시간을 모르는 답의 마감 한 줄 — 정산 줄의 초록 체크 곁에 선다(2026-10-06). */
+    done: "끝났어요",
     copyAll: "전체 복사",
-    copyAllToast: "이 요청의 답을 모두 복사했어요",
     settleMenuTip: "답변 더 보기",
     fork: "여기서 새 대화",
-    forkSub: "대화만 이 답까지 이어받아요",
-    forkNote: "화면은 지금 모습 그대로예요. 화면까지 되돌리려면",
+    forkSub: "대화만 이 답까지 이어받아요 · 화면은 그대로예요",
     forkRevertLink: "작업 기록에서 되돌리기",
     forkToast: "이 답까지 이어받은 새 대화를 열었어요 · 원래 대화도 그대로 있어요",
     copyOne: "이 답변만 복사",
-    copyOneToast: "이 답변을 복사했어요",
     copied: "복사했어요",
     copyFailed: "복사하지 못했어요. 글을 선택해 직접 복사해 주세요.",
     stopped: "멈췄어요 · 하던 곳까지는 화면에 남아 있어요",
@@ -322,6 +403,10 @@ export const L = {
     stepsFold: "작업 과정",
     /** 고친 화면 카드의 마지막 이름 — 제목을 모를 때 주소가 서지 않게. */
     unknownScreen: "이름 없는 화면",
+    // 2026-10-06 겹판 조사: `···` 가 메뉴가 되었다 — 안내문의 링크였던 되돌리기가 줄로 오르고,
+    // 갈래를 못 내는 AI 에서도 `여기서 새 대화` 가 이유와 함께 흐려져 남는다.
+    forkRevertSub: "화면을 이전 모습으로 되돌려요",
+    forkOff: "이 AI는 여기서 이어받을 수 없어요",
   },
   cards: {
     gateResult: { verified: "다시 확인했어요 · 문제 없음", remaining: "문제가 남아 있어요", unchanged: "확인했어요 · 변경 없음", unverified: "해결 여부를 확인하지 못했어요", failed: "AI가 답을 마치지 못했어요", interrupted: "확인을 멈췄어요" },
@@ -355,14 +440,18 @@ export const L = {
     noteMore: "개발자에게 한마디 더",
     notePlaceholder: "잘못 보냈거나 덧붙일 말을 적어요",
     noteSent: (time: string) => `${time} 개발자에게 보냈어요`,
+    // 2026-10-06 겹판 조사: 여럿 고르기 질문 — 고른 개수를 말하고, 잠긴 보내기의 이유를 눈에 보이게 한다.
+    pickedCount: (n: number) => `${n}개 골랐어요`,
+    needAll: "모든 질문에 답하면 보낼 수 있어요",
+    needOne: "하나 이상 고르면 보낼 수 있어요",
   },
   inviteCleanup: {
     title: "초대 파일을 가져왔어요",
-    body: "파일에 연결 코드가 들어 있어요. 이 앱이 대신 지워 드릴게요.",
-    remove: "파일 지우기",
+    body: "파일에 연결 코드가 들어 있어요. 이 앱이 휴지통에 넣어 드릴게요.",
+    remove: "휴지통에 넣기",
     later: "나중에",
-    removed: "초대 파일을 지웠어요",
-    removeFailed: "파일을 지우지 못했어요 — 직접 지워 주세요",
+    removed: "초대 파일을 휴지통에 넣었어요",
+    removeFailed: "휴지통에 넣지 못했어요 — 파일을 직접 지워 주세요",
   },
   /** 대화 칸의 나머지 문장 — 입력창 · 대화록 · 카드가 함께 쓴다. */
   chat: {
@@ -475,18 +564,34 @@ export const L = {
     restarted: "화면이 다시 켜졌어요",
     fixingTitle: "AI가 막힌 곳을 고치고 있어요",
     fixingBody: "미리보기를 다시 띄우는 중이에요. 끝나면 화면이 저절로 떠요.",
+    /** 기동 실패는 고침이 아니다 — 진행 대신 다시 시도를 내준다(2026-10-04 ux-review). */
+    failedTitle: "화면을 띄우지 못했어요",
+    failedBody: "미리보기를 여는 데 실패했어요.\n잠시 뒤에 다시 시도해 주세요.",
+    retry: "다시 시도",
+    /** 고침이 2분을 넘기면 덮개에 더하는 안내 줄(2026-10-04 ux-review). */
+    fixingOverdue: "2분이 넘었어요 — 화면이 계속 안 뜨면 창을 다시 열어도 돼요",
     addrLabel: "화면 고르기",
     homeScreen: "첫 화면",
     untitledScreen: "이름 없는 화면",
     addrOnly: "미리보기 안의 화면 주소만 열 수 있어요",
     addrEmpty: "찾는 화면이 없어요",
+    /** 목록 위의 낭독 한 줄 — 친 글자에 맞는 화면 수. */
+    addrCount: (n: number) => `화면 ${n}곳`,
+    recent: "최근 수정",
     device: "화면 크기",
     pin: "수정할 곳 선택",
     pinOffTip: "찍기 끄기 · ⌘⇧P",
+    /** 잠김 상태를 아는 손 — 잠긴 이유는 눌렀을 때의 토스트가 말한다(2026-10-04 ux-review). */
+    pinLockedState: "수정할 곳 선택 · 잠김",
+    /** 골라 둔 곳이 있는 동안의 이름 — 막대 단추의 숫자 알약을 소리로도 읽는다(2026-10-06 막대 개편). */
+    pinCountState: (n: number) => `수정할 곳 선택 · ${n}곳`,
     zoomOut: "작게",
     zoomIn: "크게",
     zoomReset: "실제 크기로",
     lateLoad: "화면이 늦게 뜨고 있어요 — 잠시만 기다려 주세요",
+    /** 30초의 멈춤 — 한 번 다시 불러오는 순간과, 그래도 안 뜰 때의 문장(2026-10-04 ux-review). */
+    selfReloaded: "화면을 다시 불러오고 있어요",
+    stuckAfterReload: "다시 불러 봤어요 · 그래도 안 뜨면 AI가 확인해요",
     frameTitle: "미리보기",
     frozenNoShot: "제출한 때의 화면 그림이 없어요",
     showAiBusy: "화면을 담는 중…",
@@ -515,7 +620,8 @@ export const L = {
     firstHint: "바꾸고 싶은 곳을 누르고 요청을 적어 보세요",
     firstDismiss: "알겠어요",
     bubblePlaceholder: "어떻게 바꿀까요? (안 적어도 돼요)",
-    bubbleKeepHint: "↵ 담기 · ⌘↵ 보내기",
+    /** 메모 칸 아래의 한 줄 — 담기(↵) · 보내기(⌘↵)는 단추의 키캡이 말하고, 여기는 줄바꿈만(2026-10-06 겹판 손질). */
+    bubbleNewline: "줄바꿈",
     keep: "담기",
     sendNow: "지금 보내기",
     removePin: "이 핀 빼기",
@@ -553,20 +659,6 @@ export const L = {
     height: "높이",
     gap: "요소 사이 간격",
   },
-  screenReview: {
-    sizes: "크기별 직접 확인",
-    devices: { desktop: "PC", tablet: "태블릿", mobile: "휴대폰" },
-    states: { checked: "확인함", pending: "확인 전", unknown: "다시 확인", historical: "과거 결과" },
-    mark: "이 크기로 확인했어요",
-    marked: "직접 확인 표시를 남겼어요",
-    changed: "화면이나 작업이 바뀌었어요. 현재 화면을 다시 확인해 주세요.",
-    guide: "직접 확인한 표시예요. 새 변경이 생기면 모든 화면을 다시 확인해요.",
-    unknown: "지금 보는 화면을 저장된 변경과 연결하지 못했어요. 이 화면에는 확인 표시를 남길 수 없어요.",
-    waiting: "현재 작업을 확인하지 못했어요. 작업이 끝나고 현재 내용을 읽으면 확인 표시를 남길 수 있어요.",
-    pending: "확인하지 않은 크기가 있어요. 표시 없이도 제출할 수 있어요.",
-    recent: "최근 수정",
-    progress: (n: number, total: number) => `직접 확인 ${n}/${total}`,
-  },
   requestResult: {
     request: "관련 요청",
     explanation: "답변에서 설명한 변경",
@@ -588,8 +680,8 @@ export const L = {
     noBefore: "수정 전 사진이 없어요. 새 화면이거나 촬영하지 못한 작업이에요.",
     noAfter: "수정 후 사진을 확보하지 못했어요.",
     noRecord: "이 요청의 비교 사진이 없어요. 이전 작업이거나 보관 기간이 지난 사진이에요.",
-    failed: "비교 사진을 읽지 못했어요. 다시 열어 주세요.",
-    close: "비교 닫기",
+    // 2026-10-04 ux-review(2차): 다시 열라는 말 대신 옆의 `다시 시도` 로 다시 읽는다.
+    failed: "비교 사진을 읽지 못했어요.",
     picture: "사진으로 보는 화면이에요 · 비교해도 작업 내용은 바뀌지 않아요",
     desktop: "PC 화면 · 같은 크기로 촬영",
     submittedDesktop: "PC 화면으로 비교해요",
@@ -597,6 +689,23 @@ export const L = {
     zoomOut: "화면 축소",
     zoomReset: "처음 크기로 보기",
     zoomIn: "화면 확대",
+    // ── 2026-10-06 겹판 손질 — 보기 방식 · 와이프 · 동기 확대(P)
+    modes: "보기 방식",
+    modeSide: "나란히",
+    modeOverlay: "겹쳐서",
+    modeFlip: "번갈아",
+    flipGroup: "보여 줄 사진",
+    divider: "수정 전과 수정 후를 가르는 선",
+    dividerValue: (before: string, beforeShare: number, after: string, afterShare: number) =>
+      `${before} ${beforeShare}% · ${after} ${afterShare}%`,
+    hintFlip: "앞뒤",
+    hintSlide: "선 옮기기",
+    hintZoom: "크기",
+    hintReset: "처음 크기",
+    hintDrag: "끌어서 이동",
+    loaded: "사진을 불러왔어요",
+    retrying: "다시 읽는 중…",
+    failedAgain: "아직 읽지 못했어요 — 잠시 뒤에 다시 시도해 주세요.",
   },
   history: {
     title: "작업 기록",
@@ -607,19 +716,18 @@ export const L = {
     empty: "아직 보관된 차례가 없어요.\nAI가 한 차례 답할 때마다 여기에 쌓여요.",
     submittedAt: (time: string) => `${time} 제출했어요`,
     eventMerge: "최신 내용을 가져왔어요",
+    /** 연속된 반영 차례를 한 행으로 접은 표시(2026-10-04 ux-plan PR 3) — 최신 차례의 문장에 접은 차례까지 합친 총 횟수를 붙인다. */
+    eventMergeFold: (n: number) => `최신 내용을 가져왔어요 · ${n}번`,
     eventRestore: "이전 모습으로 되돌렸어요",
     eventComment: "의견을 반영했어요",
-    toHere: "이때 화면으로 되돌리기",
+    /** 줄 끝에 선 되돌리기 — 「여기로」 가 어느 줄의 시점인지 말한다. 길게 말하는 것은 확인 카드와 낭독 이름(`revertLabel`)이다. */
+    toHere: "여기로 되돌리기",
+    /** 한 차례가 화면을 여럿 만졌을 때의 비교 단추 — 어느 화면의 전 · 후인지 이름에 싣는다. */
+    compareScreen: (title: string) => `${title} 전·후 보기`,
     affected: (names: string) => `되돌리면 바뀌는 화면 · ${names}`,
     working: "AI 작업이 끝난 뒤 되돌릴 수 있어요.",
     affectedUnknown: "화면과 함께 이 프로젝트의 이후 변경 내용도 되돌아가요",
-    revert: "되돌리기",
     cancel: "그만두기",
-    /** U9 — 시각이 아니라 제목으로 묻는다. `n` 과 코멘트 여부는 목록에서 센다. */
-    confirm: (title: string, n: number, withComments: boolean) =>
-      `「${title}」 직후의 화면으로 되돌릴까요?\n기록은 지워지지 않고, 되돌리기도 기록에 남아요. 개발자에게는 다음 제출 때 전해져요.\n이 프로젝트의 이후 변경 ${n}가지${withComments ? " (개발자 코멘트 반영 포함)" : ""}가 되돌아가요.`,
-    confirmEvent: (n: number, withComments: boolean) =>
-      `이 시점의 화면으로 되돌릴까요?\n기록은 지워지지 않고, 되돌리기도 기록에 남아요. 개발자에게는 다음 제출 때 전해져요.\n이 프로젝트의 이후 변경 ${n}가지${withComments ? " (개발자 코멘트 반영 포함)" : ""}가 되돌아가요.`,
     revertedToast: (time: string) => `${time} 시점으로 되돌렸어요 — 되돌리기도 기록에 남아요`,
     /** 코멘트 반영 차례의 제목 머리(U9 · U14) — `revertSummary` 가 이것으로 센다. */
     commentPrefix: "코멘트 반영 — ",
@@ -632,6 +740,23 @@ export const L = {
     today: "오늘",
     yesterday: "어제",
     dayOf: (month: number, day: number) => `${month}월 ${day}일`,
+    // ── 2026-10-06 겹판 손질 — 확인 카드 · 타임라인 · 낭독(P)
+    /** 시각을 말로: 1분 안은 방금, 한 시간 안은 N분 전, 그 밖은 시계. */
+    justNow: "방금",
+    minutesAgo: (n: number) => `${n}분 전`,
+    /** 맨 위 줄의 표식 — 지금 서 있는 곳. */
+    now: "지금",
+    /** 단추의 이름 — 같은 말의 단추가 줄마다 있으니 시각과 제목을 앞에 싣고, 눈에 보이는 둘째 줄(만진 화면 · 코멘트 요지)도 `extra` 로 읽힌다. */
+    revertLabel: (time: string, title: string, extra?: string) =>
+      `${[time, title, extra].filter(Boolean).join(" · ")} · 이때 화면으로 되돌리기`,
+    /** 확인 카드 — 시각이 아니라 제목으로 묻고, 되돌리는 일의 크기를 칩으로 말한다. */
+    confirmAsk: (title: string) => `「${title}」 직후의 화면으로 되돌릴까요?`,
+    confirmAskEvent: "이 시점의 화면으로 되돌릴까요?",
+    chipScreens: (n: number) => `화면 ${n}곳`,
+    chipChanges: (n: number) => `변경 ${n}가지`,
+    chipComments: "코멘트 반영 포함",
+    reassure: "기록은 남아요 — 되돌린 것도 다시 되돌릴 수 있어요. 개발자에게는 다음 제출 때 전해져요.",
+    revertAt: (time: string) => `${time} 시점으로 되돌리기`,
   },
 
 
@@ -655,8 +780,6 @@ export const L = {
     whyReady: (n: number) => `바뀐 화면 ${n}개를 개발자에게 제출해요`,
     /** 막힘 중 연결 코드 만료(U13 의 auth) — 사람의 손이 필요한 유일한 막힘. */
     whyAuth: "연결 코드가 만료돼 제출이 막혔어요 — 새 초대 파일이 필요해요",
-    /** 확인 창을 보낸 순간 데몬에 닿지 못했다 — 누른 손에게 한 줄로. */
-    sendFailed: "제출하지 못했어요 — 잠시 뒤 다시 눌러 주세요",
   },
   /** 제출 확인 팝오버(U3). */
   submitConfirm: {
@@ -665,14 +788,15 @@ export const L = {
     sub: "이 프로젝트에서 작업한 내용을 함께 제출해요",
     project: (name: string) => `제출할 프로젝트 · ${name}`,
     shared: "다른 대화에서 만든 변경도 포함돼요. 서비스 원본은 개발자가 반영하기 전까지 그대로예요.",
-    follows: "제출 후 수정도 같은 개발자 검토 요청에 이어져요.",
+    follows: "제출 후 수정도 같은 개발자 확인 요청에 이어져요.",
     loading: "제출할 내용을 확인하는 중…",
     readFailed: "제출할 내용을 읽지 못했어요. 다시 확인해 주세요.",
     refresh: "다시 확인",
     changed: "확인하는 동안 내용이 바뀌었어요. 갱신된 목록을 확인한 뒤 제출해 주세요.",
     subMore: "이미 열린 요청에 이어서 쌓여요 · 원본은 건드리지 않아요",
     screens: (n: number) => `제출할 화면 ${n}개`,
-    outsideScreens: (n: number) => `그 밖의 변경 · 파일 ${n}개`,
+    earlierScreens: (n: number) => `앞서 제출한 화면 ${n}곳`,
+    outsideScreens: (n: number) => `화면에 드러나지 않은 변경 ${n}건`,
     outsideDetail: "최종 변경이 남은 파일과 관련 요청이에요. 기록 횟수를 세지 않아요.",
     relatedRequest: (note: string, n: number) => `관련 요청: ${note} · 파일 ${n}개`,
     unassociated: (n: number) => `화면과 관련 요청을 확인하지 못한 변경 · 파일 ${n}개`,
@@ -683,6 +807,22 @@ export const L = {
     reviewers: (names: string) => `받을 개발자 · ${names}`,
     cancel: "그만두기",
     confirm: "제출",
+    // 2026-10-06 겹판 손질 — 무엇이 누구에게 가는가를 목록 위의 한 줄로 먼저 말하고, 안내 셋은 접는다.
+    /** 목록 위의 한 줄 — 받을 개발자를 모르면(`names` 가 비면) 그 말이 빠진다. */
+    summary: (n: number, names: string) =>
+      names ? `바뀐 화면 ${n}개를 ${names}에게 제출해요` : `바뀐 화면 ${n}개를 제출해요`,
+    summaryMore: (n: number, names: string) =>
+      names
+        ? `제출한 뒤 바뀐 화면 ${n}개를 ${names}에게 더해 제출해요`
+        : `제출한 뒤 바뀐 화면 ${n}개를 더해 제출해요`,
+    summaryOutside: (n: number, names: string) =>
+      names
+        ? `화면에 드러나지 않은 변경 ${n}건을 ${names}에게 제출해요`
+        : `화면에 드러나지 않은 변경 ${n}건을 제출해요`,
+    scopeMore: "제출 범위 자세히",
+    /** 보내는 길에서 막혔다 — 목록은 그대로 두고 다시 제출할 수 있다. */
+    sendFailed: "제출하지 못했어요 · 아래 목록은 그대로예요. 연결을 확인하고 다시 제출해 주세요",
+    retrySubmit: "다시 제출",
   },
   /** `이번 작업` 팝오버(U2). */
   work: {
@@ -714,7 +854,9 @@ export const L = {
     /** 시각 한 칸 — 오늘이면 시:분만, 아니면 날짜를 앞에. */
     time: (today: boolean, hhmm: string, month: number, day: number) =>
       today ? hhmm : `${month}월 ${day}일 ${hhmm}`,
-    submittedBy: (time: string, author: string | null) => (author ? `${time} · ${author}` : time),
+    // 시각이나 이름을 모를 때 구분점만 덩그러니 서지 않게 — 아는 것만 잇는다. 둘 다 모르면 빈 글(부르는 쪽이 `제출됨` 으로 채운다).
+    submittedBy: (time: string, author: string | null) =>
+      time && author ? `${time} · ${author}` : time || author || "",
     commentAuthor: "개발자",
     /**
      * 코멘트 반영 차례의 기록 제목 머리 — 도구가 붙이는 이름(데몬의
@@ -725,6 +867,10 @@ export const L = {
     noteMore: "개발자에게 한마디 더",
     notePlaceholder: "잘못 보냈거나 덧붙일 말을 적어요",
     noteSent: (time: string) => `${time} 개발자에게 보냈어요`,
+    // 2026-10-06 겹판 손질 — 읽는 중 · 읽지 못함은 `아직 없어요` 와 다르다. 많은 화면은 넷만 먼저 보인다.
+    loading: "기록을 읽는 중…",
+    readFailed: "코멘트를 읽지 못했어요",
+    moreScreens: (n: number) => `바뀐 화면 ${n}개 더 보기`,
   },
 
 
@@ -786,7 +932,19 @@ export const L = {
     doneSub: "이제 만들고 싶은 화면을 말씀해 주세요",
     emptyProjectsTitle: "프로젝트가 없어요",
     emptyProjectsSub: "초대 파일을 열어 프로젝트를 다시 추가해 주세요.\nAI 연결과 도구 준비는 그대로예요.",
-    emptyProjectsInvite: "초대 파일 열기",
+    // 2026-10-04 ux-review: 로그인 시작 직전의 예고 — 브라우저가 예고 없이 뜨지 않게.
+    loginStarting: "곧 브라우저가 열려요",
+    // 2026-10-06 온보딩 손질: 링의 낭독 문장 · 파일이 아직 없을 때의 길
+    // (README ③ 의 `개발자에게 보낼 메시지` 와 같은 문장 — 앱 안에서도 복사해 보낸다).
+    progress: (done: number, total: number) => `${total}개 중 ${done}개 준비됐어요`,
+    // 시작 전의 AI 칸 알약 — `기다리는 중` 대신 무엇이 필요한지 말한다(버튼이 곁에 있다).
+    agentNeedInstall: "설치가 필요해요",
+    agentNeedLogin: "로그인이 필요해요",
+    inviteHelp: "초대 파일이 아직 없나요?",
+    inviteHelpBody: "개발자에게 아래 문장을 그대로 보내 주세요.",
+    inviteHelpMessage: (url: string) =>
+      `ColoNova Design 초대 파일(.colonova-invite) 하나 만들어 주세요!\n여기서 바로 만들 수 있어요 → ${url}`,
+    askCopied: "개발자에게 보낼 문장을 복사했어요",
   },
   /** 처음 여는 프로젝트의 준비 화면(U8). */
   prepare: {
@@ -797,18 +955,26 @@ export const L = {
     stepPreview: "미리보기 켜기",
     aboutTwoMinutes: "2분쯤",
     hint: "준비되는 동안 먼저 말해 두셔도 돼요 — 끝나면 바로 시작해요.",
+    // ── 2026-10-06 겹판 손질 — 걸음마다 한 줄 설명 · 낭독 · 다시 시도의 바쁨(P)
+    noteDownload: "처음 한 번만 받아요",
+    noteInstall: "필요한 것을 설치해요 · 가장 오래 걸려요",
+    notePreview: "화면을 켜는 마지막 단계예요",
+    progress: "준비 진행",
+    stepOf: (total: number, at: number, name: string) => `${total}단계 중 ${at}단계 · ${name}`,
+    done: "준비가 끝났어요",
+    retrying: "다시 시도하는 중…",
+    retryStill: "아직 화면이 뜨지 않았어요 — 한 번 더 시도해 볼까요?",
   },
   /** 다시 받은 초대장의 확인 창(U11). */
   invite: {
+    /** 끝난 뒤(성공)의 제목 — 확인 단계의 제목은 질문이다(`confirmTitle`). */
     title: "초대 파일을 가져왔어요",
-    renewed: "연결 코드를 새 것으로 바꿨어요.",
-    reconnected: "만료됐던 연결이 새 코드로 다시 이어졌어요.",
-    reaches: (n: number) => `프로젝트 ${n}개에 이어져요.`,
-    added: (n: number) => `새로 온 프로젝트 ${n}`,
+    renewed: "연결 코드를 새 것으로 바꿨어요",
+    reconnected: "만료됐던 연결이 새 코드로 다시 이어졌어요",
+    reaches: (n: number) => `프로젝트 ${n}개에 이어져요`,
     addedNote: "처음 열 때 준비에 몇 분 걸려요",
-    openNow: "지금 열기",
-    updated: (n: number) => `설정이 바뀐 프로젝트 ${n}`,
-    kept: (n: number) => `그대로인 프로젝트 ${n}`,
+    /** 새로 오는 행의 보조 단추 — 가져오기가 끝나면 그 프로젝트로 간다. 주 단추는 푸터의 `가져오기` 하나다. */
+    openNow: "가져와서 열기",
     keptNote: "초대장에 없는 프로젝트도 지우지 않아요.",
     nothingChanged: "프로젝트에 바뀐 것은 없어요. 연결 코드만 새로 받았어요.",
     mine: "프로젝트 이름과 지켜 줄 것은 내가 정한 것이라 그대로 둬요.",
@@ -821,10 +987,6 @@ export const L = {
     progressing: (done: number, total: number) => `${total}개 중 ${done}개 연결됨…`,
     /** 읽기 실패 뒤 다른 파일을 고르는 버튼. */
     otherFile: "다른 파일 열기",
-    /** 가져온 파일을 앱이 대신 지운다(데스크톱) — 확인판의 경고 옆 버튼. */
-    deleteFile: "파일 지우기",
-    deleted: "초대 파일을 지웠어요",
-    deleteFailed: "파일을 지우지 못했어요 — 직접 지워 주세요",
     /** 행의 꼬리표(U11) — 새로 · 바뀜 · 그대로. */
     rowNew: "새로",
     rowUpdate: "바뀜",
@@ -833,6 +995,53 @@ export const L = {
     authorLabel: "이 작업에 적을 이름 (선택)",
     /** 파일을 읽지 못했을 때 확인판의 제목 — 「가져왔어요」가 아니다. */
     errorTitle: "초대 파일을 열지 못했어요",
+    // ── 2026-10-06 겹판 손질(F) — 단계의 시제 · 하나의 주 단추 · 파일 정리를 끝으로 · 사람 말의 오류
+    /** 확인 단계 — 질문과 영향의 크기. 아직 아무것도 바뀌지 않았다(가져왔어요 아님). */
+    confirmTitle: "이 초대 파일을 가져올까요?",
+    confirmSub: "가져오면 연결 코드가 새 것으로 바뀌어요",
+    confirmSubReconnect: "가져오면 만료된 연결이 새 코드로 다시 이어져요",
+    readingTitle: "초대 파일을 여는 중이에요",
+    /** 적용 중 — 닫을 수 없는 이유가 머리에 선다. 지금 하는 행의 이름을 말한다. */
+    applyingTitle: "가져오는 중이에요",
+    applyingSub: "끝날 때까지 닫을 수 없어요",
+    applyingName: (name: string) => `‘${name}’ 연결하는 중…`,
+    /** 끝난 뒤 — 실패 위에는 성공의 말을 걸지 않는다. */
+    partialTitle: "일부만 가져왔어요",
+    partialSub: (ok: number, total: number) => `프로젝트 ${total}개 중 ${ok}개를 가져왔어요`,
+    failedTitle: "가져오지 못했어요",
+    tokenTitle: "연결하지 못했어요",
+    tokenRefused:
+      "초대 파일의 연결 코드를 받아들이지 못했어요. 프로젝트는 하나도 바뀌지 않았어요. 개발자에게 새 초대 파일을 부탁해 주세요.",
+    tokenOffline:
+      "연결이 끊겨 있어요. 프로젝트는 하나도 바뀌지 않았어요. 연결되면 다시 시도해 주세요.",
+    rowFailed: "가져오지 못했어요",
+    /** 날것의 이유를 접어 두는 머리. */
+    detail: "자세히",
+    until: (when: string) => `연결은 ${when}예요`,
+    listHead: (n: number) => `초대장의 프로젝트 ${n}개`,
+    readmeLabel: "개발자가 남긴 말",
+    /** 연결이 없을 때 가져오기를 잠그는 이유 — 앞에 연결의 말(`chat.offline`)이 선다. */
+    lockNote: "연결되면 가져올 수 있어요",
+    /** 파일 정리 — 가져온 뒤의 일이다. 앱은 OS 휴지통에 넣는다(되살릴 수 있다). */
+    warnTrash: "초대 파일에는 연결 코드가 들어 있어요. 가져왔으니 휴지통에 넣어 두세요.",
+    trashFile: "초대 파일 휴지통에 넣기",
+    trashed: "넣었어요 · 필요하면 휴지통에서 꺼낼 수 있어요",
+    trashFailed: "휴지통에 넣지 못했어요 — 파일을 직접 지워 주세요",
+    /** 읽기 실패의 사람 말 — 날것은 「자세히」 안에 접는다. */
+    errNotInvite: "초대 파일이 아니에요 — 개발자에게 받은 초대 파일을 골라 주세요.",
+    errSealed:
+      "초대 파일을 열지 못했어요 — 파일이 손상됐을 수 있어요. 개발자에게 파일을 다시 보내 달라고 부탁해 주세요.",
+    errUnreadable:
+      "초대 파일을 읽지 못했어요 — 개발자에게 파일을 다시 보내 달라고 부탁해 주세요.",
+    errVersion:
+      "이 앱이 지원하지 않는 초대 파일이에요 — 앱을 최신 버전으로 업데이트했는지 확인해 주세요.",
+    errNoToken: "초대 파일에 연결 코드가 없어요 — 개발자에게 다시 만들어 달라고 부탁해 주세요.",
+    errContent:
+      "초대 파일의 내용에 문제가 있어요 — 개발자에게 다시 만들어 달라고 부탁해 주세요.",
+    errFile: "파일을 읽지 못했어요 — 파일을 다시 골라 주세요.",
+    /** 도달 검사 — 새 연결 코드로 이 프로젝트를 제출할 수 없다. */
+    reachWarn: (name: string) =>
+      `‘${name}’ 프로젝트는 새 연결 코드로 제출할 수 없어요 — 개발자에게 알려 주세요.`,
   },
   /** 바뀜 행의 무엇이 바뀌었는가(U11) — 짝의 지금 값과 비교해 만든 한 줄. */
   inviteChange: {
@@ -860,7 +1069,7 @@ export const L = {
     theme: "테마",
     /** 테마 쪽 아래의 안내 줄 — 앱 전체를 키우고 줄이는 단축키(Windows 는 Ctrl). */
     zoom: "글자 크기",
-    zoomSub: "앱 전체를 키우고 줄여요 · ⌘= 키우기 · ⌘- 줄이기 · ⌘0 원래대로",
+    zoomSub: "앱 전체를 키우고 줄여요",
     themeSub: "화면 전체의 색깔이에요 · Claude 가 기본이에요",
     notify: "알림",
     /** 테마 줄의 선택지 — 설정이 보여주는 목록(lib/settings 의 PICKER_THEMES)과
@@ -894,7 +1103,7 @@ export const L = {
     inviteRowSub: "새 프로젝트를 더하거나 연결을 다시 이을 때 열어요",
     openInvite: "초대 파일 열기",
     resetTitle: "처음부터 다시 시작",
-    resetSub: "이 컴퓨터의 모든 프로젝트·작업 기록·설정·연결 정보를 지우고 새 초대 파일로 시작해요. 제출하지 않은 작업은 사라져요.",
+    resetSub: "이 컴퓨터의 프로젝트 · 작업 기록 · 설정 · 연결 정보를 모두 지우고 새 초대 파일로 시작해요",
     resetAction: "전체 초기화…",
     resetBusy: "다시 시작하는 중…",
     resetFailed: "초기화를 시작하지 못했어요. 앱을 다시 열고 시도해 주세요.",
@@ -903,13 +1112,13 @@ export const L = {
     developer: "개발자용",
     developerSub: "보통은 열 일이 없어요",
     /** 왼쪽 목록의 점이 읽히는 말 — 새 버전이 있거나 연결이 곧 끝나는 쪽에 점이 서고, 쪽마다 이유를 말한다. */
-    attentionUpdate: "새 버전이 있어요",
+    attentionUpdate: "새 버전",
     attentionSoon: "곧 끝나요",
     attentionExpired: "끝났어요",
     toolFolder: "도구 폴더",
     openFolder: "폴더 열기",
     dailyLog: "하루 로그",
-    openLogFolder: "로그 폴더 열기",
+    openLogFolder: "기록 폴더 열기",
     loggedIn: "로그인됨",
     testSent: "보냈어요",
     testBlocked: (reason?: string) =>
@@ -925,6 +1134,39 @@ export const L = {
     installBusy: "설치하는 중…",
     loginBusy: "로그인하는 중…",
     codeSending: "보내는 중…",
+    // 2026-10-04 ux-review: 작업에 적을 이름의 저장 한 줄 — 실제로 바뀐 저장에만 선다.
+    saved: "저장했어요",
+    // 2026-10-06 설정 손질(S2): AI 카드 안의 설치 · 로그인 진행과 실패, 고른 AI 의 말, 빈 목록.
+    aiInstallFailed: "설치하지 못했어요",
+    aiLoginFailed: "로그인을 마치지 못했어요",
+    aiLoginWaiting: "브라우저에서 로그인을 마쳐 주세요",
+    detail: "자세히",
+    aiCodeFailed: "코드를 보내지 못했어요 — 로그인 창을 다시 열어 새 코드를 받아 주세요",
+    aiPickedNow: "다음 새 대화에 써요",
+    aiPickedGone: (name: string) =>
+      `${name}를 지금 쓸 수 없어요 — 다른 AI를 고르거나 아래에서 준비해 주세요`,
+    aiLoading: "AI 목록을 불러오는 중이에요",
+    aiNone: "쓸 수 있는 AI가 아직 없어요 — 설치하면 여기에 나타나요",
+    // 2026-10-06 설정 손질(S0 · S3 · S4 · S5 · S6): 이름 저장 · 알림 기준 · 초기화 규모 · 테마 · 글자 크기.
+    nameSaving: "이름을 저장하는 중…",
+    nameSaveFailed: "이름을 저장하지 못했어요 — 다시 시도해 주세요",
+    authorPlaceholder: "비워 둘 수도 있어요",
+    notifyOffNote: "끝났다는 알림은 없어요 — 확인 요청과 멈춤은 계속 와요",
+    notifyLongNote: (minutes: number) => `${minutes}분 넘게 걸린 답만 알려요`,
+    notifyAllNote: "답이 끝날 때마다 알려요",
+    testSending: "보내는 중…",
+    resetAsking: "확인하는 중…",
+    resetCount: (projects: number, unsubmitted: number) => {
+      const keep = "이미 제출한 작업과 AI 로그인은 그대로예요";
+      if (projects === 0) return `지울 프로젝트는 없어요 · ${keep}`;
+      return unsubmitted > 0
+        ? `프로젝트 ${projects}개가 지워지고 제출하지 않은 작업 ${unsubmitted}개는 사라져요 · ${keep}`
+        : `프로젝트 ${projects}개가 지워져요 · ${keep}`;
+    },
+    themeSystemNow: (dark: boolean) => `지금은 ${dark ? "어두움" : "밝음"}`,
+    zoomIn: "키우기",
+    zoomOut: "줄이기",
+    zoomReset: "원래대로",
   },
   /** 업데이트 줄(U12) — 앱 · Claude Code · Codex 가 한 목록. */
   update: {
@@ -933,16 +1175,15 @@ export const L = {
     doneAt: (time: string) => `${time}에 업데이트했어요`,
     deferred: "도는 작업이 끝나면 설치해요",
     run: "업데이트",
-    runApp: "지금 다시 시작해 설치",
     autoLabel: "새 AI 버전은 스스로 설치해요",
     autoNote: "도는 작업이 있으면 끝난 뒤에 설치해요",
     checkNow: "지금 확인",
     checking: "확인하는 중",
-    foundCount: (n: number) => `새 버전 ${n}개 · 방금 확인`,
-    allLatest: "모두 최신이에요 · 방금 확인",
+    foundCount: (n: number) => `새 버전 ${n}개`,
+    allLatest: "모두 최신이에요",
     /** 홈의 `방금 있던 일` 한 줄 — 데몬이 AI 프로그램을 새 버전으로 바꿨다. */
     doneEvent: (name: string, version: string) => `${name} 를 ${version} 으로 업데이트했어요`,
-    appRestart: "재시작합니다 — 새 버전으로 다시 열려요",
+    appRestart: "곧 새 버전으로 다시 열려요",
     releasesLink: "릴리스 페이지에서 설치 파일 내려받기",
     retry: "다시 시도",
     useNextTime: "새 버전은 다음 새 대화부터 써요",
@@ -951,6 +1192,28 @@ export const L = {
     app: "앱",
     /** 재시작 설치가 도는 동안의 말 — 내려받고 다시 시작하는 일이다. */
     appBusy: "다시 시작하는 중…",
+    // 2026-10-04 ux-review: 확인 실패를 「없음」으로 말하지 않게 — 실패는 별개로 센다.
+    checkFailed: "확인하지 못한 항목이 있어요",
+    foundButFailed: (n: number) => `새 버전 ${n}개 · 확인 못 한 항목도 있어요`,
+    rowCheckFailed: "확인하지 못했어요",
+    // 2026-10-06 설정 손질(S7): 앱 줄의 걸음(내려받기 → 준비됨 → 다시 시작)과 쪽 맨 위의 요약 띠.
+    appFlow: "내려받은 뒤 다시 시작하면 새 버전이 돼요",
+    appDeferred: "도는 작업이 끝나면 내려받아요",
+    appReady: "내려받았어요 · 다시 시작하면 새 버전이 돼요",
+    appRestartNow: "지금 다시 시작",
+    appLater: "나중에",
+    appRestartDeferred: "도는 작업이 끝나면 다시 시작해요",
+    updateFailed: "업데이트하지 못했어요",
+    lastChecked: (time: string) => `마지막 확인 · ${time}`,
+    summaryChecking: "새 버전을 확인하는 중이에요",
+    summaryUpdating: "업데이트하는 중이에요",
+    summaryFailedHint: "인터넷 연결을 확인하고 다시 눌러 보세요",
+    summaryUnknown: "아직 확인하지 않았어요",
+    updateNone: "확인할 프로그램이 아직 없어요",
+    updateNoneSub: "AI를 설치하면 여기에 나타나요",
+    notInstalledRow: "설치 전 · AI 쪽에서 설치해요",
+    goAi: "AI 쪽으로",
+    autoFailed: "설정을 바꾸지 못했어요 — 다시 시도해 주세요",
   },
 
 
@@ -961,6 +1224,9 @@ export const L = {
     body: "다시 열면 대화와 작업은 그대로예요.",
     reopen: "다시 열기",
     bootTitle: "화면이 열리지 않아요",
+    repeatTitle: "같은 문제가 계속 생겨요",
+    repeatBody: "대화와 작업은 보관돼 있어요. 아래 내용을 담당자에게 전해 주세요.",
+    openLogs: "기록 폴더 열기",
   },
 
 
@@ -978,13 +1244,18 @@ export const L = {
     messageMatch: "대화 내용",
     noConvs: "아직 대화가 없어요",
     noConvsInProject: "이 프로젝트에 아직 대화가 없어요",
-    moveFailed: "프로젝트로 옮기지 못했어요 — 잠시 뒤 다시 시도해 주세요",
     settingsHint: "AI · 테마 · 알림 · 연결 · 업데이트",
     newConvHint: "빈 새 대화를 열어요",
     homeHint: "홈으로 가요",
     move: "이동",
     open: "열기",
     close: "닫기",
+    /** 맞는 줄이 하나도 없을 때 빈 상태 아래에 서는 한 줄 — 아래 칩이 막다른 길을 열어 준다(2026-10-06 겹판 조사). */
+    noMatchHelp: "다른 말로 찾아 보거나, 아래에서 바로 시작해 보세요",
+    /** 프로젝트 줄을 눌러 옮기는 동안 줄 끝에 서는 말. */
+    moving: "옮기는 중…",
+    /** 낭독 전용 — 찾는 말을 바꾸고 잠시 뒤 결과 수를 한 번 말한다. */
+    resultCount: (n: number) => `${n}개를 찾았어요`,
   },
   // ── 기능 제안(PLAN-FEEDBACK) — 사이드바 바닥의 단추와 한 장의 대화상자
   feedback: {
@@ -1001,16 +1272,12 @@ export const L = {
     toReview: "보낼 내용 확인",
     edit: "수정하기",
     submit: "제안 보내기",
-    sending: "보내는 중…",
     destinationLabel: "접수 대상",
     destination: "ColoNova Design 제작팀",
-    disclosure:
-      "제안은 제작팀의 게시판에 올라가며 다른 사람이 볼 수 있어요. 앱 버전과 운영체제만 함께 보내요.",
     notAttached:
       "대화, 화면, 프로젝트 이름, 소스, 기록, 연결 정보, 작성 이름은 함께 보내지 않아요.",
     requestHeading: "하고 싶은 말",
     contextHeading: "불편한 점",
-    sentTitle: "제안을 접수했어요",
     sentLink: "보낸 제안 보기",
     close: "닫기",
     browserTitle: "브라우저에서 마무리해 주세요",
@@ -1031,6 +1298,59 @@ export const L = {
     checkList: "제안 목록 확인",
     copySubmitted: "보낸 내용 복사",
     acknowledgeList: "목록을 확인했어요 · 새 제안 작성",
+    // ── 2026-10-06 겹판 손질(F) — 단계 머리 · 공개 고지 · 접수의 순간 · 연결 문지기
+    /** 단계 머리(세 점)와 단계마다 바뀌는 판의 이름 — 낭독이 지금 무엇을 하는지 읽는다. */
+    stepsLabel: "진행 단계",
+    stepWrite: "쓰기",
+    stepReview: "확인",
+    stepSend: "접수",
+    editSub: "제작팀이 직접 읽어요",
+    reviewTitle: "이대로 보낼까요?",
+    reviewSub: "보내기 전에 한 번 확인해 주세요",
+    sendingTitle: "보내는 중이에요",
+    sendingSub: "창을 닫아도 계속 보내요",
+    sendingNote: "제작팀의 게시판에 올리고 있어요",
+    sentHead: "접수했어요",
+    /** 접수의 순간 — 큰 체크 아래 한 줄과 인사. */
+    sentHero: (n: number) => `제안을 접수했어요 · #${n}`,
+    sentThanks: "고마워요. 제작팀이 읽어 볼게요",
+    /** 쓰는 중의 손맛 — 닫아도 초안이 남는다는 안내와 바로 확인하는 키. */
+    footNote: "닫아도 쓴 내용은 남아요",
+    toReviewKeys: "⌘↵",
+    /** 되돌릴 수 없는 공개 — 가장 중요한 문장이 가장 눈에 띄게. */
+    publicTitle: "누구나 볼 수 있는 게시판에 올라가요",
+    publicBody: "제작팀의 게시판에 올라가고, 앱 버전과 운영체제만 함께 가요.",
+    notAttachedTitle: "함께 보내지 않는 것",
+    /** 연결이 없을 때 보내기를 잠그는 이유 — 앞에 연결의 말(`chat.offline`)이 선다. */
+    lockNote: "연결되면 보낼 수 있어요. 쓴 내용은 그대로 남아요.",
+    /** 요청이 나가기도 전에 막혔을 때 — 접수 여부가 불확실한 것이 아니다. */
+    notSent: "보내지 못했어요 — 연결이 끊겨 있었어요. 쓴 내용은 그대로 남아 있으니 연결되면 다시 보내 주세요.",
+    /** 닫은 사이의 소식 — 토스트로만 알릴 수 있다. */
+    closeWhileSending: "보내는 중이에요 — 닫아도 계속 보내요",
+    toastSent: "기능 제안을 접수했어요",
+    toastNeedsYou: "기능 제안이 아직 끝나지 않았어요 — 다시 열어 확인해 주세요",
+    browserFold: "열린 페이지가 비어 있나요?",
+    browserFoldNote: "내용을 복사해서 붙여 넣으면 돼요.",
+    submittedHeading: "보낸 내용",
+  },
+  /** 단축키 시트(⌘/) — 행의 글은 프로토콜 상수(`APP_SHORTCUTS`)에서 오고, 여기는 틀의 문장만. */
+  sheet: {
+    title: "단축키",
+    sub: "마우스 없이도 앱을 다룰 수 있어요",
+    groupApp: "앱",
+    groupPreview: "미리보기",
+    groupPin: "핀",
+    groupComposer: "입력창",
+    groupRest: "그 밖에",
+    footBefore: "언제든",
+    footAfter: "로 이 창을 열 수 있어요",
+  },
+  /** 첫 연결이 안 된 데스크톱의 안내판 — 개발자용 연결 화면(주소 붙여넣기)을 대신한다. */
+  connect: {
+    title: "아직 연결되지 않았어요",
+    body: "연결이 되는 대로 이어져요. 계속 안 되면 앱을 다시 열어 주세요.",
+    waiting: "다시 연결하는 중…",
+    retry: "지금 다시 시도",
   },
 } as const;
 

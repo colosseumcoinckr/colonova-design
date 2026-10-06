@@ -19,8 +19,12 @@ export interface ShellNav {
   goHome: () => void;
   /** 대화 보기로 — 지금 열린 대화(또는 새 대화의 빈 자리) 그대로. */
   showThread: () => void;
-  /** 활성 프로젝트를 옮긴다(`project.activate`). 옮겨 앉으면 셸은 홈부터 선다. */
-  switchProject: (slug: string) => void;
+  /**
+   * 활성 프로젝트를 옮긴다(`project.activate`). 옮겨 앉으면 셸은 홈부터 선다. 끝나면 옮겼는지(true)
+   * 못 옮겼는지(false)를 알려 준다 — 못 옮기면 알림이 한 문장 뜬다(`quiet` 면 부르는 쪽이 제 자리에서
+   * 말한다 — 찾기 창은 열린 채 남는다).
+   */
+  switchProject: (slug: string, options?: { quiet?: boolean }) => Promise<boolean>;
   /** 좁은 창의 두 탭 중 하나를 앞에 세운다. 넓은 창에서는 아무 일도 없다. */
   showTab: (tab: "chat" | "preview") => void;
   /** 설정 대화상자. */
@@ -66,6 +70,8 @@ export type ChatColumnProps = SlotProps;
  */
 export interface PreviewColumnProps extends SlotProps {
   onScreenName: (name: string | null) => void;
+  /** 이 칸이 숨었다(홈이 떠 있거나 좁은 창이 대화 탭에 있다) — 열린 작업 기록 서랍은 숨는 순간 접힌다. */
+  offstage?: boolean;
 }
 
 /**
@@ -79,6 +85,8 @@ export interface StatusLineProps {
   project: ProjectSummary | null;
   /** 왼쪽의 대화 제목 — 이름 바꾸기가 이긴다. 새 대화면 `새 대화`. */
   title: string;
+  /** 제목을 눌러 바꾸는 손 — 열린 대화가 있을 때만 건넨다(새 대화의 빈 자리는 바꿀 이름이 없다). */
+  onRename?: (title: string) => void;
   journey: Journey;
   /** AI 가 도는 턴의 시작 시각(데몬 시계, ms) — `만드는 중 · 12초`. 모르면 null. */
   turnStartedAt: number | null;

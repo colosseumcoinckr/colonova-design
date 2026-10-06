@@ -5,20 +5,26 @@ import {
   ChevronRight,
   CircleAlert,
   Clock,
+  Columns2,
   Copy,
   Ellipsis,
   ExternalLink,
   Eye,
   FileText,
   GitFork,
+  History,
   Image,
+  ImageOff,
+  Info,
   Lock,
   type LucideIcon,
   Mail,
   MapPin,
+  Monitor,
   Paperclip,
   Pencil,
   Plug,
+  RotateCcw,
   Sparkle,
   Square,
   X,
@@ -43,6 +49,7 @@ export const StopIcon = make(Square, 12, 2.4);
 export const CopyIcon = make(Copy, 13);
 export const MoreIcon = make(Ellipsis, 14);
 export const ForkIcon = make(GitFork, 14);
+export const HistoryIcon = make(History, 14);
 export const EyeIcon = make(Eye, 15);
 export const AlertIcon = make(CircleAlert, 14);
 export const MailIcon = make(Mail, 14);
@@ -58,6 +65,12 @@ export const CheckIcon = make(Check, 13, 2.2);
 export const ChevIcon = make(ChevronDown, 12, 2);
 export const LockIcon = make(Lock, 12);
 export const FwdIcon = make(ChevronRight, 14, 2);
+// 고친 화면 카드 — 화면(모니터) · 전후 비교(두 칸) · 사진 없음 · 안내 · 다시 읽기.
+export const ScreenIcon = make(Monitor, 14);
+export const CompareIcon = make(Columns2, 14);
+export const NoPhotoIcon = make(ImageOff, 16);
+export const InfoIcon = make(Info, 13);
+export const RedoIcon = make(RotateCcw, 12);
 
 // 프로바이더 표식 — 모델 칩이 지금 AI 의 제 얼굴을 입어 Codex 대화가 Claude 의
 // 것으로 읽히지 않게 한다. lucide 에는 상표 그림이 없어 두 벤더 표식을 그대로

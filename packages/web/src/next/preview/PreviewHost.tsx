@@ -49,7 +49,7 @@ export function PreviewHost({
   onZoom,
   onError,
   onSelfReload,
-  onReady,
+  onBusy,
   stageRef,
   children,
 }: {
@@ -73,23 +73,14 @@ export function PreviewHost({
   onError: (error: StageError) => void;
   /** 30초의 멈춤 — 도구가 먼저 한 번 새로 고친다. */
   onSelfReload: () => void;
-  onReady?: (device: PreviewDevice | null) => void;
+  /** 150ms 를 넘긴 로딩의 켜짐 · 꺼짐 — 막대의 새로 고침 그림이 같은 신호로 돈다. */
+  onBusy?: (busy: boolean) => void;
   /** 기기 틀 — 말풍선이 게스트의 화면 위치를 읽는 자리. */
   stageRef: RefObject<HTMLDivElement | null>;
   children?: ReactNode;
 }) {
   const native = nativePreview();
   const [loading, setLoading] = useState(false);
-  const [applied, setApplied] = useState<PreviewDevice | null>(null);
-  useEffect(() => {
-    if (!native) {
-      const frame = requestAnimationFrame(() => setApplied(device));
-      return () => cancelAnimationFrame(frame);
-    }
-  }, [native, device]);
-  useEffect(() => {
-    onReady?.(url && !loading && applied === device ? device : null);
-  }, [url, loading, applied, device, onReady]);
   const [loadPhase, setLoadPhase] = useState<"ok" | "late" | "stuck">("ok");
 
   // 데스크톱의 로딩 신호 — PreviewFrame 은 이 선로를 구독하지 않으므로 여기서 한 번.
@@ -136,6 +127,9 @@ export function PreviewHost({
     const show = window.setTimeout(() => setBusy(true), 150);
     return () => window.clearTimeout(show);
   }, [loading, frameSrc, reloadKey]);
+  useEffect(() => {
+    onBusy?.(busy);
+  }, [busy, onBusy]);
 
   // 기기 틀이 바뀌는 동안 내용을 잠깐 흐리게 — 에뮬레이션이 닿았다는
   // 신호가 선로에 없으니 시간(틀의 전환과 같은 결)로 되돌린다.
@@ -151,6 +145,8 @@ export function PreviewHost({
 
   // 30초의 멈춤: 서버 · 화면마다 도구가 먼저 한 번 새로 고치고, 그다음은 판정.
   const stuckReloads = useRef(new Set<string>());
+  // 자동 새로 고침의 순간을 한 번 알린다 — role=status 의 문장 하나(2026-10-04 ux-review).
+  const [selfReloaded, setSelfReloaded] = useState(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 멈춤에 들어서는 순간만 본다.
   useEffect(() => {
     if (loadPhase !== "stuck") return;
@@ -158,6 +154,7 @@ export function PreviewHost({
     const key = `${url ?? ""}|${epoch ?? ""}|${path}`;
     if (!stuckReloads.current.has(key)) {
       stuckReloads.current.add(key);
+      setSelfReloaded(true);
       onSelfReload();
       return;
     }
@@ -169,6 +166,15 @@ export function PreviewHost({
       stalled: true,
     });
   }, [loadPhase]);
+  // 다시 불러온 화면이 뜨면 예산을 새로 산다 — 다음 멈춤에서도 한 번의 재시작이
+  // 살아 있다. 같은 멈춤 안의 잇달은 시도는 판정으로 바로 넘어간다(2026-10-04 ux-review).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 불이 꺼진 순간만 본다.
+  useEffect(() => {
+    if (!loading) {
+      stuckReloads.current.clear();
+      setSelfReloaded(false);
+    }
+  }, [loading]);
 
   // 서버가 돌아오면(새 에포크) iframe 은 한 번 깨끗하게 다시 읽는다 — 브라우저의
   // 오류 페이지를 쥐고 있으면 앱 전체를 새로 고치지 않고는 빠져나올 길이 없었다.
@@ -197,7 +203,6 @@ export function PreviewHost({
             onPinFocus={onPinFocus}
             onError={onError}
             onLoading={setLoading}
-            onEmulated={setApplied}
             onZoom={onZoom}
           />
         ) : frameSrc ? (
@@ -216,9 +221,20 @@ export function PreviewHost({
       {busy && <i className="nx-pvbusy" aria-hidden="true" />}
       {/* 답이 끝나 도착한 화면 위로 빛줄기가 한 번 지난다 — 신호마다 다시. */}
       {sweep > 0 && <div className="nx-pvsweep" key={sweep} aria-hidden="true" />}
-      {loadPhase !== "ok" && (
+      {loadPhase === "late" && (
         <span className="nx-pvlate" role="status">
           {L.preview.lateLoad}
+        </span>
+      )}
+      {/* 다시 불러 온 뒤에도 멈추면 문장을 바꾼다 — 기다리라는 말은 거짓이 된다(2026-10-04 ux-review). */}
+      {loadPhase === "stuck" && (
+        <span className="nx-pvlate" role="status">
+          {L.preview.stuckAfterReload}
+        </span>
+      )}
+      {loadPhase === "ok" && selfReloaded && (
+        <span className="nx-pvlate" role="status">
+          {L.preview.selfReloaded}
         </span>
       )}
       {children}

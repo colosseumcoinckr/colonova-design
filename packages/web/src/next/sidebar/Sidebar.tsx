@@ -1,5 +1,5 @@
 import type { ThreadSummary } from "@colonova-design/protocol";
-import type { Ref } from "react";
+import { type Ref, useState } from "react";
 import type { Sessions } from "../../hooks/useSessions";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
@@ -7,16 +7,24 @@ import { keyHint } from "../lib/key-hint";
 import { hasNewerVersion } from "../lib/version";
 import type { ShellNav } from "../slots";
 import { Count } from "../ui/Count";
-import { GearIcon, HomeIcon, PanelIcon, PlusIcon, SearchIcon } from "../ui/icons";
+import {
+  CloseIcon,
+  GearIcon,
+  HomeIcon,
+  LightbulbIcon,
+  PanelIcon,
+  PlusIcon,
+  SearchIcon,
+} from "../ui/icons";
 import { ConversationList } from "./ConversationList";
 import { OtherProjects } from "./OtherProjects";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 
 /**
  * 사이드바(U1 · U7) — 위에서부터 `새 대화 · 홈 · 찾기`, 프로젝트 전환기, 다른
- * 프로젝트 줄, 대화 목록, 접힌 `도구가 한 일`, 바닥에 작성자와 설정. 넓은 창은
- * 264px 열(접힘 가능), 좁은 창은 `≡` 뒤의 서랍이다 — 모양은 셸의 CSS 가 정하고
- * 이 컴포넌트는 같은 내용을 그린다.
+ * 프로젝트 줄, 날짜 머리 아래의 대화 목록, 접힌 `도구가 한 일`, 바닥에 기능 제안과
+ * 작성자 · 설정. 넓은 창은 열(접힘 · 너비 조절 가능), 좁은 창은 `≡` 뒤의 서랍이다 — 모양은
+ * 셸의 CSS 가 정하고 이 컴포넌트는 같은 내용을 그린다.
  */
 export function Sidebar({
   daemon,
@@ -28,6 +36,7 @@ export function Sidebar({
   onPalette,
   onFeedback,
   onCollapse,
+  drawer = false,
   onRenameSession,
   hidden = false,
   containerRef,
@@ -45,6 +54,8 @@ export function Sidebar({
   onFeedback: () => void;
   /** 넓은 창의 접기 — 좁은 창에서는 서랍 닫기. */
   onCollapse: () => void;
+  /** 좁은 창의 서랍인가 — 머리의 단추가 접기(패널 그림)가 아니라 닫기(✕)가 된다. */
+  drawer?: boolean;
   /** 이름 바꾸기 — 설정의 대화 제목에 남는다(셸의 `onRenameSession`). */
   onRenameSession: (sessionId: string, title: string) => void;
   /** 접힘(넓은 창) · 닫힘(좁은 창 서랍) — 초점과 접근 이름이 안으로 들어가지
@@ -55,6 +66,8 @@ export function Sidebar({
 }) {
   const projects = daemon.projects;
   const active = projects.find((project) => project.slug === daemon.activeSlug) ?? null;
+  // `프로젝트 N개 더 보기` 가 전환기 목록을 여는 신호 — 누를 때마다 한 칸 올라 목록이 열린다.
+  const [openSwitcher, setOpenSwitcher] = useState(0);
   // 홈 배지는 확인 요청만 센다 — 「내 손이 필요한 일」의 수, 모든 프로젝트에 걸쳐(U6).
   const waiting = projects.reduce((sum, project) => sum + project.pendingCount, 0);
   const author = daemon.status?.authorName?.trim() || null;
@@ -70,19 +83,27 @@ export function Sidebar({
           <img src="/colonova-icon.svg" alt="" width={20} height={20} />
           {L.sidebar.brand}
         </span>
+        {/* 서랍 안에는 닫는 단추가 없어 스크림 · Esc · ⌘B 만 남았다 — 겹판처럼 머리 오른쪽에 ✕ 가 선다. */}
         <button
           type="button"
           className="nx-ibtn nx-collapse-btn"
-          title={keyHint(L.sidebar.collapse)}
-          aria-label={keyHint(L.sidebar.collapse)}
+          title={drawer ? L.shell.closeMenu : keyHint(L.sidebar.collapse)}
+          aria-label={drawer ? L.shell.closeMenu : keyHint(L.sidebar.collapse)}
           onClick={onCollapse}
         >
-          <PanelIcon />
+          {drawer ? <CloseIcon /> : <PanelIcon />}
         </button>
       </div>
-      <nav className="nx-side-nav">
-        <button type="button" className="nx-side-row" onClick={() => nav.newThread()}>
-          <PlusIcon />
+      <nav className="nx-side-nav" aria-label={L.sidebar.nav}>
+        <button
+          type="button"
+          className="nx-side-row nx-side-row--new"
+          onClick={() => nav.newThread()}
+        >
+          {/* 사이드바의 으뜸 행동 — 브랜드 색이 든 알약 하나로 다른 두 줄과 가른다(2026-10-06). */}
+          <span className="nx-newmark">
+            <PlusIcon />
+          </span>
           {L.sidebar.newConv}
           <kbd>{keyHint("⌘T")}</kbd>
         </button>
@@ -108,13 +129,14 @@ export function Sidebar({
         active={active}
         onSwitch={nav.switchProject}
         onToast={nav.toast}
+        openSignal={openSwitcher}
       />
       <OtherProjects
         projects={projects}
         activeSlug={daemon.activeSlug}
         onSwitch={nav.switchProject}
+        onMore={() => setOpenSwitcher((count) => count + 1)}
       />
-      <div className="nx-side-label">{L.sidebar.convs}</div>
       <ConversationList
         daemon={daemon}
         project={active}
@@ -128,6 +150,7 @@ export function Sidebar({
       />
       <div className="nx-side-bottom">
         <button type="button" className="nx-side-row nx-fb-row" onClick={onFeedback}>
+          <LightbulbIcon />
           {L.feedback.button}
         </button>
         <button
@@ -137,7 +160,7 @@ export function Sidebar({
           title={updateReady ? L.sidebar.settingsUpdate : L.sidebar.settings}
           onClick={() => nav.openSettings()}
         >
-          {author && <span className="nx-av">{Array.from(author)[0]}</span>}
+          {author && <span className="nx-me-av">{Array.from(author)[0]}</span>}
           <b>{author ?? L.sidebar.settings}</b>
           <span className="nx-grow" />
           <span className="nx-muted">

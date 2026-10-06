@@ -5,7 +5,7 @@
  * 문장은 컴포저에서 온 노트 하나, 목록은 마커가 실고, json fence 는 없다.
  */
 import type { TurnMarker } from "@colonova-design/protocol";
-import { markTurn } from "@colonova-design/protocol";
+import { markTurn, readTurn } from "@colonova-design/protocol";
 import type { PreviewError } from "../components/preview/types";
 import type { PinAttachment } from "../hooks/usePins";
 
@@ -132,6 +132,28 @@ export function pinsToTurn(
     blocks.join("\n\n"),
   ];
   return markTurn(marker, lines.join("\n"));
+}
+
+/**
+ * A pin turn's own words, swapped. 고쳐서 다시 보내기(2026-10-04 ux-plan PR1)가
+ * 쓴다: 입력창에서 고친 문장으로 표석의 note 와 본문의 첫 줄만 바뀌고, 핀의
+ * 행(위치 · 셀렉터 · 메모)은 원래 턴의 몫 그대로 간다. 표식 묶음이 아니면
+ * 그대로 돌려준다 — 부르는 쪽이 판단 없이 맡겨도 안전한 순수 함수다.
+ */
+export function rewordPinTurn(turn: string, note: string): string {
+  const { marker, body } = readTurn(turn);
+  if (marker?.kind !== "comments") return turn;
+  const sentence = note.trim();
+  // 본문의 첫 문장 — pinsToTurn 이 쌍으로 적은 말(marker.note 와 같다)만 바꾼다.
+  const old = marker.note ?? "";
+  const rest =
+    old !== "" && body.startsWith(old) ? body.slice(old.length).replace(/^\n+/, "") : body;
+  const next: Extract<TurnMarker, { kind: "comments" }> = {
+    ...marker,
+    ...(sentence ? { note: sentence } : {}),
+  };
+  if (!sentence) delete next.note;
+  return markTurn(next, sentence ? `${sentence}\n\n${rest}` : rest);
 }
 
 /**

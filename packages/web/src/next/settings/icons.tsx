@@ -1,10 +1,13 @@
 import {
   Bell,
   CircleArrowDown,
+  CircleCheck,
+  Info,
   Link2,
   type LucideIcon,
   Palette,
   Sparkles,
+  TriangleAlert,
   Wrench,
 } from "lucide-react";
 
@@ -24,3 +27,9 @@ export const NotifyPageIcon = make(Bell);
 export const ConnectPageIcon = make(Link2);
 export const UpdatePageIcon = make(CircleArrowDown);
 export const DevPageIcon = make(Wrench);
+
+/** 쪽 위 띠의 그림 — 새 버전 · 확인 못 함 · 최신 · 안내(2026-10-06 설정 손질). 색은 띠가 입힌다. */
+export const BandDownIcon = make(CircleArrowDown, 16);
+export const BandAlertIcon = make(TriangleAlert, 16);
+export const BandOkIcon = make(CircleCheck, 16);
+export const BandInfoIcon = make(Info, 16);

@@ -65,6 +65,42 @@ export function pickAttention(
   return rank(a) <= rank(b) ? a : b;
 }
 
+/** 제출 막힘이 `개발자에게 알렸어요` 주의에 덮이는지 — problemFor 의 판정과 같은 기준이다. */
+function submitBlockedUncovered(repo: RepoLike | null): boolean {
+  if (repo?.submit?.phase !== "blocked") return false;
+  return !(
+    repo.attention?.kind === "developer-notified" &&
+    repo.attention.key?.startsWith("submit:") &&
+    (!repo.submit.since || Date.parse(repo.attention.since) >= Date.parse(repo.submit.since))
+  );
+}
+
+/**
+ * 줄에 선 문제 외에 열린 문제가 더 있는지 센다 — 줄은 하나뿐이라 나머지는
+ * ProblemLine 이 끝에 `+N` 으로 더한다(2026-10-04 ux-review). `problemFor` 의
+ * 순서(재연결 · 막힘 · 알림 · 고침)와 같은 기준으로 세고, 줄에 선 것 하나를 뺀다.
+ */
+export function hiddenProblemCount(
+  status: { attention?: Attention | null } | null,
+  repo: RepoLike | null,
+): number {
+  const a = repo?.attention ?? null;
+  const b = status?.attention ?? null;
+  const shown = pickAttention(a, b);
+  const problems = new Set<string>();
+  if (a) problems.add(`notice:${a.kind}:${a.since ?? ""}`);
+  if (b) problems.add(`notice:${b.kind}:${b.since ?? ""}`);
+  if (submitBlockedUncovered(repo)) problems.add(`submit:${repo?.submit?.since ?? "?"}`);
+  if (problems.size === 0) return 0;
+  const shownKey = shown
+    ? `notice:${shown.kind}:${shown.since ?? ""}`
+    : submitBlockedUncovered(repo)
+      ? `submit:${repo?.submit?.since ?? "?"}`
+      : null;
+  if (shownKey !== null) problems.delete(shownKey);
+  return problems.size;
+}
+
 export function problemFor(
   status: { attention?: Attention | null } | null,
   repo: RepoLike | null,

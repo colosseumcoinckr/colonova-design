@@ -7,29 +7,136 @@
   flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px 0 16px;
+  gap: 14px;
+  padding: 0 14px 0 20px;
   border-bottom: 1px solid var(--line);
 }
 
 .nx--narrow .nx-statusbar {
+  gap: 10px;
   padding-left: 10px;
 }
 
+/* 제목 — 왼쪽의 한 줄. 오른쪽 묶음이 남는 폭을 재야 하므로 제목은 38% 까지만 선다. 창이 넓어
+   묶음이 다 펴지고도 남는 폭(`100% - 820px` — 범위의 말 · 가장 긴 캡슐 · 제출 · 사이드바 단추)은
+   제목이 가져간다. 글자는 눌러서 이름을 바꾸는 단추이되, 호버가 되어서야 단추임이 드러난다. */
 .nx-conv-title {
-  font-weight: 600;
-  font-size: 14px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-  max-width: 34%;
-}
-
-.nx .nx-journey {
+  flex: 0 1 auto;
+  min-width: 96px;
+  max-width: max(38%, calc(100% - 820px));
   display: flex;
   align-items: center;
-  padding: 6px 12px;
+  /* 글자의 왼쪽 끝이 줄의 여백에 놓이도록 눌림 면(아래 9px 안쪽 여백)만큼 바깥으로 낸다. */
+  margin-left: -9px;
+}
+
+.nx .nx-conv-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 9px;
+  border-radius: var(--r);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.nx .nx-conv-name > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx .nx-conv-name:hover {
+  background: var(--nx-hover);
+}
+
+.nx .nx-conv-name--static:hover {
+  background: none;
+}
+
+/* 연필은 호버 · 키보드 초점에서만 — 이름을 바꿀 수 있다는 말이다. */
+.nx .nx-conv-name .nx-i {
+  color: var(--ink3);
+  opacity: 0;
+  transition: opacity var(--nx-t-touch) var(--drift);
+}
+
+.nx .nx-conv-name:hover .nx-i,
+.nx .nx-conv-name:focus-visible .nx-i {
+  opacity: 1;
+}
+
+/* 바꾸는 동안에는 입력칸이 글자 자리에 그대로 서고 쓸 만큼 넓어진다. */
+.nx-conv-title--editing {
+  flex: 1 1 auto;
+  max-width: min(560px, 60%);
+}
+
+.nx .nx-conv-input {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--accent);
+  border-radius: var(--r);
+  background: var(--card);
+  font-size: 14px;
+  font-weight: 600;
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 오른쪽 묶음 — 제목이 쓰고 남은 자리를 모두 갖는 컨테이너다. 컨테이너가 제 폭을 가져야
+   아래 질의가 참을 읽는다: 폭이 0 인 컨테이너(내용에 맡긴 `container-type`)는 질의를 늘
+   `가장 좁음` 으로 읽어 `만드는 중` 과 앞으로 올 점의 글자를 지운다(2026-10-06 — 2026-10-04
+   ux-review 의 질의가 처음부터 그랬다). 높이는 막대 전체라 팝오버가 막대 아래에서 열린다. */
+.nx-project-work {
+  flex: 1 1 0;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  container: nxwork / inline-size;
+}
+
+/* 범위의 말 — `colonova-cdp · 프로젝트 전체 작업`. 제출이 이 대화가 아니라 프로젝트
+   전체의 일임을 늘 곁에서 말하되, 자리가 모자라면 캡슐보다 먼저 접힌다. */
+.nx-work-scope {
+  /* 이름이 긴 프로젝트에서는 캡슐이 잘리지 않게 이 말이 먼저(100배) 줄어든다. */
+  flex: 0 100 auto;
+  min-width: 0;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--ink3);
+  /* 만드는 중이 끝나 다시 서거나 폭이 늘어 다시 보일 때 툭 튀지 않게 — display 가 돌아올 때마다 돈다. */
+  animation: nx-fade 0.25s ease-out;
+}
+
+.nx-work-scope b {
+  font-weight: 600;
+  color: var(--ink2);
+}
+
+/* 여정 캡슐 — 세 점의 글자와 만드는 중 조각이 한 단추에 산다. 누르면 `이번 작업`. */
+.nx .nx-journey {
+  position: relative;
+  flex: 0 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 32px;
+  padding: 0 4px;
   border-radius: var(--r-pill);
   border: 1px solid var(--line);
   background: var(--card);
@@ -37,21 +144,35 @@
   color: var(--ink3);
   white-space: nowrap;
   min-width: 0;
+  /* 넘치는 몸은 잘라 내어 제출 버튼 쪽으로 밀려 겹치지 않게 한다 — 무엇부터 감길지는
+     아래 컨테이너 질의가 정한다. */
+  overflow: hidden;
 }
 
 .nx .nx-journey:hover {
   border-color: var(--line2);
+  /* 고정 — 그림자는 테마를 따르지 않는 검은 빛이다. */
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+/* 이번 작업 팝이 열려 있는 동안 — 단추가 눌린 채로 있다는 것이 색으로도 보인다(열림 표시는 낭독만 알았다). */
+.nx .nx-journey[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--ink) 5%, var(--card));
+}
+
+.nx .nx-journey[aria-expanded="true"]:not(.nx-journey--making) {
+  border-color: var(--line2);
 }
 
 /* 만드는 중 조각 — 나타나고 사라질 때 폭이 grid 줄(1fr ↔ 0fr)로 부드럽게
    접힌다. 안쪽(.nx-making-in)이 잰 폭의 몸통이다. */
 .nx-making {
   display: grid;
+  flex: none;
   grid-template-columns: 1fr;
   color: var(--accent);
   font-weight: 600;
-  margin-right: 10px;
+  margin: 0 6px 0 8px;
   padding-right: 10px;
   border-right: 1px solid var(--line);
   transition:
@@ -64,10 +185,42 @@
 
 .nx-making--off {
   grid-template-columns: 0fr;
-  margin-right: 0;
+  margin: 0;
   padding-right: 0;
   border-right-color: transparent;
   opacity: 0;
+}
+
+/* AI 가 도는 동안 캡슐은 가장자리에 테마의 포인트 색을 두르고, 아래 끝으로 얇은 빛이
+   끝없이 지나간다 — 도는 중이라는 말이 글자를 읽기 전에 눈에 닿는다. 동작을 줄이는 탭은
+   빛이 한 번에 끝나 보이지 않고(돌던 표식이 숨 쉬며 대신 말한다), 가장자리 색만 남는다. */
+.nx .nx-journey--making {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.nx-journey--making::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent) no-repeat;
+  background-size: 36% 100%;
+  animation: nx-sheen 1.6s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes nx-sheen {
+  from {
+    background-position: -60% 0;
+  }
+
+  to {
+    background-position: 160% 0;
+  }
 }
 
 .nx-making-in {
@@ -133,10 +286,39 @@
   align-items: center;
 }
 
+/* 점 하나 = 한 알. 지금 점은 국면의 색을 옅게 깐 알이 되어 `여기` 를 말하고(아래 국면별
+   규칙), 지난 점 · 앞으로 올 점은 바탕 없이 글자만 선다. */
 .nx-jstep {
   display: flex;
   align-items: center;
   gap: 6px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border-radius: var(--r-pill);
+  transition:
+    background 0.3s ease,
+    color 0.3s ease;
+}
+
+/* 글자가 접힌 점(좁은 창의 다른 점 · 질의로 접힌 점)은 점만 남아 알이 되지 않는다. */
+.nx-jstep--bare {
+  padding: 0 3px;
+  gap: 0;
+}
+
+.nx-jl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 자리가 모자라면 줄어드는 것은 지금 점의 글자뿐이다 — 말줄임으로. */
+.nx-jstep--cur {
+  min-width: 0;
+}
+
+.nx-jstep:not(.nx-jstep--cur) {
+  flex: none;
 }
 
 .nx-jstep i {
@@ -161,6 +343,17 @@
 .nx-jstep--done i {
   background: var(--ink3);
   border-color: var(--ink3);
+  /* 점 안에 새긴 체크(SentIcon) — 채움 색과 반대 옷을 입혀 저대비 테마에서도
+     모양이 남는다(2026-10-04 ux-review). */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nx-jstep--done .nx-i {
+  width: 8px;
+  height: 8px;
+  color: var(--card);
 }
 
 .nx-jstep--cur {
@@ -170,10 +363,10 @@
 
 /* 점 사이의 막대 — 트랙과 채움을 나눠, 앞 점이 지나가면 왼쪽부터 찬다. */
 .nx-jbar {
-  width: 16px;
+  width: 14px;
   height: 1.5px;
   background: var(--line2);
-  margin: 0 7px;
+  margin: 0 2px;
   flex: none;
   position: relative;
   overflow: hidden;
@@ -195,7 +388,7 @@
 
 .nx--narrow .nx-jbar {
   width: 10px;
-  margin: 0 5px;
+  margin: 0 1px;
 }
 
 /* 지금 점이 한 번 맥동하는 고리 — 색은 국면의 것(--jdot)을 따른다. */
@@ -263,6 +456,24 @@
   background: var(--red);
   border-color: var(--red);
   box-shadow: 0 0 0 3px var(--red-soft);
+}
+
+/* 지금 점의 알 — 점과 같은 국면의 색을 옅게 깐다. */
+.nx-cycle--draft .nx-jstep--cur {
+  background: var(--blue-soft);
+}
+
+.nx-cycle--review .nx-jstep--cur {
+  background: var(--amber-soft);
+}
+
+.nx-cycle--merged .nx-jstep--cur {
+  background: var(--green-soft);
+}
+
+.nx-blocked .nx-jstep--cur {
+  background: var(--red-soft);
+  color: var(--red);
 }
 
 .nx .nx-submit {
@@ -343,10 +554,12 @@
   background: color-mix(in srgb, var(--ink) 88%, var(--bg));
 }
 
+/* 잠긴 글자는 한 단 진하게 — `--muted` 는 이 바탕 위에서 github 4.00 · codex 3.97 · github-light 4.28 : 1 이라
+   눌러서 이유를 읽는 단추로서 모자랐다(2026-10-06 측정). `--ink2` 는 여섯 테마 모두 5.1 이상이다. */
 .nx .nx-submit--locked,
 .nx .nx-submit--locked:hover {
   background: var(--panel-3);
-  color: var(--muted);
+  color: var(--ink2);
   cursor: not-allowed;
 }
 
@@ -360,32 +573,60 @@
   color: var(--bg);
 }
 
+/* 잠긴 제출의 이유 — 앱의 팝(`.nx-pop`)과 같은 말투다: 반경 14 · 팝 그림자 · 한 칸의 꼬리 · 자물쇠(2026-10-06
+   겹판 손질. 꼬리도 그림도 없는 자체 말풍선이었다). 꼬리는 단추 쪽(위)을 가리킨다. */
 .nx-why {
   position: absolute;
   right: 0;
-  top: calc(100% + 8px);
-  z-index: 60;
+  top: calc(100% + 10px);
+  z-index: var(--nx-z-pop);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   width: max-content;
   max-width: 300px;
+  padding: 10px 12px;
   background: var(--card);
-  border: 1px solid var(--line2);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--pop);
   color: var(--ink);
   font-size: 12.5px;
-  padding: 8px 11px;
-  border-radius: 9px;
-  box-shadow: var(--pop);
-  line-height: 1.45;
-  animation: nx-pop 0.12s;
+  line-height: 1.5;
   word-break: keep-all;
+  transform-origin: top right;
+  animation: nx-pop 0.16s var(--drift) backwards;
+}
+
+.nx-why::before {
+  content: "";
+  position: absolute;
+  top: -5px;
+  right: 52px;
+  width: 8px;
+  height: 8px;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  transform: rotate(45deg);
+}
+
+.nx-why > svg {
+  margin-top: 3px;
+  color: var(--ink3);
 }
 
 /* `이번 작업` 팝오버(U2) — 단계 4 가 몸통을 채운다. */
 .nx-work-pop {
+  display: flex;
+  flex-direction: column;
   width: 380px;
   padding: 0;
+  overflow: hidden;
 }
 
 .nx-wp-h {
+  flex: none;
   padding: 14px 16px 10px;
   border-bottom: 1px solid var(--line);
 }
@@ -401,6 +642,7 @@
 }
 
 .nx-wp-journey {
+  flex: none;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 6px;
@@ -460,6 +702,36 @@
   background: var(--green);
 }
 
+/* 굴러가는 몸 — 머리 · 여정 · 바닥은 서 있다. 위아래로 더 있으면 가장자리에 그림자가 비친다(스크롤 그림자
+   기법 — ui/overlay.css 의 겹판 몸과 같다). */
+.nx-wp-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background-color: var(--card);
+  background-image:
+    linear-gradient(var(--card) 30%, transparent), linear-gradient(transparent, var(--card) 70%),
+    radial-gradient(
+      farthest-side at 50% 0,
+      color-mix(in srgb, var(--ink) 16%, transparent),
+      transparent
+    ),
+    radial-gradient(
+      farthest-side at 50% 100%,
+      color-mix(in srgb, var(--ink) 16%, transparent),
+      transparent
+    );
+  background-position: top, bottom, top, bottom;
+  background-size:
+    100% 24px,
+    100% 24px,
+    100% 8px,
+    100% 8px;
+  background-repeat: no-repeat;
+  background-attachment: local, local, scroll, scroll;
+}
+
 .nx-wp-sec {
   padding: 12px 16px;
   border-bottom: 1px solid var(--line);
@@ -497,10 +769,6 @@
 .nx .nx-submit--failed:hover {
   background: var(--red);
   cursor: default;
-}
-
-.nx-submit-pop {
-  max-width: calc(100vw - 24px);
 }
 
 .nx-wp-hr {
@@ -579,11 +847,6 @@
   margin-left: 6px;
 }
 
-.nx-wp-c b {
-  font-weight: 600;
-  margin-right: 6px;
-}
-
 .nx-wp-r {
   color: var(--ink3);
   font-size: 12px;
@@ -604,14 +867,92 @@
   animation: nx-spin 1.4s linear infinite;
 }
 
-.nx-wp-outside {
-  font-size: 12.5px;
-  color: var(--ink2);
-  padding: 6px 0 2px;
-}
-
 .nx-wp-gap {
   margin-top: 6px;
+}
+
+/* 화면 줄이 그 화면을 여는 단추일 때 — 호버에 칠이 오르고 끝의 `›` 가 진해진다. */
+.nx .nx-wp-row--btn {
+  text-align: left;
+  cursor: pointer;
+}
+
+.nx .nx-wp-row--btn:hover {
+  background: var(--nx-hover);
+}
+
+.nx-wp-row + .nx-wp-row {
+  margin-top: 2px;
+}
+
+.nx-wp-go {
+  display: grid;
+  flex: none;
+  color: var(--ink3);
+}
+
+.nx .nx-wp-row--btn:hover .nx-wp-go {
+  color: var(--ink);
+}
+
+/* 더 보기 — 줄들과 같은 왼쪽 끝에서 시작해 눌림 면이 줄과 나란하다. */
+.nx-wp-more {
+  margin: 4px 0 0 -6px;
+}
+
+/* 막힘의 복사 단추 — 문제 문장 줄의 ✕ 로 막힘을 닫아도 담당자에게 건넬 글은 여기 남는다. */
+.nx-wp-copy {
+  display: flex;
+  margin-top: 8px;
+}
+
+/* 개발자 코멘트 — 사람 · 시각 · 반영 상태가 윗줄, 글이 아랫줄(길면 넉 줄에서 말줄임, 전문은 툴팁). */
+.nx-wp-cm {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.nx-wp-cm + .nx-wp-cm {
+  border-top: 1px solid var(--line-soft);
+}
+
+.nx-wp-cb {
+  flex: 1;
+  min-width: 0;
+}
+
+.nx-wp-ch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 22px;
+  font-size: 12px;
+  color: var(--ink3);
+}
+
+.nx-wp-ch b {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.nx-wp-ch .nx-wp-r {
+  margin-left: auto;
+}
+
+.nx-wp-cb p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  margin: 2px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink2);
+  overflow-wrap: anywhere;
 }
 
 .nx-wp-icon {
@@ -682,142 +1023,426 @@
 }
 
 .nx-wp-foot {
+  flex: none;
   padding: 10px 12px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+  border-top: 1px solid var(--line);
 }
 
-.nx-snote {
-  margin-right: auto;
-  font-size: 12px;
-  color: var(--ink3);
-  line-height: 1.5;
+/* 오른쪽 묶음의 감김 — 컨테이너(`nxwork`)가 가진 폭이 정한다. 순서는 말의 값어치의 거꾸로다:
+   범위의 말 → 프로젝트 이름 → 앞으로 올 점 · 지난 점의 글자 → (만드는 중이면) 지금 점의 글자 →
+   시계. `제출` 과 지금 점의 알은 끝까지 남는다. 만드는 중에는 조각이 폭을 쓰므로 범위의 말은
+   아예 빠지고 나머지도 한 단계씩 먼저 접힌다.
+   기준 폭은 상태별로 잰 값에서 가장 큰 쪽(2026-10-06, 12.5px · 한 알의 글자가 가장 긴 때)으로
+   잡았다 — 범위의 말 174(이름 76) · 점 셋의 캡슐 295~405 · 지금 점의 글자만 195~279 · 점만
+   95 · 만드는 중 조각 167(+여백 14). 컨테이너 폭이 실제로 재어지게 되면서 이 질의가 처음 선다. */
+.nx-project-work--making .nx-work-scope {
+  display: none;
 }
 
-.nx .nx-work-pop .nx-btn--sm {
-  height: 28px;
-  padding: 0 10px;
-  font-size: 12.5px;
+@container nxwork (max-width: 610px) {
+  .nx-work-scope-rest {
+    display: none;
+  }
 }
 
-.nx .nx-note-input {
-  width: 100%;
-  height: 34px;
-  border: 1px solid var(--line2);
-  border-radius: 9px;
-  padding: 0 10px;
-  outline: 0;
-  background: var(--card);
+@container nxwork (max-width: 510px) {
+  .nx-work-scope {
+    display: none;
+  }
 }
 
-.nx .nx-note-input:focus {
-  border-color: var(--ink3);
+@container nxwork (max-width: 415px) {
+  .nx-jstep:not(.nx-jstep--cur) {
+    padding: 0 3px;
+    gap: 0;
+  }
+
+  .nx-jstep:not(.nx-jstep--cur) .nx-jl {
+    display: none;
+  }
 }
 
-.nx-conv-title {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* 만드는 중 — 조각 하나(181)가 더해진 만큼 기준이 오른다. 60초 뒤의 안내는 가장 먼저. */
+@container nxwork (max-width: 700px) {
+  .nx-project-work--making .nx-since-hint {
+    display: none;
+  }
 }
-.nx-conv-title small {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--ink3);
+
+@container nxwork (max-width: 595px) {
+  .nx-project-work--making .nx-jstep:not(.nx-jstep--cur) {
+    padding: 0 3px;
+    gap: 0;
+  }
+
+  .nx-project-work--making .nx-jstep:not(.nx-jstep--cur) .nx-jl {
+    display: none;
+  }
 }
-.nx-conv-title > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
+
+@container nxwork (max-width: 465px) {
+  .nx:not(.nx--narrow) .nx-project-work--making .nx-jstep--cur {
+    padding: 0 3px;
+    gap: 0;
+  }
+
+  .nx:not(.nx--narrow) .nx-project-work--making .nx-jstep--cur .nx-jl {
+    display: none;
+  }
 }
-.nx-project-work {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  min-width: 0;
+
+/* 좁은 창은 시계가 없고 조각이 짧아(134) 지금 점의 글자가 더 오래 산다. */
+@container nxwork (max-width: 340px) {
+  .nx--narrow .nx-project-work--making .nx-jstep--cur {
+    padding: 0 3px;
+    gap: 0;
+  }
+
+  .nx--narrow .nx-project-work--making .nx-jstep--cur .nx-jl {
+    display: none;
+  }
 }
-.nx-work-scope {
-  font-size: 10px;
-  color: var(--ink3);
-  max-width: 280px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+@container nxwork (max-width: 290px) {
+  .nx-project-work--making .nx-since {
+    display: none;
+  }
 }
-.nx-project-work .nx-journey {
-  padding: 4px 10px;
-}
-.nx-submit-scope > b {
-  font-size: 12px;
-}
-.nx-submit-scope p {
-  margin: 6px 0 0;
-  color: var(--ink3);
-  font-size: 12px;
-  line-height: 1.6;
-}
-.nx-submit-warning {
-  color: var(--red);
-  font-size: 12px;
-  line-height: 1.6;
-  margin: 0 0 10px;
+
+.nx--narrow .nx-work-scope {
+  display: none;
 }
 .nx--narrow .nx-work-scope {
   max-width: 190px;
 }
 
-.nx .nx-submit-review-back {
-  z-index: 60;
+/* ── 제출 확인(U3) — 겹판 뼈대(ModalFrame) 위의 배치. 스크림 · 판의 반경 · 그림자 · 들어옴/나감은
+   ui/overlay.css 가 입힌다(2026-10-06 겹판 손질: 잉크색 스크림 · z-index 60 · 고정 그림자를 덮어쓰던 것을
+   지웠다 — `--ink` 가 밝은 다크 테마에서는 어둡히지 않고 뿌옇게 칠했다). 이 블록은 폭 · 높이 · 안쪽만 정한다. */
+.nx-modal.nx-submit-review {
+  width: min(720px, calc(100vw - 40px));
+  max-height: min(820px, calc(100dvh - 48px));
+}
+
+/* 무엇이 가는가 — 한 줄 요약이 먼저 말하고, 안내 셋은 그 아래 접힌다. */
+.nx-sub-summary {
+  margin: 4px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  word-break: keep-all;
+}
+
+/* 접는 줄 셋(제출 범위 · 앞서 제출한 화면 · 화면에 드러나지 않은 변경)이 같은 말투다 — 앞 화살표가
+   열리면 아래를 가리킨다. 열고 닫는 높이 움직임은 ui.css 의 `details` 규칙이 맡는다. */
+.nx-sub-scope,
+.nx-sub-fold {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+
+.nx-sub-scope > summary,
+.nx-sub-fold > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: -2px;
+  padding: 4px 8px 4px 2px;
+  border-radius: var(--r-sm);
+  color: var(--ink3);
+  cursor: pointer;
+  list-style: none;
+}
+
+.nx-sub-scope > summary::-webkit-details-marker,
+.nx-sub-fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.nx-sub-scope > summary:hover,
+.nx-sub-fold > summary:hover {
+  color: var(--ink);
+}
+
+.nx-sub-scope > summary:focus-visible,
+.nx-sub-fold > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.nx-sub-caret {
+  display: grid;
+  transition: transform var(--nx-t-move) var(--drift);
+}
+
+.nx-sub-scope[open] > summary .nx-sub-caret,
+.nx-sub-fold[open] > summary .nx-sub-caret {
+  transform: rotate(90deg);
+}
+
+.nx-sub-scope > p,
+.nx-sub-fold > p {
+  margin: 4px 0 0 14px;
+  color: var(--ink3);
+  line-height: 1.6;
+}
+
+.nx-sub-scope b {
+  font-weight: 600;
+  color: var(--ink2);
+}
+
+/* 알림 줄 — 보내기 실패 · 읽기 실패 · 내용이 바뀜 · 보낼 것 없음 · 잠긴 이유가 같은 상자를 쓴다. 눌렸는데 막힌
+   단추가 이 상자로 눈과 초점을 데려온다. */
+.nx-sub-notices {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.nx-sub-notices:focus {
+  outline: none;
+}
+
+.nx-sub-notices:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+  border-radius: var(--r-md);
+}
+
+.nx-st-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink2);
+}
+
+.nx-st-note > svg {
+  margin-top: 3px;
+  color: var(--ink3);
+}
+
+.nx-st-note-t {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.nx-st-note .nx-btn {
+  flex: none;
+}
+
+.nx-st-note--red {
+  border-color: color-mix(in srgb, var(--red) 38%, transparent);
+  background: var(--red-soft);
+  color: var(--ink);
+}
+
+.nx-st-note--red > svg {
+  color: var(--red);
+}
+
+.nx-st-note--amber {
+  border-color: color-mix(in srgb, var(--amber) 42%, transparent);
+  background: var(--amber-soft);
+  color: var(--ink);
+}
+
+.nx-st-note--amber > svg {
+  color: var(--amber);
+}
+
+/* 읽는 중 — 도는 표식과 말, 아래에 목록이 설 자리의 뼈대. 동작을 줄이면 숨쉬기가 멈춘다(`.nx *` 규칙). */
+.nx-st-load {
+  display: grid;
+  gap: 10px;
+}
+
+.nx-st-loadtext {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background: color-mix(in srgb, var(--ink) 26%, transparent);
+  gap: 8px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink3);
 }
-.nx-submit-review {
-  background: var(--card);
-  color: var(--ink);
-  border: 1px solid var(--line2);
-  width: min(800px, calc(100vw - 40px));
-  height: auto;
-  max-height: min(820px, calc(100dvh - 48px));
-  min-height: 0;
+
+.nx-st-skel {
+  display: grid;
+  gap: 2px;
+  animation: nx-st-breathe 1.4s ease-in-out infinite;
+}
+
+.nx-st-skel > div {
+  --sk: color-mix(in srgb, var(--ink) 8%, transparent);
+  height: 52px;
+  background:
+    linear-gradient(var(--sk), var(--sk)) 0 50% / 44px 30px no-repeat,
+    linear-gradient(var(--sk), var(--sk)) 56px 13px / var(--w1, 38%) 10px no-repeat,
+    linear-gradient(var(--sk), var(--sk)) 56px 31px / var(--w2, 64%) 8px no-repeat;
+  border-radius: var(--r-sm);
+}
+
+.nx-st-skel > div:nth-child(2) {
+  --w1: 28%;
+  --w2: 52%;
+}
+
+.nx-st-skel > div:nth-child(3) {
+  --w1: 34%;
+  --w2: 58%;
+}
+
+@keyframes nx-st-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+/* 제출할 화면 — 한 줄이 한 화면이고 단추 둘이 줄 끝에 선다. 자리가 모자라면 단추가 아래 줄로 감긴다. */
+.nx-sub-list {
+  margin-top: 18px;
+}
+
+.nx-sub-h {
   display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 18px;
-  position: relative;
-  box-shadow: 0 24px 80px #0003;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink3);
 }
-.nx-submit-review .nx-wp-h {
-  flex: none;
-  padding: 24px 28px 18px;
+
+.nx-sub-hr {
+  margin-left: auto;
+  font-weight: 400;
 }
-.nx-submit-review-body {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
+
+.nx-sub-list ul,
+.nx-sub-fold ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.nx-submit-review .nx-wp-sec {
-  padding: 20px 28px;
-}
-.nx-submit-review .nx-wp-foot {
-  flex: none;
-  padding: 18px 28px;
-  background: var(--card);
-}
+
 .nx-submit-screen {
-  padding: 12px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
-.nx-submit-screen .nx-wp-row {
-  padding: 0 0 10px;
+
+.nx-submit-screen > .nx-wp-row {
+  flex: 1 1 260px;
+  width: auto;
+  margin: 0;
+  padding: 0;
 }
+
+/* 목록이 서는 순간 줄이 차례로 내려앉는다(`--i` 는 줄의 순서) — 채움은 backwards 만이라 끝난 뒤 남는 transform 이 없다. */
+.nx-submit-screen {
+  animation: nx-rise-in var(--nx-t-move) var(--drift) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+/* 동작 줄이기 — `.nx *` 규칙은 지연을 못 끈다(README 「움직임」). */
+@media (prefers-reduced-motion: reduce) {
+  .nx-submit-screen {
+    animation: none;
+  }
+}
+
 .nx-submit-screen-actions {
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  flex: none;
+  gap: 6px;
 }
-.nx-review-progress {
+
+/* 바닥 — 한마디와 단추는 목록이 길어도 굴러가지 않는다. 받을 개발자는 왼쪽 끝, 단추는 오른쪽 끝. */
+.nx-modal--frame .nx-mfoot--frame.nx-sub-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: stretch;
+  align-items: stretch;
+  gap: 8px;
+  padding-top: 14px;
+}
+
+.nx-st-notehead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink3);
+}
+
+.nx-st-notehead label {
   font-weight: 600;
+  color: var(--ink2);
+}
+
+.nx .nx-note-input {
+  width: 100%;
+  height: 36px;
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  padding: 0 12px;
+  outline: 0;
+  background: var(--card);
+}
+
+/* 초점은 테두리색만이 아니라 겉 띠까지 — 앱의 다른 입력칸(`.nx-reply input`)과 같은 고리다. */
+.nx .nx-note-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.nx-sub-act {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.nx .nx-sub-foot .nx-snote {
+  margin: 0 auto 0 0;
+}
+
+.nx .nx-sub-go {
+  min-width: 96px;
+}
+
+/* 보내는 중에는 잠기되 흐려지지 않는다 — 돌고 있다는 말이 읽혀야 한다. */
+.nx .nx-sub-go:disabled {
+  opacity: 0.8;
+}
+
+.nx .nx-sub-go .nx-spin {
+  color: var(--bg);
+}
+
+/* 막힌 단추도 눌린다 — 눌러서 막힌 이유로 데려가므로 `disabled` 가 아니라 `aria-disabled` 다. */
+.nx .nx-sub-go[aria-disabled="true"],
+.nx .nx-sub-go[aria-disabled="true"]:hover {
+  background: var(--ink);
+  opacity: 0.5;
+  cursor: not-allowed;
 }

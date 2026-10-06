@@ -1,0 +1,99 @@
+/*
+ * 단축키 시트(⌘/) — 겹판 뼈대(ModalFrame) 위의 묶음 격자와 키캡(2026-10-06 겹판 손질).
+ * 판의 옷(스크림 · 반경 · 그림자 · 들어옴/나감)은 overlay.css, 이 파일은 안쪽 배치만 정한다.
+ */
+
+.nx-modal.nx-sc {
+  width: min(700px, calc(100% - 40px));
+  max-height: min(640px, calc(100% - 60px));
+}
+
+/* 묶음은 폭이 되는 만큼 열을 이루고(다단 — 격자와 달리 짧은 묶음 밑이 비지 않는다), 좁으면 한 줄로 쌓인다. */
+.nx-sc-grid {
+  columns: 2 280px;
+  column-gap: 40px;
+  padding-top: 6px;
+}
+
+/* 묶음은 차례로 내려앉는다 — 열리는 판 안에서 눈이 위에서 아래로 훑게. 동작을 줄이면 곧바로 선다. */
+.nx-sc-group {
+  min-width: 0;
+  margin-bottom: 22px;
+  break-inside: avoid;
+  animation: nx-rise-in var(--nx-t-move) var(--drift) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms + 90ms);
+}
+
+.nx-sc-group h3 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink3);
+}
+
+.nx-sc-group ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nx-sc-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 38px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.nx-sc-row:last-child {
+  border-bottom: 0;
+}
+
+.nx-sc-label {
+  min-width: 0;
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+
+.nx-sc-keys {
+  display: inline-flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.nx-sc-alt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.nx-sc-alt + .nx-sc-alt::before {
+  content: "·";
+  margin: 0 7px 0 4px;
+  color: var(--ink3);
+}
+
+/* 키캡(`.nx kbd.nx-kc`)은 ui.css 에 산다 — 찾기 줄 · 비교 창도 쓴다. */
+
+/* 키가 아니라 뜻을 말하는 낱말 — 캡 없이 글자로(`클릭` · `끌면 영역` · `··· 메뉴`). */
+.nx-kw {
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+
+.nx-modal--frame .nx-mfoot--frame.nx-sc-foot {
+  justify-content: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--ink3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-sc-group {
+    animation: none;
+  }
+}

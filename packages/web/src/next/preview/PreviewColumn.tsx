@@ -1,9 +1,10 @@
 import type { ColoNovaDesignPinEnvelope, SessionState } from "@colonova-design/protocol";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ShortcutsSheet } from "../../components/dialogs/ShortcutsSheet";
 import type { PreviewOverlaySkin } from "../../components/preview/PreviewFrame";
 import type { PreviewLocation, PreviewTarget } from "../../components/preview/types";
+import { overlayOpen } from "../../hooks/use-modal-focus";
 import { pinsSync } from "../../hooks/usePins";
 import { parseAddress } from "../../lib/preview-address";
 import { lookToTurn } from "../../lib/preview-turns";
@@ -18,9 +19,7 @@ import {
 } from "../../lib/turn-screens";
 import { L } from "../labels";
 import { arriveOnTurnEnd } from "../lib/preview-geometry";
-import { useScreenReview } from "../lib/use-screen-review";
 import type { PreviewColumnProps } from "../slots";
-import { ReviewBadges } from "../ui/ReviewBadges";
 import { ComparisonDialog, openComparison } from "./ComparisonDialog";
 import { clockOf, HISTORY_OPEN_EVENT, HistoryDrawer } from "./HistoryDrawer";
 import { ArrowIcon, PinSmallIcon } from "./icons";
@@ -100,6 +99,7 @@ export function PreviewColumn({
   activeSessionId,
   nav,
   narrow,
+  offstage = false,
   onScreenName,
 }: PreviewColumnProps) {
   const { api, repo, connection } = daemon;
@@ -119,6 +119,8 @@ export function PreviewColumn({
   const stageRef = useRef<HTMLDivElement>(null);
   /** 서랍을 연 시계 단추 — 닫히면 초점이 그곳으로 돌아간다. */
   const historyBtn = useRef<HTMLButtonElement | null>(null);
+  /** 시계 단추가 `aria-controls` 로 가리키는 서랍. */
+  const drawerId = useId();
   /** 오버레이가 입는 말과 색 — 게스트 preload 는 웹의 labels 를 못 읽어 선로로 건넨다. */
   const overlaySkin = useOverlaySkin();
 
@@ -144,15 +146,11 @@ export function PreviewColumn({
     setLocation(null);
   }
   const viewEpoch = useRef(0);
-  const currentRoute = useRef("/");
-  const [readyDevice, setReadyDevice] = useState<PreviewDevice | null>(null);
   const invalidateView = useCallback(() => {
     ++viewEpoch.current;
-    setReadyDevice(null);
   }, []);
   const go = useCallback((path: string) => {
     ++viewEpoch.current;
-    if (screenKey(path) !== screenKey(currentRoute.current)) setReadyDevice(null);
     setTarget({ kind: "path", path });
   }, []);
 
@@ -179,7 +177,6 @@ export function PreviewColumn({
     go(path);
   };
   const herePath = location?.path ?? target?.path ?? "/";
-  currentRoute.current = herePath;
 
   // 답변의 화면 링크 · `고친 화면` 카드가 이 칸을 옮기는 손(screen-link.ts).
   const narrowRef = useRef(narrow);
@@ -403,8 +400,18 @@ export function PreviewColumn({
     onMachineTurn: machineTurn,
   });
   const bringUpBroken = phase === "error" && !previewStopped && !previewUrl;
-  const fixing =
-    !preparing && ((previewStopped && !restarting) || bringUpBroken || errors.fixingStalled);
+  // 기동 실패(error)는 고침이 아니다 — 고침은 기계 고침 턴이 실제로 도는 때뿐이다.
+  // 2026-10-04 ux-review: error 를 `AI가 고치는 중` 으로 덮는 건 진행 중인 것처럼 속였다.
+  const stageFailed = !preparing && !restarting && (previewStopped || bringUpBroken);
+  // 2026-10-04 ux-review(2차): 기동 실패를 데몬이 AI 고침에 넘긴 동안(주의 ai-fixing)은
+  // 실패 덮개가 문제 줄의 「AI가 고치는 중이에요」 와 말이 어긋난다 — fixing 덮개가 선다.
+  const attention = daemon.repo?.attention ?? daemon.status?.attention ?? null;
+  const aiFixing = attention?.kind === "ai-fixing";
+  const fixing = errors.fixingStalled || aiFixing;
+  const fixingSinceAt = aiFixing && attention?.since ? Date.parse(attention.since) : Number.NaN;
+  const fixingSince = Number.isFinite(fixingSinceAt)
+    ? fixingSinceAt
+    : (errors.fixingSince ?? undefined);
 
   // --- 무대 ---------------------------------------------------------
   const [device, setDevice] = useState<PreviewDevice>("desktop");
@@ -414,6 +421,14 @@ export function PreviewColumn({
     invalidateView();
     setReloadKey((n) => n + 1);
   }, [invalidateView]);
+  // 실패의 다시 시도 — 있는 손만 쓴다: 미리보기를 다시 읽고(막대의 새로 고침과 같은),
+  // 준비 파이프를 다시 걷는다(마운트 때와 같은 멱등 부름). 새 진행 표시는 만들지 않는다.
+  const retryStage = useCallback(() => {
+    reload();
+    void api
+      .repoSync()
+      .catch((cause: Error) => console.error("[colonova-design] repo sync", cause));
+  }, [reload, api]);
   const pickDevice = (next: PreviewDevice) => {
     if (next === device) return;
     invalidateView();
@@ -536,6 +551,26 @@ export function PreviewColumn({
     window.addEventListener("resize", close);
     return () => window.removeEventListener("resize", close);
   }, []);
+  // 2026-10-04 ux-review(2차): 말풍선 자리는 연 순간 한 번 — 게스트 안 스크롤에
+  // 화살표가 어긋난다. 다시 잡는 대신(흔들림) 스크롤에 닫는다 — 닫힘은 기존 onClose 길.
+  // 같은 문서의 스크롤은 창에서, 게스트(iframe)는 같은 출처일 때만 그 문서에서 듣는다.
+  useEffect(() => {
+    if (!bubble) return;
+    const close = () => setBubble(null);
+    window.addEventListener("scroll", close, true);
+    let guestDoc: Document | null = null;
+    try {
+      const frame = stageRef.current?.querySelector("iframe");
+      guestDoc = frame instanceof HTMLIFrameElement ? frame.contentDocument : null;
+      guestDoc?.addEventListener("scroll", close, true);
+    } catch {
+      guestDoc = null;
+    }
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      guestDoc?.removeEventListener("scroll", close, true);
+    };
+  }, [bubble]);
   const bubbleIndex = bubble ? pins.list.findIndex((pin) => pin.id === bubble.id) : -1;
   const bubblePin = bubbleIndex >= 0 ? pins.list[bubbleIndex] : undefined;
 
@@ -627,6 +662,7 @@ export function PreviewColumn({
 
   // --- 서랍 · 단축키 -----------------------------------------------
   const [historyOpen, setHistoryOpen] = useState(false);
+  const closeHistory = useCallback(() => setHistoryOpen(false), []);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [addrSignal, setAddrSignal] = useState(0);
   useEffect(() => {
@@ -686,7 +722,7 @@ export function PreviewColumn({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (sectionRef.current?.closest(".nx-offstage") != null) return;
-      if (document.querySelector(".modal, .nx-pal, .nx-modal-back")) return;
+      if (overlayOpen()) return;
       const mod = event.metaKey || event.ctrlKey;
       const key = event.key.toLowerCase();
       if (mod && event.shiftKey && !event.altKey && key === "p") {
@@ -696,7 +732,9 @@ export function PreviewColumn({
         event.preventDefault();
         keys.current.addr();
       } else if (event.key === "Escape" && !event.defaultPrevented) {
-        const target = event.target as HTMLElement | null;
+        // PreviewFrame 이 문서를 대상으로 Esc 를 다시 쏜다 — 문서에 closest 는
+        // 없으니 Element 만 좁혀 받는다(2026-10-04 ux-plan PR 2).
+        const target = event.target instanceof Element ? event.target : null;
         if (target?.closest("input, textarea, [contenteditable], .nx-pop, .nx-hist")) return;
         if (keys.current.escape()) event.preventDefault();
       }
@@ -715,36 +753,19 @@ export function PreviewColumn({
       />
     ) : restarting ? (
       <StageNotice kind="restarting" />
+    ) : stageFailed && !aiFixing ? (
+      <StageNotice kind="failed" onRetry={retryStage} />
     ) : fixing ? (
-      <StageNotice kind="fixing" />
+      // 2026-10-04 ux-review(2차): 고침의 2분 판정은 턴 발사 시각 기준 — 주의(ai-fixing)가
+      // 실은 시작 시각이면 그것을, 아니면 기계 고침 턴의 발사 시각을 근거로 센다.
+      <StageNotice kind="fixing" since={fixingSince} />
     ) : !previewUrl && location?.kind !== "web" ? (
       <div className="nx-pv-placeholder">{L.slot.previewWaiting}</div>
     ) : null;
 
-  const review = useScreenReview();
-  const eligible =
-    hasScreen &&
-    !historyOpen &&
-    !overlay &&
-    !frozen &&
-    readyDevice === device &&
-    (native ? location?.kind === "preview" : Boolean(previewUrl));
-  const liveView = useRef({ eligible, route: herePath, device, root });
-  liveView.current = { eligible, route: herePath, device, root };
-  const reviewState = review?.status(herePath, device) ?? "unknown";
-  const markViewed = async () => {
-    const at = viewEpoch.current;
-    const asked = liveView.current;
-    const isCurrent = () =>
-      viewEpoch.current === at &&
-      liveView.current.eligible &&
-      liveView.current.route === asked.route &&
-      liveView.current.device === asked.device &&
-      liveView.current.root === asked.root;
-    const marked = await review?.mark(asked.route, asked.device, isCurrent);
-    toast(marked ? L.screenReview.marked : L.screenReview.changed);
-  };
   const pinCount = pins.list.length;
+  // 무대가 150ms 를 넘겨 불러오는 중 — 막대의 새로 고침 그림이 돈다.
+  const [stageBusy, setStageBusy] = useState(false);
 
   return (
     <section ref={sectionRef} className={`nx-preview${historyOpen ? " nx-preview--hist" : ""}`}>
@@ -755,6 +776,7 @@ export function PreviewColumn({
         onBack={() => walk(-1)}
         onForward={() => walk(1)}
         onReload={reload}
+        loading={stageBusy}
         screenName={hasScreen ? screenName : (project?.name ?? L.preview.frameTitle)}
         mine={rows.mine}
         others={rows.others}
@@ -765,10 +787,12 @@ export function PreviewColumn({
         device={device}
         onDevice={pickDevice}
         pinOn={commentsOn}
+        pinCount={pinCount}
         pinLocked={pinLocked}
         onPin={() => togglePins()}
         historyOpen={historyOpen}
         historyBtn={historyBtn}
+        drawerId={drawerId}
         onHistory={() => {
           ++viewEpoch.current;
           setHistoryOpen((open) => !open);
@@ -785,26 +809,6 @@ export function PreviewColumn({
         addrSignal={addrSignal}
       />
 
-      {hasScreen && (
-        <div className="nx-live-review">
-          <ReviewBadges route={herePath} />
-          <button
-            type="button"
-            className="nx-btn nx-btn--sm"
-            disabled={!eligible || reviewState !== "pending"}
-            onClick={() => void markViewed()}
-          >
-            {L.screenReview.mark}
-          </button>
-          <span>
-            {reviewState === "unknown"
-              ? review?.snapshot
-                ? L.screenReview.unknown
-                : L.screenReview.waiting
-              : L.screenReview.guide}
-          </span>
-        </div>
-      )}
       <PreviewHost
         url={previewUrl}
         epoch={epoch}
@@ -825,7 +829,7 @@ export function PreviewColumn({
         onZoom={setZoom}
         onError={errors.report}
         onSelfReload={reload}
-        onReady={setReadyDevice}
+        onBusy={setStageBusy}
         stageRef={stageRef}
       >
         {frozen && (
@@ -905,8 +909,10 @@ export function PreviewColumn({
       )}
 
       <HistoryDrawer
+        id={drawerId}
         open={historyOpen}
-        onClose={() => setHistoryOpen(false)}
+        offstage={offstage}
+        onClose={closeHistory}
         daemon={daemon}
         repo={repo}
         submits={submits}

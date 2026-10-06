@@ -24,3 +24,15 @@ export function keyHint(text: string, mac: boolean = detectMac()): string {
     .replace(/option\(⌥\)/g, "Alt")
     .replace(/[⌘⌃⌥⇧]+/g, (run) => `${[...run].map((glyph) => NAMES[glyph]).join("+")}+`);
 }
+
+/**
+ * 손에 올린 풍선 — 문장 뒤에 단축키를 덧붙인다(`뒤로 · ⌘[` · Windows 는 `뒤로 · Ctrl+[`).
+ * 표에 키가 없는 손이면 문장 그대로다(2026-10-06 미리보기 막대 개편).
+ */
+export function tipWithKeys(
+  label: string,
+  keys: string | null,
+  mac: boolean = detectMac(),
+): string {
+  return keys ? keyHint(`${label} · ${keys}`, mac) : label;
+}

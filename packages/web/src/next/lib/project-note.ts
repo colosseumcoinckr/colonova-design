@@ -121,3 +121,42 @@ export function projectNote(
   }
   return projectStatus(summary, words);
 }
+
+/** 급한 순서 — 사용자의 손이 필요한 것(답 · 코멘트 · 실패)이 먼저, 도는 일이 그다음, 조용한 것이 맨 뒤다. */
+const URGENCY: Record<ProjectNote["kind"], number> = {
+  waiting: 0,
+  comments: 1,
+  failed: 2,
+  making: 3,
+  preparing: 4,
+  merged: 5,
+  cycle: 6,
+};
+
+/**
+ * 사이드바의 `다른 프로젝트` 에 세울 줄 — 낮은 창에서는 이 줄들이 대화 목록의 자리를 먹는다(최소 높이
+ * 560px 에서 다른 프로젝트가 여섯이면 목록이 한두 줄이었다, 2026-10-06 겹판 조사). 활성이 아닌 프로젝트가
+ * `limit` 개를 넘으면 가장 급한 `limit` 개만 세우고 나머지 수를 `hidden` 으로 돌려준다(그 수가 `프로젝트
+ * N개 더 보기` 의 N 이다). 같은 급함은 등록 순서를 지킨다. 하나만 가려지는 경우(`limit` + 1 개)는 `1개 더
+ * 보기` 줄이 그 한 줄과 같은 자리를 먹으니 숨기지 않고 모두를 등록 순서대로 세운다 — `limit` 개 이하도 같다.
+ */
+export function pickOthers(
+  projects: readonly ProjectSummary[],
+  activeSlug: string | null,
+  words: ProjectNoteWords,
+  limit = 3,
+): { shown: ProjectSummary[]; hidden: number } {
+  const others = projects.filter((project) => project.slug !== activeSlug);
+  if (others.length <= limit + 1) return { shown: others, hidden: 0 };
+  const ranked = others
+    .map((project, order) => ({
+      project,
+      order,
+      urgency: URGENCY[projectNote(project, words).kind],
+    }))
+    .sort((a, b) => a.urgency - b.urgency || a.order - b.order);
+  return {
+    shown: ranked.slice(0, limit).map((entry) => entry.project),
+    hidden: others.length - limit,
+  };
+}

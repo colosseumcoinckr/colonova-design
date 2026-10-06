@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Tip } from "../../components/Tip";
 import type { PinAttachment } from "../../hooks/usePins";
 import type { Sessions } from "../../hooks/useSessions";
@@ -25,7 +25,7 @@ const RESIZABLE: Record<string, true> = {
 };
 
 /** 입력창의 초안은 옛 입력창과 같은 열쇠를 쓴다 — 두 셸이 같은 대화의 같은 초안을 본다. */
-import { appendScreenDraft, DraftScreenHints } from "../lib/screen-review";
+import { appendScreenDraft, DraftScreenHints } from "../lib/draft-screens";
 import { clearSentDraft } from "../lib/sent-draft";
 
 const DRAFT_PREFIX = "colonova-design.draft.";
@@ -163,6 +163,7 @@ export function Composer({
   narrow = false,
   onPinMode,
   leading,
+  onContentChange,
   disabledProviders,
   lockReason = null,
   running = false,
@@ -197,6 +198,11 @@ export function Composer({
   onPinMode?: () => void;
   /** 도구 줄 맨 앞(홈의 프로젝트 칩). */
   leading?: ReactNode;
+  /**
+   * 입력창에 보낼 것이 생기거나 비워질 때 알린다 — 홈의 시작점 칩이 쓰던 말을 덮지 않게 물러난다.
+   * 처음 그리기 전에 한 번 불러(layout effect) 되살린 초안이 있는 채로 열려도 칩이 깜빡이지 않는다.
+   */
+  onContentChange?: (filled: boolean) => void;
   disabledProviders?: string[];
   /** 보낼 수 없는 이유 — 있으면 잠근다(연결이 끊겼을 때). */
   lockReason?: string | null;
@@ -204,7 +210,14 @@ export function Composer({
   onStop?: () => void;
   stopping?: boolean;
   /** 밖에서 채워 넣는 말(고쳐서 다시 보내기) — `nonce` 가 오르면 한 번 집는다. */
-  prefill?: { text: string; nonce: number; append?: boolean; screen?: string } | null;
+  prefill?: {
+    text: string;
+    nonce: number;
+    append?: boolean;
+    screen?: string;
+    /** 채운 뒤 선택해 둘 자리 — 없으면 커서가 끝에 선다(홈의 시작점 칩이 화면 이름 자리를 고른다). */
+    select?: [number, number];
+  } | null;
   /** 말풍선의 `지금 보내기`(`nx:pins:send`)를 이 입력창이 받는다 — 대화 칸만. */
   listenPinsSend?: boolean;
   registerHandle?: (handle: ComposerHandle | null) => void;
@@ -222,6 +235,7 @@ export function Composer({
     text: storedDraft(draftKey),
     attachments: [],
   }));
+  const hintId = useId();
   const [notice, setNotice] = useState<{ tone: "warn" | "danger"; text: string } | null>(null);
   const [sending, setSending] = useState(false);
   const sendingRef = useRef(false);
@@ -229,6 +243,10 @@ export function Composer({
   const picker = useRef<HTMLInputElement>(null);
   const drafts = useRef(new Map<string, Editor>());
   const keyRef = useRef(draftKey);
+  // 보낸 말 걷기의 자리 — null 은 걷지 않는 중. 0 이 가장 최신(2026-10-04 ux-plan PR 2).
+  const recallIndex = useRef<number | null>(null);
+  // 밖에서 채운 말 속에 골라 둘 자리 — 값이 그려진 직후의 layout effect 가 쓰고 거둔다.
+  const pendingSelect = useRef<{ text: string; range: [number, number] } | null>(null);
 
   // 바뀔 때마다 지도(대화 전환)와 저장소(새로 고침)에 적는다.
   useEffect(() => {
@@ -261,6 +279,9 @@ export function Composer({
       saveDraft(previous, "");
     }
     keyRef.current = draftKey;
+    // 대화를 옮기면 걷기도 처음부터 — 인덱스는 옛 대화의 것이었다.
+    recallIndex.current = null;
+    pendingSelect.current = null;
     setEditor(carry ? prevEditor : (incoming ?? { text: storedDraft(draftKey), attachments: [] }));
     setNotice(null);
   }, [draftKey]);
@@ -282,12 +303,17 @@ export function Composer({
     return () => window.removeEventListener("nx:composer:focus", onShow);
   }, [variant]);
 
-  // 고쳐서 다시 보내기 — 그 말이 입력창에 들어오고 커서가 끝에 선다.
+  // 고쳐서 다시 보내기 — 그 말이 입력창에 들어오고 커서가 끝에 선다. 선택할 자리가 딸려 오면
+  // (홈의 시작점 칩) 값이 그려진 뒤의 layout effect 가 그 자리를 고른다 — 값을 쓰는 순간 브라우저가
+  // 커서를 끝으로 옮기므로, 그리기 전에 잡은 선택은 진다.
   const prefillSeen = useRef<number | null>(null);
   useEffect(() => {
     if (!prefill || prefill.nonce === prefillSeen.current) return;
     prefillSeen.current = prefill.nonce;
     if (prefill.screen) shownScreens.current.add(keyRef.current, [{ screen: prefill.screen }]);
+    if (prefill.select && !prefill.append) {
+      pendingSelect.current = { text: prefill.text, range: prefill.select };
+    }
     setEditor((prev) => ({
       text: prefill.append ? appendScreenDraft(prev.text, prefill.text) : prefill.text,
       attachments: prev.attachments,
@@ -296,9 +322,20 @@ export function Composer({
       const el = area.current;
       if (!el) return;
       el.focus();
+      // 선택할 자리가 딸려 오면 layout effect 의 몫이다 — 그림이 먼저든 이 콜백이 먼저든 여기서 커서를
+      // 끝으로 옮기면 그 선택이 진다.
+      if (prefill.select && !prefill.append) return;
       el.setSelectionRange(el.value.length, el.value.length);
     });
   }, [prefill]);
+  useLayoutEffect(() => {
+    const pending = pendingSelect.current;
+    const el = area.current;
+    if (!pending || !el || editor.text !== pending.text) return;
+    pendingSelect.current = null;
+    el.focus();
+    el.setSelectionRange(pending.range[0], pending.range[1]);
+  }, [editor.text]);
 
   const readFiles = async (files: FileList | File[]) => {
     const accepted: File[] = [];
@@ -328,6 +365,11 @@ export function Composer({
 
   const locked = lockReason !== null;
   const hasContent = editor.text.trim() !== "" || editor.attachments.length > 0 || pins.length > 0;
+  const contentChange = useRef(onContentChange);
+  contentChange.current = onContentChange;
+  useLayoutEffect(() => {
+    contentChange.current?.(hasContent);
+  }, [hasContent]);
 
   const submit = () => {
     if (sendingRef.current || locked) return;
@@ -470,13 +512,74 @@ export function Composer({
       })
       .finally(() => setFastBusy(false));
   };
+  // 보낸 말 다시 불러오기(2026-10-04 ux-plan PR 2) — 이력은 세션이 이미 가진
+  // 대화록(보낸 말 카드)에서 읽고, 새로 저장하는 것은 걷기의 자리 하나뿐이다.
+  const sentHistory = () => {
+    const texts: string[] = [];
+    for (const block of sessions.active?.blocks ?? []) {
+      if (block.type !== "user") continue;
+      // 이어지는 같은 말은 한 번만 — 거슬러 걷는 걸음이 헛되지 않게.
+      if (block.text.trim() === "" || block.text === texts[texts.length - 1]) continue;
+      texts.push(block.text);
+    }
+    return texts;
+  };
+  /** 한 걸음 움직이고 입력창에 채운다 — 실제로 채웠을 때만 참을 돌려준다. */
+  const recall = (older: boolean): boolean => {
+    const texts = sentHistory();
+    if (older) {
+      if (texts.length === 0) return false;
+      if (recallIndex.current === null) {
+        // 첫 걸음은 빈 입력창에서만 — 쓰다 만 말을 걷기로 덮지 않는다.
+        if (editor.text !== "") return false;
+        recallIndex.current = 0;
+      } else if (editor.text === "") {
+        // 어디선가 비워졌으면 걷기도 처음부터.
+        recallIndex.current = 0;
+      } else if (recallIndex.current + 1 < texts.length) {
+        recallIndex.current += 1;
+      } else {
+        return false; // 제일 오래된 말에서 멈춘다
+      }
+    } else {
+      if (recallIndex.current === null) return false;
+      recallIndex.current -= 1;
+      if (recallIndex.current < 0) {
+        // 제일 최신에서 ⌥↓ — 원래의 빈 입력창으로 돌아오고 걷기를 끝낸다.
+        recallIndex.current = null;
+        setEditor((prev) => ({ ...prev, text: "" }));
+        return true;
+      }
+    }
+    const text = texts[texts.length - 1 - recallIndex.current];
+    if (text === undefined) {
+      // 이력이 줄어들었다 — 걷기를 접는다.
+      recallIndex.current = null;
+      return false;
+    }
+    setEditor((prev) => ({ ...prev, text }));
+    // 고쳐서 다시 보내기와 같은 길 — 돌려 넣은 말 끝에 커서를 세운다.
+    requestAnimationFrame(() => {
+      const el = area.current;
+      if (!el) return;
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+    return true;
+  };
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // 조합 중인 Enter 는 한글의 마침이다 — 반쯤 쓴 말을 보내지 않는다.
+    // 조합 중인 Enter 는 한글의 마침이다 — 반쯤 쓴 말을 보내지 않는다. ⌥ 화살표도
+    // 같다 — 조합 중의 화살표는 후보 창의 것이므로 여기서 먼저 거른다.
     if (composing(event)) return;
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
+      return;
     }
+    // ⌥↑·⌥↓ — 보낸 말 다시 불러오기. 이 손잡이는 입력창 자신의 것이라 커서가
+    // 입력창 안에 있을 때만 온다. ⌥ 없는 맨 화살표는 커서의 것이라 위 문을 지나
+    // 여기까지 오지 않는다.
+    if (!event.altKey || (event.key !== "ArrowUp" && event.key !== "ArrowDown")) return;
+    if (recall(event.key === "ArrowUp")) event.preventDefault();
   };
 
   // 일하는 중에는 멈추기가 늘 곁에 있다 — 글자 한 자만 쳐도 사라지면 멈추고 싶을 때 못 멈춘다.
@@ -485,21 +588,8 @@ export function Composer({
   const showSend = !showStop || hasContent;
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: 홈의 입력창이 파일을 놓는 자리다 — 드롭은 포인터의 일이고, 키보드는 첨부 단추로 닿는다.
-    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 위와 같다.
-    <div
-      className={`nx-composer${variant === "home" ? " nx-composer--home" : ""}`}
-      // 대화 칸은 칸 전체가 놓는 자리다(ChatColumn) — 홈만 입력창 자신이 받는다.
-      onDragOver={variant === "home" ? (event) => event.preventDefault() : undefined}
-      onDrop={
-        variant === "home"
-          ? (event) => {
-              event.preventDefault();
-              if (event.dataTransfer.files.length > 0) void readFiles(event.dataTransfer.files);
-            }
-          : undefined
-      }
-    >
+    // 끌어다 놓기는 칸 전체의 몫이다 — 대화 칸은 ChatColumn, 홈은 HomeView 가 받아 `registerHandle` 로 넘긴다.
+    <div className={`nx-composer${variant === "home" ? " nx-composer--home" : ""}`}>
       {pins.length > 0 && (
         <div className="nx-pinrows">
           {pins.map((pin, index) => (
@@ -577,7 +667,15 @@ export function Composer({
         rows={variant === "home" ? 2 : 1}
         value={editor.text}
         placeholder={placeholder}
-        onChange={(event) => setEditor((prev) => ({ ...prev, text: event.target.value }))}
+        // 접근 이름은 고정으로 — placeholder 는 상태마다 바뀌어도 이름이
+        // 흔들리지 않게 하고, 바뀌는 자리 표시는 힌트로 묶는다(2026-10-04 ux-review).
+        aria-label={L.composer.message}
+        aria-describedby={hintId}
+        onChange={(event) => {
+          // 손으로 고쳤으면 걷기는 끝난다 — 다음 ⌥↑ 는 빈 입력창의 규칙을 다시 따른다.
+          recallIndex.current = null;
+          setEditor((prev) => ({ ...prev, text: event.target.value }));
+        }}
         onKeyDown={onKeyDown}
         onPaste={(event) => {
           const files = [...event.clipboardData.files];
@@ -586,6 +684,9 @@ export function Composer({
           void readFiles(files);
         }}
       />
+      <span id={hintId} className="nx-sr">
+        {placeholder}
+      </span>
       {(notice || lockReason) && (
         <div
           className={`nx-cmp-note nx-cmp-note--${lockReason || notice?.tone === "danger" ? "danger" : "warn"}`}

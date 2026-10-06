@@ -8,6 +8,8 @@ import {
   planInviteRowsNamed,
   readInviteFile,
 } from "../lib/invite-import";
+import { L } from "../next/labels";
+import { inviteReadError } from "../next/lib/invite-rows";
 
 /**
  * 초대 파일 가져오기의 컨트롤러 — Shell 이 앱에 하나만 둔다(use-invite-import).
@@ -45,7 +47,10 @@ export type InviteImportState =
     }
   | {
       phase: "error";
+      /** 사람이 읽는 해요체 한 줄(`L.invite.err…`). */
       error: string;
+      /** 파서가 남긴 날것 — 있으면 판이 「자세히」 안에 접어 둔다. */
+      detail?: string;
       /** 읽기를 시작한 순간의 첫 실행 여부 — 체크리스트가 이미 같은 오류를 말할 때 판이 이중으로 세지 않게. */
       firstRun: boolean;
     };
@@ -56,8 +61,12 @@ export interface InviteImportController {
   openPicker: () => void;
   /** 확인 카드의 "초대 받기" — 이름 칸 초안을 함께 건넨다. */
   apply: (authorDraft: string) => void;
-  /** 실패한 행만 다시 — firstRun 은 이미 아니다(활성 프로젝트가 있다). */
-  retry: () => void;
+  /**
+   * 다시 시도 — 일부 행이 실패했으면 그 행만, 연결 코드가 거절됐으면(프로젝트는 하나도 안 건드렸다)
+   * 같은 초대장으로 처음부터. firstRun 은 이미 아니다(활성 프로젝트가 있다). 이름 칸 초안을 함께
+   * 건넬 수 있다 — 코드가 거절된 시도는 이름을 저장하기 전에 끝났다.
+   */
+  retry: (authorDraft?: string) => void;
   /** 카드를 닫고 idle 로. */
   close: () => void;
   /** 드롭 영역이 초대 파일이 아닌 파일까지 같은 오류로 말하게 하는 길. */
@@ -80,22 +89,37 @@ export function useInviteImport(daemon: Daemon): InviteImportController {
       setState({ phase: "reading" });
       // 데스크톱이 아는 파일의 디스크 위치(PLAN-UI U11) — 브라우저 File 에는 없다.
       const path = window.colonovaDesignDesktop?.invite?.pathOf?.(file) ?? null;
-      void readInviteFile(file).then((read) => {
-        if (!read.ok) {
-          setState({ phase: "error", error: read.error, firstRun: daemon.projects.length === 0 });
-          return;
-        }
-        // firstRun 은 이 순간에 기억한다 — 적용 도중 첫 프로젝트가 생겨도 판정은
-        // 시작했을 때의 것이다.
-        const firstRun = daemon.projects.length === 0;
-        setState({
-          phase: "confirm",
-          invite: read.invite,
-          rows: planInviteRowsNamed(read.invite, daemon.projects),
-          firstRun,
-          ...(path ? { path } : {}),
+      readInviteFile(file)
+        .then((read) => {
+          if (!read.ok) {
+            setState({
+              phase: "error",
+              error: read.error,
+              ...(read.detail ? { detail: read.detail } : {}),
+              firstRun: daemon.projects.length === 0,
+            });
+            return;
+          }
+          // firstRun 은 이 순간에 기억한다 — 적용 도중 첫 프로젝트가 생겨도 판정은
+          // 시작했을 때의 것이다.
+          const firstRun = daemon.projects.length === 0;
+          setState({
+            phase: "confirm",
+            invite: read.invite,
+            rows: planInviteRowsNamed(read.invite, daemon.projects),
+            firstRun,
+            ...(path ? { path } : {}),
+          });
+        })
+        .catch((cause: unknown) => {
+          // 읽기 자체가 던졌다(정규화 · 행 계획의 예기치 못한 오류) — `reading` 에 머물면 판이 영영 안 닫힌다.
+          setState({
+            phase: "error",
+            error: inviteReadError("file", L),
+            detail: cause instanceof Error ? cause.message : String(cause),
+            firstRun: daemon.projects.length === 0,
+          });
         });
-      });
     },
     [daemon.projects],
   );
@@ -105,7 +129,7 @@ export function useInviteImport(daemon: Daemon): InviteImportController {
     if (stateRef.current.phase === "applying") return;
     const input = document.createElement("input");
     input.type = "file";
-    // 개명 1단계(§4.3) — 고르기 창도 두 확장자를 다 받는다.
+    // 초대 파일 한 확장자만 — 이름 문(isInviteFile)과 같은 잣대다(2026-10-04 ux-review).
     input.accept = ".colonova-invite";
     input.onchange = () => {
       const file = input.files?.[0];
@@ -139,8 +163,15 @@ export function useInviteImport(daemon: Daemon): InviteImportController {
     runApply(state.rows, state.invite, state.firstRun, authorDraft, state.path);
   };
 
-  const retry = () => {
+  const retry = (authorDraft = "") => {
     if (state.phase !== "done") return;
+    if (state.result.tokenError !== undefined) {
+      // 연결 코드가 거절됐다 — 프로젝트는 하나도 건드리지 않았으니 같은 초대장의 행을 지금의
+      // 프로젝트 목록으로 다시 세워 처음부터 간다.
+      const rows = planInviteRowsNamed(state.invite, daemon.projects);
+      runApply(rows, state.invite, state.firstRun, authorDraft, state.path);
+      return;
+    }
     const failedProjects = state.result.results
       .filter((entry) => !entry.ok)
       .map((entry) => entry.row.project);
@@ -153,7 +184,7 @@ export function useInviteImport(daemon: Daemon): InviteImportController {
       daemon.projects,
     );
     if (rows.length === 0) return;
-    runApply(rows, state.invite, false, "", state.path);
+    runApply(rows, state.invite, false, authorDraft, state.path);
   };
 
   const close = useCallback(() => setState({ phase: "idle" }), []);

@@ -10,6 +10,8 @@ import {
   repoKey,
   sameRepo,
 } from "@colonova-design/protocol";
+import { L } from "../next/labels.ts";
+import { inviteReachWarning, inviteReadError } from "../next/lib/invite-rows.ts";
 import type { Daemon } from "./daemon-client";
 
 /**
@@ -18,41 +20,38 @@ import type { Daemon } from "./daemon-client";
  * 선로 명령의 차례로 바꾼다. 비밀(token)은 화면에 다시 그리지 않는다.
  */
 
-/** 파일 하나 → 초대장, 또는 사람이 읽는 오류 문장 한 줄. */
+/**
+ * 파일 하나 → 초대장, 또는 사람이 읽는 오류 문장 한 줄. 문장은 해요체(`L.invite`)이고, 선로 · 파서가
+ * 남긴 날것은 `detail` 로 따로 실려 화면이 「자세히」 안에 접는다(2026-10-06 겹판 손질).
+ */
 export async function readInviteFile(
   file: File,
-): Promise<{ ok: true; invite: NormalizedInvite } | { ok: false; error: string }> {
+): Promise<{ ok: true; invite: NormalizedInvite } | { ok: false; error: string; detail?: string }> {
   if (!file.name.endsWith(".colonova-invite")) {
-    return {
-      ok: false,
-      error: "초대 파일이 아닙니다 — 개발자가 보낸 파일을 선택해 주세요.",
-    };
+    return { ok: false, error: inviteReadError("not-invite", L) };
   }
-  const read = await readInviteJson(await file.text());
+  let text: string;
+  try {
+    text = await file.text();
+  } catch (e) {
+    // 파일이 읽는 사이에 사라졌거나 권한이 막혔다 — 읽는 중에 머물지 않고 말한다.
+    return { ok: false, error: inviteReadError("file", L), detail: errorText(e) };
+  }
+  const read = await readInviteJson(text);
   if (!read.ok) {
     return {
       ok: false,
-      error:
-        read.reason === "sealed"
-          ? "초대 파일을 열지 못했습니다 — 파일이 손상됐을 수 있습니다. 개발자에게 파일을 다시 보내달라고 요청하세요."
-          : "초대 파일을 읽지 못했습니다 — 개발자에게 파일을 다시 보내달라고 요청하세요.",
+      error: inviteReadError(read.reason === "sealed" ? "sealed" : "unreadable", L),
     };
   }
   const normalized = normalizeInvite(read.value);
   if (normalized.ok) return { ok: true, invite: normalized.invite };
-  const retryAsk = " — 개발자에게 다시 만들어 달라고 요청하세요.";
-  if (normalized.reason === "version") {
-    return {
-      ok: false,
-      error: "지원하지 않는 초대 파일입니다 — 앱을 최신 버전으로 업데이트했는지 확인해 주세요.",
-    };
-  }
-  if (normalized.reason === "token") {
-    return { ok: false, error: `초대 파일에 연결 코드가 없습니다${retryAsk}` };
-  }
+  if (normalized.reason === "version") return { ok: false, error: inviteReadError("version", L) };
+  if (normalized.reason === "token") return { ok: false, error: inviteReadError("token", L) };
   return {
     ok: false,
-    error: (normalized.detail ?? "초대 파일을 읽지 못했습니다") + retryAsk,
+    error: inviteReadError("content", L),
+    ...(normalized.detail ? { detail: normalized.detail } : {}),
   };
 }
 
@@ -203,14 +202,10 @@ export async function applyInvite(
     try {
       const inspection = await daemon.api.githubRepoInspect(slug[0] as string, slug[1] as string);
       if (!inspection.canPush) {
-        reachWarnings.push(
-          `‘${project.name}’ 프로젝트는 새 연결 코드로 개발자에게 넘길 수 없어요 — 개발자에게 알려 주세요.`,
-        );
+        reachWarnings.push(inviteReachWarning(project.name, L));
       }
     } catch {
-      reachWarnings.push(
-        `‘${project.name}’ 프로젝트는 새 연결 코드로 개발자에게 넘길 수 없어요 — 개발자에게 알려 주세요.`,
-      );
+      reachWarnings.push(inviteReachWarning(project.name, L));
     }
   }
 

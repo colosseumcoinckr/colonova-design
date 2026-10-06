@@ -1,0 +1,379 @@
+/*
+ * 초대 확인판의 안쪽(U11 · 2026-10-06 겹판 손질) — 겹판 뼈대(`ui/ModalFrame`) 위의 행 · 칩 · 결과 · 파일 정리.
+ * 판의 옷(스크림 · 반경 · 그림자 · 들어옴/나감)과 머리 · 몸 · 바닥의 뼈대는 `ui/overlay.css`, 판의 공용 배치
+ * (`.nx-modal` · `.nx-mhd` · `.nx-mfoot` · 숙주 `.nx-modal-host`)는 `onboarding.css` 의 「초대 확인판」 절이 정한다.
+ * 여기는 이 판만의 것이다. 모든 선택자는 판의 뿌리 클래스(`.nx-inv`)를 앞세워 불러오는 순서와 상관없이 이긴다.
+ */
+
+.nx-modal.nx-inv {
+  width: min(620px, calc(100% - 40px));
+}
+
+/* ── 머리의 그림 — 단계의 기운을 따른다. 그림 상자(`.nx-mhd-ic`)를 통째로 칠한다. */
+.nx-inv .nx-inv-ic {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.nx-inv .nx-inv-ic--ok {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.nx-inv .nx-inv-ic--warn {
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  color: var(--amber);
+}
+
+.nx-inv .nx-inv-ic--bad {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+/* ── 몸 — 단계가 바뀌면 새 몸이 살짝 내려앉는다(`key={phase}` 로 새로 선다). */
+.nx-inv .nx-inv-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 4px;
+  animation: nx-rise-in var(--nx-t-move) var(--drift) backwards;
+}
+
+/* ── 확인 단계 — 영향의 크기가 한눈에 읽히게: 새로 → 바뀜 → 그대로, 행마다 칩. */
+.nx-inv .nx-inv-listhd {
+  margin: 4px 0 -2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink3);
+}
+
+.nx-inv .nx-inv-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nx-inv .nx-inv-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  font-size: 13.5px;
+}
+
+/* 새로 오는 행이 이 판의 소식이다 — 연한 브랜드 바탕. */
+.nx-inv .nx-inv-row--add {
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.nx-inv .nx-inv-chip {
+  justify-self: start;
+  min-width: 56px;
+  padding: 2px 0;
+  border-radius: 999px;
+  background: var(--nx-hover);
+  color: var(--ink3);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.nx-inv .nx-inv-chip--add {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.nx-inv .nx-inv-chip--update {
+  background: color-mix(in srgb, var(--amber) 16%, transparent);
+  color: var(--amber);
+}
+
+.nx-inv .nx-inv-main {
+  min-width: 0;
+}
+
+.nx-inv .nx-inv-main b {
+  display: block;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.nx-inv .nx-inv-main small {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink3);
+}
+
+.nx-inv .nx-inv-fine {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--ink3);
+}
+
+/* 개발자의 말 — 인용처럼 왼쪽에 줄. */
+.nx-inv .nx-inv-readme {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--line2);
+  border-radius: 0 10px 10px 0;
+  background: var(--bg);
+}
+
+.nx-inv .nx-inv-readme figcaption {
+  margin-bottom: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink3);
+}
+
+.nx-inv .nx-inv-readme p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 이름 칸 — 옛 초대장이 이름을 싣지 않았을 때만. 초점 고리는 onboarding.css 의 공용 규칙이 입힌다. */
+.nx-inv .nx-inv-author {
+  display: grid;
+  gap: 6px;
+}
+
+.nx-inv .nx-inv-author label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink2);
+}
+
+.nx-inv .nx-inv-author input {
+  height: 36px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--line2);
+  border-radius: 10px;
+  background: var(--bg);
+  outline: 0;
+}
+
+.nx-inv .nx-inv-author input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* ── 읽는 중 · 적용 중 */
+.nx-inv .nx-inv-working {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink2);
+}
+
+.nx-inv .nx-fill {
+  margin: 4px 0 2px;
+}
+
+/* ── 한 줄 안내 · 오류 — 왼쪽 줄이 기운을 말한다(위험은 붉게 · 주의는 노랗게). 글자는 읽기 좋게 잉크색. */
+.nx-inv .nx-inv-callout {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 3px solid var(--line2);
+  border-radius: 0 10px 10px 0;
+  background: var(--bg);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--ink);
+}
+
+.nx-inv .nx-inv-callout--bad {
+  border-left-color: var(--red);
+  background: var(--red-soft);
+}
+
+.nx-inv .nx-inv-callout--warn {
+  border-left-color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 9%, var(--card));
+}
+
+/* 날것의 이유를 접어 둔 자리. */
+.nx-inv .nx-inv-fold {
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+
+.nx-inv .nx-inv-fold summary {
+  width: fit-content;
+  padding: 3px 0;
+  color: var(--ink3);
+  cursor: pointer;
+}
+
+.nx-inv .nx-inv-raw {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ── 결과 — 일부만 · 모두 실패한 행. */
+.nx-inv .nx-inv-fails {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nx-inv .nx-inv-fail {
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--red) 30%, var(--line));
+  border-left: 3px solid var(--red);
+  border-radius: 12px;
+  background: var(--red-soft);
+}
+
+.nx-inv .nx-inv-fail b {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.nx-inv .nx-inv-fail span {
+  display: block;
+  margin-top: 1px;
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+
+/* ── 결과의 순간 — 큰 체크가 튀며 선이 그려진다(onboarding.css 의 `nx-ok-pop` · `nx-check-draw`).
+   끝난 뒤에 남는 transform 은 없다(backwards). 확인은 질문과 영향의 크기, 끝은 체크 하나와 다음 한 가지. */
+.nx-inv .nx-inv-done {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 0 4px;
+  text-align: center;
+}
+
+.nx-inv .nx-inv-done > b {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.nx-inv .nx-inv-done > p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink2);
+}
+
+.nx-inv .nx-inv-ok {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 8px;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: var(--green);
+  animation: nx-ok-pop 300ms var(--spring) backwards;
+}
+
+.nx-inv .nx-inv-ok svg path {
+  stroke-dasharray: 24;
+  animation: nx-check-draw 300ms var(--drift) 120ms backwards;
+}
+
+/* ── 파일 정리 — 가져온 뒤의 일이다. 앱이 OS 휴지통에 넣는다(되살릴 수 있다). */
+.nx-inv .nx-inv-cleanup {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+}
+
+.nx-inv .nx-inv-cleanup-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--nx-hover);
+  color: var(--ink2);
+}
+
+.nx-inv .nx-inv-cleanup p {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink2);
+}
+
+.nx-inv .nx-inv-cleanup .nx-btn {
+  flex: none;
+}
+
+.nx-inv .nx-inv-cleanup--done .nx-inv-cleanup-ic {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+/* ── 바닥 — 주 단추는 늘 맨 오른쪽 끝이다. 가져오기가 잠기면 이유가 한 줄을 통째로 쓴다. */
+.nx-modal--frame .nx-mfoot--frame.nx-inv-foot {
+  flex-wrap: wrap;
+  row-gap: 8px;
+}
+
+.nx-inv .nx-inv-footnote {
+  flex: 1 1 100%;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--ink2);
+}
+
+.nx-inv .nx-inv-footnote::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  vertical-align: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-inv .nx-inv-stage,
+  .nx-inv .nx-inv-ok,
+  .nx-inv .nx-inv-ok svg path {
+    animation: none;
+  }
+}

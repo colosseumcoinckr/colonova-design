@@ -123,23 +123,219 @@ export function agentUpdateEvents(
     .sort((a, b) => b.at - a.at);
 }
 
-/** `지금 확인` 이 남긴 문장의 상태(W5) — 찾은 새 버전의 수(0이면 「모두 최신이에요」). */
-export interface CheckNote {
-  text: string;
-  found: number;
+// ---------------------------------------------------------------------------
+// 업데이트 쪽의 앱 줄과 요약 띠(2026-10-06 설정 손질 · S7)
+// ---------------------------------------------------------------------------
+
+/**
+ * 앱 줄의 걸음 — 데스크톱 다리(`selfUpdate`)를 두 번 누르는 길이 그대로 걸음이 된다. 첫 누름은
+ * 내려받고 검증하는 데까지(오래 걸린다)이고, 준비가 끝난 뒤의 누름이 곧 재시작 동의다 —
+ * 그래서 준비됨에는 이름 있는 단추(`지금 다시 시작`)가 서야 한다. 세션이 돌고 있으면 두 걸음
+ * 모두 끝나는 순간으로 미뤄진다.
+ */
+export type AppUpdatePhase =
+  | "idle"
+  | "downloading"
+  | "deferred"
+  | "ready"
+  | "restarting"
+  | "restartDeferred";
+
+/**
+ * `selfUpdate()` 의 답을 걸음으로 읽는다 — 모양은 desktop/src/app-updates.ts 의 `install()`.
+ * 실패하면 첫 걸음은 처음으로, 재시작은 준비됨으로 돌아간다(준비해 둔 것은 그대로 남아 있다).
+ * 개발 실행의 `planned` 와 모르는 모양은 아무 일도 없었던 것으로 둔다.
+ */
+export function selfUpdateOutcome(
+  result: unknown,
+  from: "start" | "restart",
+): { phase: AppUpdatePhase; error: string | null } {
+  const back: AppUpdatePhase = from === "start" ? "idle" : "ready";
+  if (typeof result !== "object" || result === null) return { phase: back, error: null };
+  const reply = result as Record<string, unknown>;
+  if (reply.error) return { phase: back, error: String(reply.error) };
+  if (reply.deferred === true) {
+    return { phase: from === "start" ? "deferred" : "restartDeferred", error: null };
+  }
+  if (reply.prepared === true) return { phase: "ready", error: null };
+  if ("started" in reply) return { phase: "restarting", error: null };
+  return { phase: back, error: null };
+}
+
+/** 앱 줄이 읽는 상태 — 부르는 쪽이 훅의 값을 그대로 건넨다. */
+export interface AppRowInput {
+  phase: AppUpdatePhase;
+  /** 쪽을 열 때의 조용한 확인 — pending 이면 아직 모른다. */
+  probe: "pending" | "done" | "failed";
+  /** 피드의 답 — 확인이 닿지 않았으면 null. */
+  check: { updateAvailable: boolean; version: string } | null;
+  /** 이 컴퓨터에서 앱이 스스로 바뀔 수 있나(mac · Windows) — 아니면 릴리스 페이지로 보낸다. */
+  canSelfUpdate: boolean;
+  /** 내려받은 뒤 `나중에` 를 눌렀다 — 재촉이 조용해진다. */
+  snoozed: boolean;
+  /** 이번 누름이 실패로 끝났다 — 다시 시도를 내놓는다. */
+  failed: boolean;
+}
+
+export type AppRowState =
+  | "checking"
+  | "failed"
+  | "latest"
+  | "available"
+  | "updateFailed"
+  | "downloading"
+  | "deferred"
+  | "ready"
+  | "restarting"
+  | "restartDeferred";
+
+export interface AppRowCopy {
+  state: AppRowState;
+  /** 이름 아래 첫 줄 — 버전 · 지금 하는 일. */
+  line: string;
+  /** 첫 줄 아래의 덧말. */
+  note: string | null;
+  /** 오른쪽 주 단추 — `link` 는 릴리스 페이지로 가는 링크. */
+  action: "none" | "update" | "retry" | "restart" | "link";
+  /** 작은 `나중에` 를 내놓는가. */
+  later: boolean;
+  /** 줄 아래의 진행 막대. */
+  bar: boolean;
+}
+
+/** 앱 줄의 문장 — `L.update` 가 구조적으로 채우고, `downloading` 은 온보딩의 단계 말을 빌린다. */
+export interface AppRowLabels {
+  appAvailable: (to: string) => string;
+  appFlow: string;
+  appDeferred: string;
+  appReady: string;
+  appRestartDeferred: string;
+  appBusy: string;
+  appRestart: string;
+  rowCheckFailed: string;
+  checking: string;
+  downloading: string;
 }
 
 /**
- * 확인 문장이 제 자리를 비워야 하나(W5 · 콜드 리뷰 N7) — 「새 버전 N개 · 방금 확인」은
- * 끝난 일을 아직 있다고 말하는 문장이라, 업데이트가 끝났거나 새 버전이 더 없으면
- * 지운다. 「모두 최신이에요」(found 0)는 여전히 사실이므로 그대로 둔다.
+ * 앱 줄 한 줄의 판정 — 걸음(phase)이 먼저고, 걸음이 쉬는 동안(idle)에는 조용한 확인의 답이 말한다.
+ * 내려받는 동안의 줄이 「다시 시작하는 중」이던 거짓과, 준비가 끝난 뒤의 두 번째 누름이 경고 없이
+ * 앱을 닫던 일을 이 표가 막는다(2026-10-06 설정 손질 · S7).
  */
-export function shouldClearCheckNote(
-  note: CheckNote | null,
-  agentUpdates: Partial<Record<string, { phase: string }>> | undefined,
-  providers: ReadonlyArray<{ version?: string | null; latestVersion?: string | null }>,
-): boolean {
-  if (note === null || note.found === 0) return false;
-  if (Object.values(agentUpdates ?? {}).some((state) => state?.phase === "done")) return true;
-  return !providers.some((tool) => hasNewerVersion(tool.version, tool.latestVersion));
+export function appRowCopy(input: AppRowInput, t: AppRowLabels): AppRowCopy {
+  const none = { note: null, action: "none", later: false, bar: false } as const;
+  switch (input.phase) {
+    case "downloading":
+      return { ...none, state: "downloading", line: t.downloading, bar: true };
+    case "restarting":
+      return { ...none, state: "restarting", line: t.appBusy, note: t.appRestart, bar: true };
+    case "ready":
+      return {
+        ...none,
+        state: "ready",
+        line: t.appReady,
+        action: "restart",
+        later: !input.snoozed,
+      };
+    case "restartDeferred":
+      return { ...none, state: "restartDeferred", line: t.appReady, note: t.appRestartDeferred };
+    case "deferred":
+      return {
+        ...none,
+        state: "deferred",
+        line: t.appAvailable(input.check?.version ?? ""),
+        note: t.appDeferred,
+      };
+    default:
+      break;
+  }
+  if (input.probe === "pending") return { ...none, state: "checking", line: t.checking };
+  if (input.probe === "failed" || input.check === null) {
+    return { ...none, state: "failed", line: t.rowCheckFailed };
+  }
+  if (!input.check.updateAvailable) {
+    return { ...none, state: "latest", line: input.check.version };
+  }
+  const line = t.appAvailable(input.check.version);
+  if (!input.canSelfUpdate) return { ...none, state: "available", line, action: "link" };
+  if (input.failed) {
+    return { ...none, state: "updateFailed", line, action: "retry" };
+  }
+  return { ...none, state: "available", line, note: t.appFlow, action: "update" };
+}
+
+/** 요약 띠가 세는 한 줄의 모양 — 앱 줄과 AI 줄이 같은 말로 건넨다. */
+export type SummaryRow =
+  | "available"
+  | "latest"
+  | "unknown"
+  | "running"
+  | "pending"
+  | "failed"
+  | "ready";
+
+export type UpdateSummaryKind =
+  | "none"
+  | "checking"
+  | "updating"
+  | "available"
+  | "failed"
+  | "unknown"
+  | "latest";
+
+export interface UpdateSummary {
+  kind: UpdateSummaryKind;
+  /** 새 버전이 서 있는 줄의 수 — 내려받는 중 · 준비됨 · 미뤄 둔 것도 센다. */
+  count: number;
+  /** 확인이 닿지 않은 줄의 수. */
+  failed: number;
+}
+
+/**
+ * 쪽 맨 위 띠의 말 — 줄들의 상태에서 파생한다(저장해 둔 문장은 상태보다 늦게 늙는다).
+ * 확인할 줄이 없으면 「모두 최신」이라 말하지 않고, 최신인지 모르는 줄만 있어도 그렇다
+ * (2026-10-04 ux-review 의 거짓 안심을 이어 막는다). 우선순위: 확인 중 · 업데이트 중 · 새 버전 ·
+ * 확인 실패 · 아직 모름 · 최신.
+ */
+export function updateSummary(input: {
+  checking: boolean;
+  rows: readonly SummaryRow[];
+  checkFailed: number;
+}): UpdateSummary {
+  const { checking, rows, checkFailed } = input;
+  const count = rows.filter(
+    (row) => row === "available" || row === "ready" || row === "pending" || row === "failed",
+  ).length;
+  const base = { count, failed: checkFailed };
+  if (checking) return { kind: "checking", ...base };
+  if (rows.length === 0) return { kind: "none", count: 0, failed: 0 };
+  if (rows.includes("running")) return { kind: "updating", ...base };
+  if (count > 0) return { kind: "available", ...base };
+  if (checkFailed > 0) return { kind: "failed", ...base };
+  if (rows.includes("unknown")) return { kind: "unknown", ...base };
+  return { kind: "latest", ...base };
+}
+
+/**
+ * 앱 줄을 요약 띠가 세는 모양으로 — 확인이 닿지 않은 줄(`failed`)은 새 버전을 모르는 줄이라
+ * 새 버전으로 세지 않고(실패의 수는 따로 건넨다), 내려받는 중 · 다시 시작하는 중은 도는 일이다.
+ */
+export function appSummaryRow(state: AppRowState): SummaryRow {
+  switch (state) {
+    case "latest":
+      return "latest";
+    case "available":
+    case "updateFailed":
+      return "available";
+    case "downloading":
+    case "restarting":
+      return "running";
+    case "deferred":
+    case "restartDeferred":
+      return "pending";
+    case "ready":
+      return "ready";
+    default:
+      return "unknown";
+  }
 }

@@ -20,6 +20,24 @@ function after(iso: string, since: string | null): boolean {
   return since === null || time(iso) > time(since);
 }
 
+/** 제출 기록의 한 줄 — 원장의 submitTrail 이 싣는 모양. */
+type SubmitLogLine = NonNullable<RepoStatus["submit"]>["log"][number];
+
+/**
+ * 사이클 경계 뒤의 제출 기록, 최근 것부터 — 원장의 기록은 병합 뒤 새 draft
+ * 사이클로 이월되므로 표시 계층이 경계를 가린다(2026-10-04 ux-plan PR 3,
+ * 결함 6). draft 의 경계는 마지막 넘김이고, review · merged 의 경계는 마지막
+ * 제출이다. 기준이 없으면 모두 지난 기록이다.
+ */
+export function submitLogLines(
+  log: ReadonlyArray<SubmitLogLine>,
+  boundary: string | null,
+): SubmitLogLine[] {
+  return [...log]
+    .sort((a, b) => time(b.at) - time(a.at))
+    .filter((line) => after(line.at, boundary));
+}
+
 /**
  * 보낼 화면 — 화면마다 한 줄, 그 화면을 만든 가장 최근의 말과 시각. 목록은
  * 최근 것부터 온다(데몬의 순서). 제목이 빈 화면(화면을 만지지 않은 차례)은
@@ -111,8 +129,8 @@ export interface CommentRow {
   author: string;
   text: string;
   at: string;
-  /** `done` 반영됨 · `fixing` AI 가 고치는 중. */
-  state: "done" | "fixing";
+  /** `done` 반영됨 · `fixing` AI 가 고치는 중 · `unknown` 작업 기록을 아직 못 읽어 모른다. */
+  state: "done" | "fixing" | "unknown";
 }
 
 /**
@@ -138,11 +156,34 @@ export function commentRows(
       author: review.author,
       text: review.body.replace(/\s+/g, " ").trim(),
       at: review.at,
+      // 작업 기록을 못 읽었으면(null) `고치는 중` 이라고 짐작해 말하지 않는다 — 모르면 모른다.
       state:
         options.merged || reflections.some((at) => at > time(review.at))
           ? ("done" as const)
-          : ("fixing" as const),
+          : history === null
+            ? ("unknown" as const)
+            : ("fixing" as const),
     }));
+}
+
+/** 장부 한 덩이를 읽는 일의 상태 — 팝이 `아직 없어요` 와 `읽는 중` · `읽지 못했어요` 를 가른다. */
+export type LedgerRead = "loading" | "ready" | "failed";
+
+/**
+ * 코멘트를 읽는 일의 상태(2026-10-06 겹판 손질) — 옛 장부는 읽기 실패를 콘솔에만 남겨 팝이 `아직 없어요` 라는
+ * 거짓 빈 상태를 말했다. 읽을 요청이 없으면 읽을 것이 없다(ready). 같은 요청을 한 번이라도 읽었으면 그 값을
+ * 지킨다 — 다시 읽는 중이거나 다시 읽기가 실패해도 보이던 목록을 지우지 않는다(다음 읽기가 스스로 고친다).
+ * 처음 읽는 중이면 loading, 처음 읽기가 실패했으면 failed.
+ */
+export function reviewsRead(input: {
+  hasHandoff: boolean;
+  /** 지금의 요청(프로젝트 · 번호)을 성공적으로 읽은 적이 있다. */
+  loaded: boolean;
+  /** 지금의 요청을 마지막으로 읽으려던 일이 실패했다. */
+  failed: boolean;
+}): LedgerRead {
+  if (!input.hasHandoff || input.loaded) return "ready";
+  return input.failed ? "failed" : "loading";
 }
 
 /** 여정 둘째 점의 코멘트 수 — 장부에 서는 줄(글이 있는 코멘트)의 수. */

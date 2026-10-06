@@ -7,8 +7,12 @@
  * styles.css 와 부딪히지 않는다.
  *
  * 영역마다 자기 파일이 있다 — 단계마다 자기 파일을 고쳐 병합이 겹치지 않게.
+ *
+ * 2026-10-04 ux-review: --r-md 는 두 값을 갖는다 — .nx 안의 부품은 10px, styles.css 뿌리는 6px. 구 셸 부품이 섞여 들어오면 6px 대신 10px 로 입는다.
  */
 @import "./ui/ui.css";
+@import "./ui/overlay.css";
+@import "./ui/sheet.css";
 @import "./shell.css";
 @import "./palette.css";
 @import "./sidebar/sidebar.css";
@@ -129,6 +133,7 @@ html[data-theme="claude"] .nx {
 }
 
 .nx .nx-side-row:active:not(:disabled),
+.nx .nx-proj-btn:active:not(:disabled),
 .nx .nx-orow:active:not(:disabled),
 .nx .nx-conv:active:not(:disabled),
 .nx .nx-me:active:not(:disabled),
@@ -187,7 +192,8 @@ html[data-theme="claude"] .nx {
     transition-duration: 0.01ms !important;
   }
 
-  .nx .nx-spin {
+  .nx .nx-spin,
+  .nx .nx-reload--busy .nx-i {
     animation: nx-breathe 1.8s ease-in-out infinite !important;
   }
 

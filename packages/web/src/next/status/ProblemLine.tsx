@@ -6,11 +6,13 @@ import { L } from "../labels";
 import {
   dismissedProblems,
   dismissProblem,
+  hiddenProblemCount,
   type ProblemLineBody,
   problemFor,
   problemLineId,
 } from "../lib/problem";
-import { SentIcon } from "./parts";
+import { useCopied } from "../lib/use-copied";
+import { blockedHelpText, SentIcon } from "./parts";
 
 /**
  * 문제 문장 한 줄(README「화면의 문제 문장은 셋이다」) — 상태 줄 바로 아래, 대화와
@@ -36,6 +38,8 @@ export function ProblemLine({
   onToast: (text: string) => void;
 }) {
   const problem = problemFor(daemon.status, daemon.repo, L);
+  // 줄은 하나뿐이라 나머지 열린 문제는 끝의 `+N` 이 대신 말한다(2026-10-04 ux-review).
+  const hidden = problem === null ? 0 : hiddenProblemCount(daemon.status, daemon.repo);
   const [login, setLogin] = useState<"idle" | "busy" | "started">("idle");
   // 닫은 문제의 신원 — 이 탭이 사는 동안 같은 문제의 줄은 다시 서지 않는다.
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set(dismissedProblems()));
@@ -57,7 +61,8 @@ export function ProblemLine({
   const heldRef = useRef(held);
   heldRef.current = held;
   const [open, setOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
+  // 복사했다는 답은 1.5초 뒤 돌아온다 — 옛 단추는 `복사했어요` 로 영영 남았다(2026-10-06 겹판 조사).
+  const { copied, copy } = useCopied(() => onToast(L.chat.somethingWrong));
   // 고침이 저절로 풀린 뒤의 체크 단계 — 접히기 전에 잠깐 선다.
   const [fixed, setFixed] = useState(false);
   const timers = useRef<number[]>([]);
@@ -72,7 +77,6 @@ export function ProblemLine({
   }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 몸통 객체는 렌더마다 새로 지어진다 — 신원 문자열이 곧 의존성이고 몸통은 그 회차의 것을 쓴다.
   useEffect(() => {
-    setCopied(false);
     if (shown !== null && shownId !== null) {
       setFixed(false);
       if (problemLineId(heldRef.current) !== shownId) setHeld(shown);
@@ -121,29 +125,34 @@ export function ProblemLine({
       );
     return (
       <div className={`nx-problem-wrap${open ? "" : " nx-problem-wrap--closed"}`}>
-        <div className={`nx-problem nx-problem--${line.kind}`} role="status">
+        {/* 손이 필요한 줄(다시 로그인 · 막힘)은 밀어 알리고 나머지는 공손히 알린다. */}
+        <div
+          className={`nx-problem nx-problem--${line.kind}`}
+          role={line.kind === "blocked" || line.kind === "reconnect" ? "alert" : "status"}
+        >
           {icon}
           <b>{fixed ? L.problem.fixed : line.title}</b>
-          <span>{line.body}</span>
+          {/* 브라우저 로그인을 열고 난 뒤에는 무엇을 기다리는지 말한다 — 단추만 `다시 확인` 으로 바뀌던 것. */}
+          <span>
+            {line.action === "login" && login === "started" ? L.problem.loginWaiting : line.body}
+          </span>
           {!fixed && line.action === "copy" && (
             <button
               type="button"
               className="nx-btn nx-btn--sm"
               onClick={() => {
                 const project = daemon.projects.find((item) => item.slug === daemon.activeSlug);
-                void navigator.clipboard
-                  .writeText(
-                    L.problem.helpText(
-                      project?.name ?? L.sidebar.brand,
-                      `${line.body}\n${daemon.repo?.submit?.lastError ?? ""}`,
-                    ),
-                  )
-                  .then(() => setCopied(true))
-                  .catch(() => onToast(L.chat.somethingWrong));
+                copy(blockedHelpText(project?.name, line.body, daemon.repo?.submit?.lastError));
               }}
             >
               {copied ? L.problem.copiedHelp : L.problem.copyHelp}
             </button>
+          )}
+          {/* 복사했다는 답은 눈이 아니라 낭독으로도 한 번 말한다. */}
+          {line.action === "copy" && (
+            <span className="nx-sr" role="status">
+              {copied ? L.problem.copiedHelp : ""}
+            </span>
           )}
           {!fixed && line.action === "invite" && (
             <button
@@ -193,6 +202,12 @@ export function ProblemLine({
             >
               <XIcon />
             </button>
+          )}
+          {!fixed && hidden > 0 && (
+            // 누르지 않는 표시다 — 줄에 선 문제 외에 열린 문제의 수.
+            <span className="nx-problem-more" title={L.problem.moreCount(hidden)}>
+              {L.problem.more(hidden)}
+            </span>
           )}
         </div>
       </div>

@@ -1,19 +1,23 @@
 import {
+  ArrowLeftRight,
   ArrowRight,
   Camera,
   Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Ellipsis,
   Eye,
+  History,
   Keyboard,
   type LucideIcon,
   MapPin,
+  MessageSquareText,
   Minus,
   Monitor,
+  PanelTop,
   Plus,
+  RefreshCw,
   RotateCw,
   Smartphone,
   Tablet,
@@ -36,12 +40,21 @@ export const BackIcon = make(ChevronLeft, 17);
 export const ForwardIcon = make(ChevronRight, 17);
 export const ReloadIcon = make(RotateCw, 15);
 export const AddrChevronIcon = make(ChevronDown, 14, 2);
+/** 주소 알약 머리의 「화면」 그림 — 기기 단추의 모니터와 겹치지 않게 창 모양. */
+export const ScreenIcon = make(PanelTop, 15);
 export const PcIcon = make(Monitor, 15);
 export const TabletIcon = make(Tablet, 15);
 export const PhoneIcon = make(Smartphone, 15);
 export const PinIcon = make(MapPin, 15);
 export const PinSmallIcon = make(MapPin, 14);
-export const ClockIcon = make(Clock, 16);
+/** 작업 기록 — 막대의 단추와 서랍 머리가 같은 그림이라 단추에서 서랍으로 눈이 이어진다. */
+export const HistoryIcon = make(History, 16, 1.8);
+export const HistoryEmptyIcon = make(History, 20, 1.7);
+/** 서랍 타임라인의 사건 마디 — 가져옴 · 되돌림 · 코멘트 반영. */
+export const MergeNodeIcon = make(RefreshCw, 11, 2.1);
+export const RestoreNodeIcon = make(Undo2, 11, 2.1);
+export const CommentNodeIcon = make(MessageSquareText, 11, 2.1);
+export const CompareIcon = make(ArrowLeftRight, 13, 2);
 export const MoreIcon = make(Ellipsis, 16);
 export const EyeIcon = make(Eye, 14);
 export const CameraIcon = make(Camera, 14);

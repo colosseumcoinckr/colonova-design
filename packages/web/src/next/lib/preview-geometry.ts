@@ -10,12 +10,36 @@ interface Rect {
   height: number;
 }
 
+/** 말풍선이 한쪽에 서려면 최소한 이만큼은(px) 있어야 한다 — 머리 · 한 줄 입력 · 바닥 단추가 들어갈 높이. */
+export const BUBBLE_MIN_ROOM = 120;
+
+export interface BubblePlace {
+  left: number;
+  /** 위끝의 자리. 위로 열렸으면(`up`) 요소 위의 말풍선 위끝이다. */
+  top: number;
+  up: boolean;
+  arrowLeft: number;
+  /**
+   * 말풍선이 붙들리는 가장자리 — 아래로 열면 위끝(`top`), 위로 열면 아랫끝(`bottom`: 칸 바닥에서 잰 거리)이다.
+   * 높이가 늘어도(요소 정보를 펼침 · 메모가 여러 줄이 됨) 요소와의 간격이 그대로라 화살표가 요소에서 떨어지지
+   * 않는다(2026-10-06 겹판 조사).
+   */
+  anchor: { edge: "top" | "bottom"; at: number };
+  /** 이 자리에서 말풍선이 가질 수 있는 가장 큰 높이 — 넘치면 안쪽이 굴러간다. */
+  maxHeight: number;
+}
+
 /**
  * 핀 말풍선의 자리 — 오버레이가 보고한 요소의 `rect`(게스트 뷰포트의 CSS px)를
  * 게스트 요소의 화면 위치(`frame`, 칸 기준)와 배율로 옮긴다. 요소 바로 아래에
  * 서고, 칸의 바닥을 넘으면 요소 위로 올라간다(`up`). 가로는 칸 안으로 묶는다.
  * `arrowLeft` 는 말풍선 안 화살표의 자리 — 요소의 가운데를 가리키되 말풍선
  * 안으로 묶는다(CSS 변수 `--pv-arrow` 로 흘러간다).
+ *
+ * 높이가 변할 때마다 다시 부른다. `prefer` 는 지금 서 있는 쪽 — 그쪽에 아직 들어가면 옮기지 않는다(위로
+ * 열린 말풍선이 한 글자 때문에 아래로 뛰지 않게). 어느 쪽에도 통째로 안 들어가면 더 넓은 쪽에 서고
+ * (`maxHeight` 가 그 자리의 높이다 — 넘치는 안쪽이 굴러간다), 양쪽 다 `BUBBLE_MIN_ROOM` 보다 좁으면(칸보다 큰
+ * 요소) 칸 안에 붙들어 둔다.
  */
 export function bubblePlacement(input: {
   rect: Rect;
@@ -24,9 +48,11 @@ export function bubblePlacement(input: {
   zoom: number;
   /** 말풍선이 사는 칸의 크기. */
   box: { width: number; height: number };
+  /** 말풍선의 자연스러운 크기(높이 제한을 풀었을 때). */
   bubble: { width: number; height: number };
   gap?: number;
-}): { left: number; top: number; up: boolean; arrowLeft: number } {
+  prefer?: "up" | "down";
+}): BubblePlace {
   const { rect, frame, box, bubble } = input;
   const zoom = input.zoom > 0 ? input.zoom : 1;
   const gap = input.gap ?? 10;
@@ -34,17 +60,35 @@ export function bubblePlacement(input: {
   const elLeft = frame.left + rect.x * zoom;
   const elTop = frame.top + rect.y * zoom;
   const elBottom = elTop + rect.height * zoom;
-  let top = elBottom + gap;
-  let up = false;
-  if (top + bubble.height > box.height - margin) {
-    const above = elTop - gap - bubble.height;
-    if (above >= margin) {
-      top = above;
-      up = true;
-    } else {
-      // 위에도 자리가 없다(칸보다 큰 요소) — 칸 안에 붙들어 둔다.
-      top = Math.max(margin, box.height - margin - bubble.height);
-    }
+  const roomBelow = box.height - margin - (elBottom + gap);
+  const roomAbove = elTop - gap - margin;
+  const fitsBelow = bubble.height <= roomBelow;
+  const fitsAbove = bubble.height <= roomAbove;
+  const roomier = (): "up" | "down" | "trapped" => {
+    if (Math.max(roomAbove, roomBelow) < BUBBLE_MIN_ROOM) return "trapped";
+    return roomAbove > roomBelow ? "up" : "down";
+  };
+  const first = input.prefer === "up" ? "up" : "down";
+  const second = first === "up" ? "down" : "up";
+  const fits = (side: "up" | "down") => (side === "up" ? fitsAbove : fitsBelow);
+  const side = fits(first) ? first : fits(second) ? second : roomier();
+
+  let top: number;
+  let anchor: BubblePlace["anchor"];
+  let maxHeight: number;
+  if (side === "down") {
+    top = elBottom + gap;
+    anchor = { edge: "top", at: Math.round(top) };
+    maxHeight = roomBelow;
+  } else if (side === "up") {
+    top = elTop - gap - Math.min(bubble.height, roomAbove);
+    anchor = { edge: "bottom", at: Math.round(box.height - (elTop - gap)) };
+    maxHeight = roomAbove;
+  } else {
+    // 위에도 아래에도 자리가 없다(칸보다 큰 요소) — 칸 안에 붙들어 둔다.
+    top = Math.max(margin, box.height - margin - bubble.height);
+    anchor = { edge: "top", at: Math.round(top) };
+    maxHeight = box.height - margin * 2;
   }
   const maxLeft = Math.max(margin, box.width - bubble.width - margin);
   const left = Math.min(maxLeft, Math.max(margin, elLeft - 14));
@@ -52,7 +96,14 @@ export function bubblePlacement(input: {
   // 요소를 좇게, 자리는 말풍선 폭 안으로 다시 묶는다.
   const elCenter = elLeft + (rect.width * zoom) / 2;
   const arrowLeft = Math.round(Math.min(bubble.width - 20, Math.max(10, elCenter - left)));
-  return { left: Math.round(left), top: Math.round(top), up, arrowLeft };
+  return {
+    left: Math.round(left),
+    top: Math.round(top),
+    up: side === "up",
+    arrowLeft,
+    anchor,
+    maxHeight: Math.max(0, Math.floor(maxHeight)),
+  };
 }
 
 /**
@@ -63,6 +114,17 @@ export function bubblePlacement(input: {
  */
 export function bubbleRect(element: { rect: Rect; rectView?: Rect }): Rect {
   return element.rectView ?? element.rect;
+}
+
+/**
+ * 작업 기록 서랍이 옆 서랍이 아니라 시트(뒤를 어둡게 하고 바깥을 누르면 닫히는)가 되는 칸의 폭 —
+ * 서랍(348px)이 칸을 거의 다 덮으면 남는 띠가 쓸모없고 닫는 손이 ✕ 뿐이다(2026-10-06 겹판 조사).
+ * 값은 컨테이너(`.nx-preview`)의 가로 px 이다.
+ */
+export const HISTORY_SHEET_MAX = 480;
+
+export function historyAsSheet(columnWidth: number): boolean {
+  return Number.isFinite(columnWidth) && columnWidth > 0 && columnWidth <= HISTORY_SHEET_MAX;
 }
 
 /** 줌의 한계 — main 이 배율을 조이는 값(preview-view.ts 의 setZoom)과 같다. */

@@ -1,7 +1,9 @@
 import type { ThreadSummary } from "@colonova-design/protocol";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import { ShortcutsSheet } from "../components/dialogs/ShortcutsSheet";
 import { Palette } from "../components/shell/Palette";
 import { Splitter } from "../components/shell/Splitter";
+import { overlayOpen } from "../hooks/use-modal-focus";
 import { usePins } from "../hooks/usePins";
 import { useSessions } from "../hooks/useSessions";
 import { ChatColumn } from "./chat/ChatColumn";
@@ -11,9 +13,10 @@ import { L } from "./labels";
 import { deriveJourney } from "./lib/journey";
 import { keyHint } from "./lib/key-hint";
 import { firstTurn, makingPhase } from "./lib/making";
+import { CHAT_MIN, PREVIEW_MIN } from "./lib/shell-metrics";
 import { submitCopy } from "./lib/submit-copy";
-import { ScreenReviewProvider, useProjectScreenReview } from "./lib/use-screen-review";
 import { useNarrow, useShellNav } from "./lib/use-shell-nav";
+import { useSidebarWidth } from "./lib/use-sidebar-width";
 import { commentCount, outsideChanges } from "./lib/work-ledger";
 import type { NextShellProps } from "./NextShell";
 import { PreviewColumn } from "./preview/PreviewColumn";
@@ -31,10 +34,8 @@ import { Toast } from "./ui/Toast";
  * 대화 칸의 폭(U1) — 320~640px, 처음은 목업의 400. 미리보기가 `PREVIEW_MIN` 아래로 줄지 않게
  * 위쪽 한도는 창 폭에 따라 더 낮아진다. 고른 폭은 기억한다(다음에 켤 때도 그대로).
  */
-const CHAT_MIN = 320;
 const CHAT_MAX = 640;
 const CHAT_DEFAULT = 400;
-const PREVIEW_MIN = 360;
 const CHAT_KEY = "colonova-design.chatWidth";
 
 function storedChatWidth(): number {
@@ -76,17 +77,21 @@ export function Workspace({
   const narrow = useNarrow();
   // 설정 대화상자(단계 6) — 사이드바 바퀴 · ⌘, · 팔레트가 같은 문으로 연다.
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const openSettings = () => setSettingsOpen(true);
+  // 설정도 기능 제안처럼 좁은 창의 서랍 위에 겹치지 않게 서랍을 먼저 닫는다(⌘, · 팔레트 · 바퀴 모두 —
+  // 2026-10-06 겹판 조사: 서랍이 설정 뒤에 열려 있었다).
+  const openSettings = () => {
+    if (narrow) setDrawer(false);
+    setSettingsOpen(true);
+  };
   // 기능 제안(PLAN-FEEDBACK) — 좁은 창의 서랍 위에 겹치지 않게 서랍을 먼저 닫는다.
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const openFeedback = () => {
     if (narrow) setDrawer(false);
     setFeedbackOpen(true);
   };
-  // 기능 제안을 닫으면 좁은 창에서는 서랍이 이미 닫혀 있어(열 때 먼저 닫는다) 화면의
+  // 서랍 위에서 연 대화상자가 닫히면 좁은 창에서는 서랍이 이미 닫혀 있어(열 때 먼저 닫는다) 화면의
   // ≡ 단추로 초점을 되돌린다 — 대화상자의 초점 복구가 body 로 떨어지지 않게.
-  const closeFeedback = useCallback(() => {
-    setFeedbackOpen(false);
+  const focusMenuButton = useCallback(() => {
     if (!narrow) return;
     requestAnimationFrame(() => {
       const menu = [...document.querySelectorAll<HTMLButtonElement>(".nx-main button")].find(
@@ -99,7 +104,15 @@ export function Workspace({
       menu?.focus();
     });
   }, [narrow]);
-  const { state, nav, toast, setCollapsed, setDrawer } = useShellNav({
+  const closeFeedback = useCallback(() => {
+    setFeedbackOpen(false);
+    focusMenuButton();
+  }, [focusMenuButton]);
+  const closeSettings = useCallback(() => {
+    setSettingsOpen(false);
+    focusMenuButton();
+  }, [focusMenuButton]);
+  const { state, nav, toast, dismissToast, setCollapsed, setDrawer } = useShellNav({
     daemon,
     sessions,
     collapsed: settings.layout.sidebarCollapsed,
@@ -108,6 +121,10 @@ export function Workspace({
     onOpenSettings: openSettings,
   });
   const project = daemon.projects.find((entry) => entry.slug === daemon.activeSlug) ?? null;
+  // 사이드바의 폭 — 경계를 끌어 바꾸고 설정(layout.sidebarWidth)에 남긴다.
+  const sidebarWidth = useSidebarWidth(settings.layout.sidebarWidth, (width) =>
+    onLayoutChange({ sidebarWidth: width }),
+  );
 
   const titleForThread = useCallback(
     (thread: ThreadSummary) => settings.sessionTitles[thread.id] ?? thread.title,
@@ -129,7 +146,6 @@ export function Workspace({
   const activeLive = LIVE.has(sessions.active?.state ?? "idle");
   const awaiting = sessions.awaitingTurn?.sessionId === activeId ? sessions.awaitingTurn : null;
   const running = activeLive || awaiting !== null || project?.working === true;
-  const screenReview = useProjectScreenReview(daemon, running);
   const turnStartedAt = activeLive
     ? (sessions.active?.turnStartedAt ?? null)
     : (awaiting?.since ?? null);
@@ -155,11 +171,14 @@ export function Workspace({
 
   // 팔레트와 단축키(⌘K · ⌘T · ⌘,) — 조합키가 붙어 입력창의 타이핑과 만나지 않는다.
   const [palette, setPalette] = useState(false);
+  // ⌘/ 단축키 시트(2026-10-04 ux-plan PR 2) — 팔레트 · 설정과 같은 창 문이다.
+  const [sheetOpen, setSheetOpen] = useState(false);
   const keys = useRef({
     palette: () => {},
     fresh: () => {},
     settings: () => {},
     sidebar: () => {},
+    sheet: () => {},
   });
   keys.current = {
     palette: () => setPalette((open) => !open),
@@ -167,12 +186,14 @@ export function Workspace({
     settings: openSettings,
     // ⌘B — 사이드바를 접고 편다(좁은 창에서는 서랍을 여닫는다).
     sidebar: () => (narrow ? setDrawer(!state.drawer) : setCollapsed(!state.collapsed)),
+    sheet: () => setSheetOpen(true),
   };
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) return;
       // 대화상자가 떠 있으면 물러선다 — 팔레트 자기 토글(⌘K)만 예외.
-      const modal = document.querySelector(".modal, .nx-pal, .nx-set, .nx-modal-back") !== null;
+      // 찾기는 물러나는 동안(`nx-pal--out`)에는 막지 않는다 — 곧 사라질 판이 단축키를 삼키지 않게.
+      const modal = overlayOpen();
       const key = event.key.toLowerCase();
       if (modal && key !== "k") return;
       if (key === "k") {
@@ -187,6 +208,16 @@ export function Workspace({
       } else if (key === "b") {
         event.preventDefault();
         keys.current.sidebar();
+      } else if (key === "/") {
+        // 입력창 안의 / 는 글자다 — 포커스가 입력칸에 있으면 물러선다(미리보기
+        // Esc 의 판정과 같은 목록). PreviewFrame 이 문서를 대상으로 다시 쏜
+        // ⌘/ 는 target 이 문서라 이 판정을 통과한다(2026-10-04 ux-plan PR 2).
+        const target = event.target;
+        if (target instanceof Element && target.closest("input, textarea, [contenteditable]")) {
+          return;
+        }
+        event.preventDefault();
+        keys.current.sheet();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -246,12 +277,18 @@ export function Workspace({
     state.collapsed && !narrow ? "nx--collapsed" : "",
     narrow ? "nx--narrow" : "",
     narrow && state.drawer ? "nx--drawer" : "",
-    drag ? "nx--resizing" : "",
+    drag || sidebarWidth.dragging ? "nx--resizing" : "",
   ]
     .filter(Boolean)
     .join(" ");
   const home = state.view === "home";
   const pinCount = pins.list.length;
+
+  // 넓은 창으로 다녀오면 서랍은 닫는다 — 열어 둔 채 넓혔다 다시 좁히면 서랍이 저절로 열려 있던 것을
+  // 막는다(2026-10-06 겹판 조사).
+  useEffect(() => {
+    if (!narrow) setDrawer(false);
+  }, [narrow, setDrawer]);
 
   // 좁은 창 서랍 — Esc 로 닫히고, 열리면 첫 줄로 초점이 간다. 위에 대화상자가
   // 떠 있으면 물러난다(위의 조합키와 같은 규칙).
@@ -261,7 +298,7 @@ export function Workspace({
     sidebarRef.current?.querySelector<HTMLElement>(".nx-side-nav .nx-side-row")?.focus();
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (document.querySelector(".modal, .nx-pal, .nx-set, .nx-modal-back") !== null) return;
+      if (overlayOpen()) return;
       setDrawer(false);
     };
     window.addEventListener("keydown", onKey);
@@ -293,8 +330,12 @@ export function Workspace({
   }, [home]);
 
   return (
-    <ScreenReviewProvider value={screenReview}>
-      <div className={classes} data-testid="next-shell">
+    <>
+      <div
+        className={classes}
+        data-testid="next-shell"
+        style={{ "--nx-side-w": `${sidebarWidth.width}px` } as CSSProperties}
+      >
         <Sidebar
           daemon={daemon}
           sessions={sessions}
@@ -305,11 +346,25 @@ export function Workspace({
           onPalette={() => setPalette(true)}
           onFeedback={openFeedback}
           onCollapse={() => (narrow ? setDrawer(false) : setCollapsed(true))}
+          drawer={narrow}
           onRenameSession={onRenameSession}
           hidden={sidebarHidden}
           containerRef={sidebarRef}
         />
-        {narrow && state.drawer && (
+        {/* 사이드바와 본문 사이의 경계 — 접히거나 서랍이 된 동안은 끌 것이 없다. */}
+        {!narrow && !state.collapsed && (
+          <Splitter
+            side="left"
+            width={sidebarWidth.width}
+            bounds={sidebarWidth.bounds}
+            label={L.shell.sidebarWidth}
+            active={sidebarWidth.dragging}
+            {...sidebarWidth.split}
+          />
+        )}
+        {/* 스크림은 좁은 창에서 늘 서 있고 서랍이 열릴 때만 보인다 — 닫힐 때 서랍이 미끄러지는 동안 불투명도로
+            걷힌다(`shell.css`). 닫힌 동안은 `visibility: hidden` 이라 눌리지도 초점을 받지도 않는다. */}
+        {narrow && (
           <button
             type="button"
             className="nx-scrim"
@@ -346,7 +401,7 @@ export function Workspace({
                 onClearInvite={() => nav.setDiscardableInvitePath(null)}
                 onToast={nav.toast}
               />
-              <HomeView daemon={daemon} sessions={sessions} nav={nav} />
+              <HomeView daemon={daemon} sessions={sessions} nav={nav} titleFor={titleForThread} />
             </div>
           )}
           <div className={`nx-view nx-work${home ? " nx-offstage" : ""}`} aria-hidden={home}>
@@ -355,6 +410,7 @@ export function Workspace({
               sessions={sessions}
               project={project}
               title={title}
+              onRename={activeId ? (name) => onRenameSession(activeId, name) : undefined}
               journey={journey}
               turnStartedAt={turnStartedAt}
               makingPhase={phase}
@@ -391,7 +447,11 @@ export function Workspace({
                   className={state.tab === "preview" ? "nx-tab--on" : ""}
                   onClick={() => nav.showTab("preview")}
                 >
-                  {L.narrow.screenTab(screenName ?? project?.name ?? "")}
+                  {/* 2026-10-04 ux-review(2차): 긴 화면 이름은 말줄임으로 — 익명 플렉스
+                      항목은 CSS 만 줄일 수 없어 이름만 감싼다. */}
+                  <span className="nx-tab-label">
+                    {L.narrow.screenTab(screenName ?? project?.name ?? "")}
+                  </span>
                   {pinCount > 0 && <Count n={pinCount} />}
                 </button>
               </div>
@@ -440,23 +500,35 @@ export function Workspace({
                   onReset={() => setChatWidth(CHAT_DEFAULT)}
                 />
               )}
-              <PreviewColumn {...slot} onScreenName={setScreenName} />
+              {/* 홈이 떠 있거나 좁은 창이 대화 탭에 있으면 이 칸은 숨는다 — 열린 작업 기록 서랍은 숨는 순간 접힌다. */}
+              <PreviewColumn
+                {...slot}
+                onScreenName={setScreenName}
+                offstage={home || (narrow && state.tab === "chat")}
+              />
             </div>
           </div>
         </main>
-        <Toast text={toast} />
+        <Toast toast={toast} onDone={dismissToast} />
         {settingsOpen && (
           <SettingsDialog
             daemon={daemon}
             settings={settings}
             onChatChange={onChatChange}
             onSettingsChange={onSettingsChange}
-            onClose={() => setSettingsOpen(false)}
+            onClose={closeSettings}
           />
         )}
         {/* 기능 제안은 늘 마운트된 채 `open` 만 그린다 — 전송이 도는 동안 닫았다
             다시 열어도 약속이 죽지 않고 늦은 접수 확인이 초안을 지울 수 있다. */}
-        <FeedbackDialog daemon={daemon} open={feedbackOpen} onClose={closeFeedback} />
+        <FeedbackDialog
+          daemon={daemon}
+          open={feedbackOpen}
+          onClose={closeFeedback}
+          onToast={nav.toast}
+        />
+        {/* ⌘/ — 설정 창과 같은 자리에 서는 단축키 시트다. */}
+        {sheetOpen && <ShortcutsSheet open onClose={() => setSheetOpen(false)} />}
       </div>
 
       {/* 팔레트는 스스로 `.nx` 뿌리다(`palette.css`) — 앱 뿌리의 격자 · 100vh · 잘림에
@@ -472,11 +544,12 @@ export function Workspace({
           onOpenThread={(slug, thread) => nav.openThread(slug, thread.id)}
           onCreateSession={() => nav.newThread()}
           onOpenHome={() => nav.goHome()}
-          onActivateProject={(slug) => daemon.api.projectActivate(slug).then(() => undefined)}
+          // 사이드바와 같은 한 길 — 옮기면 알림도 같이 뜬다. 실패는 열린 판 안에서 말한다(`quiet`).
+          onActivateProject={(slug) => nav.switchProject(slug, { quiet: true })}
           onOpenSettings={openSettings}
           onClose={() => setPalette(false)}
         />
       )}
-    </ScreenReviewProvider>
+    </>
   );
 }

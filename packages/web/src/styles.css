@@ -74,10 +74,6 @@
      작업 중인 앱의 것이므로 테마가 덮지 않는 유일한 고정 표면이다. */
   --preview-canvas: #fff;
 
-  /* 한 단 더 조용한 글자 — 구분선 위의 시간 표식 · 나중에 보기 같은 자리.
-     팔레트마다 따로 두지 않고 muted 를 한 번 옅게 섞어 모든 테마가 따라간다. */
-  --faint: color-mix(in srgb, var(--muted) 72%, transparent);
-
   color-scheme: dark;
 }
 
@@ -96,6 +92,9 @@
    nowhere else. The suffix is the base px × 10 — --font-ui-115 is 11.5px
    at 보통 — so a rename is an audit, and a later ladder normalization is
    an edit to this one block. */
+/* 2026-10-04 ux-review: 이 자리(scale 토큰 · uiSize)는 살아 있는 경로다 — main.tsx 가
+   styles.css 를 늘 읽고 applyStoredTypeScale 을 돌리며, 새 셸도 components/ 의 공용
+   부품(Markdown 의 .md · Fold 등)으로 styles.css 규칙을 입는다 — 제거 보류. */
 :root {
   --font-ui-90: calc(9px * var(--ui-scale));
   --font-ui-95: calc(9.5px * var(--ui-scale));
@@ -333,6 +332,9 @@
   --select-bg: rgba(13, 13, 13, 0.14);
 
   --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, 0.24), 0 4px 12px -4px rgba(0, 0, 0, 0.12);
+  /* 2026-10-04 ux-review: codex 밝음에도 카드 · 뜬 창 그림자가 필요하다 — light 의 값을 흰 바탕에 맞춰 쓴다. */
+  --shadow-card: 0 1px 2px rgba(13, 13, 13, 0.05), 0 12px 32px -16px rgba(13, 13, 13, 0.16);
+  --shadow-float: 0 2px 6px -2px rgba(13, 13, 13, 0.08), 0 24px 56px -20px rgba(13, 13, 13, 0.2);
   --brand: #0d0d0d;
   --scrim: rgba(0, 0, 0, 0.4);
 
@@ -1051,7 +1053,8 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: color-mix(in srgb, var(--muted) 72%, transparent);
+  /* 2026-10-04 ux-review: --faint 를 걷어 내고 muted 를 그대로 쓴다. */
+  color: var(--muted);
 }
 .thinking[open] .thinking__peek {
   display: none;
@@ -1486,8 +1489,9 @@ select {
 }
 .tip__bubble {
   position: fixed;
-  /* Above modal(60): a tip on a dialog control must clear the dialog. */
-  z-index: 70;
+  /* 겹판(70) · 찾기(75)보다 위, 토스트(95)보다 아래 — 겹판의 단추에 붙은 풍선이 판 위로 올라와야 한다.
+     풍선은 body 로 옮겨 그려져 `.nx` 의 층 토큰(`--nx-z-*`)을 못 물려받아 숫자로 쓴다(ui/overlay.css 와 짝). */
+  z-index: 80;
   max-width: 260px;
   padding: 5px 9px;
   border: 1px solid var(--line-strong);
@@ -2336,5 +2340,162 @@ button .ic {
   }
   100% {
     box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* 전체 화면 안내판(충돌 `next/CrashScreen.tsx` · 연결 `next/ConnectingScreen.tsx` · 2026-10-06 겹판 손질) — 앱이 막힌 순간의 한 장. 인라인 style 에는
+   바탕 · 글자색만 있고 배치 · 단추 · 상태는 여기 있다. 토큰이 못 실려도 폴백으로 읽히고,
+   이 스타일시트가 통째로 없어도 브라우저 기본 모양으로 눌린다. 규칙은 `.nx-fs` 부모를 붙여
+   쓴다 — 어느 뿌리 안에서 그려져도 `.nx button` 초기화(0-1-1)에 지지 않게. 이름은 `.nx-fs`(full screen). */
+.nx-fs {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  overflow: auto;
+  text-align: center;
+}
+
+.nx-fs .nx-fs-badge {
+  display: grid;
+  place-items: center;
+  width: 60px;
+  height: 60px;
+  margin-bottom: 4px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--danger, #c0463a) 12%, transparent);
+  color: var(--danger, #c0463a);
+  animation: nx-fs-in 0.5s cubic-bezier(0.34, 1.3, 0.42, 1) backwards;
+}
+
+.nx-fs .nx-fs-badge--calm {
+  background: var(--accent-soft, rgba(198, 97, 63, 0.12));
+  color: var(--accent, #c6613f);
+}
+
+.nx-fs .nx-fs-badge .nx-spin {
+  width: 22px;
+  height: 22px;
+  border-width: 2.4px;
+}
+
+.nx-fs .nx-fs-hint {
+  font-size: 12.5px;
+  color: var(--muted, #5c5749);
+}
+
+.nx-fs h1 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.nx-fs p {
+  max-width: 420px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted, #5c5749);
+}
+
+.nx-fs .nx-fs-act {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.nx-fs .nx-fs-btn {
+  padding: 9px 22px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: inherit;
+  background: var(--panel-2, #eceadf);
+  border: 1px solid var(--line, #d9d4c4);
+  border-radius: 10px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    transform 0.08s;
+}
+
+.nx-fs .nx-fs-btn:hover {
+  background: color-mix(in srgb, var(--text, #26241f) 8%, var(--panel-2, #eceadf));
+}
+
+.nx-fs .nx-fs-btn:active {
+  transform: scale(0.97);
+}
+
+.nx-fs .nx-fs-btn:focus-visible,
+.nx-fs .nx-fs-link:focus-visible {
+  outline: 2px solid var(--accent, #c6613f);
+  outline-offset: 2px;
+}
+
+.nx-fs .nx-fs-btn--pri {
+  color: var(--bg, #faf9f5);
+  background: var(--text, #26241f);
+  border-color: var(--text, #26241f);
+}
+
+.nx-fs .nx-fs-btn--pri:hover {
+  background: color-mix(in srgb, var(--text, #26241f) 88%, var(--bg, #faf9f5));
+}
+
+.nx-fs .nx-fs-link {
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--muted, #5c5749);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.nx-fs .nx-fs-link:hover {
+  color: var(--text, #26241f);
+}
+
+.nx-fs .nx-fs-fold {
+  width: 100%;
+  max-width: 640px;
+  margin-top: 6px;
+}
+
+.nx-fs .nx-fs-fold pre {
+  max-height: 180px;
+  margin: 0 0 6px;
+  padding: 10px 12px;
+  overflow: auto;
+  text-align: left;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted, #5c5749);
+  background: var(--panel, #f5f4ee);
+  border: 1px solid var(--line-soft, #e8e4d6);
+  border-radius: 8px;
+}
+
+@keyframes nx-fs-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8) rotate(-6deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-fs .nx-fs-badge {
+    animation: none;
   }
 }

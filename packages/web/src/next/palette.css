@@ -8,18 +8,14 @@
  * 로 쓴다 — 줄(`li`)은 초기화가 닿지 않아 한 클래스면 된다.
  */
 
+/* 스크림 · 판의 옷(층 · 흐림 · 그림자 · 반경 · 들어옴 · 나감)은 ui/overlay.css 가 정한다 — 여기는 배치만. */
 .nx.nx-pal {
-  position: fixed;
-  inset: 0;
-  z-index: 70;
   height: auto;
   display: flex;
   align-items: flex-start;
   justify-content: center;
   overflow: visible;
   padding: 10vh 20px 24px;
-  background: var(--scrim);
-  animation: nx-fade 0.12s;
 }
 
 .nx-pal-panel {
@@ -30,10 +26,6 @@
   flex-direction: column;
   overflow: hidden;
   background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  box-shadow: var(--pop);
-  animation: nx-pop 0.15s;
 }
 
 .nx-pal-panel:focus {
@@ -111,27 +103,39 @@
 
 /* 아래에 더 있을 때만 바닥이 옅어진다 — 접힌 자리에 걸린 머리글이 실수로 보이지 않게. */
 .nx-pal-list[data-more="true"] {
+  /* 고정 — 마스크의 검정은 알파로만 쓴다. */
   mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
+/* 묶음 — 머리 하나와 그 아래 줄들. 낭독이 묶음의 이름을 머리에서 읽는다(role=group). */
+.nx-pal-sect,
+.nx-pal-grp {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .nx-pal-group {
   padding: 10px 14px 4px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 500;
   color: var(--ink3);
 }
 
-.nx-pal-group:first-child {
+.nx-pal-sect:first-child .nx-pal-group {
   padding-top: 4px;
 }
 
+/* 줄 — 앞 그림(22px 칸) · 제목 · 곁말 · 밝을 때의 ↵ 키캡 자리. 곁말이 많으면 제목만 줄어든다. */
 .nx-pal-row {
   position: relative;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px 8px 14px;
+  column-gap: 10px;
+  row-gap: 2px;
+  min-height: 34px;
+  padding: 6px 10px 6px 14px;
   border-radius: var(--r);
   font-size: 13.5px;
   line-height: 1.35;
@@ -156,6 +160,15 @@
   border-radius: 2px;
   background: var(--accent);
   pointer-events: none;
+}
+
+/* 앞 그림 — 대화는 말풍선 한 줄, 프로젝트는 이름 첫 글자의 네모 표식. 22px 칸에 가운데로 선다. */
+.nx-pal-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  color: var(--ink3);
 }
 
 /* 제목 뒤에 표식이 선다(사이드바의 줄처럼) — 표식이 있든 없든 제목은 같은 가장자리에서
@@ -183,27 +196,77 @@
   padding: 0 1px;
 }
 
-.nx-pal-hint {
+/* 곁말 — 다른 프로젝트의 이름 알약 · 상태 · 시각, 프로젝트 줄의 한마디, 옮기는 중. */
+.nx-pal-meta {
   flex: 0 1 auto;
   min-width: 0;
   max-width: 55%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-size: 12px;
   color: var(--ink3);
+  white-space: nowrap;
+}
+
+.nx-pal-when {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 이름 알약 — 프레임 전체를 걷는 동안 다른 프로젝트의 대화에만 선다. */
+.nx-pal-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 130px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px 1px 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 7%, transparent);
+  color: var(--ink2);
+}
+
+.nx-pal-pill > span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 걷는 줄의 바탕은 한 단계 짙어져 옅은 글자가 4.5:1 밑으로 내려간다(github · codex) —
-   그 줄의 한마디만 한 단계 진하게. */
-.nx-pal-row--on .nx-pal-hint {
+   그 줄의 한마디만 한 단계 진하게. 색이 있는 곁말(기다림 · 반영)은 제 색을 지킨다. */
+.nx-pal-row--on
+.nx-pal-meta:not(.nx-tone--accent, .nx-tone--amber, .nx-tone--green, .nx-tone--red) {
   color: var(--ink2);
+}
+
+/* 옮기는 중 — 도는 표식과 말이 줄 끝에 선다. */
+.nx-pal-meta--busy {
+  color: var(--accent);
+}
+
+/* 밝은 줄의 ↵ 키캡 — 자리는 늘 잡아 두어 하이라이트가 옮겨 다녀도 곁말이 출렁이지 않는다. */
+.nx-pal-go {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+}
+
+.nx .nx-pal-go kbd.nx-kc {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 6px;
 }
 
 .nx-pal-matchline {
   flex: 1 1 100%;
   min-width: 0;
-  padding-left: 14px;
+  /* 앞 그림 칸(22px)과 간격(10px) — 제목과 같은 가장자리. */
+  padding-left: 32px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -222,14 +285,27 @@
   color: var(--ink2);
 }
 
+/* 빈 상태 — 한 줄의 말, 그리고 칩이 길이 된다는 한 줄(말을 쳤을 때만). */
 .nx-pal-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 28px 12px;
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 26px 16px 18px;
+  text-align: center;
   font-size: 13px;
   color: var(--ink3);
+}
+
+.nx-pal-empty-t {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.nx-pal-empty-h {
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* ── 명령 칩 ── 화살표가 마지막 줄에서 이어 걷는다. 걷는 자리는 줄과 같은 바탕이다. */
@@ -287,7 +363,7 @@
   background: color-mix(in srgb, var(--ink) 3%, transparent);
   /* 옅은 바탕 위라 --ink3 는 codex 에서 4.5:1 에 못 미친다. */
   color: var(--ink2);
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .nx-pal-foot span {
@@ -301,14 +377,14 @@
   align-items: center;
   justify-content: center;
   gap: 1px;
-  min-width: 20px;
-  height: 18px;
-  padding: 0 4px;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 5px;
   border: 1px solid var(--line2);
   border-radius: 5px;
   background: var(--card);
   color: var(--ink2);
-  font: 500 10.5px var(--font);
+  font: 500 12px var(--font);
 }
 
 @media (max-width: 520px) {
@@ -316,9 +392,17 @@
     padding-inline: 12px;
   }
 
-  /* 좁은 창은 손으로 쓴다 — 키 안내가 자리만 차지한다. */
-  .nx-pal-foot {
+  /* 좁은 창은 손으로 쓴다 — 키 안내와 ↵ 키캡이 자리만 차지한다. */
+  .nx-pal-foot,
+  .nx-pal-go {
     display: none;
+  }
+
+  /* 곁말은 제목 아래 줄로 — 제목이 곁말에 밀려 한 글자만 남지 않게. 제목과 같은 가장자리에 선다. */
+  .nx-pal-meta {
+    flex: 1 1 100%;
+    max-width: none;
+    padding-left: 32px;
   }
 }
 

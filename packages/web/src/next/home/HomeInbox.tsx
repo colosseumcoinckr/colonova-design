@@ -1,5 +1,5 @@
-import type { ProjectSummary } from "@colonova-design/protocol";
-import { useMemo, useState } from "react";
+import type { ProjectSummary, ThreadSummary } from "@colonova-design/protocol";
+import { type ReactNode, useMemo, useState } from "react";
 import { toolHeadline } from "../../components/transcript/shared";
 import type { Daemon } from "../../lib/daemon-client";
 import { timeAgo } from "../../lib/format";
@@ -12,10 +12,25 @@ import { agentUpdateEvents } from "../lib/update-row";
 import { useFreshKeys } from "../lib/use-fresh-keys";
 import { Elapsed } from "../status/Elapsed";
 import { Count } from "../ui/Count";
-import { CalmIcon, CheckIcon, ChevronRightIcon, SparkIcon, Spin } from "../ui/icons";
+import {
+  CalmIcon,
+  ChatLineIcon,
+  CheckIcon,
+  ChevronRightIcon,
+  InfoIcon,
+  SparkIcon,
+  Spin,
+} from "../ui/icons";
 import { ProjectMark } from "../ui/ProjectMark";
 
 type Commands = NonNullable<NonNullable<Daemon["repo"]>["commands"]>;
+
+/**
+ * 홈 접힘의 기억 — 홈은 Workspace 의 조건부 렌더라 details 가 오갈 때마다 새로
+ * 생긴다. 모듈 자리가 그 기억이라 돌아와도 접힌 모습이 남는다(스크롤 자리는
+ * 이번 범위 밖 — 2026-10-04 ux-review).
+ */
+const foldMemo = { running: true, resume: true, recent: true };
 
 /**
  * 권한 카드의 한 줄 — 레포가 정한 명령이면 그 이름(`레포 검사`), 아니면 도구의
@@ -54,24 +69,86 @@ function eventLine(kind: NonNullable<ProjectSummary["lastEventKind"]>): string {
 }
 
 /**
+ * 받은 편지함의 한 줄(2026-10-06 홈 개선) — 앞 그림 · 제목(+ 아래 한 줄) · 오른쪽 말. 손이 닿으면 줄이 밝아진다.
+ * 앞 그림은 줄의 종류를 말한다(도는 표시 · AI 의 답 · 대화 · 프로젝트 표식) — 같은 프로젝트의 줄마다
+ * 프로젝트 표식이 되풀이되던 것을, 표식은 프로젝트가 갈리는 줄에만 남긴다. 누를 수 없는 줄(업데이트 소식)은
+ * `onClick` 이 없어 div 로 서고 밝아지지도 않는다.
+ */
+function Row({
+  className,
+  lead,
+  tone,
+  title,
+  sub,
+  meta,
+  onClick,
+}: {
+  className: string;
+  lead: ReactNode;
+  /** 앞 그림의 색 — 없으면 연한 잉크. */
+  tone?: "accent" | "green";
+  title: ReactNode;
+  /** 제목 아래의 한 줄 — 줄이 왜 여기 있는지(`답이 왔어요` · 하는 일). */
+  sub?: ReactNode;
+  /** 오른쪽 끝 — 시각이나 지금 하는 일의 시계. */
+  meta?: ReactNode;
+  onClick?: () => void;
+}) {
+  const body = (
+    <>
+      <span className={`nx-ilead${tone ? ` nx-tone--${tone}` : ""}`}>{lead}</span>
+      <span className="nx-itext">
+        <span className="nx-it">{title}</span>
+        {sub ? <span className="nx-isub">{sub}</span> : null}
+      </span>
+      {meta ? <span className="nx-ir">{meta}</span> : null}
+    </>
+  );
+  return onClick ? (
+    <button type="button" className={className} onClick={onClick}>
+      {body}
+    </button>
+  ) : (
+    <div className={className}>{body}</div>
+  );
+}
+
+/**
  * 받은 편지함(U6) — `buildHomeFeed` 를 그대로 쓴다. 맨 위 `답을 기다려요`(확인
  * 카드 — 홈에서 바로 답한다), 한 단 아래 `지금 진행 중`(도는 대화 + 준비 중인
- * 프로젝트)과 `방금 있던 일`. 활성 프로젝트의 대화만 살아 있는 세션을 가지므로
- * 카드로 답할 수 있는 것도 활성 프로젝트의 것이다; 다른 프로젝트의 기다림은
- * 한 줄로 서고 누르면 그 프로젝트로 옮긴다.
+ * 프로젝트) · `이어서 하기`(가장 최근의 대화) · `방금 있던 일`. 활성 프로젝트의 대화만 살아
+ * 있는 세션을 가지므로 카드로 답할 수 있는 것도 활성 프로젝트의 것이다; 다른 프로젝트의
+ * 기다림은 한 줄로 서고 누르면 그 프로젝트로 옮긴다.
+ *
+ * 비어 있는 묶음은 서지 않는다(2026-10-06) — `지금 진행 중 0` · `도는 작업이 없어요` 를 홈이 늘 말하던
+ * 것을, 있는 것만 서고 모두 비면 차분한 한 줄만 남긴다.
  */
 export function HomeInbox({
   daemon,
+  titleFor,
   onOpenThread,
   onSwitch,
 }: {
   daemon: Daemon;
+  /** 대화의 표시 이름 — 사용자가 바꾼 이름을 따른다(사이드바와 같은 이름). */
+  titleFor?: (thread: ThreadSummary) => string;
   onOpenThread: (slug: string, threadId: string) => void;
   onSwitch: (slug: string) => void;
 }) {
   const feed = useMemo(
-    () => buildHomeFeed(daemon.pending, daemon.sessions, daemon.projects, daemon.activeSlug, L),
-    [daemon.pending, daemon.sessions, daemon.projects, daemon.activeSlug],
+    () =>
+      buildHomeFeed(daemon.pending, daemon.sessions, daemon.projects, daemon.activeSlug, L, {
+        hidden: daemon.hiddenThreads,
+        titleOf: titleFor,
+      }),
+    [
+      daemon.pending,
+      daemon.sessions,
+      daemon.projects,
+      daemon.activeSlug,
+      daemon.hiddenThreads,
+      titleFor,
+    ],
   );
   const active = daemon.projects.find((project) => project.slug === daemon.activeSlug) ?? null;
   const others = daemon.projects.filter((project) => project.slug !== daemon.activeSlug);
@@ -92,8 +169,7 @@ export function HomeInbox({
     L.update.doneEvent,
   );
   const recentCount = feed.done.length + otherEvents.length + updateEvents.length;
-  // 세 칸이 모두 비면 차분한 한 줄만 남는다 — 비었다는 말이 두 겹으로 서지 않게.
-  const allCalm = waitCount === 0 && runCount === 0 && recentCount === 0;
+  const lock = connectionLock(daemon.connection, L);
 
   // 새로 들어온 줄만 내려앉는다 — 카드는 자리를 열며, 단추 줄은 내려앉기만. 열쇠에 목록
   // 이름을 붙여, 도는 대화가 끝나 `방금 있던 일` 로 옮겨 가는 것도 새 줄로 맞는다.
@@ -105,6 +181,7 @@ export function HomeInbox({
     ...feed.running.map((item) => `run-${item.sessionId}`),
     ...preparing.map((project) => `prep-${project.slug}`),
     ...otherWorking.map((project) => `work-${project.slug}`),
+    ...feed.resume.map((item) => `resume-${item.sessionId}`),
     ...feed.done.map((item) => `done-${item.sessionId}`),
     ...otherEvents.map((project) => `event-${project.slug}`),
     ...updateEvents.map((event) => `update-${event.id}`),
@@ -160,10 +237,10 @@ export function HomeInbox({
           {L.home.waiting} <Count n={waitCount} />
         </h3>
       ) : (
-        <div className="nx-calm">
-          <CalmIcon />
+        <div className={`nx-calm ${lock ? "nx-calm--lock" : "nx-calm--ok"}`}>
           {/* 연결이 열리기 전에는 「비었음」을 알 수 없다 — 낡은 「기다리는 일이 없어요」를 말하지 않는다. */}
-          {connectionLock(daemon.connection, L) ?? L.home.calm}
+          <span className="nx-calm-i">{lock ? <InfoIcon /> : <CalmIcon />}</span>
+          {lock ?? L.home.calm}
         </div>
       )}
       {active &&
@@ -180,7 +257,9 @@ export function HomeInbox({
               <div className="nx-dcard">
                 <div className="nx-dmeta">
                   <ProjectMark slug={active.slug} name={active.name} size="sm" />
-                  {active.name} · {item.title}
+                  <span className="nx-dwhere">
+                    {active.name} · {item.title}
+                  </span>
                   {item.kind !== "review" && item.requestedAt !== undefined && (
                     <span className="nx-time">{timeAgo(item.requestedAt)}</span>
                   )}
@@ -255,141 +334,160 @@ export function HomeInbox({
                   </button>
                 </div>
                 {failed.has(key) && (
-                  <div className="nx-dfail nx-tone--red">{L.chat.somethingWrong}</div>
+                  <div className="nx-dfail nx-tone--red" role="status">
+                    {L.chat.somethingWrong}
+                  </div>
                 )}
               </div>
             </div>
           );
         })}
       {otherWaiting.map((project) => (
-        <button
+        <Row
           key={project.slug}
-          type="button"
           className={rowClass(`wait-${project.slug}`)}
+          lead={<ProjectMark slug={project.slug} name={project.name} size="sm" />}
+          title={project.name}
+          meta={
+            <span className="nx-tone--amber">
+              {L.sidebar.waitingAnswerCount(project.pendingCount)}
+            </span>
+          }
           onClick={() => onSwitch(project.slug)}
-        >
-          <ProjectMark slug={project.slug} name={project.name} size="sm" />
-          <span className="nx-it">{project.name}</span>
-          <span className="nx-ir nx-tone--amber">
-            {L.sidebar.waitingAnswerCount(project.pendingCount)}
-          </span>
-        </button>
+        />
       ))}
 
-      <details className="nx-fold" open>
-        <summary>
-          <ChevronRightIcon />
-          {L.home.running} <Count n={runCount} className="nx-cnt--g" />
-        </summary>
-        {active &&
-          feed.running.map((item) => (
-            <button
-              key={item.sessionId}
-              type="button"
-              className={rowClass(`run-${item.sessionId}`)}
-              onClick={() => openHere(item.sessionId)}
-            >
-              <ProjectMark slug={active.slug} name={active.name} size="sm" />
-              <span className="nx-it">
-                {item.title} <span>· {active.name}</span>
-              </span>
-              <span className="nx-ir">
-                <Spin />
-                {item.line}
-                {item.turnStartedAt !== null && (
-                  <>
-                    {" · "}
-                    <Elapsed startedAt={item.turnStartedAt} />
-                  </>
-                )}
-              </span>
-            </button>
+      {runCount > 0 && (
+        <details
+          className="nx-fold"
+          open={foldMemo.running}
+          onToggle={(event) => {
+            foldMemo.running = event.currentTarget.open;
+          }}
+        >
+          <summary>
+            <ChevronRightIcon />
+            {L.home.running} <Count n={runCount} className="nx-cnt--g" />
+          </summary>
+          {active &&
+            feed.running.map((item) => (
+              <Row
+                key={item.sessionId}
+                className={rowClass(`run-${item.sessionId}`)}
+                lead={<Spin />}
+                title={item.title}
+                sub={item.line}
+                meta={item.turnStartedAt !== null && <Elapsed startedAt={item.turnStartedAt} />}
+                onClick={() => openHere(item.sessionId)}
+              />
+            ))}
+          {preparing.map((project) => (
+            <Row
+              key={`prep-${project.slug}`}
+              className={rowClass(`prep-${project.slug}`)}
+              lead={<ProjectMark slug={project.slug} name={project.name} size="sm" />}
+              title={project.name}
+              sub={L.inbox.firstPrepare}
+              meta={
+                <>
+                  <Spin />
+                  {prepareStep(project)}
+                </>
+              }
+              onClick={() => onSwitch(project.slug)}
+            />
           ))}
-        {preparing.map((project) => (
-          <button
-            key={`prep-${project.slug}`}
-            type="button"
-            className={rowClass(`prep-${project.slug}`)}
-            onClick={() => onSwitch(project.slug)}
-          >
-            <ProjectMark slug={project.slug} name={project.name} size="sm" />
-            <span className="nx-it">
-              {L.inbox.firstPrepare} <span>· {project.name}</span>
-            </span>
-            <span className="nx-ir">
-              <Spin />
-              {prepareStep(project)}
-            </span>
-          </button>
-        ))}
-        {otherWorking.map((project) => (
-          <button
-            key={`work-${project.slug}`}
-            type="button"
-            className={rowClass(`work-${project.slug}`)}
-            onClick={() => onSwitch(project.slug)}
-          >
-            <ProjectMark slug={project.slug} name={project.name} size="sm" />
-            <span className="nx-it">{project.name}</span>
-            <span className="nx-ir">
-              <Spin />
-              {L.journey.making}
-            </span>
-          </button>
-        ))}
-        {runCount === 0 && !allCalm && (
-          <div className="nx-calm nx-calm--inner">{L.inbox.nothingRunning}</div>
-        )}
-      </details>
+          {otherWorking.map((project) => (
+            <Row
+              key={`work-${project.slug}`}
+              className={rowClass(`work-${project.slug}`)}
+              lead={<ProjectMark slug={project.slug} name={project.name} size="sm" />}
+              title={project.name}
+              meta={
+                <>
+                  <Spin />
+                  {L.journey.making}
+                </>
+              }
+              onClick={() => onSwitch(project.slug)}
+            />
+          ))}
+        </details>
+      )}
 
-      <details className="nx-fold" open>
-        <summary>
-          <ChevronRightIcon />
-          {L.home.recent} <Count n={recentCount} className="nx-cnt--g" />
-        </summary>
-        {active &&
-          feed.done.map((item) => (
-            <button
+      {feed.resume.length > 0 && (
+        <details
+          className="nx-fold"
+          open={foldMemo.resume}
+          onToggle={(event) => {
+            foldMemo.resume = event.currentTarget.open;
+          }}
+        >
+          <summary>
+            <ChevronRightIcon />
+            {L.home.resume}
+          </summary>
+          {feed.resume.map((item) => (
+            <Row
               key={item.sessionId}
-              type="button"
-              className={rowClass(`done-${item.sessionId}`)}
+              className={rowClass(`resume-${item.sessionId}`)}
+              lead={<ChatLineIcon />}
+              title={item.title}
+              meta={timeAgo(item.at)}
               onClick={() => openHere(item.sessionId)}
-            >
-              <ProjectMark slug={active.slug} name={active.name} size="sm" />
-              <span className="nx-it">
-                {item.title} <span>· {L.inbox.answered}</span>
-              </span>
-              <span className="nx-ir">{timeAgo(item.at)}</span>
-            </button>
+            />
           ))}
-        {otherEvents.map((project) => (
-          <button
-            key={`event-${project.slug}`}
-            type="button"
-            className={rowClass(`event-${project.slug}`)}
-            onClick={() => onSwitch(project.slug)}
-          >
-            <ProjectMark slug={project.slug} name={project.name} size="sm" />
-            <span className="nx-it">
-              {project.lastEventKind && eventLine(project.lastEventKind)}{" "}
-              <span>· {project.name}</span>
-            </span>
-            <span className="nx-ir">
-              {project.lastEventAt ? timeAgo(Date.parse(project.lastEventAt)) : ""}
-            </span>
-          </button>
-        ))}
-        {updateEvents.map((event) => (
-          <div key={`update-${event.id}`} className={rowClass(`update-${event.id}`)}>
-            <CheckIcon />
-            <span className="nx-it">{event.text}</span>
-            <span className="nx-ir">{event.at ? timeAgo(event.at) : ""}</span>
-          </div>
-        ))}
-        {recentCount === 0 && !allCalm && (
-          <div className="nx-calm nx-calm--inner">{L.inbox.nothingRecent}</div>
-        )}
-      </details>
+        </details>
+      )}
+
+      {recentCount > 0 && (
+        <details
+          className="nx-fold"
+          open={foldMemo.recent}
+          onToggle={(event) => {
+            foldMemo.recent = event.currentTarget.open;
+          }}
+        >
+          <summary>
+            <ChevronRightIcon />
+            {L.home.recent} <Count n={recentCount} className="nx-cnt--g" />
+          </summary>
+          {active &&
+            feed.done.map((item) => (
+              <Row
+                key={item.sessionId}
+                className={rowClass(`done-${item.sessionId}`)}
+                lead={<SparkIcon />}
+                tone="accent"
+                title={item.title}
+                sub={item.line}
+                meta={timeAgo(item.at)}
+                onClick={() => openHere(item.sessionId)}
+              />
+            ))}
+          {otherEvents.map((project) => (
+            <Row
+              key={`event-${project.slug}`}
+              className={rowClass(`event-${project.slug}`)}
+              lead={<ProjectMark slug={project.slug} name={project.name} size="sm" />}
+              title={project.name}
+              sub={project.lastEventKind && eventLine(project.lastEventKind)}
+              meta={project.lastEventAt ? timeAgo(Date.parse(project.lastEventAt)) : ""}
+              onClick={() => onSwitch(project.slug)}
+            />
+          ))}
+          {updateEvents.map((event) => (
+            <Row
+              key={`update-${event.id}`}
+              className={rowClass(`update-${event.id}`)}
+              lead={<CheckIcon />}
+              tone="green"
+              title={event.text}
+              meta={event.at ? timeAgo(event.at) : ""}
+            />
+          ))}
+        </details>
+      )}
     </div>
   );
 }

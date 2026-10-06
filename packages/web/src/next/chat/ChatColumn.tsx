@@ -1,9 +1,15 @@
-import type { SessionPinHint } from "@colonova-design/protocol";
+import {
+  alignThumbs,
+  readTurn,
+  type SessionPinHint,
+  type TurnMarker,
+} from "@colonova-design/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PinAttachment } from "../../hooks/usePins";
 import type { Attachment } from "../../lib/attachment";
+import type { Block } from "../../lib/daemon-client";
 import { koreanNoticeWords } from "../../lib/error-words";
-import { pinsToTurn } from "../../lib/preview-turns";
+import { pinsToTurn, rewordPinTurn } from "../../lib/preview-turns";
 import { isToolRunning } from "../../lib/progress";
 import { openScreenPath, screenPath } from "../../lib/screen-link";
 import { tailMoving } from "../../lib/tape-visibility";
@@ -74,6 +80,15 @@ export function ChatColumn({
   };
 
   // --- 보내기: 글 · 첨부 · 핀이 한 턴 ---------------------------------------
+  // 핀 묶음의 고쳐서 보내기(2026-10-04 ux-plan PR1) — 문장은 입력창에서 고치고
+  // 표식 · 찍은 그림 · 화면은 원래 턴에서 온다. 다음 보내기 한 번을 먹고,
+  // 같은 대화에서 보낼 때만 쓴다.
+  const pinReplay = useRef<{
+    sessionId: string | null;
+    turn: string;
+    thumbs: string[];
+    screens: Array<{ screen: string }>;
+  } | null>(null);
   const send = async (
     text: string,
     attachments: Attachment[],
@@ -106,6 +121,18 @@ export function ChatColumn({
             ...(pin.element.attrs?.testId ? { testId: pin.element.attrs.testId } : {}),
           }),
     }));
+    const replay = pinReplay.current;
+    pinReplay.current = null;
+    const live =
+      replay !== null && replay.sessionId === (sessions.activeId ?? null) ? replay : null;
+    // 되살린 찍은 그림 — 이 창의 화면 응답이 실어 준 것(라이브 화면에서 본 몫).
+    const replayShots: Attachment[] = (live?.thumbs ?? []).map((thumb, index) => ({
+      kind: "image" as const,
+      name: `pin-${index + 1}.jpg`,
+      mediaType: "image/jpeg",
+      data: thumb,
+      size: 0,
+    }));
     // 핀으로 처음 여는 대화는 첫 핀의 화면 이름을 얻는다 — 화면 id(`index` ·
     // `member/list`)가 아니라 사람의 이름으로: 첫 화면, 아니면 이번 작업의 화면
     // 제목. 둘 다 모르면 데몬의 자리 표시(새 화면)에 맡긴다(단계 8 에서 봄).
@@ -120,23 +147,67 @@ export function ChatColumn({
               (s) => s.title.trim() && screenPath(s.route) === firstPath,
             )?.title ?? undefined);
     setEditHint(false);
-    await sessions.submit(
-      sent.length > 0 ? pinsToTurn(sent, text, () => null) : text,
-      [...pinImages, ...attachments],
-      { name },
-      dedupeScreens([...sent.map((pin) => ({ screen: pin.screen })), ...shown]),
-      sent.length > 0 ? hints : undefined,
-    );
+    try {
+      await sessions.submit(
+        live
+          ? rewordPinTurn(live.turn, text)
+          : sent.length > 0
+            ? pinsToTurn(sent, text, () => null)
+            : text,
+        [...pinImages, ...replayShots, ...attachments],
+        { name },
+        dedupeScreens([
+          ...(live?.screens ?? []),
+          ...sent.map((pin) => ({ screen: pin.screen })),
+          ...shown,
+        ]),
+        sent.length > 0 ? hints : undefined,
+      );
+    } catch (error) {
+      // 삼킨 보내기의 몫을 돌려놓는다 — 입력창의 말과 첨부가 남는 것과 같은 이유다.
+      if (live !== null) pinReplay.current = live;
+      throw error;
+    }
     if (sent.length > 0) void pins.markSent(sent);
   };
 
-  // 다시 시도 — 같은 말을 한 번만(두 번 눌러도 두 번 가지 않게).
+  // 표식의 화면 낱말을 화면 id 로 되걷는다 — 이번 작업의 화면 이름표가 거꾸로
+  // 답하는 길이다(2026-10-04 ux-plan PR1). 못 찾은 낱말은 그대로 쓴다: 옛
+  // 표식은 이름표를 못 얻으면 id 를 그대로 실었다.
+  const pinScreens = (
+    marker: Extract<TurnMarker, { kind: "comments" }>,
+  ): Array<{ screen: string }> => {
+    const titled = daemon.repo?.cycleScreens;
+    const idOf = (word: string) => titled?.find((s) => s.title === word)?.route ?? word;
+    const words = marker.items.some((item) => item.screen)
+      ? marker.items.flatMap((item) => (item.screen ? [item.screen] : []))
+      : [marker.screen];
+    return [...new Set(words.map(idOf))].map((screen) => ({ screen }));
+  };
+  // 다시 시도 — 같은 말을 한 번만(두 번 눌러도 두 번 가지 않게). 원래 말의 몫을
+  // 트랜스크립트가 가진 만큼 되살린다: 핀 묶음의 화면(게이트 입력)과 찍은
+  // 그림, 그리고 표석째의 글(핀의 행은 그 안에 산다).
   const retrying = useRef(false);
-  const retry = (text: string) => {
+  const retry = (send: Extract<Block, { type: "user" }>) => {
     if (retrying.current) return;
     retrying.current = true;
+    const { marker } = readTurn(send.text);
+    const pins = marker?.kind === "comments" ? pinScreens(marker) : undefined;
+    // 되살린 찍은 그림 — 이 창의 화면 응답이 실어 준 몫(라이브 화면에서 본 것).
+    const shots: Attachment[] =
+      marker?.kind === "comments"
+        ? alignThumbs(marker.items, send.thumbs)
+            .filter((thumb): thumb is string => thumb !== null)
+            .map((thumb, index) => ({
+              kind: "image" as const,
+              name: `pin-${index + 1}.jpg`,
+              mediaType: "image/jpeg",
+              data: thumb,
+              size: 0,
+            }))
+        : [];
     void sessions
-      .submit(text, [])
+      .submit(send.text, shots, undefined, pins)
       .catch(() => undefined)
       .finally(() => {
         retrying.current = false;
@@ -174,13 +245,28 @@ export function ChatColumn({
     nonce.current += 1;
     setPrefill({ text, nonce: nonce.current, append, screen });
   };
-  const editResend = (prompt: number, text: string) => {
+  const editResend = (prompt: number, send: Extract<Block, { type: "user" }>) => {
     // k 번째 말 앞까지 = k-1 번째 답까지. 첫 말이면 이어받을 것이 없다 — 새 대화다.
     editTarget.current = true;
     const branched =
       prompt > 1 ? sessions.branchFrom(prompt - 1) : Promise.resolve(sessions.fresh());
     void branched.then(() => {
-      fill(text);
+      const { marker } = readTurn(send.text);
+      if (marker?.kind === "comments") {
+        // 핀 묶음 — 문장만 입력창으로 오고, 몫(표석 · 찍은 그림 · 화면)은 다음
+        // 보내기에 원래 턴에서 온다(2026-10-04 ux-plan PR1).
+        pinReplay.current = {
+          sessionId: sessions.activeId,
+          turn: send.text,
+          thumbs: alignThumbs(marker.items, send.thumbs).filter(
+            (thumb): thumb is string => thumb !== null,
+          ),
+          screens: pinScreens(marker),
+        };
+        fill(marker.note ?? "");
+      } else {
+        fill(send.text);
+      }
       setEditHint(true);
       nav.toast(L.transcript.editResendToast);
     });
@@ -310,7 +396,8 @@ export function ChatColumn({
         if (event.dataTransfer.files.length > 0) composer.current?.attach(event.dataTransfer.files);
       }}
     >
-      <div className="nx-transcript" ref={scroll} onScroll={remember}>
+      {/* 화면 낭독 — 대화록을 log 로 읽어 흘러들어온 말과 카드가 차례로 들린다. */}
+      <div className="nx-transcript" role="log" aria-live="polite" ref={scroll} onScroll={remember}>
         {sessions.historyFailed && (
           <div className="nx-m-note nx-tone--red">
             <span>{L.chat.historyFailed}</span>
@@ -449,7 +536,15 @@ export function ChatColumn({
             {L.transcript.editScreenHint}
           </div>
         )}
-        {contextFull && <div className="nx-cmp-hint">{L.chat.contextFull}</div>}
+        {contextFull && (
+          // 2026-10-04 ux-review: 85% 안내에 행동을 붙인다 — 이미 있는 새 대화 손.
+          <div className="nx-cmp-hint" role="status">
+            {L.chat.contextFull}{" "}
+            <button type="button" className="nx-cmp-hint-act" onClick={() => void sessions.fresh()}>
+              {L.sidebar.newConv}
+            </button>
+          </div>
+        )}
         <Composer
           daemon={daemon}
           sessions={sessions}

@@ -35,7 +35,9 @@ export type MachineTurn = (
  * 판정과 새 서버(에포크)가 예산을 새로 산다.
  *
  * 돌려주는 `fixingStalled` 는 멈춘 화면(30초)의 고침 턴이 도는 중이라는 표식 —
- * 칸이 `AI가 막힌 곳을 고치고 있어요` 덮개를 세운다.
+ * 칸이 `AI가 막힌 곳을 고치고 있어요` 덮개를 세운다. `fixingSince` 는 그 턴의
+ * 발사 시각 — 덮개의 2분 안내가 카드가 본 순간이 아니라 턴부터 흘렀게 한다
+ * (2026-10-04 ux-review(2차)).
  */
 export function usePreviewErrors({
   api,
@@ -49,7 +51,7 @@ export function usePreviewErrors({
   turnState: SessionState;
   location: PreviewLocation | null;
   onMachineTurn: MachineTurn;
-}): { report: (error: StageError) => void; fixingStalled: boolean } {
+}): { report: (error: StageError) => void; fixingStalled: boolean; fixingSince: number | null } {
   const turnLive = LIVE.has(turnState);
   const pending = useRef<PreviewError[]>([]);
   const fires = useRef(new Map<string, number>());
@@ -64,6 +66,7 @@ export function usePreviewErrors({
   const machine = useRef(onMachineTurn);
   machine.current = onMachineTurn;
   const [fixingStalled, setFixingStalled] = useState(false);
+  const [fixingSince, setFixingSince] = useState<number | null>(null);
 
   const keyOf = (error: PreviewError) => `${error.route}|${error.kind}|${error.message}`;
   const hold = (error: PreviewError) => {
@@ -105,7 +108,10 @@ export function usePreviewErrors({
           fires.current.set(key, spent + 1);
           fixOut.current = true;
           fired = true;
-          if (error.stalled) setFixingStalled(true);
+          if (error.stalled) {
+            setFixingStalled(true);
+            setFixingSince(Date.now());
+          }
         }
       }
     });
@@ -149,6 +155,7 @@ export function usePreviewErrors({
     }
     fixOut.current = false;
     setFixingStalled(false);
+    setFixingSince(null);
     const queue = [...pending.current];
     if (queue.length > 0) adjudicateAll(queue);
     if (turnState === "idle") arm();
@@ -170,6 +177,7 @@ export function usePreviewErrors({
     unverifiable.current.clear();
     fires.current.clear();
     setFixingStalled(false);
+    setFixingSince(null);
   }, [repo?.previewUrl, repo?.previewEpoch]);
 
   // 새 이동은 새 증거 — 보류된 마지막 보고를 다시 본다.
@@ -181,5 +189,5 @@ export function usePreviewErrors({
     adjudicateAll([newest]);
   }, [location]);
 
-  return { report, fixingStalled };
+  return { report, fixingStalled, fixingSince };
 }

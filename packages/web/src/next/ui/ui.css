@@ -24,17 +24,25 @@
   }
 }
 
+/* 팝은 누른 자리에서 펼쳐진다 — 기준점은 `.nx-pop` 이 연 방향의 모서리로 잡는다. */
 @keyframes nx-pop {
   from {
     opacity: 0;
-    transform: translateY(-4px) scale(0.98);
+    transform: translateY(-4px) scale(0.96);
   }
 }
 /* 위로 여는 팝 — 아래로 여는 `nx-pop` 과 같은 모양을 반대 방향에서 온다. */
 @keyframes nx-pop-up {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.98);
+    transform: translateY(4px) scale(0.96);
+  }
+}
+/* 사라지는 팝 — 들어올 때보다 짧고 작게 물러난다(`Popover` 가 남기는 복제가 입는다). */
+@keyframes nx-pop-out {
+  to {
+    opacity: 0;
+    transform: translateY(-2px) scale(0.97);
   }
 }
 
@@ -125,6 +133,7 @@
   border-radius: 6px;
   display: grid;
   place-items: center;
+  /* 고정 — 알파벳 이니셜은 채운 색 위에서 늘 흰 글자다. */
   color: #fff;
   font-weight: 700;
   flex: none;
@@ -139,7 +148,8 @@
 .nx-pm--sm {
   width: 18px;
   height: 18px;
-  font-size: 10px;
+  /* 2026-10-04 ux-review: 10px 글자는 읽기 어렵다 — 11.5px 로 통일한다. */
+  font-size: 11.5px;
   border-radius: 5px;
 }
 
@@ -165,6 +175,22 @@
 .nx kbd {
   font: 11px var(--font);
   color: var(--ink3);
+}
+
+/* 키캡 — 눌러야 하는 키 하나. 아래 테두리가 두꺼워 실제 키처럼 솟아 보인다. `.nx kbd` 의 11px 초기값을 이긴다.
+   단축키 시트 · 찾기 줄의 ↵ · 비교 창이 함께 쓴다(2026-10-06 겹판 조사 — 시트의 파일에서 올렸다). */
+.nx kbd.nx-kc {
+  display: inline-grid;
+  place-items: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  font: 600 12px / 1 var(--font);
+  color: var(--ink);
+  background: linear-gradient(var(--bg), color-mix(in srgb, var(--bg-2) 60%, var(--bg)));
+  border: 1px solid var(--line2);
+  border-bottom-width: 2px;
+  border-radius: 7px;
 }
 
 .nx-ibtn {
@@ -226,6 +252,117 @@
   background: var(--nx-hover);
 }
 
+/* 위험한 단추 — 칠하지 않고 붉은 글자 · 옅은 붉은 바탕으로 말한다(앱의 종이 같은 결을 해치지 않으면서
+   되돌릴 수 없는 일임이 한눈에 읽힌다). 눌러서 곧바로 지우는 단추가 아니라 확인판의 확정 단추다. */
+.nx .nx-btn--dng {
+  color: var(--red);
+  border-color: color-mix(in srgb, var(--red) 38%, transparent);
+  background: color-mix(in srgb, var(--red) 8%, var(--card));
+}
+
+.nx .nx-btn--dng:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--red) 16%, var(--card));
+}
+
+/* 인라인 확인 — 팝 · 서랍 안의 한 칸이 확인판으로 바뀐다(`ui/InlineConfirm`). 위험한 일은 왼쪽에 붉은 선. */
+.nx-iconf {
+  display: grid;
+  gap: 8px;
+  margin: 4px;
+  padding: 12px 12px 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  animation: nx-rise-in var(--nx-t-move) var(--drift) backwards;
+}
+
+.nx-iconf--danger {
+  border-left: 3px solid var(--red);
+}
+
+.nx-iconf-t {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.nx-iconf-b {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink2);
+}
+
+.nx-iconf-why {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink3);
+}
+
+.nx-iconf-act {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+@keyframes nx-rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-iconf {
+    animation: none;
+  }
+}
+
+/* 소단추 — 앱 어디서나 28px. 설정 안은 한 칸 아래(settings.css 의 `.nx-set .nx-btn--sm`).
+   예전에는 다섯 파일이 따로 선언해 마지막에 읽힌 설정의 26px 가 앱 전체의 소단추였다. */
+.nx .nx-btn--sm {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12.5px;
+}
+
+.nx .nx-ibtn--sm {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--r-sm);
+}
+
+/* 눈에는 안 보이고 화면 낭독기에만 읽히는 글 — 상태 줄(`.nx-sr`)과 설정(`.nx-vh`)이 따로 쓰던 같은 감춤.
+   입력창 힌트(`aria-describedby`)도 이 반쯤 보이는 감춤을 빌린다. */
+.nx-sr,
+.nx-vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* 한 줄의 덧말 — 상자 · 단추 곁에서 조용히 상태를 말한다. 빨강은 실패(`role="alert"` 와 함께). */
+.nx-snote {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--ink3);
+  line-height: 1.5;
+}
+
+.nx-snote--red {
+  color: var(--red);
+}
+
 /* 팝오버 — 누른 요소를 감싼 `.nx-anchor` 에 붙어 선다. */
 .nx-anchor {
   position: relative;
@@ -234,16 +371,17 @@
 .nx-pop {
   position: absolute;
   top: calc(100% + 6px);
-  z-index: 60;
+  z-index: var(--nx-z-pop);
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 13px;
+  border-radius: 14px;
   box-shadow: var(--pop);
   padding: 6px;
   min-width: 210px;
   max-height: 70vh;
   overflow: auto;
-  animation: nx-pop 0.12s ease-out;
+  transform-origin: top left;
+  animation: nx-pop 0.16s var(--drift) backwards;
 }
 
 .nx-pop--start {
@@ -252,18 +390,39 @@
 
 .nx-pop--end {
   right: 0;
+  transform-origin: top right;
 }
 
 .nx-pop--up {
   top: auto;
   bottom: calc(100% + 6px);
-  transform-origin: bottom;
-  animation: nx-pop-up 0.12s ease-out;
+}
+
+/* 연 방향 — `Popover` 가 `data-side` 로 알린다(창 기준 `float` 팝은 자리가 모자라 뒤집힐 수 있다). */
+.nx-pop[data-side="up"] {
+  transform-origin: bottom left;
+  animation-name: nx-pop-up;
+}
+
+.nx-pop--end[data-side="up"] {
+  transform-origin: bottom right;
+}
+
+/* 사라지는 복제 — 눌리지 않고 짧게 물러난다. 끝나면 `Popover` 가 지운다. */
+.nx-pop.nx-pop--leaving {
+  pointer-events: none;
+  animation: nx-pop-out 0.13s var(--drift) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-pop.nx-pop--leaving {
+    display: none;
+  }
 }
 
 .nx-mh {
   padding: 8px 10px 4px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink3);
   font-weight: 500;
 }
@@ -283,8 +442,25 @@
   background: var(--nx-hover);
 }
 
+/* 위험한 줄 — 지우기 · 빼기처럼 되돌리기 어려운 일을 여는 메뉴 줄. 붉은 글자 · 옅은 붉은 호버 바탕이다
+   (확인 단추는 `.nx-btn--dng`). 대화 줄 메뉴와 전환기 카드가 쓴다(2026-10-06 겹판 조사 — 사이드바 파일에서 올렸다). */
+.nx .nx-mi--dng {
+  color: var(--red);
+}
+
+.nx .nx-mi--dng:hover {
+  background: var(--red-soft);
+}
+
 .nx-mi b {
   font-weight: 500;
+}
+
+/* 팝 줄의 키보드 초점 — 전역 고리(바깥 2px)는 6px 여백의 팝 안에서 가장자리에 닿아 굵어 보인다. 줄 안쪽의
+   얇은 고리 + 옅은 칠로 말한다(화살표로 걷는 메뉴는 고리보다 칠이 따라 읽기 쉽다). */
+.nx .nx-pop .nx-mi:focus-visible {
+  outline-offset: -2px;
+  background: var(--nx-hover);
 }
 
 .nx-mt {
@@ -310,18 +486,21 @@
   top: 64px;
   left: 50%;
   transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 32px));
   background: var(--ink);
   color: var(--bg);
-  padding: 9px 15px 11px;
+  padding: 8px 6px 10px 15px;
   border-radius: var(--r-md);
   font-size: 13px;
+  line-height: 1.45;
   box-shadow: var(--pop);
   animation: nx-toast-in 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-  z-index: 95;
-  white-space: nowrap;
-  max-width: 90%;
+  z-index: var(--nx-z-toast);
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* 내려앉은 뒤 한 번 지나가는 빛줄기. */
@@ -340,12 +519,49 @@
   pointer-events: none;
 }
 
+/* 긴 문장은 두 줄까지 읽히고 그 너머는 말줄임 — 한 줄로 잘려 끝을 못 읽던 것을 푼다. */
 .nx-toast-text {
   position: relative;
-  display: block;
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
+  padding: 1px 4px 1px 0;
   animation: nx-toast-text 0.4s 0.08s ease-out both;
+}
+
+/* 치우는 손 — 손이나 초점이 얹혀 있을 때만 또렷하다(터치는 늘). 토스트 바탕이 잉크색이라 글자는 뒤집어 입는다. */
+.nx .nx-toast-x {
+  position: relative;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  color: color-mix(in srgb, var(--bg) 72%, transparent);
+  opacity: 0;
+  transition-property: opacity, background-color, color;
+}
+
+.nx-toast:hover .nx-toast-x,
+.nx-toast:focus-within .nx-toast-x {
+  opacity: 1;
+}
+
+.nx .nx-toast-x:hover,
+.nx .nx-toast-x:focus-visible {
+  background: color-mix(in srgb, var(--bg) 16%, transparent);
+  color: var(--bg);
+}
+
+@media (hover: none) {
+  .nx .nx-toast-x {
+    opacity: 1;
+  }
 }
 
 /* 머무는 시간 — 다 닳으면 토스트가 나간다. */
@@ -359,6 +575,11 @@
   opacity: 0.85;
   transform-origin: left;
   animation: nx-toast-bar var(--nx-toast-ms, 2600ms) linear both;
+}
+
+/* 읽는 동안 막대도 선다 — 시간이 멈췄음을 눈이 안다. */
+.nx-toast--held .nx-toast-bar {
+  animation-play-state: paused;
 }
 
 .nx-toast--out {

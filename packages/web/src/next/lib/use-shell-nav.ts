@@ -10,10 +10,16 @@ import { isPreparing } from "./project-note";
 /** 좁은 창의 문턱(U16) — 목업의 `@container win (max-width:900px)`. */
 const NARROW_QUERY = "(max-width: 900px)";
 
-/** 창이 900px 아래인가 — 목업은 창 폭의 컨테이너 질의, 앱은 창 자체다. */
 /** 토스트가 머무는 시간 — 토스트의 줄어드는 막대가 같은 값으로 닳는다. */
 export const TOAST_MS = 2600;
 
+/** 지금 떠 있는 토스트 — `seq` 가 달라지면 같은 문장도 새 알림이다. */
+export interface ToastNote {
+  text: string;
+  seq: number;
+}
+
+/** 창이 900px 아래인가 — 목업은 창 폭의 컨테이너 질의, 앱은 창 자체다. */
 export function useNarrow(): boolean {
   const [narrow, setNarrow] = useState(() => window.matchMedia?.(NARROW_QUERY).matches ?? false);
   useEffect(() => {
@@ -50,7 +56,9 @@ export function useShellNav({
 }): {
   state: NavState;
   nav: ShellNav;
-  toast: string | null;
+  toast: ToastNote | null;
+  /** 토스트를 곧바로 내린다 — 머무는 시간은 `Toast` 가 재고, 끝나거나 `×` 를 누르면 부른다. */
+  dismissToast: () => void;
   setCollapsed: (v: boolean) => void;
   setDrawer: (v: boolean) => void;
 } {
@@ -65,12 +73,16 @@ export function useShellNav({
     dispatch({ type: "invite-path", path: discardableInvitePath });
   }, [discardableInvitePath]);
 
-  const [toastText, setToastText] = useState<string | null>(null);
-  useEffect(() => {
-    if (!toastText) return;
-    const timer = setTimeout(() => setToastText(null), TOAST_MS);
-    return () => clearTimeout(timer);
-  }, [toastText]);
+  // 같은 문장이 연속돼도 두 번째가 묻히지 않게 — 상태는 문장과 차례를 함께 쥐어
+  // 타이머가 다시 돌게 한다(2026-10-04 ux-review).
+  // 머무는 시간은 `Toast` 가 잰다(손이 얹히면 멈춰야 해서) — 여기는 지금 알림과 차례만 쥔다.
+  const [toast, setToast] = useState<ToastNote | null>(null);
+  const seqRef = useRef(0);
+  const showToast = useCallback((text: string) => {
+    seqRef.current += 1;
+    setToast({ text, seq: seqRef.current });
+  }, []);
+  const dismissToast = useCallback(() => setToast(null), []);
 
   // 이 두 효과의 순서가 뜻이다: 프로젝트가 바뀌면 먼저 홈으로 돌리고, 같은
   // 커밋에서 뒤따르는 점프가 대화를 열면 그 "thread" 가 이긴다.
@@ -132,42 +144,58 @@ export function useShellNav({
   const toastSwitched = (slug: string) => {
     const project = daemon.projects.find((entry) => entry.slug === slug);
     if (!project) return;
-    setToastText(
+    showToast(
       isPreparing(project) || project.phase === "missing"
         ? L.toast.switchedPreparing(project.name)
         : L.toast.switched(project.name),
     );
   };
 
-  const activate = (slug: string, then?: { threadId?: string; fresh?: boolean }) => {
+  /**
+   * 프로젝트를 옮긴다 — 옮겼는지(true) 못 옮겼는지(false)를 돌려준다. 못 옮기면 한 문장으로 알린다
+   * (사이드바 · 찾기 · 홈이 한 길을 쓴다 — 이전에는 실패가 아무 말 없이 지나갔다, 2026-10-06 겹판 조사).
+   * `quiet` 는 실패를 부르는 쪽이 제 자리에서 말할 때(찾기 창이 열린 채 남는다).
+   */
+  const activate = (
+    slug: string,
+    then?: { threadId?: string; fresh?: boolean },
+    options?: { quiet?: boolean },
+  ): Promise<boolean> => {
     // 기다리던 점프가 있어도 갈아끼운다 — 새 클릭이 사용자의 최신 뜻이다.
     jump.current = then ? { slug, ...then } : null;
-    void daemon.api
-      .projectActivate(slug)
-      .then(() => toastSwitched(slug))
-      .catch(() => {
+    return daemon.api.projectActivate(slug).then(
+      () => {
+        toastSwitched(slug);
+        return true;
+      },
+      () => {
         jump.current = null;
-      });
+        if (!options?.quiet) showToast(L.toast.switchFailed);
+        return false;
+      },
+    );
   };
 
   const nav: ShellNav = {
     openThread: (slug, threadId) => {
       if (slug === daemon.activeSlug) void openHere(threadId);
-      else activate(slug, { threadId });
+      else void activate(slug, { threadId });
     },
     newThread: (slug) => {
       if (!slug || slug === daemon.activeSlug) freshHere();
-      else activate(slug, { fresh: true });
+      else void activate(slug, { fresh: true });
     },
     goHome: () => dispatch({ type: "home" }),
     showThread: () => dispatch({ type: "thread" }),
-    switchProject: (slug) => {
+    switchProject: (slug, options) => {
       dispatch({ type: "drawer", open: false });
-      if (slug !== daemon.activeSlug) activate(slug);
+      return slug === daemon.activeSlug
+        ? Promise.resolve(true)
+        : activate(slug, undefined, options);
     },
     showTab: (tab) => dispatch({ type: "tab", tab }),
     openSettings: () => onOpenSettings(),
-    toast: setToastText,
+    toast: showToast,
     setDiscardableInvitePath: (path) => dispatch({ type: "invite-path", path }),
   };
 
@@ -199,5 +227,5 @@ export function useShellNav({
   );
   const setDrawer = useCallback((open: boolean) => dispatch({ type: "drawer", open }), []);
 
-  return { state, nav, toast: toastText, setCollapsed, setDrawer };
+  return { state, nav, toast, dismissToast, setCollapsed, setDrawer };
 }

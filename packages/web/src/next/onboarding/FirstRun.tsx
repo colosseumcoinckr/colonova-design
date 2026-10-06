@@ -1,12 +1,25 @@
 import type { OnboardingStep } from "@colonova-design/protocol";
-import { useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useInstallStep } from "../../hooks/use-install-step";
 import type { InviteImportController } from "../../hooks/use-invite-import";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
+import { INSTALL_STEPS } from "../lib/install-step";
 import { CheckIcon, Spin } from "../ui/icons";
-import { AlertIcon, UploadIcon } from "./icons";
-import { type GateKey, takeFreshPasses } from "./motion";
+import { CopyButton } from "./CopyButton";
+import { Fold } from "./Fold";
+import { Hero } from "./Hero";
+import { InviteDrop } from "./InviteDrop";
+import {
+  AlertIcon,
+  Caret,
+  GlobeIcon,
+  MailIcon,
+  SparklesIcon,
+  TileCheckIcon,
+  WrenchIcon,
+} from "./icons";
+import { currentGate, type GateKey, gatePasses, takeFreshPasses } from "./motion";
 import "./onboarding.css";
 
 /**
@@ -16,6 +29,10 @@ import "./onboarding.css";
  * 판정 · 설치 진행 · 로그인은 데몬의 것(onboarding.check · install 진행기 ·
  * agent.login)을 그대로 읽고, 초대 파일은 셸이 둔 컨트롤러(use-invite-import)가
  * 맡는다 — 이 화면은 놓는 자리를 그릴 뿐이다.
+ *
+ * 2026-10-06 온보딩 손질: 머리는 진행 링(Hero)이 맡고, 카드는 위계를 가진다 — 지난 항목은 한 줄로
+ * 가라앉고, 지금 손이 갈 항목(`currentGate`)은 강조되고, 나머지는 평평히 기다린다. 한 카드의 상태별
+ * 몸통은 접히고 펴져(Fold) 상태가 바뀌어도 높이가 튀지 않는다.
  */
 export function FirstRun({
   daemon,
@@ -43,10 +60,14 @@ export function FirstRun({
   // ── 도구 준비 — git · 런타임. 데몬이 함께 실어 오는 github 행은 이 판의
   //    일이 아니다(연결은 초대 파일이 맡는다).
   const toolSteps = [gitStep, runtimeStep].filter((step): step is OnboardingStep => step !== null);
-  const toolsPass = toolSteps.length === 2 && toolSteps.every((step) => step.status === "pass");
   const toolsOpen = toolSteps.filter((step) => step.status !== "pass");
   // 확인이 실패한 항목 — 도는 표시 대신 손이 필요하다는 말을 낸다.
   const toolsFailed = toolSteps.some((step) => step.status === "fail");
+
+  // ── 세 항목의 통과 — 링 · 카드의 위계 · 통과의 순간이 같은 판을 읽는다.
+  const projects = daemon.projects;
+  const passes = gatePasses(daemon.onboarding, projects.length);
+  const { tools: toolsPass, agent: agentPass, invite: invitePass } = passes;
 
   // ── AI 연결 — 설치 진행기와 로그인 판이 데몬에 산다.
   const installing = daemon.install?.kind === "install-claude";
@@ -54,7 +75,6 @@ export function FirstRun({
     daemon.installDone?.kind === "install-claude" && !daemon.installDone.ok
       ? daemon.installDone
       : null;
-  const agentPass = claudeStep?.status === "pass";
   const loginLive = daemon.login !== null;
   const loginFailed = daemon.loginDone && !daemon.loginDone.ok ? daemon.loginDone.detail : null;
   const agentState: "pass" | "installing" | "login" | "blocked" | "idle" = agentPass
@@ -72,11 +92,18 @@ export function FirstRun({
   // 필요할 때 누르는 `설치` 버튼과 달리 로그인은 브라우저를 여는 것뿐이라
   // 체크리스트의 "스스로 채워진다" 약속을 지키는 쪽으로 읽는다.
   const [loginStarted, setLoginStarted] = useState(false);
+  // 시작의 직후 갭 — fix 요청이 로그인 판(loginLive)으로 이어지기까지. 이 동안만
+  // 예고 문장이 서고 수동 시작의 재눌림이 막힌다(2026-10-04 ux-review).
+  const [loginLaunching, setLoginLaunching] = useState(false);
   useEffect(() => {
     if (loginStarted || loginLive || installing) return;
     if (claudeStep?.fix?.kind !== "login-claude") return;
     setLoginStarted(true);
-    void daemon.api.onboardingFix("login-claude", provider).catch(() => undefined);
+    setLoginLaunching(true);
+    void daemon.api
+      .onboardingFix("login-claude", provider)
+      .catch(() => undefined)
+      .finally(() => setLoginLaunching(false));
   }, [loginStarted, loginLive, installing, claudeStep, daemon.api, provider]);
 
   const runFix = (step: OnboardingStep) => {
@@ -89,53 +116,28 @@ export function FirstRun({
   };
 
   // ── 초대 파일 — 첫 프로젝트가 생기면 끝난다.
-  const projects = daemon.projects;
   const inviteImporting = invite.state.phase === "reading" || invite.state.phase === "applying";
-  const [dropOver, setDropOver] = useState(false);
 
   // 이번에 통과한 항목만 반응한다 — 앱을 켰을 때 이미 통과한 항목은 첫 그림에서
   // '본 것'으로 새겨 튀지 않는다(onboarding/motion 의 판정).
   const passesSeen = useRef<ReadonlySet<GateKey> | null>(null);
   const [freshPasses, setFreshPasses] = useState<GateKey[]>([]);
-  const invitePass = projects.length > 0;
   useEffect(() => {
-    const passes: GateKey[] = [
+    const passed: GateKey[] = [
       ...(toolsPass ? (["tools"] as const) : []),
       ...(agentPass ? (["agent"] as const) : []),
       ...(invitePass ? (["invite"] as const) : []),
     ];
-    const taken = takeFreshPasses(passesSeen.current, passes);
+    const taken = takeFreshPasses(passesSeen.current, passed);
     passesSeen.current = taken.seen;
     if (taken.fresh.length > 0) setFreshPasses(taken.fresh);
   }, [toolsPass, agentPass, invitePass]);
 
-  // 설치의 세부(설명 · 막대 · 단계 말)는 상태가 바뀌어도 한 프레임에 사라지지
-  // 않는다 — 접어서 내려 보낸다. 한 번이라도 설치가 도는 순간부터 길이 산다.
-  const [installSeen, setInstallSeen] = useState(false);
-  useEffect(() => {
-    if (installing) setInstallSeen(true);
-  }, [installing]);
-  const detailsOpen = agentState === "idle" || agentState === "installing";
-  // 설치 진행기의 날 줄은 화면에 내리지 않는다 — 단계 말만 선다.
+  // 설치 진행기의 날 줄은 화면에 내리지 않는다 — 세 칸 막대와 단계 말만 선다.
   const installStep = useInstallStep(daemon.install?.line ?? null);
   const installStepWord =
     installStep === null ? L.settings.installBusy : L.onboarding.installSteps[installStep];
-  // 끌어옴의 깊이 — 칸 안의 자식을 오갈 때마다 leave 가 섞여도 강조가 버티게 센다.
-  const dropDepth = useRef(0);
-  // 칸 밖에서 끝난 끌기도 강조를 푼다 — 초대 파일의 전역 드롭은 칸의 onDrop 에
-  // 닿지 않고 지나가므로(capture 에서 가로막힌다) 창에서 먼저 듣는다.
-  useEffect(() => {
-    const clear = () => {
-      dropDepth.current = 0;
-      setDropOver(false);
-    };
-    window.addEventListener("drop", clear, true);
-    window.addEventListener("dragend", clear, true);
-    return () => {
-      window.removeEventListener("drop", clear, true);
-      window.removeEventListener("dragend", clear, true);
-    };
-  }, []);
+  const installPhase = installStep === null ? 0 : INSTALL_STEPS.indexOf(installStep);
 
   // ── Codex — 건너뛰어도 되는 선택 줄.
   const codexMissing =
@@ -158,20 +160,8 @@ export function FirstRun({
             ? "failed"
             : "ask";
 
-  const sic = (state: "ok" | "run" | "act" | "wait") =>
-    state === "ok" ? (
-      <span className="nx-sic nx-sic--ok">
-        <CheckIcon />
-      </span>
-    ) : state === "run" ? (
-      <span className="nx-sic nx-sic--run">
-        <Spin />
-      </span>
-    ) : state === "act" ? (
-      <span className="nx-sic nx-sic--act" />
-    ) : (
-      <span className="nx-sic nx-sic--wait" />
-    );
+  const agentFix = claudeStep && claudeStep.status !== "pass" ? (claudeStep.fix ?? null) : null;
+  const agentBusy = installing || loginLive || checking;
 
   const agentRight =
     agentState === "pass"
@@ -184,39 +174,56 @@ export function FirstRun({
             ? failureParts?.itLine
               ? L.onboarding.agentBlocked
               : L.onboarding.agentFailed
-            : L.onboarding.agentIdle;
+            : agentFix?.kind === "install-claude"
+              ? L.onboarding.agentNeedInstall
+              : agentFix?.kind === "login-claude"
+                ? L.onboarding.agentNeedLogin
+                : L.onboarding.agentIdle;
 
-  const agentFix = claudeStep && claudeStep.status !== "pass" ? (claudeStep.fix ?? null) : null;
-  const agentBusy = installing || loginLive || checking;
+  // 카드의 모양 — 지금 손이 갈 곳은 하나다. 눌러 볼 것이 없는 칸(검사 답을 기다리는 AI)은 건너뛴다.
+  const agentWaiting = agentState === "idle" && !agentFix;
+  const current = done ? null : currentGate(passes, { agent: agentWaiting });
+  const agentCard: CardState =
+    agentState === "pass"
+      ? "ok"
+      : agentState === "blocked"
+        ? "fail"
+        : agentState === "installing" || agentState === "login"
+          ? "run"
+          : agentFix
+            ? "act"
+            : "wait";
+  // 로그인은 사용자가 브라우저에서 할 일을 기다리는 칸 — 도는 표시 대신 지구본이 숨 쉰다.
+  const agentPulse = agentState === "login";
 
   return (
     <div className={`nx nx-ob${done ? " nx-ob--done" : ""}`} data-testid="next-first-run">
       <div className="nx-ob-inner">
-        <div className="nx-ob-logo" aria-hidden="true">
-          <img src="/colonova-icon.svg" alt="" width={36} height={36} />
-        </div>
-        <h1 className="nx-ob-title">{done ? L.onboarding.doneTitle : L.onboarding.title}</h1>
-        <p className="nx-ob-sub">{done ? L.onboarding.doneSub : L.onboarding.sub}</p>
+        <Hero
+          passes={passes}
+          waiting={{ agent: agentWaiting }}
+          done={done}
+          title={done ? L.onboarding.doneTitle : L.onboarding.title}
+          sub={done ? L.onboarding.doneSub : L.onboarding.sub}
+        />
 
         <ol className="nx-ob-steps">
           {/* 도구 준비 */}
-          <li
-            className={`nx-ob-step${toolsPass ? "" : " nx-ob-step--act"}${
-              freshPasses.includes("tools") ? " nx-ob-step--passed" : ""
-            }`}
+          <Step
+            glyph={<WrenchIcon />}
+            state={toolsPass ? "ok" : toolsFailed ? "act" : "run"}
+            current={current === "tools"}
+            fresh={freshPasses.includes("tools")}
+            title={L.onboarding.tools}
+            status={
+              toolsPass
+                ? L.vocab.toolsReady
+                : toolsFailed
+                  ? L.onboarding.toolsBlocked
+                  : L.onboarding.toolsChecking
+            }
           >
-            {sic(toolsPass ? "ok" : toolsFailed ? "act" : "run")}
-            <div>
-              <div className="nx-ob-t">
-                {L.onboarding.tools}
-                <span className="nx-ob-r">
-                  {toolsPass
-                    ? L.vocab.toolsReady
-                    : toolsFailed
-                      ? L.onboarding.toolsBlocked
-                      : L.onboarding.toolsChecking}
-                </span>
-              </div>
+            <Fold open={toolsOpen.length > 0}>
               {toolsOpen.map((step) => (
                 <div key={step.id}>
                   <p className="nx-ob-d">{step.detail}</p>
@@ -244,71 +251,81 @@ export function FirstRun({
                   )}
                 </div>
               ))}
-            </div>
-          </li>
+            </Fold>
+          </Step>
 
           {/* AI 연결 — 갈림길이 있는 칸은 흐리지 않는다. 정말 기다릴 때만 흐린다. */}
-          <li
-            className={`nx-ob-step${
-              agentState === "pass"
-                ? ""
-                : agentState === "idle" && !agentFix
-                  ? " nx-ob-step--wait"
-                  : " nx-ob-step--act"
-            }${freshPasses.includes("agent") ? " nx-ob-step--passed" : ""}`}
+          <Step
+            glyph={<SparklesIcon />}
+            loginGlyph={<GlobeIcon />}
+            state={agentCard}
+            current={current === "agent"}
+            fresh={freshPasses.includes("agent")}
+            pulse={agentPulse}
+            title={L.onboarding.agent}
+            status={agentRight}
           >
-            {sic(
-              agentState === "pass"
-                ? "ok"
-                : agentState === "idle"
-                  ? agentFix
-                    ? "act"
-                    : "wait"
-                  : agentState === "blocked"
-                    ? "act"
-                    : "run",
-            )}
-            <div>
-              <div className="nx-ob-t">
-                {L.onboarding.agent}
-                <span className="nx-ob-r">{agentRight}</span>
-              </div>
+            {/* 무엇을 설치하는지 먼저 말한다 — 설치가 도는 동안에도 같은 말이 남는다. */}
+            <Fold open={(agentState === "idle" && !loginFailed) || agentState === "installing"}>
+              <p className="nx-ob-d">{L.onboarding.agentWhat}</p>
+            </Fold>
 
-              {/* 세부는 접어서 내려 보낸다 — 통과의 순간에도 카드 높이가 튀지 않게. */}
-              {installSeen && (
-                <div
-                  className={`nx-ob-foldaway${detailsOpen ? "" : " nx-ob-foldaway--closed"}`}
-                  aria-hidden={!detailsOpen}
-                >
-                  <div className="nx-ob-foldaway-i">
-                    {(agentState === "idle" || agentState === "installing") && (
-                      <p className="nx-ob-d">{L.onboarding.agentWhat}</p>
-                    )}
-                    {installing && (
-                      <>
-                        <div className="nx-bar" aria-hidden="true">
-                          <i />
-                        </div>
-                        {/* 설치 프로그램의 날 줄은 내리지 않는다 — 단계 말만 바뀐다. */}
-                        <div className="nx-ob-log" role="status">
-                          <b key={installStepWord} className="nx-inst-word">
-                            {installStepWord}
-                          </b>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
+            {/* 아직 시작 전 — 설치 · 로그인의 첫 걸음. */}
+            <Fold open={agentState === "idle" && !loginFailed && agentFix !== null}>
+              {/* 시작이 나간 뒤 로그인 판이 서기까지의 빈틈 — 예고 없이 브라우저가 뜨지 않게. */}
+              {loginLaunching && (
+                <p className="nx-ob-d" role="status">
+                  {L.onboarding.loginStarting}
+                </p>
               )}
+              <div className="nx-ob-acts">
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--pri"
+                  disabled={agentBusy || loginLaunching}
+                  onClick={() => claudeStep && runFix(claudeStep)}
+                >
+                  {agentFix?.label}
+                </button>
+              </div>
+            </Fold>
 
-              {agentState === "blocked" && failureParts && (
+            {/* 설치 중 — 세 칸 막대가 단계를 따라 차고, 설치 프로그램의 날 줄 대신 단계 말만 바뀐다. */}
+            <Fold open={agentState === "installing"}>
+              <div className="nx-phase" aria-hidden="true">
+                {INSTALL_STEPS.map((key, index) => (
+                  <i
+                    key={key}
+                    className={`nx-phase-s nx-phase-s--${
+                      index < installPhase ? "ok" : index === installPhase ? "run" : "todo"
+                    }`}
+                  />
+                ))}
+              </div>
+              <div className="nx-ob-log" role="status">
+                <b key={installStepWord} className="nx-inst-word">
+                  {installStepWord}
+                </b>
+              </div>
+            </Fold>
+
+            {/* 설치가 막혔다 — 이유와 IT 담당자에게 보낼 문장, 다시 시도. */}
+            <Fold open={agentState === "blocked" && failureParts !== null}>
+              {failureParts && (
                 <>
                   <p className="nx-ob-d nx-ob-d--red">{failureParts.body}</p>
                   {failureParts.itLine && (
-                    <div className="nx-codebox nx-codebox--wrap">{failureParts.itLine}</div>
+                    <div className="nx-codebox nx-codebox--ask">{failureParts.itLine}</div>
                   )}
                   <div className="nx-ob-acts">
-                    {failureParts.itLine && <CopyLine line={failureParts.itLine} />}
+                    {failureParts.itLine && (
+                      <CopyButton
+                        primary
+                        text={failureParts.itLine}
+                        label={L.onboarding.copyText}
+                        doneLabel={L.onboarding.copied}
+                      />
+                    )}
                     <button
                       type="button"
                       className="nx-btn"
@@ -322,8 +339,11 @@ export function FirstRun({
                   </div>
                 </>
               )}
+            </Fold>
 
-              {agentState === "login" && daemon.login && (
+            {/* 로그인 — 브라우저가 열렸고, 돌아오기를 기다린다. */}
+            <Fold open={agentState === "login" && daemon.login !== null}>
+              {daemon.login && (
                 <>
                   <p className="nx-ob-d">{L.onboarding.loginBody}</p>
                   <div className="nx-ob-acts">
@@ -335,36 +355,25 @@ export function FirstRun({
                       {L.onboarding.loginReopen}
                     </button>
                   </div>
-                  <details className="nx-ob-fold">
-                    <summary>{L.onboarding.loginFallback}</summary>
-                    <p>{L.onboarding.loginFallbackBody}</p>
-                    <div className="nx-codebox">{daemon.login.url}</div>
-                    {daemon.login.wantsCode && <LoginCodeForm daemon={daemon} />}
+                  <details className="nx-ob-help">
+                    <summary>
+                      <Caret />
+                      {L.onboarding.loginFallback}
+                    </summary>
+                    <div className="nx-ob-help-b">
+                      <p className="nx-ob-d">{L.onboarding.loginFallbackBody}</p>
+                      <div className="nx-codebox">{daemon.login.url}</div>
+                      {daemon.login.wantsCode && <LoginCodeForm daemon={daemon} />}
+                    </div>
                   </details>
                 </>
               )}
+            </Fold>
 
-              {/* 로그인이 실패로 끝났다 — 다시 여는 길. 진행판이 살아 있는 동안은 숨는다. */}
-              {agentState === "idle" && loginFailed && !installFailed && (
-                <>
-                  <p className="nx-ob-d nx-ob-d--red">{loginFailed}</p>
-                  {agentFix && (
-                    <div className="nx-ob-acts">
-                      <button
-                        type="button"
-                        className="nx-btn nx-btn--pri"
-                        disabled={agentBusy}
-                        onClick={() => claudeStep && runFix(claudeStep)}
-                      >
-                        {agentFix.label}
-                      </button>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* 아직 시작 전 — 설치 · 로그인의 첫 걸음. 설치 실패 뒤의 같은 버튼은 다시 시도다. */}
-              {agentState === "idle" && !loginFailed && agentFix && (
+            {/* 로그인이 실패로 끝났다 — 다시 여는 길. 진행판이 살아 있는 동안은 숨는다. */}
+            <Fold open={agentState === "idle" && Boolean(loginFailed)}>
+              <p className="nx-ob-d nx-ob-d--red">{loginFailed}</p>
+              {agentFix && (
                 <div className="nx-ob-acts">
                   <button
                     type="button"
@@ -372,98 +381,44 @@ export function FirstRun({
                     disabled={agentBusy}
                     onClick={() => claudeStep && runFix(claudeStep)}
                   >
-                    {installFailed ? L.onboarding.retry : agentFix.label}
+                    {agentFix.label}
                   </button>
                 </div>
               )}
-            </div>
-          </li>
+            </Fold>
+          </Step>
 
           {/* 초대 파일 */}
-          <li
-            className={`nx-ob-step${projects.length > 0 ? "" : " nx-ob-step--act"}${
-              freshPasses.includes("invite") ? " nx-ob-step--passed" : ""
-            }`}
+          <Step
+            glyph={<MailIcon />}
+            state={invitePass ? "ok" : inviteImporting ? "run" : "act"}
+            current={current === "invite"}
+            fresh={freshPasses.includes("invite")}
+            title={L.onboarding.invite}
+            status={
+              invitePass
+                ? L.vocab.projectCount(projects.length)
+                : inviteImporting
+                  ? L.onboarding.inviteOpening
+                  : L.onboarding.inviteFrom
+            }
           >
-            {sic(projects.length > 0 ? "ok" : inviteImporting ? "run" : "act")}
-            <div>
-              <div className="nx-ob-t">
-                {L.onboarding.invite}
-                <span className="nx-ob-r">
-                  {projects.length > 0
-                    ? L.vocab.projectCount(projects.length)
-                    : inviteImporting
-                      ? L.onboarding.inviteOpening
-                      : L.onboarding.inviteFrom}
-                </span>
-              </div>
-
-              {projects.length === 0 && inviteImporting && (
-                <div className="nx-drop nx-drop--busy" role="status">
-                  <Spin />
-                  <div>{L.onboarding.inviteOpening}</div>
+            {invitePass ? (
+              <>
+                <div className="nx-ob-done">
+                  {L.onboarding.inviteDone(projects.map((project) => project.name).join(" · "))}
+                  <br />
+                  {L.onboarding.inviteFirst(projects[0]?.name ?? "")}
                 </div>
-              )}
-
-              {projects.length === 0 && !inviteImporting && (
-                // biome-ignore lint/a11y/noStaticElementInteractions: 드롭은 포인터의 일이다 — 키보드는 안의 `파일 고르기` 단추로 같은 곳에 닿는다.
-                // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 위와 같다.
-                <div
-                  className={`nx-drop${dropOver ? " nx-drop--over" : ""}`}
-                  onDragEnter={(event) => {
-                    event.preventDefault();
-                    dropDepth.current += 1;
-                    setDropOver(true);
-                  }}
-                  onDragOver={(event) => {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = "copy";
-                  }}
-                  onDragLeave={() => {
-                    dropDepth.current = Math.max(0, dropDepth.current - 1);
-                    if (dropDepth.current === 0) setDropOver(false);
-                  }}
-                  onDrop={(event) => {
-                    event.preventDefault();
-                    dropDepth.current = 0;
-                    setDropOver(false);
-                    // 초대 파일은 컨트롤러의 전역(capture) 드롭 리스너가 먼저 잡는다 —
-                    // 여기까지 오는 드롭은 초대 파일이 아니고, 같은 오류 문장으로 답한다.
-                    const file = event.dataTransfer.files[0];
-                    if (file) invite.takeFile(file);
-                  }}
-                >
-                  <UploadIcon />
-                  <div>
-                    <b>{L.onboarding.inviteDropName}</b> {L.onboarding.inviteDropHow}
-                  </div>
-                  <button type="button" className="nx-btn" onClick={invite.openPicker}>
-                    {L.onboarding.invitePick}
-                  </button>
+                <div className="nx-ob-warn">
+                  <AlertIcon />
+                  <span>{L.onboarding.inviteWarn}</span>
                 </div>
-              )}
-
-              {invite.state.phase === "error" && (
-                <p className="nx-ob-d nx-ob-d--red" role="alert">
-                  {invite.state.error}
-                </p>
-              )}
-
-              {projects.length > 0 && (
-                <>
-                  <div className="nx-ob-done">
-                    {L.onboarding.inviteDone(projects.map((project) => project.name).join(" · "))}
-                    <br />
-                    {L.onboarding.inviteFirst(projects[0]?.name ?? "")}
-                  </div>
-                  <div className="nx-ob-warn">
-                    <AlertIcon />
-                    <span>{L.onboarding.inviteWarn}</span>
-                  </div>
-                </>
-              )}
-            </div>
-          </li>
+              </>
+            ) : (
+              <InviteDrop invite={invite} importing={inviteImporting} />
+            )}
+          </Step>
         </ol>
 
         {/* Codex — 건너뛰어도 되는 선택 줄 */}
@@ -528,6 +483,64 @@ export function FirstRun({
   );
 }
 
+/** 카드 한 칸의 상태 — 통과 · 도는 중 · 손이 필요 · 기다림 · 막힘. */
+type CardState = "ok" | "run" | "act" | "wait" | "fail";
+
+/**
+ * 체크리스트 카드 한 칸 — 머리(타일 · 이름 · 상태 알약)와 몸통. 타일은 통과하면 체크, 도는 동안은
+ * 돌림, 그 밖에는 항목의 그림이다. 사용자가 브라우저에서 할 일을 기다리는 칸(`pulse`)은 도는 대신
+ * `loginGlyph` 가 숨 쉰다. 모양은 `data-state` · `data-current` 로 CSS 가 입힌다.
+ */
+function Step({
+  glyph,
+  loginGlyph,
+  state,
+  current,
+  fresh,
+  pulse = false,
+  title,
+  status,
+  children,
+}: {
+  glyph: ReactNode;
+  loginGlyph?: ReactNode;
+  state: CardState;
+  current: boolean;
+  fresh: boolean;
+  pulse?: boolean;
+  title: string;
+  status: string;
+  children: ReactNode;
+}) {
+  return (
+    <li
+      className={`nx-ob-step${fresh ? " nx-ob-step--passed" : ""}`}
+      data-state={state}
+      data-current={current ? "" : undefined}
+      aria-current={current ? "step" : undefined}
+    >
+      <div className="nx-ob-hd">
+        <span className={`nx-ob-tile${pulse ? " nx-ob-tile--pulse" : ""}`} aria-hidden="true">
+          {state === "ok" ? (
+            <TileCheckIcon />
+          ) : pulse ? (
+            (loginGlyph ?? glyph)
+          ) : state === "run" ? (
+            <Spin />
+          ) : (
+            glyph
+          )}
+        </span>
+        <span className="nx-ob-name">{title}</span>
+        <span className="nx-ob-r" aria-live="polite">
+          {status}
+        </span>
+      </div>
+      {children}
+    </li>
+  );
+}
+
 /**
  * policy 실패의 detail 은 안내 문장과 IT 담당자용 복사 한 줄이 개행으로 이어진
  * 형태다(onboarding-gates 의 규칙 그대로) — 마지막 줄을 떼어 상자에 넣는다.
@@ -541,26 +554,6 @@ function splitInstallDetail(detail: string): { body: string; itLine: string | nu
   if (lines.length < 2) return { body: detail, itLine: null };
   const itLine = lines[lines.length - 1] ?? null;
   return { body: lines.slice(0, -1).join("\n"), itLine };
-}
-
-/** IT 담당자에게 보낼 문장 하나를 클립보드에 넣는 버튼 — 눌렀다는 답 한 번. */
-function CopyLine({ line }: { line: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      className="nx-btn nx-btn--pri"
-      onClick={() => {
-        void navigator.clipboard
-          ?.writeText(line)
-          .then(() => setCopied(true))
-          .catch(() => undefined);
-      }}
-    >
-      {copied ? <CheckIcon /> : null}
-      {copied ? L.onboarding.copied : L.onboarding.copyText}
-    </button>
-  );
 }
 
 /** 로그인 코드 붙여넣기 — 데몬이 자식의 stdin 으로 흘려 보낸다. */

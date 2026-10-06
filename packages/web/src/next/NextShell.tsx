@@ -212,7 +212,8 @@ export function NextShell(props: NextShellProps) {
   const firstRunScreen =
     emptyAfterUse && projects.length === 0 ? (
       <NoProjects
-        openInvite={invite.openPicker}
+        daemon={daemon}
+        invite={invite}
         importing={invite.state.phase === "reading" || invite.state.phase === "applying"}
       />
     ) : (

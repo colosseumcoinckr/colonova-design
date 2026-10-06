@@ -4,14 +4,14 @@ import type {
   RepoStatus,
   TurnMarker,
 } from "@colonova-design/protocol";
-import { useState } from "react";
+import { useId, useState } from "react";
 import type { Block, PendingPermission, PendingQuestion } from "../../lib/daemon-client";
 import { composing } from "../../lib/ime";
 import { bashHeadline, toolLabel } from "../../lib/labels";
 import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
 import { noteAllowed } from "../lib/thread";
-import { AlertIcon, CheckIcon, ExtIcon, EyeIcon, SparkIcon } from "./icons";
+import { AlertIcon, CheckIcon, ClockIcon, ExtIcon, EyeIcon, SparkIcon } from "./icons";
 
 /** `오후 3:12` 가 아니라 `15:12` — 목업의 시각 표기. */
 export function clockOf(at: string | number): string {
@@ -119,6 +119,28 @@ export function BriefCard({
   );
 }
 
+/**
+ * 기계의 알림 카드 — AI 가 읽어야 하지만 행동을 부르지 않는 턴(지금 보내기가
+ * 돌아가던 답을 자른 것)이 한 줄로 선다. 받은 글은 다른 카드와 같이 접힌다.
+ */
+export function NoticeCard({
+  marker,
+  body,
+}: {
+  marker: Extract<TurnMarker, { kind: "notice" }>;
+  body: string;
+}) {
+  return (
+    <div className="nx-card nx-card--gate">
+      <div className="nx-ch">
+        <ClockIcon />
+        <b>{marker.text}</b>
+      </div>
+      <Received body={body} />
+    </div>
+  );
+}
+
 /** 답하기 한 줄 — 카드를 떠나지 않고 개발자에게 간다(`comments.reply` · `repo.note`). */
 export function ReplyBox({
   placeholder,
@@ -133,6 +155,9 @@ export function ReplyBox({
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  // 접근 이름은 고정으로 — placeholder 는 답할 사람에 따라 바뀌어도 이름이
+  // 흔들리지 않게 하고, 바뀌는 자리 표시는 힌트로 묶는다(2026-10-04 ux-review).
+  const hintId = useId();
   const send = async () => {
     const text = draft.trim();
     if (!text || busy) return;
@@ -156,7 +181,8 @@ export function ReplyBox({
           autoFocus
           value={draft}
           placeholder={placeholder}
-          aria-label={placeholder}
+          aria-label={L.composer.noteToDev}
+          aria-describedby={hintId}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (composing(event)) return;
@@ -166,6 +192,9 @@ export function ReplyBox({
             }
           }}
         />
+        <span id={hintId} className="nx-sr">
+          {placeholder}
+        </span>
         <button
           type="button"
           className="nx-btn nx-btn--sm nx-btn--pri"
@@ -374,6 +403,19 @@ export function ReceiptCard({
 type RepoCommands = NonNullable<RepoStatus["commands"]>;
 
 /**
+ * 확인 카드가 나타났다는 공지 — 마운트 한 번만 말한다(2026-10-06 겹판 조사). 카드 전체가 `alert` 이면
+ * 안의 어떤 변화(도는 표시 · 실패 줄)에도 카드가 통째로 다시 읽히고, 안의 실패 줄(`alert`)과 공지가
+ * 서로 경쟁했다. 카드는 이름 있는 묶음(`group`)이고 공지는 이 한 줄이 맡는다.
+ */
+function Announce({ text }: { text: string }) {
+  return (
+    <span className="nx-sr" role="alert">
+      {text}
+    </span>
+  );
+}
+
+/**
  * 확인 카드 — AI 가 물어보거나(질문) 무엇을 해도 되는지 묻는다(허용). 질문이 하나
  * · 고르기 하나면 누르는 순간 답이 간다(목업 `card.ask`); 여럿이면 다 고른 뒤
  * 보낸다. 어느 질문이든 `직접 답하기` 로 자기 말을 쓸 수 있다.
@@ -394,18 +436,24 @@ export function AskCard({
   const [free, setFree] = useState<Record<string, string>>({});
   const [freeOpen, setFreeOpen] = useState<Record<string, boolean>>({});
   const [sent, setSent] = useState(false);
+  // 전하지 못했음을 카드 안에서 말한다 — 조용히 되돌려 다시 눌리는 자리만
+  // 남기면 실패가 통하지 않은 채로 끝난다(2026-10-04 ux-review).
+  const [sendFailed, setSendFailed] = useState(false);
   /** 보내는 중인 버튼 — 누른 버튼만 고른 모양과 작은 도는 표시를 입는다. */
   const [pressed, setPressed] = useState<string | null>(null);
+  const titleId = useId();
+  const needId = useId();
   const dispatch = (mark: string, call: () => unknown) => {
     if (sent) return;
     setSent(true);
+    setSendFailed(false);
     setPressed(mark);
     void Promise.resolve()
       .then(call)
       .catch(() => {
-        // 전하지 못했으면 조용히 되돌린다 — 오류 문장 대신 다시 눌리는 자리가 된다.
         setSent(false);
         setPressed(null);
+        setSendFailed(true);
       });
   };
 
@@ -421,10 +469,12 @@ export function AskCard({
       return toolLabel(request.toolName);
     })();
     return (
-      <div className="nx-card nx-card--ask" role="alert">
+      // biome-ignore lint/a11y/useSemanticElements: 카드는 제목으로 이름 붙은 묶음이다 — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다.
+      <div className="nx-card nx-card--ask" role="group" aria-labelledby={titleId}>
+        <Announce text={`${L.cards.askTitle} ${L.inbox.askPermission(raw)}`} />
         <div className="nx-ch">
           <SparkIcon />
-          <b>{L.cards.askTitle}</b>
+          <b id={titleId}>{L.cards.askTitle}</b>
         </div>
         <div className="nx-ctext">{L.inbox.askPermission(raw)}</div>
         <div className="nx-opts">
@@ -447,6 +497,12 @@ export function AskCard({
             {pressed === "deny" && <i className="nx-spin" aria-hidden="true" />}
           </button>
         </div>
+        {sendFailed && (
+          /* 실패는 alert — 카드는 더 이상 alert 가 아니니 공지가 겹치지 않는다(`Announce`). */
+          <div className="nx-cs nx-tone--red" role="alert">
+            {L.chat.sendFailed}
+          </div>
+        )}
       </div>
     );
   }
@@ -490,97 +546,144 @@ export function AskCard({
 
   // 선택지에 AI 가 쓴 설명이 딸려 있으면 툴팁이 아니라 라벨 아래에 보인다 — 고를 근거가 숨지 않게.
   const described = (q: AskQuestion) => q.options.some((option) => option.description);
+  // 고른 개수 — 여럿 고르기에서만 센다. 직접 쓴 말이 있으면 그 말이 답이 되니 센 수를 말하지 않는다.
+  const countOf = (q: AskQuestion): number => {
+    const value = answers[q.question];
+    return q.multiSelect && Array.isArray(value) && !(free[q.question] ?? "").trim()
+      ? value.length
+      : 0;
+  };
 
   return (
-    <div className="nx-card nx-card--ask" role="alert">
+    // biome-ignore lint/a11y/useSemanticElements: 카드는 제목으로 이름 붙은 묶음이다 — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다.
+    <div className="nx-card nx-card--ask" role="group" aria-labelledby={titleId}>
+      <Announce text={`${L.cards.askTitle} ${questions.map((q) => q.question).join(" ")}`} />
       <div className="nx-ch">
         <SparkIcon />
-        <b>{L.cards.askTitle}</b>
+        <b id={titleId}>{L.cards.askTitle}</b>
       </div>
-      {questions.map((q) => (
-        <div key={q.question} className="nx-ask-q">
-          <div className="nx-ctext">{q.question}</div>
-          <div className={`nx-opts${described(q) ? " nx-opts--described" : ""}`}>
-            {q.options.map((option) => (
-              <button
-                key={option.label}
-                type="button"
-                className={`nx-btn${described(q) ? " nx-btn--opt" : ""}${
-                  picked(q, option.label) ? " nx-btn--picked" : ""
-                }`}
-                disabled={sent}
-                onClick={() => pick(q, option.label)}
-              >
-                {described(q) ? (
-                  <span className="nx-opt-t">
-                    <b>{option.label}</b>
-                    {option.description && <small>{option.description}</small>}
-                  </span>
-                ) : (
-                  option.label
-                )}
-                {pressed === option.label && <i className="nx-spin" aria-hidden="true" />}
-              </button>
-            ))}
-            <button
-              type="button"
-              className="nx-btn nx-btn--ghost"
-              disabled={sent}
-              onClick={() => setFreeOpen((prev) => ({ ...prev, [q.question]: true }))}
-            >
-              {L.cards.askFree}
-            </button>
-          </div>
-          {freeOpen[q.question] && (
-            <div className="nx-reply">
-              <input
-                // biome-ignore lint/a11y/noAutofocus: 직접 답하기를 누른 손이 곧 쓸 자리다.
-                autoFocus
-                value={free[q.question] ?? ""}
-                placeholder={L.cards.askFree}
-                aria-label={L.cards.askFree}
-                onChange={(event) =>
-                  setFree((prev) => ({ ...prev, [q.question]: event.target.value }))
-                }
-                onKeyDown={(event) => {
-                  if (composing(event)) return;
-                  if (event.key === "Enter" && single) {
-                    event.preventDefault();
-                    const text = (free[q.question] ?? "").trim();
-                    if (text) send({ [q.question]: text }, `free:${q.question}`);
-                  }
-                }}
-              />
-              {single && (
-                <button
-                  type="button"
-                  className={`nx-btn nx-btn--sm nx-btn--pri${
-                    pressed === `free:${q.question}` ? " nx-btn--picked" : ""
-                  }`}
-                  disabled={sent || !(free[q.question] ?? "").trim()}
-                  onClick={() =>
-                    send({ [q.question]: (free[q.question] ?? "").trim() }, `free:${q.question}`)
-                  }
-                >
-                  {L.inbox.send}
-                  {pressed === `free:${q.question}` && <i className="nx-spin" aria-hidden="true" />}
-                </button>
-              )}
+      {questions.map((q, index) => {
+        const count = countOf(q);
+        const asked = `${titleId}-q${index}`;
+        return (
+          <div key={q.question} className="nx-ask-q">
+            <div id={asked} className="nx-ctext">
+              {q.question}
             </div>
-          )}
-        </div>
-      ))}
+            {/* biome-ignore lint/a11y/useSemanticElements: 질문 한 줄과 그 선택지의 묶음 — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다. */}
+            <div
+              role="group"
+              aria-labelledby={asked}
+              className={`nx-opts${described(q) ? " nx-opts--described" : ""}`}
+            >
+              {q.options.map((option) => {
+                const on = picked(q, option.label);
+                return (
+                  <button
+                    key={option.label}
+                    type="button"
+                    className={`nx-btn${described(q) ? " nx-btn--opt" : ""}`}
+                    // 고른 상태는 색만으로 말하지 않는다 — 눌림 상태(낭독)와 체크(눈)가 함께 선다.
+                    aria-pressed={on}
+                    disabled={sent}
+                    onClick={() => pick(q, option.label)}
+                  >
+                    {described(q) ? (
+                      <span className="nx-opt-t">
+                        <b>{option.label}</b>
+                        {option.description && <small>{option.description}</small>}
+                      </span>
+                    ) : (
+                      option.label
+                    )}
+                    {pressed === option.label ? (
+                      <i className="nx-spin" aria-hidden="true" />
+                    ) : (
+                      on && (
+                        <span className="nx-opt-ck">
+                          <CheckIcon />
+                        </span>
+                      )
+                    )}
+                  </button>
+                );
+              })}
+              <button
+                type="button"
+                className="nx-btn nx-btn--ghost"
+                aria-expanded={freeOpen[q.question] === true}
+                disabled={sent}
+                onClick={() => setFreeOpen((prev) => ({ ...prev, [q.question]: true }))}
+              >
+                {L.cards.askFree}
+              </button>
+            </div>
+            {count > 0 && <p className="nx-snote nx-ask-count">{L.cards.pickedCount(count)}</p>}
+            {freeOpen[q.question] && (
+              <div className="nx-reply">
+                <input
+                  // biome-ignore lint/a11y/noAutofocus: 직접 답하기를 누른 손이 곧 쓸 자리다.
+                  autoFocus
+                  value={free[q.question] ?? ""}
+                  placeholder={L.cards.askFree}
+                  aria-label={L.cards.askFree}
+                  onChange={(event) =>
+                    setFree((prev) => ({ ...prev, [q.question]: event.target.value }))
+                  }
+                  onKeyDown={(event) => {
+                    if (composing(event)) return;
+                    if (event.key === "Enter" && single) {
+                      event.preventDefault();
+                      const text = (free[q.question] ?? "").trim();
+                      if (text) send({ [q.question]: text }, `free:${q.question}`);
+                    }
+                  }}
+                />
+                {single && (
+                  <button
+                    type="button"
+                    className={`nx-btn nx-btn--sm nx-btn--pri${
+                      pressed === `free:${q.question}` ? " nx-btn--picked" : ""
+                    }`}
+                    disabled={sent || !(free[q.question] ?? "").trim()}
+                    onClick={() =>
+                      send({ [q.question]: (free[q.question] ?? "").trim() }, `free:${q.question}`)
+                    }
+                  >
+                    {L.inbox.send}
+                    {pressed === `free:${q.question}` && (
+                      <i className="nx-spin" aria-hidden="true" />
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
       {!single && (
         <div className="nx-cfoot">
+          {/* 잠긴 이유는 눈에도 한 줄로 서고 `aria-describedby` 로 묶인다. */}
           <button
             type="button"
             className="nx-btn nx-btn--sm nx-btn--pri"
             disabled={!complete || sent}
+            aria-describedby={complete ? undefined : needId}
             onClick={() => send(merged(), "send")}
           >
             {L.inbox.send}
             {pressed === "send" && <i className="nx-spin" aria-hidden="true" />}
           </button>
+          {!complete && (
+            <span id={needId} className="nx-snote">
+              {questions.length === 1 ? L.cards.needOne : L.cards.needAll}
+            </span>
+          )}
+        </div>
+      )}
+      {sendFailed && (
+        <div className="nx-cs nx-tone--red" role="alert">
+          {L.chat.sendFailed}
         </div>
       )}
     </div>
@@ -603,6 +706,7 @@ export function FailCard({
   retry: (() => void) | null;
   live: boolean;
 }) {
+  const whyId = useId();
   return (
     <div className="nx-card nx-card--fail">
       <div className="nx-ch">
@@ -615,10 +719,18 @@ export function FailCard({
       </div>
       {retry && (
         <div className="nx-cfoot">
+          {/* 잠긴 이유를 title 에만 두지 않는다 — 눈에도 한 줄로 서고
+              `aria-describedby` 로 묶인다(2026-10-04 ux-review). */}
+          {live && (
+            <span id={whyId} className="nx-fail-why" role="status">
+              {L.chat.retryLive}
+            </span>
+          )}
           <button
             type="button"
             className="nx-btn nx-btn--sm nx-btn--pri"
             disabled={live}
+            aria-describedby={live ? whyId : undefined}
             title={live ? L.chat.retryLive : undefined}
             onClick={retry}
           >

@@ -1,4 +1,12 @@
-import { type CSSProperties, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import {
+  type ComponentProps,
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type { ChipTarget, Sessions } from "../../hooks/useSessions";
 import { modelName, modelOptions, modelRowOf } from "../../lib/chat-options";
 import type { Daemon } from "../../lib/daemon-client";
@@ -13,6 +21,7 @@ import {
   usageRowName,
   usageRows,
 } from "../lib/usage";
+import { useRoving } from "../lib/use-roving";
 import { Popover } from "../ui/Popover";
 import { CheckIcon, ChevIcon, LockIcon, ProviderMark } from "./icons";
 
@@ -27,13 +36,23 @@ function modelHint(label: string, hint?: string): string | null {
   return hint ? (MODEL_HINTS[hint] ?? null) : null;
 }
 
-/** AI 고르는 줄의 화살표 키 — 한 칸씩 가는 방향. Home · End 는 양 끝으로 간다. */
-const AI_KEY_STEP: Record<string, number> = {
-  ArrowRight: 1,
-  ArrowDown: 1,
-  ArrowLeft: -1,
-  ArrowUp: -1,
-};
+/**
+ * 라디오 군의 칸 하나 — 칸 전체가 누르는 과녁이다. AI · 모델 · 생각 시간 세 군이 같은 부품을
+ * 쓴다(2026-10-06 겹판 조사): 로빙 탭 순서와 화살표 걸음은 `useRoving().item(i)` 가 펼친 props 가
+ * 맡고, 이 부품은 역할과 고른 표시만 정한다.
+ */
+function Radio({
+  checked,
+  children,
+  ...rest
+}: { checked: boolean } & Omit<ComponentProps<"button">, "role" | "type" | "aria-checked">) {
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: 칸 전체가 누르는 과녁이다 — 동그라미 입력칸 없이 radio 로 읽힌다(radiogroup 안).
+    <button type="button" role="radio" aria-checked={checked} {...rest}>
+      {children}
+    </button>
+  );
+}
 
 /**
  * 입력창의 설정 칩 `Opus 5.5 · 보통 ▾` 과 그 팝오버(목업 `modelPop`) —
@@ -70,7 +89,6 @@ export function ModelChip({
   // 팝을 열 때는 0 이라 처음 여는 목록은 움직이지 않는다.
   const [aiSwap, setAiSwap] = useState(0);
   const anchor = useRef<HTMLButtonElement>(null);
-  const aiRadios = useRef<Array<HTMLButtonElement | null>>([]);
   const close = () => {
     setOpen(false);
     setModelQuery("");
@@ -94,27 +112,16 @@ export function ModelChip({
     setModelQuery("");
     setShowAllModels(false);
   };
-  // 라디오 묶음의 화살표 — 고른 자리가 곧 초점이다(초점은 고른 칸에만 서는 로빙 탭 순서).
-  const stepProvider = (from: number, event: KeyboardEvent<HTMLButtonElement>) => {
-    const size = usable.length;
-    const step = AI_KEY_STEP[event.key];
-    const to =
-      step !== undefined
-        ? (from + step + size) % size
-        : event.key === "Home"
-          ? 0
-          : event.key === "End"
-            ? size - 1
-            : -1;
-    const next = usable[to];
-    if (!next) return;
-    event.preventDefault();
-    chooseProvider(next.id);
-    aiRadios.current[to]?.focus();
-    // 모델이 많은 AI 로 돌아오면 거르는 칸이 새로 서며 autoFocus 로 초점을 가져간다 —
-    // 화살표로 훑는 손이 끊기지 않게 그린 뒤 고른 칸으로 되돌려 놓는다.
-    requestAnimationFrame(() => aiRadios.current[to]?.focus());
-  };
+  // 세 줄(AI · 모델 · 생각 시간)은 같은 라디오 군이다 — 군마다 Tab 정지 하나, 안에서는
+  // ← ↑ → ↓ Home End(`useRoving`). AI 는 고른 자리가 곧 초점이라 화살표가 곧 고름이다.
+  const aiRoving = useRoving<HTMLButtonElement>({
+    count: usable.length,
+    selected: pickedAt,
+    onStep: (to) => {
+      const next = usable[to];
+      if (next) chooseProvider(next.id);
+    },
+  });
   const modelRow =
     modelRowOf(target.models, target.model) ??
     (target.model === null
@@ -140,6 +147,21 @@ export function ModelChip({
   const efforts = Object.keys(EFFORT_OF) as EffortWord[];
   const showEffort = modelRow?.supportsEffort !== false;
   const think = effortWord(target.effort);
+  // 모델은 줄을 눌러야 고른다(고르면 팝이 닫힌다) — 훑는 것만으로 바뀌면 안 되니 화살표는 초점만
+  // 옮긴다. 생각 시간은 팝이 닫히지 않는 가벼운 선택이라 AI 처럼 화살표가 곧 고름이다.
+  const listed = visibleModels.filter((row) => shownModels.includes(row));
+  const modelRoving = useRoving<HTMLButtonElement>({
+    count: listed.length,
+    selected: listed.findIndex((row) => row.picked),
+  });
+  const effortRoving = useRoving<HTMLButtonElement>({
+    count: efforts.length,
+    selected: efforts.indexOf(think),
+    onStep: (to) => {
+      const word = efforts[to];
+      if (word) void target.setEffort(EFFORT_OF[word]);
+    },
+  });
   const label = target.loading
     ? L.model.loading
     : target.unknown
@@ -151,13 +173,38 @@ export function ModelChip({
   const plan = daemon.status?.planUsageByProvider?.[provider];
   const reading = usageReading(plan);
   const usage = usageRows(plan);
+  const { api } = daemon;
+  // 2026-10-04 ux-review(2차): 사용량 칸은 팝에서 상시 선다 — 다시 읽기가
+  // 실패하면 조용히 끝내지 않고 그 줄에서 말하고 곁의 다시 시도로 되묻는다.
+  const [planRead, setPlanRead] = useState<"loading" | "ok" | "failed">("loading");
+  // 가장 나중에 시작한 읽기의 끝만 칸에 닿는다 — AI 를 빠르게 바꾸면 앞 읽기가 늦게 끝나도
+  // 읽는 중 표시가 먼저 꺼지지 않는다.
+  const readSeq = useRef(0);
+  const readPlan = useCallback(() => {
+    readSeq.current += 1;
+    const mine = readSeq.current;
+    setPlanRead("loading");
+    api.planRefresh(provider).then(
+      () => mine === readSeq.current && setPlanRead("ok"),
+      () => mine === readSeq.current && setPlanRead("failed"),
+    );
+  }, [api, provider]);
   // 팝이 열려 있는 동안 그 AI 계정의 한도를 한 번 다시 읽는다 — 팝 안에서 AI 를
   // 바꾸면 바뀐 계정을. 한도는 대화가 아니라 계정의 것이라, 다른 곳(터미널 ·
   // 웹)에서 쓴 만큼도 여기서 따라온다. 답은 status 방송으로 돌아온다.
-  const { api } = daemon;
   useEffect(() => {
-    if (open) void api.planRefresh(provider).catch(() => undefined);
-  }, [open, provider, api]);
+    if (open) readPlan();
+  }, [open, readPlan]);
+  // 키보드로 연 팝은 첫 줄이 아니라 고른 칸(각 군에서 Tab 이 닿는 칸)에 초점을 얹는다 —
+  // `Popover` 는 이미 안에 있는 초점은 그대로 둔다. 마우스로 연 팝은 초점을 가져가지 않는다.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const opener = anchor.current;
+    if (!opener?.matches(":focus-visible")) return;
+    opener.parentElement
+      ?.querySelector<HTMLElement>('.nx-model-pop [role="radio"][tabindex="0"]')
+      ?.focus();
+  }, [open]);
   const now = new Date();
 
   return (
@@ -186,7 +233,14 @@ export function ModelChip({
         <ChevIcon />
       </button>
       {open && (
-        <Popover anchor={anchor} onClose={close} align="end" up={up} className="nx-model-pop">
+        <Popover
+          anchor={anchor}
+          onClose={close}
+          align="end"
+          up={up}
+          label={L.model.popLabel}
+          className="nx-model-pop"
+        >
           {usable.length >= 2 &&
             (target.pickProvider ? (
               <>
@@ -200,27 +254,21 @@ export function ModelChip({
                   aria-label={L.model.ai}
                   data-none={pickedAt < 0 ? "" : undefined}
                   style={{ "--n": usable.length, "--i": Math.max(0, pickedAt) } as CSSProperties}
+                  {...aiRoving.group}
                 >
                   {usable.map((p, index) => {
                     const on = provider === p.id;
                     return (
-                      // biome-ignore lint/a11y/useSemanticElements: 알약 전체가 누르는 과녁이다 — 동그라미 입력칸 없이 radio 로 읽힌다(radiogroup 안).
-                      <button
+                      <Radio
                         key={p.id}
-                        ref={(el) => {
-                          aiRadios.current[index] = el;
-                        }}
-                        type="button"
-                        role="radio"
-                        aria-checked={on}
-                        tabIndex={on || (pickedAt < 0 && index === 0) ? 0 : -1}
+                        checked={on}
                         className={`nx-aiopt${on ? " nx-aiopt--on" : ""}`}
+                        {...aiRoving.item(index)}
                         onClick={() => chooseProvider(p.id)}
-                        onKeyDown={(event) => stepProvider(index, event)}
                       >
                         <ProviderMark provider={p.id} />
                         <span className="nx-ainame">{p.label}</span>
-                      </button>
+                      </Radio>
                     );
                   })}
                 </div>
@@ -256,37 +304,59 @@ export function ModelChip({
                   placeholder={L.model.filterPlaceholder}
                   aria-label={L.model.filter}
                   onChange={(event) => setModelQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    // ↓ 는 거른 줄로 건너간다 — 입력칸에서 목록으로 Tab 만으로 닿던 길의 지름길.
+                    if (event.key !== "ArrowDown" || listed.length === 0) return;
+                    event.preventDefault();
+                    modelRoving.focusAt(
+                      Math.max(
+                        0,
+                        listed.findIndex((row) => row.picked),
+                      ),
+                    );
+                  }}
                 />
               )}
-              {/* AI 를 바꾸면 목록이 새로 서며 내려앉는다 — 어디가 바뀌었는지 눈이 따라간다. */}
-              <div key={aiSwap} className={aiSwap > 0 ? "nx-mlist nx-mlist--swap" : "nx-mlist"}>
-                {visibleModels
-                  .filter((row) => shownModels.includes(row))
-                  .map((row) => {
-                    const hint = modelHint(row.label, row.hint);
-                    return (
-                      <button
-                        key={row.value ?? row.label}
-                        type="button"
-                        className="nx-mi"
-                        onClick={() => {
-                          void target.setModel(row.value);
-                          close();
-                        }}
-                      >
-                        <span className="nx-mt">
-                          <b>{/^default\b/i.test(row.label) ? L.model.auto : row.label}</b>
-                          {hint && <small>{hint}</small>}
+              {/* AI 를 바꾸면 목록이 새로 서며 내려앉는다 — 어디가 바뀌었는지 눈이 따라간다.
+                  모델도 같은 라디오 군이다: Tab 정지는 고른 줄 하나, 줄 사이는 화살표(훑기만 하고
+                  고르지는 않는다 — 줄을 눌러야 바뀌고 팝이 닫힌다). */}
+              <div
+                key={aiSwap}
+                role="radiogroup"
+                aria-label={L.model.model}
+                className={aiSwap > 0 ? "nx-mlist nx-mlist--swap" : "nx-mlist"}
+                {...modelRoving.group}
+              >
+                {listed.map((row, index) => {
+                  const hint = modelHint(row.label, row.hint);
+                  return (
+                    <Radio
+                      key={row.value ?? row.label}
+                      checked={row.picked}
+                      className="nx-mi"
+                      {...modelRoving.item(index)}
+                      onClick={() => {
+                        void target.setModel(row.value);
+                        close();
+                      }}
+                    >
+                      <span className="nx-mt">
+                        <b>{/^default\b/i.test(row.label) ? L.model.auto : row.label}</b>
+                        {hint && <small>{hint}</small>}
+                      </span>
+                      {row.picked && (
+                        <span className="nx-ck nx-r">
+                          <CheckIcon />
                         </span>
-                        {row.picked && (
-                          <span className="nx-ck nx-r">
-                            <CheckIcon />
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                {visibleModels.length === 0 && <div className="nx-mempty">{L.model.noMatch}</div>}
+                      )}
+                    </Radio>
+                  );
+                })}
+                {visibleModels.length === 0 && (
+                  <div className="nx-mempty" role="status">
+                    {L.model.noMatch}
+                  </div>
+                )}
               </div>
               {(hiddenModelCount > 0 || showAllModels) && !needle && (
                 <button
@@ -311,23 +381,24 @@ export function ModelChip({
             <>
               {models.length > 0 && <div className="nx-msep" />}
               <div className="nx-mh">{L.model.think}</div>
-              {/* biome-ignore lint/a11y/useSemanticElements: 세 단추의 한 줄(세그먼트) — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다. */}
+              {/* 다섯 칸의 한 줄(세그먼트)도 AI 와 같은 라디오 군이다 — 고른 자리가 곧 초점. */}
               <div
                 className="nx-mseg"
-                role="group"
+                role="radiogroup"
                 aria-label={L.model.think}
                 style={{ "--n": efforts.length, "--i": efforts.indexOf(think) } as CSSProperties}
+                {...effortRoving.group}
               >
-                {efforts.map((word) => (
-                  <button
+                {efforts.map((word, index) => (
+                  <Radio
                     key={word}
-                    type="button"
-                    aria-pressed={think === word}
+                    checked={think === word}
                     className={think === word ? "nx-on" : ""}
+                    {...effortRoving.item(index)}
                     onClick={() => void target.setEffort(EFFORT_OF[word])}
                   >
                     {L.model.efforts[word]}
-                  </button>
+                  </Radio>
                 ))}
               </div>
               <div className="nx-mnote">{L.model.thinkHelp}</div>
@@ -337,10 +408,34 @@ export function ModelChip({
               )}
             </>
           )}
-          {usage.length > 0 && (
-            <>
-              <div className="nx-msep" />
-              <div className="nx-mh">{L.model.usage}</div>
+          {/* 2026-10-04 ux-review(2차): 칸을 상시 열어 둔다 — 「왜 없지」를 칸이
+              대신 대답한다. 창이 읽혔으면 줄들을 세우고, 실패 · 빈 요금제는 한 줄이 선다.
+              실패한 줄 곁에서 다시 시도로 되묻는다.
+              2026-10-06 겹판 조사: 읽는 중에는 바닥에 한 줄을 띄우지 않는다 — 위로 여는 팝은 바닥이
+              고정이라 그 줄이 사라질 때 위의 줄들이 30px 내려앉았다. 머리 오른쪽의 작은 도는
+              표시만 서고(`aria-busy`) 이전에 읽은 줄은 그대로 있다. */}
+          <div className="nx-msep" />
+          {/* biome-ignore lint/a11y/useSemanticElements: 머리 · 줄 · 덧말의 묶음 — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다. */}
+          <div role="group" aria-label={L.model.usage} aria-busy={planRead === "loading"}>
+            <div className="nx-mh nx-mh--row">
+              {L.model.usage}
+              {planRead === "loading" && (
+                <>
+                  <i className="nx-spin nx-mh-spin" aria-hidden="true" />
+                  <span className="nx-sr">{L.model.usageReading}</span>
+                </>
+              )}
+              {planRead === "failed" && (
+                // 실패도 머리 줄 오른쪽에서 말한다 — 바닥에 줄이 새로 서면 위로 여는 팝의 줄들이 올라갔다.
+                <span className="nx-mh-state" role="status">
+                  {L.model.usageFailed}
+                  <button type="button" className="nx-mh-retry" onClick={readPlan}>
+                    {L.vocab.retry}
+                  </button>
+                </span>
+              )}
+            </div>
+            {usage.length > 0 && (
               <div className="nx-usage">
                 {usage.map((row) => {
                   const name = usageRowName(row, L);
@@ -361,8 +456,13 @@ export function ModelChip({
                   );
                 })}
               </div>
-            </>
-          )}
+            )}
+            {planRead === "ok" && usage.length === 0 && (
+              <div className="nx-mnote" role="status">
+                {L.model.usageEmpty}
+              </div>
+            )}
+          </div>
         </Popover>
       )}
     </div>

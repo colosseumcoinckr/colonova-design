@@ -1,102 +1,220 @@
 /* 처음 한 번(U11) · 초대 확인판 — 목업 redesign.html 「처음 한 번」 · 「겹」 칸의
-   nx- 옮김. 토큰은 .nx 뿌리의 것을 쓴다. */
+   nx- 옮김. 토큰은 .nx 뿌리의 것을 쓴다.
+
+   2026-10-06 온보딩 손질: 머리는 진행 링, 카드는 위계(지난 항목은 한 줄로 가라앉고 · 지금 손이
+   갈 항목은 서고 · 나머지는 평평히 기다린다), 놓는 자리는 크게. 색은 팔레트 토큰만 쓴다 — 여섯
+   테마가 모두 같은 결로 읽힌다. */
 
 /* ── 체크리스트 한 장 ── */
 /* 창 전체를 쓰는 뿌리 — `.nx` 의 작업 틀 격자(264px 사이드바 칸)를 풀지 않으면
-   몸통이 첫 칸에 끼인다. */
-.nx-ob {
+   몸통이 첫 칸에 끼인다. 머리 위의 은은한 번짐은 팔레트의 포인트 색을 섞어 어느 테마에서도 같은
+   결로 앉는다(`--ob-glow` 로 테마마다 세기를 고른다). `.nx` 의 바탕(var(--bg))과 겹치므로
+   `.nx.nx-ob` 로 한 단계 올려, 읽히는 순서에 기대지 않는다. */
+.nx.nx-ob {
+  --ob-glow: 11%;
   position: absolute;
   inset: 0;
   display: block;
-  background: var(--bg);
+  background:
+    radial-gradient(
+      70% 46% at 50% -6%,
+      color-mix(in srgb, var(--accent) var(--ob-glow), transparent),
+      transparent 72%
+    ),
+    var(--bg);
   overflow: auto;
 }
 
 .nx-ob-inner {
-  max-width: 560px;
+  max-width: 580px;
   margin: 0 auto;
-  padding: 64px 24px 50px;
+  padding: clamp(20px, 6vh, 72px) 24px 40px;
 }
 
-.nx-ob-logo {
-  display: flex;
-  justify-content: center;
-  color: var(--accent);
+/* ── 머리 — 진행 링 · 제목 ── */
+.nx-ob-hero {
+  display: grid;
+  justify-items: center;
+  margin-bottom: 22px;
+}
+
+/* 링 — 조각 셋이 도구 · AI · 초대의 통과를 말한다(Hero.tsx). 앱을 켰을 때 이미 지난 조각은
+   처음부터 `--on` 이라 전환이 없고, 이번에 지난 조각만 선이 그려지듯 찬다. */
+.nx-ring {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  animation: nx-ob-ring-in 0.5s var(--drift) backwards;
+}
+
+@keyframes nx-ob-ring-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+.nx-ring-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  transition: filter 0.5s var(--drift);
+}
+
+/* 굵기는 Hero.tsx 가 속성(strokeWidth)으로 건넨다 — 기하와 한 곳에서 맞는다. */
+.nx-ring-track,
+.nx-ring-fill {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.nx-ring-track {
+  stroke: var(--line2);
+  transition: stroke 0.4s var(--drift);
+}
+
+/* 지금 손이 갈 조각 — 숨 쉰다. 끝 모양(100%)이 쉬는 모습이라 움직임을 끈 창은 이 모양으로 선다. */
+.nx-ring-track--now {
+  stroke: color-mix(in srgb, var(--accent) 55%, var(--line2));
+  animation: nx-ring-now 2.6s ease-in-out infinite;
+}
+
+@keyframes nx-ring-now {
+  0%,
+  100% {
+    stroke: color-mix(in srgb, var(--accent) 55%, var(--line2));
+  }
+
+  50% {
+    stroke: var(--accent);
+  }
+}
+
+/* 찬 조각 — `pathLength=100` 이라 대시는 한 바퀴의 백분율이다(`--ring-dash` 는 Hero.tsx 가 건넨다).
+   굵기 0 에 가까운 대시는 둥근 끝이 점으로 남으므로 꺼진 동안은 투명하다. */
+.nx-ring-fill {
+  stroke: var(--green);
+  stroke-dasharray: 0.01 100;
+  opacity: 0;
+  transition:
+    stroke-dasharray 0.7s var(--drift),
+    opacity 0.2s;
+}
+
+.nx-ring-fill--on {
+  stroke-dasharray: var(--ring-dash) calc(100 - var(--ring-dash));
+  opacity: 1;
+}
+
+.nx-ring-logo {
+  position: absolute;
+  inset: 13px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--card);
+  box-shadow:
+    var(--shadow-card),
+    inset 0 0 0 1px var(--line);
+}
+
+.nx-ring-logo img {
+  display: block;
+}
+
+/* 끝 — 조각이 모두 차고 로고에 체크가 앉는다. */
+.nx-ring--done .nx-ring-svg {
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--green) 45%, transparent));
+}
+
+.nx-ring-seal {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--green);
+  color: var(--bg);
+  box-shadow: 0 0 0 3px var(--bg);
+  animation: nx-ok-pop 0.4s var(--spring) backwards;
 }
 
 .nx-ob-title {
   font-family: var(--serif);
   font-weight: 400;
-  font-size: 32px;
+  font-size: 34px;
+  line-height: 1.2;
+  letter-spacing: -0.012em;
   text-align: center;
-  margin: 14px 0 8px;
+  margin: 18px 0 8px;
+  animation: nx-ob-rise 0.4s var(--drift) 80ms backwards;
 }
 
 .nx-ob-sub {
   text-align: center;
   color: var(--ink2);
-  margin: 0 0 30px;
+  margin: 0;
   line-height: 1.6;
   white-space: pre-line;
+  animation: nx-ob-rise 0.4s var(--drift) 140ms backwards;
 }
 
+/* `프로젝트가 없어요` — 링 아래에 놓는 자리 한 장만 선다. */
 .nx-ob--empty .nx-ob-inner {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: min(18vh, 160px);
+  max-width: 500px;
+  padding-top: clamp(32px, 14vh, 140px);
 }
 
-.nx-ob--empty .nx-ob-sub {
-  margin-bottom: 22px;
+.nx-ob-solo {
+  padding: 14px 16px 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  animation: nx-ob-rise 0.4s var(--drift) 200ms backwards;
 }
 
-.nx-empty-projects-progress {
-  color: var(--ink2);
-  font-size: 13px;
-}
-
+/* ── 카드 ── */
 .nx-ob-steps {
   list-style: none;
   margin: 0;
   padding: 0;
-}
-
-.nx-ob-step {
   display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 12px;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--card);
-  margin-bottom: 10px;
-  transition:
-    opacity 0.3s,
-    border-color 0.3s;
+  gap: 8px;
 }
 
-.nx-ob-step--wait {
-  opacity: 0.5;
-}
-
-.nx-ob-step--act {
-  border-color: var(--accent-line);
-  box-shadow: 0 4px 18px rgba(198, 97, 63, 0.08);
-}
-
-/* 첫 그림의 세 카드 — 60ms 간격으로 올라온다. nx-rise 는 가운데 정렬 팝오버의
-   것이라 가로 이동이 섞이므로, 카드용으로 세로만 오르는 걸음을 새로 두었다. */
+/* 세 카드는 60ms 간격으로 올라온다. nx-rise 는 가운데 정렬 팝오버의 것이라 가로 이동이
+   섞이므로, 카드용으로 세로만 오르는 걸음을 새로 두었다. */
 .nx-ob-step {
-  animation: nx-ob-rise 0.32s var(--drift) both;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--card);
+  transition:
+    border-color 0.3s var(--drift),
+    box-shadow 0.3s var(--drift),
+    background-color 0.3s var(--drift),
+    opacity 0.3s;
+  animation: nx-ob-rise 0.4s var(--drift) backwards;
+}
+
+.nx-ob-step:nth-child(1) {
+  animation-delay: 160ms;
 }
 
 .nx-ob-step:nth-child(2) {
-  animation-delay: 60ms;
+  animation-delay: 220ms;
 }
 
 .nx-ob-step:nth-child(3) {
-  animation-delay: 120ms;
+  animation-delay: 280ms;
 }
 
 @keyframes nx-ob-rise {
@@ -106,51 +224,556 @@
   }
 }
 
-/* 이번에 통과한 항목 — 체크가 그려지고 초록 원이 한 번 튄다. 이미 통과한 채
-   켜진 창의 카드는 nx-ob-step--passed 를 입지 않으므로 다시 튀지 않는다. */
-.nx-ob-step--passed {
-  animation: nx-ob-passed 900ms var(--drift);
+/* 이번에 통과한 항목 — 선이 한 번 초록으로 번쩍이고 타일의 체크가 그려지며 초록 원이 한 번
+   튄다. 이미 통과한 채 켜진 창의 카드는 nx-ob-step--passed 를 입지 않으므로 다시 튀지 않는다.
+   번쩍임은 카드가 아니라 겹친 선(::after)이 맡는다 — 카드의 `animation` 이름이 등장(nx-ob-rise)과
+   번쩍임 사이에서 바뀌면, 클래스가 벗겨질 때 끝난 등장이 처음부터 다시 돈다. */
+.nx-ob-step--passed::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border: 1px solid var(--ok);
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  animation: nx-ob-passed 900ms var(--drift) backwards;
 }
 
 @keyframes nx-ob-passed {
   0%,
   60% {
-    border-color: var(--ok);
+    opacity: 1;
   }
-}
 
-.nx-ob-step--passed .nx-sic--ok {
-  animation: nx-ok-pop 300ms var(--spring);
+  100% {
+    opacity: 0;
+  }
 }
 
 @keyframes nx-ok-pop {
   0% {
     transform: scale(0.6);
   }
+
   70% {
     transform: scale(1.1);
   }
+
   100% {
     transform: scale(1);
   }
 }
 
-/* lucide 체크의 선 — 통과의 순간에만 그려진다(dasharray 24 는 14px 체크의 선 길이). */
-.nx-ob-step--passed .nx-sic--ok svg path {
-  stroke-dasharray: 24;
-  animation: nx-check-draw 300ms var(--drift) both;
-}
-
+/* lucide 체크의 선 — 통과의 순간에만 그려진다(dasharray 24 는 16px 체크의 선 길이). */
 @keyframes nx-check-draw {
   from {
     stroke-dashoffset: 24;
   }
+
   to {
     stroke-dashoffset: 0;
   }
 }
 
-/* 상태 동그라미 — ok(체크) · run(돌기) · act(점) · wait(허선). */
+.nx-ob-hd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+}
+
+/* 타일 — 항목의 그림이 앉고, 통과하면 체크로 바뀐다. */
+.nx-ob-tile {
+  position: relative;
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--nx-hover);
+  color: var(--ink2);
+  transition:
+    background-color 0.3s var(--drift),
+    color 0.3s var(--drift);
+}
+
+.nx-ob-tile .nx-spin {
+  width: 16px;
+  height: 16px;
+  border-width: 2px;
+}
+
+.nx-ob-step--passed .nx-ob-tile {
+  animation: nx-ok-pop 300ms var(--spring);
+}
+
+.nx-ob-step--passed .nx-ob-tile svg path {
+  stroke-dasharray: 24;
+  animation: nx-check-draw 300ms var(--drift) backwards;
+}
+
+.nx-ob-name {
+  min-width: 0;
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+/* 상태 알약 — 지금 어떤 상태인지 색과 글로 함께 말한다. */
+.nx-ob-r {
+  margin-left: auto;
+  max-width: 58%;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: var(--nx-hover);
+  color: var(--ink2);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    background-color 0.3s var(--drift),
+    color 0.3s var(--drift);
+}
+
+/* 지난 항목 — 한 줄로 가라앉는다. */
+.nx-ob-step[data-state="ok"] {
+  background: color-mix(in srgb, var(--card) 45%, transparent);
+}
+
+.nx-ob-step[data-state="ok"] .nx-ob-tile,
+.nx-ob-step[data-state="ok"] .nx-ob-r {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.nx-ob-step[data-state="ok"] .nx-ob-name {
+  color: var(--ink2);
+}
+
+/* 지금 손이 갈 항목 — 하나만 선다. 서 있는 카드만 강한 단추(검은 단추)를 갖는다. */
+.nx-ob-step[data-current] {
+  border-color: var(--accent-line);
+  box-shadow:
+    var(--shadow-card),
+    0 10px 32px -14px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.nx-ob-step[data-current] .nx-ob-tile,
+.nx-ob-step[data-current] .nx-ob-r {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 정말 기다리는 칸 — 눌러 볼 것이 없다. 갈림길이 있는 칸은 흐리지 않는다. */
+.nx-ob-step[data-state="wait"] {
+  opacity: 0.55;
+}
+
+.nx-ob-step[data-state="wait"] .nx-ob-tile {
+  background: transparent;
+  border: 1.5px dashed var(--line2);
+}
+
+/* 막힌 칸 — 서 있는 카드(data-current)보다 뒤에 와서 붉은 결로 덮는다. */
+.nx-ob-step[data-state="fail"] {
+  border-color: color-mix(in srgb, var(--red) 42%, var(--line));
+  box-shadow:
+    var(--shadow-card),
+    0 10px 32px -14px color-mix(in srgb, var(--red) 34%, transparent);
+}
+
+.nx-ob-step[data-state="fail"] .nx-ob-tile,
+.nx-ob-step[data-state="fail"] .nx-ob-r {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+/* 사용자가 브라우저에서 할 일을 기다리는 타일 — 도는 대신 두 겹의 물결이 퍼진다.
+   끝 모양(투명)이 쉬는 모습이라 움직임을 끈 창은 물결 없이 선다. */
+.nx-ob-tile--pulse::before,
+.nx-ob-tile--pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 1.5px solid var(--accent);
+  opacity: 0;
+  animation: nx-ripple 2.4s var(--drift) infinite;
+}
+
+.nx-ob-tile--pulse::after {
+  animation-delay: 1.2s;
+}
+
+@keyframes nx-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+
+  100% {
+    transform: scale(1.75);
+    opacity: 0;
+  }
+}
+
+/* 서 있지 않은 카드의 강한 단추는 보통 단추로 물러난다 — 화면에 검은 단추는 하나. */
+.nx-ob-step:not([data-current]) .nx-btn--pri {
+  background: var(--card);
+  border-color: var(--line2);
+  color: var(--ink);
+}
+
+.nx-ob-step:not([data-current]) .nx-btn--pri:hover {
+  background: var(--bg-2);
+}
+
+/* ── 몸통 ── */
+.nx-ob-d {
+  color: var(--ink2);
+  font-size: 13px;
+  margin: 10px 0 0;
+  line-height: 1.55;
+}
+
+.nx-ob-d--red {
+  color: var(--red);
+}
+
+.nx-ob-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.nx-ob-acts .nx-btn {
+  height: 34px;
+  padding: 0 16px;
+  font-size: 13.5px;
+}
+
+/* 설치의 세 칸 막대 — 내려받기 · 설치 · 확인. 지난 칸은 차고, 지금 칸은 흐른다. */
+.nx-phase {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.nx-phase-s {
+  position: relative;
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--panel-3);
+  overflow: hidden;
+  transition: background-color 0.3s var(--drift);
+}
+
+.nx-phase-s--ok {
+  background: var(--accent);
+}
+
+.nx-phase-s--run {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel-3));
+}
+
+.nx-phase-s--run::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40%;
+  border-radius: 3px;
+  background: var(--accent);
+  animation: nx-bar-run 1.4s ease-in-out infinite;
+}
+
+@keyframes nx-bar-run {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+.nx-ob-log {
+  font-size: 12.5px;
+  color: var(--ink3);
+  margin-top: 8px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 접는 안내 — `브라우저가 열리지 않았나요?` · `초대 파일이 아직 없나요?`. */
+.nx-ob-help {
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: var(--ink2);
+}
+
+.nx-ob-help > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: -2px;
+  padding: 4px 8px 4px 2px;
+  border-radius: var(--r-sm);
+  color: var(--ink3);
+  cursor: pointer;
+  list-style: none;
+}
+
+.nx-ob-help > summary::-webkit-details-marker {
+  display: none;
+}
+
+.nx-ob-help > summary:hover {
+  color: var(--ink);
+}
+
+.nx-ob-help > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.nx-ob-caret {
+  display: grid;
+  transition: transform var(--nx-t-move) var(--drift);
+}
+
+.nx-ob-more[aria-expanded="true"] .nx-ob-caret,
+.nx-ob-help[open] > summary .nx-ob-caret {
+  transform: rotate(90deg);
+}
+
+.nx-ob-help-b {
+  padding-top: 2px;
+}
+
+.nx-ob-help-b .nx-ob-d {
+  margin-top: 4px;
+}
+
+.nx-ob-help .nx-row {
+  display: flex;
+  gap: 6px;
+}
+
+.nx-ob-help input {
+  flex: 1;
+  height: 32px;
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 0 10px;
+  outline: 0;
+  background: var(--bg);
+  min-width: 0;
+}
+
+/* 복사하거나 붙여 넣는 한 줄 — 안 쪽 우물처럼 한 톤 들어가 있다. 눌러 고르면 통째로 잡힌다. */
+.nx-codebox {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0;
+  color: var(--ink2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: all;
+}
+
+/* 사람이 읽을 문장(IT 담당자 · 개발자에게 보낼) — 줄을 바꾸고 긴 주소도 접는다. */
+.nx-codebox--ask {
+  margin: 10px 0 0;
+  font-family: var(--font);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+/* 초대 파일 놓는 자리 — 셋째 항목 안, 그리고 `프로젝트가 없어요`. 안 쪽 우물에 점선이 서고,
+   파일이 창에 들어오면(--armed) 숨 쉬고, 칸 위에 오면(--over) 실선으로 선다. */
+.nx-drop {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 18px 16px 16px;
+  border: 1.5px dashed var(--line2);
+  border-radius: 14px;
+  background: var(--bg);
+  text-align: center;
+  /* 2026-10-04 ux-review: all 대신 실제 바뀌는 속성만. */
+  transition:
+    border-color 0.2s var(--drift),
+    background-color 0.2s var(--drift),
+    box-shadow 0.2s var(--drift);
+}
+
+.nx-drop-ic {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-bottom: 6px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  transition:
+    transform 0.25s var(--spring),
+    background-color 0.2s var(--drift),
+    color 0.2s var(--drift);
+}
+
+.nx-drop-t {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.nx-drop-s {
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink3);
+}
+
+/* 단추 줄 — `파일 고르기` 와, 파일을 못 구한 사람의 길(`초대 파일이 아직 없나요?`)이 나란히 선다. */
+.nx-drop-acts {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.nx-drop .nx-btn {
+  height: 34px;
+  padding: 0 16px;
+  font-size: 13.5px;
+}
+
+.nx-drop .nx-ob-more {
+  gap: 4px;
+  padding: 0 12px 0 8px;
+  color: var(--ink2);
+}
+
+/* 펼친 요청 문장 — 놓는 칸 아래에 선다. */
+.nx-ob-ask {
+  padding-top: 4px;
+}
+
+.nx-drop--armed {
+  border-color: var(--accent-line);
+  animation: nx-drop-armed 1.6s ease-in-out infinite;
+}
+
+@keyframes nx-drop-armed {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+}
+
+.nx-drop--over {
+  border-style: solid;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent);
+  animation: none;
+}
+
+.nx-drop--over .nx-drop-ic {
+  transform: translateY(-3px) scale(1.08);
+  background: var(--accent);
+  color: var(--bg);
+}
+
+/* 여는 중의 놓는 칸 — 칸이 사라지지 않고 같은 자리에서 기다린다. */
+.nx-drop--busy {
+  gap: 8px;
+  padding: 34px 16px;
+  border-style: solid;
+  color: var(--ink3);
+}
+
+.nx-drop--busy .nx-spin {
+  width: 18px;
+  height: 18px;
+  border-width: 2px;
+}
+
+.nx-ob-done {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.nx-ob-warn {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--ink3);
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.nx-ob-warn .nx-i {
+  margin-top: 1px;
+}
+
+/* Codex 의 선택 줄 — 카드가 아니라 곁줄이다. */
+.nx-ob-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  font-size: 13px;
+  color: var(--ink2);
+  animation: nx-ob-rise 0.4s var(--drift) 340ms backwards;
+}
+
+.nx-ob-opt .nx-grow small {
+  display: block;
+  color: var(--ink3);
+  font-size: 12px;
+}
+
+.nx-ob-opt .nx-i {
+  color: var(--green);
+}
+
+/* 상태 동그라미 — ok(체크) · run(돌기) · act(점) · wait(허선). 처음 한 번의 카드는 타일로
+   옮겨 갔고, 지금은 미리보기의 준비 화면(PrepareCard)이 쓴다. */
 .nx-sic {
   width: 20px;
   height: 20px;
@@ -186,196 +809,138 @@
   border: 1.5px dashed var(--line2);
 }
 
-.nx-ob-t {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 600;
+/* 테마마다 번짐의 세기 — 포인트 색이 검정인 팔레트는 번짐이 때처럼 보여 거의 끈다. */
+html[data-theme="codex"] .nx.nx-ob {
+  --ob-glow: 3%;
 }
 
-.nx-ob-r {
-  margin-left: auto;
-  font-weight: 400;
-  font-size: 12.5px;
-  color: var(--ink3);
-  text-align: right;
-}
-
-.nx-ob-d {
-  color: var(--ink2);
-  font-size: 13px;
-  margin: 8px 0 0;
-  line-height: 1.55;
-}
-
-.nx-ob-d--red {
-  color: var(--red);
-}
-
-/* 정해진 끝이 없는 진행 막대 — 설치의 퍼센트를 데몬이 말하지 않는다. */
-.nx-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--panel-3);
-  overflow: hidden;
-  margin-top: 10px;
-}
-
-.nx-bar > i {
-  display: block;
-  height: 100%;
-  width: 40%;
-  border-radius: 3px;
-  background: var(--accent);
-  animation: nx-bar-run 1.4s ease-in-out infinite;
-}
-
-@keyframes nx-bar-run {
-  0% {
-    transform: translateX(-110%);
+/* ── 창이 낮거나 좁을 때 ── */
+/* 낮은 창 — 머리가 작아지고, 놓는 칸은 가운데 모은 한 장에서 왼쪽 정렬의 짧은 칸(그림 · 글 · 단추)으로
+   구조가 바뀐다. 그냥 줄이면 세 번째 카드가 첫 화면 밖으로 밀려 나간다. */
+@media (max-height: 860px) {
+  .nx-ob-inner {
+    padding-top: clamp(20px, 5vh, 40px);
   }
 
-  100% {
-    transform: translateX(260%);
+  .nx-ob-hero {
+    margin-bottom: 18px;
+  }
+
+  .nx-ring {
+    width: 76px;
+    height: 76px;
+  }
+
+  .nx-ring-logo {
+    inset: 11px;
+  }
+
+  .nx-ring-logo img {
+    width: 26px;
+    height: 26px;
+  }
+
+  .nx-ring-seal {
+    right: 2px;
+    bottom: 2px;
+    width: 22px;
+    height: 22px;
+  }
+
+  .nx-ob-title {
+    font-size: 30px;
+    margin-top: 14px;
+  }
+
+  .nx-drop:not(.nx-drop--busy) {
+    grid-template-columns: auto 1fr;
+    grid-template-areas:
+      "ic t"
+      "ic s"
+      "ic acts";
+    align-items: center;
+    justify-items: start;
+    column-gap: 14px;
+    padding: 14px 16px;
+    text-align: left;
+  }
+
+  .nx-drop:not(.nx-drop--busy) .nx-drop-ic {
+    grid-area: ic;
+    margin: 0;
+  }
+
+  .nx-drop:not(.nx-drop--busy) .nx-drop-t {
+    grid-area: t;
+  }
+
+  .nx-drop:not(.nx-drop--busy) .nx-drop-s {
+    grid-area: s;
+  }
+
+  .nx-drop:not(.nx-drop--busy) .nx-drop-acts {
+    grid-area: acts;
+    justify-content: flex-start;
+    margin-top: 10px;
+  }
+
+  .nx-drop--busy {
+    padding: 22px 16px;
   }
 }
 
-.nx-ob-log {
-  font-size: 12px;
-  color: var(--ink3);
-  margin-top: 8px;
-  font-variant-numeric: tabular-nums;
+@media (max-height: 700px) {
+  .nx-ob-sub {
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .nx-ob-hero {
+    margin-bottom: 14px;
+  }
 }
 
-.nx-ob-acts {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
+/* 높은 창 — 남는 자리를 머리가 쓴다. 링이 커지고 제목이 한 단 올라선다. */
+@media (min-height: 940px) {
+  .nx-ring {
+    width: 104px;
+    height: 104px;
+  }
+
+  .nx-ring-logo {
+    inset: 16px;
+  }
+
+  .nx-ring-logo img {
+    width: 34px;
+    height: 34px;
+  }
+
+  .nx-ring-seal {
+    right: 6px;
+    bottom: 6px;
+    width: 26px;
+    height: 26px;
+  }
+
+  .nx-ob-title {
+    font-size: 36px;
+    margin-top: 22px;
+  }
+
+  .nx-ob-hero {
+    margin-bottom: 28px;
+  }
 }
 
-.nx-ob-fold {
-  margin-top: 10px;
-  font-size: 12.5px;
-  color: var(--ink2);
-}
+@media (max-width: 640px) {
+  .nx-ob-inner {
+    padding-inline: 16px;
+  }
 
-.nx-ob-fold summary {
-  cursor: pointer;
-  color: var(--ink3);
-}
-
-.nx-ob-fold p {
-  margin: 6px 0 0;
-}
-
-.nx-codebox {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 12px;
-  background: var(--panel);
-  border-radius: 8px;
-  padding: 8px 10px;
-  margin: 8px 0;
-  color: var(--ink2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.nx-codebox--wrap {
-  white-space: normal;
-  font-family: var(--font);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.nx-ob-fold .nx-row {
-  display: flex;
-  gap: 6px;
-}
-
-.nx-ob-fold input {
-  flex: 1;
-  height: 32px;
-  border: 1px solid var(--line2);
-  border-radius: 8px;
-  padding: 0 10px;
-  outline: 0;
-  background: var(--card);
-  min-width: 0;
-}
-
-/* 초대 파일 놓는 자리 — 셋째 항목 안. */
-.nx-drop {
-  border: 1.5px dashed var(--line2);
-  border-radius: 12px;
-  padding: 22px 16px;
-  text-align: center;
-  color: var(--ink2);
-  margin-top: 12px;
-  transition: all 0.15s;
-  font-size: 13px;
-  line-height: 1.7;
-}
-
-.nx-drop .nx-i {
-  display: block;
-  margin: 0 auto 6px;
-  color: var(--ink3);
-}
-
-.nx-drop--over {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.nx-drop .nx-btn {
-  margin-top: 8px;
-}
-
-.nx-ob-done {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: var(--green-soft);
-  color: var(--green);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.nx-ob-warn {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--ink3);
-  display: flex;
-  gap: 6px;
-  align-items: flex-start;
-}
-
-.nx-ob-warn .nx-i {
-  margin-top: 1px;
-}
-
-/* Codex 의 선택 줄. */
-.nx-ob-opt {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 18px;
-  padding: 12px 16px;
-  border-radius: 12px;
-  border: 1px dashed var(--line2);
-  font-size: 13px;
-  color: var(--ink2);
-}
-
-.nx-ob-opt .nx-grow small {
-  display: block;
-  color: var(--ink3);
-  font-size: 12px;
-}
-
-.nx-ob-opt .nx-i {
-  color: var(--green);
+  .nx-ob-r {
+    max-width: 46%;
+  }
 }
 
 /* ── 초대 확인판(겹) ── */
@@ -393,40 +958,24 @@
   background: transparent;
   /* fixed 는 z-index 가 없어도 자기 쌓임 맥락이 된다 — 숙주 안의 스크림(70)이 사이드바(5)
      밑에 깔려 사이드바가 어두워지지도 막히지도 않았다. 숙주 자체를 위로 올린다. */
-  z-index: 70;
+  z-index: var(--nx-z-modal);
 }
 
 .nx.nx-modal-host .nx-modal-back {
   pointer-events: auto;
 }
 
+/* 스크림 · 판의 옷(그림자 · 반경 · 들어옴/나감)은 ui/overlay.css 가 정한다 — 여기는 배치만. */
 .nx-modal-back {
-  position: fixed;
-  inset: 0;
-  background: var(--scrim);
   display: grid;
   place-items: center;
-  animation: nx-fade 0.15s;
-  z-index: 70;
-}
-
-/* 닫히는 동안의 확인판 — 열림의 거꾸로. 닫는 중 상태가 끝나면 판이 언마운트된다. */
-.nx-modal-back--out {
-  animation: nx-fade 0.12s reverse both;
-}
-
-.nx-modal-back--out .nx-modal {
-  animation: nx-pop 0.12s reverse both;
 }
 
 .nx-modal {
   background: var(--card);
-  border-radius: 16px;
-  box-shadow: var(--pop);
   width: min(620px, calc(100% - 40px));
   max-height: calc(100% - 60px);
   overflow: auto;
-  animation: nx-pop 0.15s;
 }
 
 .nx-mhd {
@@ -452,90 +1001,7 @@
   padding: 0 22px 20px;
 }
 
-.nx-inv-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  margin: 6px 0 4px;
-  line-height: 1.5;
-}
-
-.nx-snote {
-  font-size: 12px;
-  color: var(--ink3);
-  line-height: 1.5;
-  margin: 4px 0 0;
-}
-
-.nx-inv-h {
-  font-size: 12px;
-  color: var(--ink3);
-  font-weight: 500;
-  margin-top: 12px;
-}
-
-.nx-inv-list {
-  display: grid;
-  gap: 8px;
-  margin: 6px 0 14px;
-}
-
-.nx-inv-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 12px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  font-size: 13px;
-}
-
-.nx-inv-row--new {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
-}
-
-.nx-inv-row .nx-grow {
-  min-width: 0;
-}
-
-.nx-inv-row b {
-  font-weight: 600;
-}
-
-.nx-inv-row small {
-  display: block;
-  font-size: 12px;
-  color: var(--ink3);
-  margin-top: 1px;
-}
-
-.nx-inv-warn {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  font-size: 12.5px;
-  color: var(--ink2);
-  background: var(--panel);
-  border-radius: 10px;
-  padding: 10px 12px;
-  margin-top: 14px;
-  line-height: 1.5;
-}
-
-.nx-inv-warn .nx-grow {
-  min-width: 0;
-}
-
-.nx-inv-warn .nx-btn {
-  flex: none;
-}
-
-.nx-inv-warn .nx-i {
-  margin-top: 2px;
-  color: var(--ink3);
-}
+/* 확인판의 안쪽(행 · 칩 · 결과 · 파일 정리)은 invite.css — 2026-10-06 겹판 손질에서 옮겼다. */
 
 .nx-mfoot {
   display: flex;
@@ -544,31 +1010,8 @@
   margin-top: 14px;
 }
 
-.nx-inv-author {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 12px;
-}
-
-.nx-inv-author label {
-  font-size: 12.5px;
-  color: var(--ink2);
-  flex: none;
-}
-
-.nx-inv-author input {
-  flex: 1;
-  height: 32px;
-  border: 1px solid var(--line2);
-  border-radius: 8px;
-  padding: 0 10px;
-  outline: 0;
-  min-width: 0;
-}
-
 /* 입력칸의 초점 고리 — 키보드로 닿을 때만 테두리와 겉 띠가 선다. */
-.nx-ob-fold input:focus-visible,
+.nx-ob-help input:focus-visible,
 .nx-inv-author input:focus-visible {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -579,52 +1022,49 @@
   animation: nx-fade 0.15s;
 }
 
-/* 끌어온 동안의 놓는 칸 — 점선이 실선으로 서고 그림이 2px 떠오른다. */
-.nx-drop .nx-i {
-  transition: transform 0.15s;
-}
-
-.nx-drop--over {
-  border-style: solid;
-}
-
-.nx-drop--over .nx-i {
-  transform: translateY(-2px);
-}
-
-/* 여는 중의 놓는 칸 — 칸이 사라지지 않고 같은 자리에서 기다린다. */
-.nx-drop--busy {
-  display: grid;
-  justify-items: center;
-  gap: 6px;
-  color: var(--ink3);
-}
-
-.nx-drop--busy .nx-i {
-  color: var(--accent);
-}
-
+/* 움직임을 끈 창 — 숨 쉬고 퍼지고 흐르는 것은 모두 쉬는 모습(끝 모양)으로 선다. 줄이는 일의
+   뿌리는 next.css 의 전역 규칙이고, 여기는 그 규칙이 못 닿는 곳(의사 요소 · 끝 모양이 어긋나는 것)만. */
 @media (prefers-reduced-motion: reduce) {
   .nx-inst-word {
     animation: none;
   }
 
-  .nx-drop .nx-i {
-    transition: none;
-  }
-
-  .nx-drop--over .nx-i {
-    transform: none;
-  }
-
+  .nx-ring,
+  .nx-ring-seal,
+  .nx-ob-title,
+  .nx-ob-sub,
+  .nx-ob-solo,
+  .nx-ob-opt,
   .nx-ob-step,
-  .nx-ob-step--passed,
-  .nx-ob-step--passed .nx-sic--ok,
-  .nx-ob-step--passed .nx-sic--ok svg path {
+  .nx-ob-step--passed::after,
+  .nx-ob-step--passed .nx-ob-tile,
+  .nx-ob-step--passed .nx-ob-tile svg path,
+  .nx-ring-track--now,
+  .nx-ob-tile--pulse::before,
+  .nx-ob-tile--pulse::after,
+  .nx-drop--armed {
     animation: none;
   }
 
+  /* 흐르는 칸은 흐르지 않고 반쯤 찬 모양으로 선다. */
+  .nx-phase-s--run::after {
+    animation: none;
+    width: 50%;
+  }
+
+  .nx-ring-svg,
+  .nx-ring-track,
+  .nx-ring-fill,
+  .nx-drop-ic,
   .nx-ob-foldaway {
+    transition: none;
+  }
+
+  .nx-drop--over .nx-drop-ic {
+    transform: none;
+  }
+
+  .nx-ob-caret {
     transition: none;
   }
 
@@ -660,9 +1100,13 @@
   grid-template-rows: 0fr;
 }
 
+/* 안쪽에 3px 의 숨 쉴 자리 — 접힌 칸 안 단추의 초점 고리가 `overflow: hidden` 에 잘리지 않게. 같은 만큼
+   음의 여백으로 되돌려 접힌 높이는 0 이다. */
 .nx-ob-foldaway-i {
   overflow: hidden;
   min-height: 0;
+  margin: -3px;
+  padding: 3px;
 }
 
 /* 진행기가 아는 만큼만 채우는 막대 — 확인판의 가져오기 진행. */
@@ -683,8 +1127,9 @@
 }
 
 /* 첫 실행의 끝 — 제목이 바뀌고 체크리스트가 흐려져 사라지는 동안, 아래에서
-   작업 틀이 페이드로 들어온다. 판은 스스로 누르지 않는다. */
-.nx-ob--done {
+   작업 틀이 페이드로 들어온다. 판은 스스로 누르지 않는다. 뿌리 `.nx.nx-ob` 의 바탕(번짐 + var(--bg))을
+   이기려고 같은 두 클래스로 쓴다. */
+.nx.nx-ob--done {
   background: transparent;
   pointer-events: none;
   z-index: 6;

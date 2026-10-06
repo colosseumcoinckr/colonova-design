@@ -41,6 +41,8 @@ export const RING_LIMIT = 20;
 export const DEDUPE_MS = 2_000;
 /** 마운트 뒤 미러를 비우기까지 — 층 2 의 즉시 사고가 기록을 남길 여유. */
 export const MIRROR_CLEAR_MS = 10_000;
+/** 같은 문제가 계속 생기는 중이라 보는 창 — 직전 사고가 이만큼 안에 있으면 되풀이다. */
+export const REPEAT_WINDOW_MS = 60_000;
 
 /**
  * 양성 접두 — 브라우저가 이유 없이 반복해서 흘리는 소음. 링에만 남고
@@ -55,6 +57,12 @@ const BENIGN_PREFIXES = [
 export interface CrashStore {
   publish(input: CrashInput): void;
   latest(): CrashReport | null;
+  /**
+   * 저장소가 태어난 순간 미러에 있던 사고 — 직전 실행이 마운트 뒤 10초를 못 살고 사고로 끝났다면
+   * 그 기록이다(살아남은 실행은 미러를 비운다). 이번 실행의 새 사고가 미러를 덮어쓰기 전에 찍어
+   * 두므로 `isRepeatCrash` 가 되풀이를 알아볼 수 있다.
+   */
+  previous(): CrashReport | null;
   ring(): readonly CrashReport[];
   /** 미러를 비운다 — `mountedAt` 가 주어지면 그보다 낡은 기록만. */
   clearMirror(mountedAt?: number): void;
@@ -70,9 +78,11 @@ export function createCrashStore(opts: { storage: CrashStorage; now?: () => numb
   const listeners = new Set<() => void>();
   let latestReport: CrashReport | null = null;
   let lastRecorded: { signature: string; at: number } | null = null;
+  const previousRun = readLastCrash(storage);
 
   return {
     now,
+    previous: () => previousRun,
 
     publish(input) {
       const signature = `${input.source}+${input.message}`;
@@ -149,6 +159,16 @@ export function readLastCrash(storage: CrashStorage): CrashReport | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 같은 문제가 계속 생기는 중인가 — 직전 실행의 사고가 한 분 안이면 `다시 열기` 만으로는 풀리지 않는
+ * 문제다. 그때 안내판은 다시 열라는 말을 되풀이하지 않고 담당자에게 전할 길을 앞에 둔다.
+ */
+export function isRepeatCrash(report: CrashReport, previous: CrashReport | null): boolean {
+  if (!previous) return false;
+  const gap = report.time - previous.time;
+  return gap >= 0 && gap < REPEAT_WINDOW_MS;
 }
 
 /** 에러에서 리포트만 만드는 순수 판정 — 경계의 getDerivedStateFromError 가 쓴다. */

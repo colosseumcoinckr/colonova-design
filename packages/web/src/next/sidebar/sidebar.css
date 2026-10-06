@@ -1,8 +1,9 @@
-/* 사이드바(U1 · U7) — 목업 「셸」 칸. */
+/* 사이드바(U1 · U7) — 목업 「셸」 칸. 2026-10-06 사이드바 개선: 으뜸 행동 · 한 덩어리 전환기 ·
+   날짜 머리 · 줄 위에 얹는 `···` · 바닥 줄의 정렬. */
 
 .nx-sidebar {
-  /* 폭 고정 — 접힐 때 안쪽이 다시 배치되지 않고 옷째로 밀려 나간다. */
-  width: 264px;
+  /* 폭은 열이 정한다(`--nx-side-w` — 끌어 바꾼 값) — 접힐 때 안쪽이 다시 배치되지 않고 옷째로 밀려 나간다. */
+  width: var(--nx-side-w, 264px);
   z-index: 5;
   background: var(--side);
   border-right: 1px solid var(--line);
@@ -70,15 +71,58 @@
   font-weight: 500;
 }
 
+/* 단축키 — 평소에는 한 걸음 물러나 있다가 줄에 손이 닿으면 또렷해진다. */
 .nx-side-row kbd {
   margin-left: auto;
+  opacity: 0.7;
+  transition: opacity var(--nx-t-touch) var(--drift);
 }
+
+.nx .nx-side-row:hover kbd,
+.nx .nx-side-row:focus-visible kbd {
+  opacity: 1;
+}
+
+/* 으뜸 행동(새 대화) — 브랜드 색이 든 알약 하나. 줄의 그림 칸(16px)은 그대로 두고 알약만 한 칸
+   밖으로 번져(-1px) 다른 두 줄과 글자 시작이 어긋나지 않는다. */
+.nx .nx-side-row--new {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.nx-newmark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin: -1px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  box-shadow: 0 1px 4px var(--accent-glow);
+}
+
+.nx-newmark > svg {
+  width: 11px;
+  height: 11px;
+  stroke-width: 2.6;
+  transition: transform var(--nx-t-move) var(--spring);
+}
+
+/* 손이 닿으면 더하기가 한 바퀴의 4분의 1 돈다 — 새로 시작한다는 몸짓. */
+.nx .nx-side-row--new:hover .nx-newmark > svg,
+.nx .nx-side-row--new:focus-visible .nx-newmark > svg {
+  transform: rotate(90deg);
+}
+
 /* 간격 없이 붙은 행 — 전역 포커스 링(바깥 2px+2px)이 위·아래 행 위에 그려져
    카드가 겹쳐 보이므로, 이들은 링을 상자 안에 그린다. */
 .nx .nx-side-row:focus-visible,
 .nx .nx-orow:focus-visible,
 .nx .nx-me:focus-visible,
-.nx .nx-conv:focus-visible {
+.nx .nx-conv:focus-visible,
+.nx .nx-toolg summary:focus-visible {
   outline-offset: -2px;
 }
 
@@ -86,49 +130,39 @@
   margin: 12px 8px 2px;
 }
 
+/* 전환기 — 고르는 상자 하나. 눌러 목록을 연다(프로젝트 카드는 목록의 한 줄이다). */
 .nx .nx-proj-btn {
   display: flex;
   align-items: center;
+  gap: 9px;
   width: 100%;
-  padding: 4px 4px 4px 0;
+  padding: 7px 10px;
   border-radius: var(--r-md);
   background: var(--card);
   border: 1px solid var(--line);
+  /* 고정 — 그림자는 테마를 따르지 않는 검은 빛이다. */
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.03);
 }
 
 .nx .nx-proj-btn:hover {
   border-color: var(--line2);
+  background: var(--panel-2);
 }
 
-/* 머리의 두 누름 — 이름은 프로젝트 카드, 셰브론은 프로젝트 목록. */
-.nx .nx-proj-open {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  flex: 1;
-  min-width: 0;
-  padding: 4px 2px 4px 10px;
-  border-radius: calc(var(--r-md) - 1px) 0 0 calc(var(--r-md) - 1px);
+/* 열려 있는 동안은 브랜드 색 테두리로 — 아래 목록이 이 상자에서 내려왔음을 잇는다. */
+.nx .nx-proj-btn[aria-expanded="true"] {
+  border-color: var(--accent-line);
+  background: var(--panel-2);
 }
 
-.nx .nx-proj-open:hover {
-  background: var(--nx-hover);
-}
-
-.nx .nx-proj-chev {
+.nx-proj-caret {
   flex: none;
   display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  margin: 0 5px;
-  border-radius: var(--r);
   color: var(--ink3);
 }
 
-.nx .nx-proj-chev:hover {
-  background: var(--nx-hover);
+.nx .nx-proj-btn:hover .nx-proj-caret,
+.nx .nx-proj-btn[aria-expanded="true"] .nx-proj-caret {
   color: var(--ink);
 }
 
@@ -150,19 +184,52 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink3);
   margin-top: 1px;
 }
 
 /* 전환기에서 뜨는 두 팝 — 앵커(.nx-proj) 폭에 맞춘다. 고정 폭은 사이드바
-   안쪽(264 - 좌우 여백 16 = 248px)보다 넓어 오른쪽이 overflow:hidden 에 잘린다. */
+   안쪽(폭 - 좌우 여백 16px)보다 넓어 오른쪽이 overflow:hidden 에 잘린다. */
 .nx-proj-pop,
 .nx-proj-info {
   width: 100%;
 }
 
-/* 프로젝트 카드 — 전환기 머리의 이름을 누르면 뜬다(U7). */
+/* 목록의 프로젝트 줄 — 지금 프로젝트는 가장자리에서 띄운 짧은 강조색 막대가 서고(체크는 낭독의 aria-checked 와
+   눈의 확인을 겸한다), 옮기는 중인 줄에는 도는 표식이 선다. */
+.nx-proj-row {
+  position: relative;
+}
+
+.nx-proj-row--now::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.nx-proj-busy {
+  display: inline-flex;
+  align-items: center;
+  padding-right: 4px;
+}
+
+/* 목록 맨 아래 두 줄의 그림 — 위 프로젝트 줄의 네모 표식(22px)과 같은 칸에 가운데로 선다. */
+.nx-mi-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  color: var(--ink3);
+}
+
+/* 프로젝트 카드 — 전환기 목록의 `프로젝트 정보` 를 누르면 뜬다(U7). */
 
 .nx-pi-head {
   display: flex;
@@ -207,7 +274,7 @@
 
 .nx-pi-help {
   margin: 3px 0 8px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink3);
   line-height: 1.5;
 }
@@ -231,7 +298,7 @@
 
 .nx-pi-note {
   margin-top: 6px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink3);
   line-height: 1.5;
 }
@@ -242,25 +309,9 @@
   padding: 6px 2px 2px;
 }
 
-.nx-pi-confirm {
-  padding: 4px 6px 6px;
-}
-
-.nx-pi-confirm p {
-  margin: 0 0 10px;
-  color: var(--ink2);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.nx-pi-confirm .nx-pi-remove-busy {
-  margin-top: -4px;
-  color: var(--amber);
-}
-
 .nx-side-label {
   padding: 14px 18px 5px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink3);
   font-weight: 500;
 }
@@ -271,6 +322,9 @@
 
 .nx-others {
   padding: 0 8px;
+  /* 폴백 — 세 줄과 `더 보기` 가 넘치는 일은 없지만, 글자가 커지는 창에서도 대화 목록의 자리를 다 먹지 않는다. */
+  max-height: min(30vh, 180px);
+  overflow-y: auto;
 }
 
 .nx .nx-orow {
@@ -287,6 +341,15 @@
   background: var(--nx-hover);
 }
 
+/* 더 보기 — 프로젝트 줄과 같은 틀에서 이름만 한 단계 물러선 색으로 말한다(눌러 전환기 목록을 연다). */
+.nx .nx-omore {
+  color: var(--ink3);
+}
+
+.nx .nx-omore:hover {
+  color: var(--ink2);
+}
+
 .nx-orow-name {
   flex: 1;
   min-width: 0;
@@ -300,23 +363,63 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink3);
   white-space: nowrap;
 }
 
+/* 대화 목록 — 굴러가는 한 칸. 날짜 머리(.nx-cg-h)는 굴러도 맨 위에 붙어 지금 어느 날을 지나는지 말한다. */
 .nx-conv-list {
   flex: 1;
   overflow: auto;
   padding: 0 8px 10px;
 }
 
+/* 대화가 하나도 없을 때의 한 줄 — 날짜 머리 · 위의 그림들과 같은 왼쪽 가장자리(18px)에 선다. */
+.nx-conv-list > .nx-calm {
+  padding: 12px 10px 16px;
+}
+
+.nx-cg-h {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0;
+  /* 글자 시작을 위 `다른 프로젝트` · 그림들의 왼쪽 가장자리(18px)에 맞춘다. */
+  padding: 12px 10px 5px;
+  background: var(--side);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink3);
+}
+
+.nx-cg:not(:first-child) .nx-cg-h {
+  padding-top: 14px;
+}
+
+/* 대화 줄 — `···` 메뉴와 이름 바꾸기 입력을 줄에 얹는다. 메뉴는 줄 위에 떠 있어(position:
+   absolute) 쉬는 동안 제목이 줄의 너비를 다 쓴다 — 단추의 자리(28px)를 늘 떼어 두면 제목이
+   두 글자쯤 일찍 잘렸다. */
+.nx-conv-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--r);
+}
+
+.nx-conv-row .nx-conv {
+  flex: 1;
+  min-width: 0;
+}
+
 .nx .nx-conv {
   position: relative;
   display: block;
   width: 100%;
-  padding: 8px 6px 8px 14px;
+  padding: 8px 8px 8px 14px;
   border-radius: var(--r);
+  /* 쉬는 줄은 한 단 물러나고, 손이 닿거나 켜진 줄이 또렷하다. */
+  color: var(--ink2);
 }
 
 /* 강조는 줄(.nx-conv-row)이 든다 — 제목 단추와 `···` 가 한 상자 안에 있어야 눌린 줄이
@@ -330,6 +433,24 @@
   background: var(--nx-selected);
 }
 
+/* 켜진 줄은 손이 닿아도 한 단계 옅어지지 않는다 — 위의 hover(0-3-0)가 이기지 않게 같은 무게로. */
+.nx .nx-conv-row--on:hover,
+.nx .nx-conv-row--menu:hover {
+  background: var(--nx-selected);
+}
+
+.nx .nx-conv--on {
+  color: var(--ink);
+}
+
+.nx .nx-conv-row--menu .nx-conv {
+  color: var(--ink);
+}
+
+.nx .nx-conv-row:hover .nx-conv {
+  color: var(--ink);
+}
+
 /* 지금 대화 — 가장자리에서 띄운 짧은 강조색 막대. 모서리 곡률에 잘리지 않는다. */
 .nx .nx-conv-row--on::before {
   content: "";
@@ -341,6 +462,11 @@
   border-radius: 2px;
   background: var(--accent);
   pointer-events: none;
+}
+
+.nx-conv-body {
+  display: block;
+  min-width: 0;
 }
 
 .nx-conv-t {
@@ -358,6 +484,10 @@
   white-space: nowrap;
 }
 
+.nx .nx-conv--on .nx-conv-t > span:first-child {
+  font-weight: 500;
+}
+
 .nx-conv-s {
   display: block;
   font-size: 12px;
@@ -368,24 +498,12 @@
   white-space: nowrap;
 }
 
-/* 대화 줄 — `···` 메뉴와 이름 바꾸기 입력을 줄에 얹는다. 메뉴는 줄 안의
-   자기 칸에 서서(.nx-conv 가 남는 너비를 가진다) 제목 · 둘째 줄이 그 밑으로
-   흐르지 않는다. */
-.nx-conv-row {
-  position: relative;
-  display: flex;
-  align-items: center;
-  border-radius: var(--r);
-}
-
-.nx-conv-row .nx-conv {
-  flex: 1;
-  min-width: 0;
-}
-
 .nx-conv-tip {
-  flex: none;
-  margin: 0 4px 0 0;
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  /* 24px 단추의 절반 — 두 줄짜리 줄에서도 줄의 한가운데에 선다. */
+  margin-top: -12px;
 }
 
 .nx .nx-conv-menu {
@@ -407,12 +525,35 @@
   background: color-mix(in srgb, var(--ink) 9%, transparent);
   color: var(--ink);
 }
-.nx .nx-conv-row--on .nx-conv-menu,
+/* `···` 는 손이 닿을 때만 — 켜진 줄도 쉬는 동안은 다른 줄과 같은 모양이다(제목 끝이 흐려져 있지 않다).
+   키보드는 줄 안에 초점이 서면(:has(:focus-visible)) 곧바로 보인다 — 마우스로 누른 줄에 남은 초점은
+   키보드의 것이 아니니 `···` 를 붙들어 두지 않는다. */
 .nx .nx-conv-row--menu .nx-conv-menu,
 .nx .nx-conv-row:hover .nx-conv-menu,
-.nx .nx-conv-row:focus-within .nx-conv-menu {
+.nx .nx-conv-row:has(:focus-visible) .nx-conv-menu {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* `···` 가 선 동안 제목의 오른쪽 끝은 사라지듯 옅어진다 — 줄바꿈 없이 자리를 내준다(제목이 다시
+   잘리며 출렁이지 않는다). 마스크의 색은 보임의 정도일 뿐이다(고정 — 검정은 보임, 투명은 사라짐). */
+.nx .nx-conv-row--menu .nx-conv-body,
+.nx .nx-conv-row:hover .nx-conv-body,
+.nx .nx-conv-row:has(:focus-visible) .nx-conv-body {
+  mask-image: linear-gradient(to right, black calc(100% - 50px), transparent calc(100% - 24px));
+}
+
+/* 호버가 없는 입력(터치)에서는 `···` 가 늘 서 있다 — 손이 닿기를 기다리면 메뉴에 닿을 길이 없다. 이때는
+   줄이 그 자리(32px)를 따로 떼어 둔다: 흐리게 가리면 도는 표시 · 기다림 점이 `···` 밑에 묻힌다. */
+@media (hover: none) {
+  .nx .nx-conv-list .nx-conv-row .nx-conv {
+    padding-right: 32px;
+  }
+
+  .nx .nx-conv-list .nx-conv-row .nx-conv-menu {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .nx .nx-conv-rename {
@@ -429,39 +570,18 @@
   width: 220px;
 }
 
-.nx-conv-confirm {
-  padding: 6px 8px 8px;
+/* 지우기 확인이 선 동안은 한 단 넓다 — 제목 한 줄 · 본문 서너 줄이 좁은 팝에서 여섯 줄로 쌓이지 않게. */
+.nx-conv-pop--confirm {
+  width: 264px;
 }
 
-.nx-conv-confirm p {
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--ink2);
-  margin-bottom: 10px;
-}
-
-.nx-conv-confirm-row {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.nx .nx-btn--sm {
-  height: 28px;
-  padding: 0 10px;
-  font-size: 12.5px;
-}
-
-.nx .nx-mi--dng {
-  color: var(--red);
-}
-
-.nx .nx-mi--dng:hover {
-  background: var(--red-soft);
+/* 위험한 줄(`.nx-mi--dng`)의 붉은 글자는 ui.css 에 산다 — 앞 그림도 그 색을 따라간다. */
+.nx .nx-mi--dng .nx-mi-ic {
+  color: inherit;
 }
 
 .nx-toolg {
-  margin: 10px 2px 0;
+  margin: 10px 0 0;
 }
 
 .nx-toolg summary {
@@ -497,6 +617,8 @@
   color: var(--ink2);
 }
 
+/* 바닥 — 기능 제안과 내 줄은 위 `새 대화 · 홈 · 찾기` 와 같은 틀(그림 16px · 글자 시작 44px)을 써서
+   왼쪽 가장자리가 한 줄로 흐른다. */
 .nx-side-bottom {
   border-top: 1px solid var(--line);
   padding: 8px;
@@ -508,7 +630,7 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 7px 8px;
+  padding: 7px 10px;
   border-radius: var(--r);
 }
 
@@ -516,16 +638,22 @@
   background: var(--nx-hover);
 }
 
-.nx-av {
-  width: 26px;
-  height: 26px;
+/* 내 머리글자 — 대화 칸의 AI 얼굴(.nx-av, 포인트 색 네모)과 이름을 나눈다: 같은 이름이면 chat.css 가
+   덮어써서 둥근 잉크 점이 포인트 색 네모로 보였다. 줄의 그림 칸(16px)에서 번져(-2px) 글자 시작은
+   그대로다. */
+.nx-me-av {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: -2px;
   border-radius: 50%;
   background: var(--ink);
   color: var(--bg);
-  display: grid;
-  place-items: center;
   font-size: 12px;
   font-weight: 600;
+  line-height: 1;
 }
 
 .nx-me b {

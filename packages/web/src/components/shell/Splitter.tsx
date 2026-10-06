@@ -4,8 +4,9 @@ import { L } from "../../next/labels";
 /**
  * The one draggable column boundary. Drawn over the 1px border the
  * adjacent columns already paint. A separator, not a button: pointer drag for
- * the mouse, ←/→ in 24px steps for the keyboard, double-click back to the
- * default. `active` is the drag in flight — the only time the boundary shows
+ * the mouse, ←/→ in 24px steps with Enter back to the default (Home/End to the
+ * narrowest/widest) for the keyboard, double-click back to the default.
+ * `active` is the drag in flight — the only time the boundary shows
  * a line of its own.
  *
  * `side` says which column the width belongs to and therefore which way the
@@ -44,7 +45,9 @@ export function Splitter({
       style={side === "right" ? { right: width } : { left: width }}
       role="separator"
       aria-orientation="vertical"
-      aria-label={label}
+      // 접근 이름에 되돌림 힌트를 붙인다 — 더블클릭만 보면 키보드의 길이 숨는다
+      // (2026-10-04 ux-review).
+      aria-label={`${label} · ${L.shell.chatWidthReset}`}
       aria-valuemin={bounds.min}
       aria-valuemax={bounds.max}
       aria-valuenow={width}
@@ -60,6 +63,15 @@ export function Splitter({
           // travels left, the sidebar's travels right.
           const widens = side === "right" ? "ArrowLeft" : "ArrowRight";
           onNudge(event.key === widens ? 24 : -24);
+          event.preventDefault();
+        } else if (event.key === "Enter") {
+          // 더블클릭의 되돌림을 키보드에도 — role=separator 가 스스로 약속한 조작
+          // (2026-10-04 ux-review).
+          onReset();
+          event.preventDefault();
+        } else if (event.key === "Home" || event.key === "End") {
+          // Home 은 가장 좁게, End 는 가장 넓게 — 분리봉의 표준 끝값.
+          onNudge(event.key === "Home" ? bounds.min - width : bounds.max - width);
           event.preventDefault();
         }
       }}

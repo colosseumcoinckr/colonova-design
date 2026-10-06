@@ -8,7 +8,7 @@
  * 단위 시험이 src 에서 곧장 읽는 순수 모듈은 형제를 부르지 않는다
  * (journey.ts 와 같은 규칙). 부르는 쪽은 `connectionCopy(input, now, L)`.
  */
-import type { DaemonStatus } from "@colonova-design/protocol";
+import type { Attention, DaemonStatus } from "@colonova-design/protocol";
 import type { L } from "../labels";
 
 /** 판정에 쓰는 칸 — `L.vocab` · `L.problem` · `L.settings` 가 구조적으로 채운다. */
@@ -45,6 +45,23 @@ export function connectionLock(
 ): string | null {
   if (state === "open") return null;
   return state === "closed" || state === "error" ? words.chat.offline : words.chat.connecting;
+}
+
+/**
+ * 다시 연결이 필요한 것 — 연결 코드(`github`)와 AI 로그인(`login`)은 다른 일이다. 설정이 둘을 한
+ * 말(「연결 코드가 만료됐어요」)로 읽던 것을 가른다: 로그인이 끝났는데 연결 쪽에 빨간 점이 서고
+ * 초대 파일을 부탁하라고 말했다(2026-10-06 설정 손질 · S1). 갈라 읽는 기준은 화면의 문제 문장
+ * (`problemFor`)과 같다 — `attention.what`.
+ */
+export function reconnectNeeds(
+  status: { githubAuthExpired?: boolean; attention?: Attention | null } | null | undefined,
+): { github: boolean; login: boolean } {
+  const attention = status?.attention;
+  const what = attention?.kind === "reconnect" ? attention.what : null;
+  return {
+    github: status?.githubAuthExpired === true || what === "github",
+    login: what === "agent-login",
+  };
 }
 
 /** 설정 → 연결 한 줄의 판정 — 상태에서만 나온다. */

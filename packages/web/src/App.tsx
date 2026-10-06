@@ -3,6 +3,7 @@ import { ConnectScreen } from "./ConnectScreen";
 import { crashStore, markAppMounted } from "./lib/crash";
 import { useDaemon } from "./lib/daemon-client";
 import { normalizeNotificationSettings, useSettings } from "./lib/settings";
+import { ConnectingScreen } from "./next/ConnectingScreen";
 import { NextShell } from "./next/NextShell";
 
 const URL_KEY = "colonova-design.daemon-url";
@@ -92,6 +93,9 @@ export default function App() {
   };
 
   if (!url || daemon.connection === "error") {
+    // 데스크톱은 데몬이 페이지를 직접 주므로 주소를 붙여 넣을 일이 없다 — 첫 연결이 안 된 순간에는
+    // 개발자의 안내 대신 기다림 · 지금 다시 시도 · 다시 열기를 말한다(2026-10-06 겹판 조사).
+    if (url && window.colonovaDesignDesktop) return <ConnectingScreen onRetry={daemon.reconnect} />;
     return <ConnectScreen onConnect={connect} error={daemon.connectionError} />;
   }
 

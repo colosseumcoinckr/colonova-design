@@ -3,11 +3,60 @@ import { createPortal } from "react-dom";
 
 const FOCUSABLE = "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
 
+/** 메뉴 역할의 팝에서 화살표가 걸어 다니는 줄 — 안 보이는 줄과 `:disabled` 는 건너뛴다. */
+const MENU_ITEMS =
+  '[role="menuitem"]:not(:disabled), [role="menuitemradio"]:not(:disabled), [role="menuitemcheckbox"]:not(:disabled)';
+
+const LEAVE_MS = 130;
+
+/**
+ * 팝이 사라지는 순간 — 부모는 노드를 곧바로 지우므로 복제 한 장을 같은 자리에 남겨 짧게
+ * 물러나게 한다(`nx-pop--leaving`). 복제는 React 의 밖에 있고 눌리지도 읽히지도 않는다
+ * (`inert` · `aria-hidden`). 흐름 안에 있는 팝(position 이 static · relative)은 부르는 쪽이 거른다 —
+ * 자리를 차지해 옆 줄이 한 박자 튀기 때문이다. 동작을 줄인 창도 건너뛴다.
+ * 복제는 마이크로태스크에서 뜬다 — 개발 중 StrictMode 의 가짜 언마운트는 노드가 그대로 문서에
+ * 있어 그때는 유령이 서면 안 되고, 떨어진 노드도 하위 트리는 온전해 복제할 수 있다.
+ */
+function leaveAsGhost(el: HTMLElement): void {
+  const parent = el.parentNode;
+  if (!parent || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  queueMicrotask(() => {
+    if (el.isConnected || !parent.isConnected) return;
+    const ghost = el.cloneNode(true) as HTMLElement;
+    ghost.classList.add("nx-pop--leaving");
+    ghost.removeAttribute("role");
+    ghost.removeAttribute("aria-label");
+    ghost.removeAttribute("id");
+    for (const node of ghost.querySelectorAll("[id]")) node.removeAttribute("id");
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.setAttribute("inert", "");
+    parent.appendChild(ghost);
+    const drop = () => ghost.remove();
+    ghost.addEventListener("animationend", drop, { once: true });
+    window.setTimeout(drop, LEAVE_MS + 120);
+  });
+}
+
+/** 메뉴의 줄 — 보이는 것만, 문서 순서대로. */
+function menuItems(el: HTMLElement): HTMLElement[] {
+  return Array.from(el.querySelectorAll<HTMLElement>(MENU_ITEMS)).filter(
+    (item) => item.getClientRects().length > 0,
+  );
+}
+
 /**
  * 누른 자리 아래에 뜨는 팝오버 한 장 — 목업의 `.pop`. 부르는 쪽이 누르는
  * 요소와 함께 `nx-anchor`(position: relative) 안에 둔다. 바깥을 누르거나
  * Esc 를 누르면 닫힌다; 누르는 요소 자체는 바깥으로 치지 않는다(다시 누르면
  * 부르는 쪽의 토글이 닫는다).
+ *
+ * 키보드로 연 팝(여는 단추가 `:focus-visible`)은 열리자마자 첫 초점 요소로 초점이 건너온다 —
+ * 창 뿌리로 옮겨 그리는 `float` 팝은 탭 순서의 끝에 있어 건너올 길이 없었다. 마우스로 연
+ * 팝은 초점을 가져가지 않는다. 팝 안에 있던 초점이 닫힘과 함께 허공(body)으로 떨어지면 여는
+ * 요소로 되돌린다.
+ *
+ * `role="menu"` 는 줄(`role="menuitem"`)을 ↑ ↓ Home End 로 걷고 글자로 건너뛴다 — 줄 마다
+ * `role` 은 부르는 쪽이 단다. 그 밖의 팝은 `dialog` 다.
  */
 export function Popover({
   anchor,
@@ -17,6 +66,7 @@ export function Popover({
   up = false,
   float = false,
   label,
+  role = "dialog",
   children,
 }: {
   /** 팝오버를 연 요소 — 이 안의 누름은 바깥이 아니다. */
@@ -35,11 +85,95 @@ export function Popover({
   float?: boolean;
   /** 대화상자의 이름 — 화면 낭독이 이 팝이 무엇인지 말해 준다. */
   label?: string;
+  /** 줄을 고르는 목록이면 `menu` — 화살표 걸음이 붙는다. 그 밖은 `dialog`. */
+  role?: "dialog" | "menu";
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
+  // 앵커 · 역할은 ref 로 쥔다 — 부르는 쪽이 렌더마다 새 ref 객체를 만들어도(예: 목록 줄마다 만드는
+  // 앵커) 아래 마운트 · 언마운트 효과가 렌더마다 다시 돌지 않는다.
+  const anchorNow = useRef(anchor);
+  anchorNow.current = anchor;
+  const roleNow = useRef(role);
+  roleNow.current = role;
+  /* 열릴 때 한 번 — 키보드로 연 팝이면 첫 초점 요소로 건너간다. 마우스로 연 팝은 건드리지
+     않는다. 이미 안에 초점이 있으면(부르는 쪽이 입력칸에 심었다) 그대로 둔다. */
+  useEffect(() => {
+    const el = ref.current;
+    const opener = anchorNow.current.current;
+    if (!el || !opener) return;
+    const at = document.activeElement;
+    if (!(at instanceof HTMLElement) || el.contains(at) || !opener.contains(at)) return;
+    if (!at.matches(":focus-visible")) return;
+    // 고르는 메뉴(`menuitemradio`)는 지금 고른 줄이 첫 초점이다 — 목록의 맨 위가 아니라(2026-10-06 겹판 조사).
+    const items = roleNow.current === "menu" ? menuItems(el) : [];
+    const first =
+      roleNow.current === "menu"
+        ? (items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0])
+        : el.querySelector<HTMLElement>(FOCUSABLE);
+    first?.focus();
+  }, []);
+  /* 닫힘 — 안에 있던 초점이 body 로 떨어지면 여는 요소로 되돌리고, 노드는 짧게 물러난다.
+     위치(흐름 안인가)는 마운트 때 한 번 재 둔다 — 정리 함수에서 재면 렌더마다 스타일을 다시 푼다. */
+  useLayoutEffect(() => {
+    const el = ref.current;
+    const floating = el ? ["absolute", "fixed"].includes(getComputedStyle(el).position) : false;
+    return () => {
+      if (!el) return;
+      const opener = anchorNow.current.current;
+      const hadFocus = el.contains(document.activeElement);
+      if (hadFocus && opener) {
+        queueMicrotask(() => {
+          if (document.activeElement !== document.body || !opener.isConnected) return;
+          (opener.matches(FOCUSABLE)
+            ? opener
+            : opener.querySelector<HTMLElement>(FOCUSABLE)
+          )?.focus();
+        });
+      }
+      if (floating) leaveAsGhost(el);
+    };
+  }, []);
+  /* 메뉴의 화살표 걸음 — 패널에만 건다(문서 전체의 Esc · 바깥 누름 처리기와 섞이지 않게). */
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || role !== "menu") return;
+    let typed = "";
+    let typedAt = 0;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const items = menuItems(el);
+      if (items.length === 0) return;
+      const at = items.indexOf(document.activeElement as HTMLElement);
+      let next = -1;
+      if (event.key === "ArrowDown") next = at < 0 ? 0 : (at + 1) % items.length;
+      else if (event.key === "ArrowUp") next = at <= 0 ? items.length - 1 : at - 1;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = items.length - 1;
+      else if (event.key.length === 1 && event.key !== " ") {
+        // 글자로 건너뛰기 — 짧은 사이에 친 글자는 이어 붙여 앞글자를 맞춘다.
+        const now = Date.now();
+        typed = now - typedAt > 700 ? event.key : typed + event.key;
+        typedAt = now;
+        const lower = typed.toLowerCase();
+        const from = at < 0 ? 0 : typed.length === 1 ? at + 1 : at;
+        for (let step = 0; step < items.length; step++) {
+          const index = (from + step) % items.length;
+          if (items[index]?.textContent?.trim().toLowerCase().startsWith(lower)) {
+            next = index;
+            break;
+          }
+        }
+      }
+      if (next < 0) return;
+      event.preventDefault();
+      items[next]?.focus();
+    };
+    el.addEventListener("keydown", onKey);
+    return () => el.removeEventListener("keydown", onKey);
+  }, [role]);
   useEffect(() => {
     const onDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
@@ -49,6 +183,8 @@ export function Popover({
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // 한글 조합 중의 Esc 는 조합을 취소하는 키다 — 팝까지 닫지 않는다.
+      if (event.isComposing) return;
       /* 다른 Esc 처리기(서랍 닫기 등)까지 내려가지 않게 여기서 멈춘다. */
       event.stopPropagation();
       close.current();
@@ -60,11 +196,18 @@ export function Popover({
         : opener?.querySelector<HTMLElement>(FOCUSABLE)
       )?.focus();
     };
+    /* 미리보기(`<webview>`) 안을 눌러도 이 문서에는 mousedown 이 오지 않는다 — 초점이 웹뷰로
+       넘어가는 것이 바깥을 누른 신호다(핀 말풍선 · 주소 팝과 같은 손). */
+    const onFocusIn = (event: FocusEvent) => {
+      if ((event.target as HTMLElement | null)?.tagName === "WEBVIEW") close.current();
+    };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
+    document.addEventListener("focusin", onFocusIn);
     return () => {
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusin", onFocusIn);
     };
   }, [anchor]);
   /**
@@ -91,6 +234,8 @@ export function Popover({
         const above = rect.top - gap - edge;
         const below = window.innerHeight - rect.bottom - gap - edge;
         const goUp = up ? above >= natural || above >= below : below < natural && above > below;
+        // 들어오는 움직임의 기준점(ui.css 의 transform-origin)이 뒤집힌 방향을 따라간다.
+        el.dataset.side = goUp ? "up" : "down";
         const room = Math.max(96, Math.floor(goUp ? above : below));
         el.style.maxHeight = `${room}px`;
         const width = el.offsetWidth;
@@ -185,8 +330,10 @@ export function Popover({
   const classes = ["nx-pop", `nx-pop--${align}`, up ? "nx-pop--up" : "", className ?? ""]
     .filter(Boolean)
     .join(" ");
+  // 역할은 `dialog` · `menu` 둘뿐이고 둘 다 이름(aria-label)을 받는다 — 동적 역할이라 한데 묶어 건넨다.
+  const aria = { role, "aria-label": label };
   const panel = (
-    <div ref={ref} className={classes} role="dialog" aria-label={label}>
+    <div ref={ref} className={classes} data-side={up ? "up" : "down"} {...aria}>
       {children}
     </div>
   );

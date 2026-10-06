@@ -14,14 +14,21 @@
 
 /* ---------- 막대 ---------- */
 .nx-pvbar {
-  height: 48px;
+  /* 막대의 높이 — 작업 기록 서랍이 같은 값(`--pv-bar-h`, 서랍 절에서 정한다)을 읽어 막대 밑에서 시작한다. */
+  height: var(--pv-bar-h, 48px);
   flex: none;
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 8px;
+  padding: 0 10px;
   background: var(--bg);
   border-bottom: 1px solid var(--line);
+}
+
+/* 막대의 손은 모두 32px — 주소 알약 · 기기 칸 · 찍기와 한 줄에 서도록(2026-10-06 막대 개편). */
+.nx-pvbar .nx-ibtn {
+  width: 32px;
+  height: 32px;
 }
 
 .nx-pvbar .nx-ibtn:disabled {
@@ -30,22 +37,17 @@
   background: none;
 }
 
-.nx-pvbar .nx-ibtn--on {
-  background: rgba(0, 0, 0, 0.06);
-  color: var(--ink);
-}
-
-.nx-ibtn--sm {
-  width: 24px;
-  height: 24px;
-  border-radius: var(--r-sm);
+/* 새로 고침 — 무대가 150ms 를 넘겨 불러오는 동안 그림이 돈다(무대 가장자리의 흐르는 선과 같은 신호). */
+.nx-reload--busy .nx-i {
+  color: var(--accent);
+  animation: nx-spin 0.9s linear infinite;
 }
 
 .nx-addrwrap {
   flex: 1;
   min-width: 110px;
-  max-width: 460px;
-  margin: 0 6px;
+  max-width: 520px;
+  margin: 0 8px 0 6px;
 }
 
 .nx .nx-addr {
@@ -54,20 +56,69 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 0 8px 0 11px;
+  padding: 0 8px 0 10px;
   border-radius: 9px;
   background: var(--card);
   border: 1px solid var(--line);
   color: var(--ink3);
+  /* 도착의 물듦이 걷힐 때도 켜질 때와 같은 길이로 — 빠지는 쪽이 툭 끊기지 않게. */
+  transition:
+    background-color 0.3s,
+    border-color 0.3s,
+    box-shadow var(--nx-t-touch),
+    color 0.3s;
 }
 
 .nx .nx-addr:hover {
   border-color: var(--line2);
 }
 
+/* 목록이 열려 있는 동안 — 강조색 고리가 「지금 이 알약이 열려 있다」 를 말한다. */
+.nx .nx-addr[aria-expanded="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.nx-addr-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+}
+
+.nx-addr-name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* 이 대화에서 만든 화면 위에 서 있다는 점 — 이름 바로 뒤에 붙는다. */
+.nx-addr-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* 알약 끝의 단축키 — 비어 있던 자리가 `⌘L 로 바로 연다` 를 조용히 가르친다. */
+.nx .nx-addr-k {
+  flex: none;
+  height: 20px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  font: 500 11px var(--font);
+  color: var(--ink3);
+}
+
 /* 화면 이름은 key 로 산다 — 이름이 바뀌면 들어오는 쪽에서 미끄러져 들어온다. */
 .nx-addr b {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   text-align: left;
   font-weight: 600;
@@ -84,10 +135,6 @@
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent);
-  transition:
-    background-color 0.3s,
-    border-color 0.3s,
-    color 0.3s;
 }
 
 .nx .nx-addr--tint b {
@@ -103,26 +150,32 @@
 
 .nx .nx-seg {
   display: flex;
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--nx-hover);
   border-radius: 9px;
   padding: 2px;
-  margin: 0 4px;
+  /* 왼쪽 자동 여백이 기기 · 찍기 · 기록 · `···` 를 한 묶음으로 오른쪽 끝에 붙인다. */
+  margin: 0 6px 0 auto;
   border: 0;
   flex: none;
 }
 
 .nx .nx-seg button {
   width: 30px;
-  height: 26px;
+  height: 28px;
   border-radius: 7px;
   display: grid;
   place-items: center;
   color: var(--ink3);
 }
 
+.nx .nx-seg button:hover {
+  color: var(--ink);
+}
+
 .nx .nx-seg button.nx-seg--on {
   background: var(--card);
   color: var(--ink);
+  /* 고정 — 고른 칸의 그림자. */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
@@ -143,7 +196,7 @@
 }
 
 .nx .nx-tbtn:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--nx-hover);
   color: var(--ink);
 }
 
@@ -157,13 +210,175 @@
   opacity: 0.45;
 }
 
+/* 찍기 — 이 막대의 주 단추. 쉴 때도 강조색 옅은 알약이라 「여기서 시작」 이 읽히고,
+   켜지면 속이 찬다(무대 둘레의 고리 · 아래 알약과 같은 색의 말). */
+.nx .nx-pin-t {
+  position: relative;
+  height: 32px;
+  margin-left: 2px;
+  padding: 0 11px 0 10px;
+  border-radius: 9px;
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+  transition:
+    background-color var(--nx-t-touch),
+    border-color var(--nx-t-touch),
+    color var(--nx-t-touch);
+}
+
+.nx .nx-pin-t:hover {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+
+/* 잠긴 동안은 올려도 답이 없다 — 이유는 눌렀을 때의 토스트 몫이다. */
+.nx .nx-pin-t.nx-tbtn--locked:hover {
+  background: var(--accent-soft);
+}
+
+.nx .nx-pin-t.nx-tbtn--on {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.nx .nx-pin-t.nx-tbtn--on:hover {
+  background: color-mix(in srgb, var(--accent) 88%, var(--ink));
+  color: var(--bg);
+}
+
+/* 속이 찬 단추 위의 숫자 알약은 색을 뒤집는다 — 강조색 위의 강조색은 사라진다. */
+.nx .nx-cnt--inv {
+  background: var(--bg);
+  color: var(--accent);
+}
+
+/* 기록 — 넓으면 글자를 입는다(아이콘만으로는 시계가 무엇인지 모른다). 열려 있는 동안 선택의 진하기. */
+.nx .nx-hist-t {
+  height: 32px;
+  padding: 0 8px;
+}
+
+.nx .nx-hist-t.nx-tbtn--sel {
+  background: var(--nx-selected);
+  color: var(--ink);
+}
+
+/* 서랍이 열리는 순간 시계가 한 바퀴 되감긴다 — 누른 단추에서 「기록을 거슬러 간다」 는 뜻이 한 번 읽힌다.
+   닫을 때는 말없이 선다(끝난 뒤에도 남는 transform 이 아니라 한 번의 애니메이션이다). */
+@keyframes nx-hist-rewind {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
+.nx-hist-ic {
+  display: inline-flex;
+}
+
+.nx .nx-hist-t[aria-expanded="true"] .nx-hist-ic {
+  animation: nx-hist-rewind 520ms var(--drift);
+}
+
+/* 배율이 100% 가 아닐 때만 서는 알약 — 누르면 실제 크기로. */
+.nx .nx-zoom-t {
+  height: 26px;
+  min-width: 0;
+  padding: 0 9px;
+  border-radius: var(--r-pill);
+  background: var(--nx-hover);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.nx .nx-zoom-t:hover {
+  background: var(--nx-selected);
+}
+
+/* 좁아지면 덜 급한 것부터 감긴다 — 기록의 글자와 주소 알약의 단축키 → 배율 알약(메뉴에 그대로 있다) →
+   찍기의 글자(숫자는 단추 모서리의 배지로 옮겨 앉는다) → 앞으로 단추와 손의 크기. 칸은 360px 까지
+   좁아질 수 있다(PREVIEW_MIN). 기기 전환은 아이콘만으로(aria-label · title) 구분되니 끝까지 남는다
+   (2026-10-04 ux-review). 선택자는 위 규칙과 같은 두께로 쓴다 — 얇으면 질의 안에서도 지고 만다. */
+@container nxpv (max-width: 780px) {
+  .nx .nx-hist-w,
+  .nx .nx-addr-k {
+    display: none;
+  }
+}
+
+@container nxpv (max-width: 700px) {
+  .nx .nx-zoom-t {
+    display: none;
+  }
+}
+
 @container nxpv (max-width: 560px) {
-  .nx-seg {
+  .nx .nx-seg {
+    margin: 0 2px 0 auto;
+  }
+
+  .nx .nx-pin-w {
     display: none;
   }
 
-  .nx-pin-t span {
+  /* 글자가 접히면 숫자 알약은 자리를 차지하지 않는 배지로 — 단추 모서리에 걸린다. */
+  .nx .nx-pin-t .nx-cnt {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    box-shadow: 0 0 0 2px var(--bg);
+  }
+}
+
+@container nxpv (max-width: 480px) {
+  .nx .nx-pvbar {
+    padding: 0 8px;
+  }
+
+  .nx .nx-pvbar .nx-ibtn {
+    width: 30px;
+    height: 30px;
+  }
+
+  /* 앞으로는 ⌘] 와 메뉴가 그대로 한다 — 가장 좁은 자리에서 가장 덜 쓰는 단추. */
+  .nx .nx-fwd {
     display: none;
+  }
+
+  .nx .nx-addrwrap {
+    min-width: 72px;
+    margin: 0 4px;
+  }
+
+  /* 이름이 먼저다 — 알약의 머리 그림이 접혀 이름에 자리를 준다. */
+  .nx .nx-addr {
+    gap: 6px;
+    padding: 0 6px 0 9px;
+  }
+
+  .nx .nx-addr-ic {
+    display: none;
+  }
+
+  .nx .nx-seg button {
+    width: 26px;
+  }
+}
+
+/* 가장 좁은 칸 — 점도 접고 기기 칸을 한 번 더 줄인다. 이름이 두 글자라도 읽히도록. */
+@container nxpv (max-width: 400px) {
+  .nx .nx-addr-dot {
+    display: none;
+  }
+
+  .nx .nx-seg button {
+    width: 24px;
   }
 }
 
@@ -183,6 +398,13 @@
   margin-bottom: 4px;
   font-size: 13.5px;
   background: transparent;
+}
+
+/* 이 규칙(0,2,0)이 전역 :focus-visible(0,1,0)을 눌러 키보드 고리를 없애므로
+   테두리로 대체한다 — 핀 말풍선 입력과 같은 결(2026-10-04 ux-review). */
+.nx .nx-addr-in:focus-visible {
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 var(--accent);
 }
 
 .nx-addr-list {
@@ -209,7 +431,7 @@
 }
 
 .nx .nx-mi--pick {
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--nx-selected);
 }
 
 .nx .nx-mi--dis,
@@ -253,7 +475,7 @@
   display: flex;
   gap: 2px;
   margin: 2px 6px 6px;
-  background: rgba(0, 0, 0, 0.05);
+  background: var(--nx-hover);
   border-radius: var(--r);
   padding: 2px;
 }
@@ -281,6 +503,7 @@
   background: var(--card);
   color: var(--ink);
   font-weight: 600;
+  /* 고정 — 고른 칸의 그림자. */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
@@ -298,6 +521,7 @@
   position: relative;
   width: 100%;
   height: 100%;
+  /* 고정 — 기기 화면은 팔레트와 상관없는 흰 바탕이다. */
   background: #fff;
   overflow: hidden;
   display: flex;
@@ -321,7 +545,9 @@
   max-width: 100%;
   height: min(100%, 1040px);
   border-radius: 22px;
+  /* 고정 — 기기 프레임은 테마를 따르지 않는다. */
   border: 9px solid #202023;
+  /* 고정 — 기기 프레임의 그림자. */
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 
@@ -330,7 +556,9 @@
   max-width: 100%;
   height: min(100%, 820px);
   border-radius: 40px;
+  /* 고정 — 기기 프레임은 테마를 따르지 않는다. */
   border: 10px solid #202023;
+  /* 고정 — 기기 프레임의 그림자. */
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
 }
 
@@ -347,6 +575,7 @@
   width: 100%;
   height: 100%;
   border: 0;
+  /* 고정 — 미리보기 문서의 바탕은 팔레트와 상관없는 흰 종이다. */
   background: #fff;
 }
 
@@ -362,6 +591,7 @@
   padding: 5px 12px;
   font-size: 12px;
   color: var(--ink2);
+  /* 고정 — 뜬 알약의 그림자. */
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
   white-space: nowrap;
 }
@@ -488,8 +718,8 @@
   padding: 0;
   margin: 20px auto;
   display: grid;
-  gap: 10px;
-  width: 250px;
+  gap: 12px;
+  width: min(320px, 100%);
   text-align: left;
 }
 
@@ -502,10 +732,31 @@
 
 .nx-prep-step {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
   color: var(--ink3);
   font-size: 13.5px;
+  line-height: 1.4;
+}
+
+/* 걸음의 이름 아래에 한 줄 설명 — 지금 걸음이 아닌 걸음도 무슨 일인지 미리 말한다. */
+.nx-prep-step-t {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  word-break: keep-all;
+}
+
+.nx-prep-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink3);
+}
+
+/* 다시 시도 뒤에도 그대로 실패일 때 — 눌렀는데 왜 그대로인지 한 줄로 말한다. */
+.nx-prep-still {
+  margin-top: 10px;
 }
 
 .nx-prep-step--ok {
@@ -553,6 +804,11 @@
   animation: nx-checkin 0.22s ease-out;
 }
 
+/* 이름 아래에 설명이 서면 줄이 두 줄이다 — 아이콘은 이름 줄에 맞춘다. */
+.nx-prep-step .nx-sic {
+  margin-top: 1px;
+}
+
 /* 마무리 장의 큰 표시 — 돌던 깃발을 내리고 완료의 체크가 선다. */
 .nx-sic--finale {
   width: 28px;
@@ -584,6 +840,11 @@
   margin-top: 16px;
   font-size: 12.5px;
   color: var(--ink3);
+}
+
+/* 실패 덮개의 다시 시도 — 진행 막대 대신 문장과 손 하나. */
+.nx-prep-retry {
+  margin-top: 14px;
 }
 
 /* ---------- 찍기 알약 · 좁은 창의 보내기 알약 ---------- */
@@ -624,12 +885,6 @@
   height: 26px;
 }
 
-.nx .nx-btn--sm {
-  height: 28px;
-  padding: 0 10px;
-  font-size: 12.5px;
-}
-
 .nx--narrow .nx-pinstrip {
   bottom: auto;
   top: 10px;
@@ -668,9 +923,13 @@
 }
 
 /* ---------- 말풍선(U4) ---------- */
+/* 층 숫자 75 는 이 칸(`.nx-preview` 가 쌓임 맥락을 만든다) 안에서만 다른 층과 견줘진다 — 앱의 겹판(70) · 찾기(75)와는
+   맞서지 않는다. 높이는 자리(PinBubble 이 잰 `maxHeight`)가 조이고, 넘치는 안쪽(메모 · 요소 정보)이 굴러간다. */
 .nx-pinbub {
   position: absolute;
   z-index: 75;
+  display: flex;
+  flex-direction: column;
   width: 300px;
   background: var(--card);
   border: 1px solid var(--line2);
@@ -706,6 +965,7 @@
 }
 
 .nx-pinbub-h {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -714,39 +974,68 @@
   min-width: 0;
 }
 
-.nx-pinbub-h b {
+/* 대화상자의 이름이 되는 묶음 — 번호 · 이름 · 화면. 긴 이름은 말줄임. */
+.nx-pinbub-id {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.nx-pinbub .nx-pnum {
+  font-size: 12px;
+}
+
+.nx-pinbub-name {
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.nx-pinbub-h span {
+.nx-pinbub-screen {
+  min-width: 0;
   color: var(--ink3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.nx .nx-pinbub input {
-  width: 100%;
-  height: 34px;
-  border: 1px solid var(--line2);
-  border-radius: 9px;
-  padding: 0 10px;
-  outline: 0;
-  font-size: 13.5px;
-  background: var(--card);
+/* 몸 — 메모와 요소 정보. 칸이 모자라면 여기만 굴러가고 머리 · 바닥 단추는 선다. */
+.nx-pinbub-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
-.nx .nx-pinbub input:focus {
+/* 메모 — 한 줄로 시작해 글이 길어지면 네 줄까지 자란다(field-sizing). 그 너머는 안에서 굴러간다. */
+.nx .nx-pinbub-note {
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  max-height: 96px;
+  padding: 6px 10px;
+  border: 1px solid var(--line2);
+  border-radius: 9px;
+  outline: 0;
+  resize: none;
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 20px;
+  background: var(--card);
+  field-sizing: content;
+}
+
+.nx .nx-pinbub-note:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .nx-pinbub-details {
   margin-top: 7px;
-  font-size: 11.5px;
+  font-size: 12px;
 }
 
 .nx-pinbub-details summary {
@@ -778,12 +1067,41 @@
 }
 
 .nx-pinbub-f {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink3);
+}
+
+.nx-pinbub-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+/* 키캡 — 단추 안에서는 그 키가 이 단추를 누른다는 뜻이고, 바닥의 한 줄에서는 줄바꿈의 키다. */
+.nx .nx-pinbub-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--line2);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--ink2);
+  font: 600 12px / 1 var(--font);
+}
+
+.nx .nx-btn--pri .nx-pinbub-key {
+  border-color: color-mix(in srgb, var(--bg) 40%, transparent);
+  background: color-mix(in srgb, var(--bg) 16%, transparent);
+  color: var(--bg);
 }
 
 /* ---------- 제출한 때의 화면 ---------- */
@@ -802,6 +1120,7 @@
   object-fit: contain;
   object-position: top center;
   filter: saturate(0.6);
+  /* 고정 — 찍힌 화면의 바탕은 팔레트와 상관없는 흰 종이다. */
   background: #fff;
 }
 
@@ -831,41 +1150,123 @@
 }
 
 /* ---------- 작업 기록 서랍(U9) ---------- */
+/* 막대의 높이 — 서랍과 스크림이 막대 밑에서 시작한다. 막대 쪽(`.nx-pvbar`)도 이 값을 읽으면 두 곳이 어긋나지
+   않는다(2026-10-06 겹판 조사: 서랍의 `top: 48px` 가 막대 높이를 몰래 따라가고 있었다). */
+.nx-preview {
+  --pv-bar-h: 48px;
+}
+
+/* 서랍 — 들어올 때는 길게 내려앉고(280ms) 나갈 때는 짧게 걷힌다(200ms). 전환은 도착하는 쪽 상태의 것이
+   쓰이므로 닫힘(이 규칙)과 열림(`--open`)이 따로 선다(2026-10-06 작업 기록 손질). */
 .nx-hist {
   position: absolute;
-  top: 48px;
+  top: var(--pv-bar-h);
   right: 0;
   bottom: 0;
   width: 348px;
   max-width: 100%;
   background: var(--card);
   border-left: 1px solid var(--line);
-  box-shadow: -14px 0 34px rgba(0, 0, 0, 0.08);
   transform: translateX(104%);
-  transition: transform 0.22s ease;
+  /* 닫힌 동안은 눈에도 낭독에도 없다 — 미끄러져 나간 뒤에 감춘다(그림자가 가장자리에 비치지 않게). */
+  visibility: hidden;
+  transition:
+    transform 200ms var(--drift),
+    box-shadow 200ms var(--drift),
+    visibility 0s linear 200ms;
   z-index: 12;
   display: flex;
   flex-direction: column;
+  /* 서랍 안의 12px 글자색 — 포인트 · 초록 · 호박색 글자는 옅은 제 바탕 위에서 4.5:1 에 못 미쳤다(측정: 3.6~4.3). 잉크를 섞어
+     한 단 깊게 쓴다. */
+  --hist-accent: color-mix(in srgb, var(--accent) 68%, var(--ink));
+  --hist-green: color-mix(in srgb, var(--green) 78%, var(--ink));
+  --hist-amber: color-mix(in srgb, var(--amber) 76%, var(--ink));
+  --hist-quiet: color-mix(in srgb, var(--ink3) 68%, var(--ink));
+  /* 되돌리면 사라질 구간의 타임라인 선 — 맨 위(지금)에서 고른 줄의 마디까지 포인트색을 띤다. */
+  --hist-undo-line: color-mix(in srgb, var(--accent) 42%, var(--line2));
 }
 
 .nx-hist--open {
   transform: none;
+  /* `visible` 은 숨은 조상(홈 · 가려진 탭의 칸)의 hidden 을 이겨 서랍이 눈에 안 보이는 곳에서 초점을 붙들었다 — 조상을 따른다. */
+  visibility: inherit;
+  /* 옆 서랍의 그림자 — 테마의 스크림 색으로 번져서 어두운 테마에서도 가장자리가 읽힌다. */
+  box-shadow: -18px 0 40px -18px var(--scrim);
+  transition:
+    transform 280ms var(--drift),
+    box-shadow 280ms var(--drift),
+    visibility 0s;
 }
 
+/* 좁은 칸(≤480px)의 시트 — 서랍이 칸을 거의 다 덮으니 뒤를 어둡게 하고, 왼쪽에 손이 닿을 띠(44px)를 남겨
+   그곳을 누르면 닫힌다. 띠가 한 뼘도 안 되면 화면의 흠으로 읽혔다. */
+.nx-hist[data-sheet="true"] {
+  width: min(348px, calc(100% - 44px));
+}
+
+.nx-hist[data-sheet="true"].nx-hist--open {
+  box-shadow: var(--shadow-float);
+}
+
+/* 탭으로 도는 좁은 창은 칸이 창만큼 넓다 — 서랍은 칸을 덮는 한 장이다. */
 .nx--narrow .nx-hist {
   width: 100%;
 }
 
+/* 스크림은 닫힐 때도 걷힌다 — 마운트된 채 불투명도로. 닫는 순간 사라지면 서랍이 아직 나가는 동안 뒤 화면이 번쩍 밝아졌다. */
+.nx-hist-scrim {
+  position: absolute;
+  top: var(--pv-bar-h);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 11;
+  background: var(--scrim);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 200ms var(--drift),
+    visibility 0s linear 200ms;
+}
+
+.nx-hist-scrim--on {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transition:
+    opacity 280ms var(--drift),
+    visibility 0s;
+}
+
+/* 머리 — 막대의 시계 단추와 같은 그림이 알에 들어 단추에서 서랍으로 눈이 이어진다. */
 .nx-hist-h {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 14px 12px 4px 18px;
+  gap: 10px;
+  padding: 14px 10px 6px 16px;
+}
+
+.nx-hist-tile {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .nx-hist-h h3 {
   margin: 0;
   font-size: 15px;
+}
+
+/* 열릴 때 초점이 오는 제목 — 글자에는 초점 고리를 두르지 않는다(단추가 아니다). */
+.nx-hist-h h3:focus {
+  outline: none;
 }
 
 .nx-hist-sub {
@@ -877,144 +1278,600 @@
   white-space: pre-line;
 }
 
-.nx-hist-list {
-  flex: 1;
-  overflow: auto;
-  padding: 6px 10px 16px;
+/* AI 가 일하는 중 — 되돌리기가 잠긴 이유를 줄 위에서 늘 보인다(잠긴 줄의 낭독 설명이 이 줄을 가리킨다). */
+.nx-hist-lock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 12px 0;
+  padding: 8px 10px;
+  border-radius: var(--r);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
+.nx-hist-lockdot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: nx-breathe 1.6s ease-in-out infinite;
+}
+
+.nx-hist-list {
+  flex: 1;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 확인 카드를 굴려 보일 때 위에 붙은 날의 머리 밑으로 들어가지 않게. */
+  scroll-padding: 36px 0 12px;
+  padding: 0 10px 20px;
+}
+
+/* 날의 머리는 굴러도 위에 붙는다 — 어느 날의 줄을 보고 있는지 잃지 않는다. 바탕은 불투명이어야 밑으로 들어가는 줄
+   글자가 비치지 않는다. 글자는 줄의 글자 열에 맞춘다(왼쪽의 타임라인 선이 글자를 가로지르지 않게). */
 .nx-hday {
-  font-size: 11.5px;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  /* 목록의 좌우 여백(10px)까지 덮는다 — 후광이 번진 마디가 머리 밑으로 들어갈 때 가장자리에 비치지 않게. */
+  margin: 0 -10px;
+  padding: 14px 18px 6px 44px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
   color: var(--ink3);
-  padding: 12px 8px 4px;
-  font-weight: 500;
+  background: var(--card);
+  /* 위에 붙었을 때만 아래로 옅은 그늘이 번진다 — 밑으로 들어가는 줄이 딱 잘려 보이지 않게(스크롤 상태 질의를 아는
+     엔진에서만이고, 모르면 그늘 없이 그대로 선다). 이름이 있어야 막대의 폭 질의(`nxpv`)와 섞이지 않는다. */
+  container: hday / scroll-state;
+}
+
+.nx-hday::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  right: 10px;
+  /* 글자 열에만 번진다 — 마디와 선 위로 번지면 선이 지워진다. */
+  left: 44px;
+  height: 12px;
+  background: linear-gradient(var(--card), transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--nx-t-touch) var(--drift);
+}
+
+@container hday scroll-state(stuck: top) {
+  .nx .nx-hday::after {
+    opacity: 1;
+  }
+
+  /* 맨 위 날의 머리도 붙었을 때는 선이 이어진다(아니면 붙은 머리 밑에서 선이 한 토막 끊겨 보인다). */
+  .nx .nx-hgroup:first-of-type > .nx-hday::before {
+    opacity: 1;
+  }
+}
+
+.nx-hol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .nx-hitem {
   position: relative;
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  gap: 8px;
-  padding: 8px;
-  border-radius: 9px;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 4px;
+  padding-bottom: 2px;
 }
 
-.nx-hitem:hover {
-  background: var(--bg-2);
+/* 타임라인의 선 — 마디와 마디를 잇는다. 줄 · 날의 머리 · 제출 구분선이 같은 자리에 한 토막씩 그어 끊기지 않는다
+   (그래서 줄 사이 간격은 margin 이 아니라 padding 이다). */
+.nx-hitem::before,
+.nx-hday::before,
+.nx-hsubmit::before {
+  content: "";
+  position: absolute;
+  left: 10px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--line2);
+  pointer-events: none;
 }
 
-.nx-hitem:not(.nx-hitem--cur) .nx-hbody {
+/* 맨 위의 마디에서 시작해 맨 아래의 마디에서 끝난다 — 처음과 끝에 선이 삐져나오지 않게. */
+.nx-hitem--first::before {
+  top: 17px;
+}
+
+.nx-hitem--last::before {
+  bottom: calc(100% - 17px);
+}
+
+/* 날의 머리는 목록의 여백까지 덮어 선의 자리가 10px 더 오른쪽이다. 맨 위 날의 머리는 그 위로 이을 마디가 없으니
+   선을 감춘다(붙었을 때만 위 질의가 켠다). */
+.nx-hday::before {
+  left: 20px;
+}
+
+.nx-hgroup:first-of-type > .nx-hday::before {
+  opacity: 0;
+}
+
+/* 마디 — 사용자의 요청은 속이 빈 점. 바탕이 카드색이라 뒤를 지나는 선을 가린다. */
+.nx-hnode {
+  position: relative;
+  z-index: 1;
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  justify-self: center;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-top: 12px;
+  border: 2px solid var(--ink3);
+  border-radius: 50%;
+  background: var(--card);
+  transition:
+    background-color var(--nx-t-touch) var(--drift),
+    border-color var(--nx-t-touch) var(--drift),
+    box-shadow var(--nx-t-touch) var(--drift),
+    color var(--nx-t-touch) var(--drift);
+}
+
+/* 앱이 만든 사건(가져옴 · 되돌림 · 코멘트 반영)은 그림이 든 알이다 — 내 요청이 아니라는 것이 점의 모양에서 읽힌다. */
+.nx-hnode--merge,
+.nx-hnode--restore,
+.nx-hnode--comment {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 7px;
+  border: 0;
+  background: color-mix(in srgb, var(--ink) 8%, var(--card));
+  color: var(--ink3);
+}
+
+/* 지금 서 있는 곳 — 속이 찬 마디와 옅은 후광. */
+.nx-hitem--cur .nx-hnode {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--card);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+/* 되돌아갈 곳으로 고른 줄 — 마디가 포인트색으로 선다. 알의 바탕은 불투명이어야 한다(옅은 포인트색 `--accent-soft` 는 투명도가
+   있어 뒤를 지나는 선이 알과 그림 속으로 비쳤다). */
+.nx-hitem--target .nx-hnode {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--card));
+  color: var(--hist-accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.nx-hitem--target .nx-hnode--request {
+  background: var(--card);
+}
+
+/* 줄 하나가 단추 하나다 — 제목 · 시각 · 화면, 끝에 조용한 `되돌리기`. 줄마다 테두리 단추가 둘씩 서던 벽을 걷었다. */
+.nx .nx-hmain {
+  grid-column: 2;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  text-align: left;
+}
+
+.nx .nx-hmain--cur {
+  cursor: default;
+}
+
+.nx button.nx-hmain {
   cursor: pointer;
 }
 
-.nx-hd {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  border: 1.5px solid var(--ink3);
-  background: var(--card);
-  margin: 5px 0 0 4px;
+.nx button.nx-hmain:hover,
+.nx .nx-hitem--target button.nx-hmain {
+  background: var(--nx-hover);
 }
 
-.nx-hitem--cur .nx-hd {
-  background: var(--ink);
-  border-color: var(--ink);
+/* 잠긴 줄(AI 가 일하는 중)은 올려도 답이 없다 — 이유는 머리의 줄이 말한다. */
+.nx button.nx-hmain[aria-disabled="true"] {
+  cursor: default;
+}
+
+.nx button.nx-hmain[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
+/* 온전한 줄은 눌러도 줄어들지 않고 호버보다 한 단계 짙어진다(next.css 의 줄 규칙과 같다) — 270px 줄이 3% 줄면 글자가 떤다. */
+.nx button.nx-hmain:active:not(:disabled) {
+  transform: none;
+  background: var(--nx-selected);
+}
+
+.nx button.nx-hmain[aria-disabled="true"]:active:not(:disabled) {
+  background: transparent;
 }
 
 .nx-ht {
-  font-size: 13px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  font-size: 13.5px;
+  font-weight: 500;
   line-height: 1.45;
+  color: var(--ink);
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
 
-.nx-ht small {
+.nx-hitem--ev .nx-ht {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--ink2);
+}
+
+/* 코멘트 반영의 요지 — 제목이 모두 같은 말이라 줄을 가르는 것은 이 한 줄이다. */
+.nx-hd2 {
+  display: block;
+  margin-top: 1px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--ink3);
-  margin-right: 6px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-hmeta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink3);
+}
+
+.nx-htime {
+  flex: none;
   font-variant-numeric: tabular-nums;
 }
 
 .nx-hs {
-  font-size: 12px;
-  color: var(--ink3);
-  margin-top: 2px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.nx-hactions {
+.nx-hs::before {
+  content: "·";
+  margin-right: 6px;
+}
+
+/* 맨 위 줄의 표식 — 지금 서 있는 곳. */
+.nx-hnow {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 7px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--hist-accent);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+/* 줄 끝의 되돌리기 — 늘 보이되 조용하다. 줄에 손을 올리면 포인트색으로 올라선다(누르는 것은 줄 전체다). */
+.nx-hgo {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  margin-left: auto;
+  padding: 0 7px 0 6px;
+  border-radius: 6px;
+  color: var(--ink3);
+  transition:
+    background-color var(--nx-t-touch) var(--drift),
+    color var(--nx-t-touch) var(--drift);
+}
+
+.nx .nx-hitem--target .nx-hgo,
+.nx button.nx-hmain:hover .nx-hgo,
+.nx button.nx-hmain:focus-visible .nx-hgo {
+  background: var(--accent-soft);
+  color: var(--hist-accent);
+}
+
+.nx button.nx-hmain[aria-disabled="true"] .nx-hgo {
+  background: transparent;
+  color: var(--ink3);
+  opacity: 0.55;
+}
+
+/* 수정 전 · 후 — 한 차례가 만진 화면마다 조용한 단추 하나. */
+.nx-hacts {
   grid-column: 2;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
+  gap: 2px 4px;
+  min-width: 0;
+  margin-top: -3px;
+  /* 단추 안쪽 여백(7px)과 합쳐 그림이 제목의 왼쪽 끝(10px)에 선다. */
+  padding: 0 0 4px 3px;
 }
 
-.nx .nx-hactions .nx-btn {
+.nx .nx-hcmp {
+  height: 26px;
+  gap: 5px;
+  /* 화면 이름은 AI 가 지은 글이라 길 수 있다 — 서랍 폭을 넘지 않고 끝을 줄임표로 맺는다. */
+  min-width: 0;
   max-width: 100%;
-  white-space: normal;
-  height: auto;
-  min-height: 26px;
-}
-
-.nx .nx-hb {
-  position: static;
-  opacity: 0.85;
-}
-
-.nx-hitem:hover .nx-hb {
-  opacity: 1;
-}
-
-.nx-hconfirm {
-  grid-column: 2;
-  margin-top: 8px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 10px;
-  font-size: 12.5px;
+  padding: 0 9px 0 7px;
+  border-radius: 8px;
   color: var(--ink2);
-  line-height: 1.5;
+  font-size: 12px;
 }
 
-.nx-hconfirm p {
+.nx-hcmp-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 그림만 포인트색이다 — 글자만 서 있으면 누르는 것으로 읽히지 않는다. */
+.nx .nx-hcmp-ic {
+  display: inline-flex;
+  color: var(--accent);
+}
+
+/* 되돌리면 사라질 줄 — 확인을 연 동안 그보다 새로운 줄이 흐려져, 일의 크기가 타임라인에서 바로 보인다. 불투명도가 아니라 색으로
+   흐린다: 글자가 4.5:1 밑으로 내려가지 않고(측정: 불투명도 .45 는 2.0~2.8), 선 · 제출 구분선 · 날의 머리와 어긋난 바늘땀이
+   서지 않는다(선은 흐리지 않는다). */
+.nx-hitem--undo .nx-ht {
+  color: var(--ink3);
+}
+
+.nx .nx-hitem--undo .nx-hcmp {
+  color: var(--ink3);
+}
+
+.nx .nx-hitem--undo .nx-hcmp-ic {
+  color: color-mix(in srgb, var(--accent) 50%, var(--card));
+}
+
+.nx-hitem--undo .nx-hnode--request {
+  border-color: color-mix(in srgb, var(--ink3) 40%, var(--card));
+}
+
+.nx-hitem--undo .nx-hnode--merge,
+.nx-hitem--undo .nx-hnode--restore,
+.nx-hitem--undo .nx-hnode--comment {
+  background: color-mix(in srgb, var(--ink) 4%, var(--card));
+  color: color-mix(in srgb, var(--ink3) 50%, var(--card));
+}
+
+.nx-hitem--undo.nx-hitem--cur .nx-hnode {
+  border-color: color-mix(in srgb, var(--ink) 40%, var(--card));
+  background: color-mix(in srgb, var(--ink) 40%, var(--card));
+  box-shadow: none;
+}
+
+/* 사라질 구간의 선 — 줄 · 날의 머리 · 제출 구분선이 같은 색으로 이어 한 줄로 읽힌다. 고른 줄은 마디(17px)까지만. */
+.nx-hitem--undo::before,
+.nx-hday--undo::before,
+.nx-hsubmit--undo::before {
+  background: var(--hist-undo-line);
+}
+
+.nx-hitem--target::before {
+  background: linear-gradient(to bottom, var(--hist-undo-line) 17px, var(--line2) 17px);
+}
+
+/* 되돌리기 확인 — 서랍의 결정 순간. 왼쪽의 포인트 선과 옅은 포인트 바탕이 같은 판의 다른 줄들보다 한 단 위에
+   세운다(되돌릴 수 있는 일이라 붉지 않다). 안쪽 틀(제목 · 단추)은 `InlineConfirm`(.nx-iconf)이 정한다. */
+.nx-hconfirm.nx-iconf {
+  grid-column: 2;
+  margin: 4px 0 6px;
+  padding: 12px 12px 10px 14px;
+  border: 0;
+  border-left: 2px solid var(--accent);
+  border-radius: 3px var(--r-md) var(--r-md) 3px;
+  background: var(--accent-soft);
+}
+
+.nx-hchips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
   margin: 0;
-  white-space: pre-line;
+  padding: 0;
+  list-style: none;
+}
+
+.nx-hchip {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 9px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--hist-accent);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* 코멘트 반영이 함께 되돌아간다 — 개발자가 바란 변경이라 한 번 더 눈에 띄게(글자도 말한다). */
+.nx-hchip--warn {
+  background: var(--amber-soft);
+  color: var(--hist-amber);
+}
+
+.nx-hconfirm-names {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--hist-quiet);
+  overflow-wrap: anywhere;
   word-break: keep-all;
 }
 
-.nx-hconfirm-row {
+.nx-hconfirm-safe {
+  margin: 0;
   display: flex;
-  gap: 6px;
-  margin-top: 8px;
+  align-items: flex-start;
+  gap: 7px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink2);
+  word-break: keep-all;
 }
 
+.nx-hconfirm-ic {
+  margin-top: 2px;
+  color: var(--green);
+}
+
+.nx-hconfirm .nx-iconf-act {
+  flex-wrap: wrap;
+}
+
+/* 제출의 순간 — 점 열의 한가운데(10px)에 체크가 앉는다(알 = 12 + 3×2 = 18px). 선이 이 체크를 지나간다. */
 .nx-hsubmit {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin: 6px 8px;
+  /* 글자가 줄의 글자 열(34px)에서 시작한다 — 체크 알은 1 + 18px 이라 사이가 15px. */
+  gap: 15px;
+  padding: 8px 8px 8px 1px;
   font-size: 12px;
-  color: var(--green);
+  color: var(--hist-green);
   font-weight: 500;
 }
 
-.nx-hsubmit span {
+.nx-hsubmit > .nx-i {
+  position: relative;
+  z-index: 1;
+  box-sizing: content-box;
+  padding: 3px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--green) 14%, var(--card));
+}
+
+.nx-hsubmit-rule {
   flex: 1;
   height: 1px;
   background: var(--green-soft);
 }
 
+/* 맨 위나 맨 아래에 홀로 선 구분선은 그 쪽으로는 이을 마디가 없다. */
+.nx-hgroup:first-of-type > .nx-hol > .nx-hsubmit:first-child::before {
+  top: 50%;
+}
+
+.nx-hgroup:last-of-type > .nx-hol > .nx-hsubmit:last-child::before {
+  bottom: 50%;
+}
+
+/* 빈 서랍 — 글자만 서 있던 칸에 그림 하나를 얹어 비어 있음이 고장으로 읽히지 않게. */
 .nx-hist-empty {
-  padding: 40px 22px;
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 44px 24px;
   text-align: center;
   color: var(--ink3);
   line-height: 1.6;
   font-size: 13px;
+}
+
+.nx-hist-empty p {
+  margin: 0;
   white-space: pre-line;
 }
 
+.nx-hist-empty-ic {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--nx-hover);
+  color: var(--ink3);
+}
+
+/* 읽는 동안 — 줄이 설 자리를 흐린 줄로 잡아 둔다(글자만 서 있던 칸이 비어 보이지 않게). 기다림이 150ms 를
+   넘을 때만 떠오른다 — 로컬 데몬은 거의 곧바로 답해서 뼈대가 번쩍였다 사라지면 서랍이 깜빡여 보였다. */
+.nx-hist-skel {
+  display: grid;
+  gap: 4px;
+  padding: 10px 0 4px;
+  animation: nx-fade var(--nx-t-move) var(--drift) 150ms backwards;
+}
+
+.nx-hist-skelrow {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  column-gap: 4px;
+  padding: 8px 0;
+}
+
+.nx-hist-skelrow > span {
+  justify-self: center;
+  width: 10px;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--line2);
+}
+
+.nx-hist-skelrow > i {
+  display: block;
+  height: 11px;
+  margin: 4px 10px;
+  border-radius: 6px;
+  background:
+    linear-gradient(100deg, var(--nx-hover) 30%, var(--nx-selected) 50%, var(--nx-hover) 70%) 0 0 /
+    200% 100%;
+  animation: nx-cv-shimmer 1.4s linear infinite;
+}
+
+.nx-hist-skelrow > i:nth-of-type(1) {
+  width: 78%;
+}
+
+.nx-hist-skelrow > i:nth-of-type(2) {
+  grid-column: 2;
+  width: 46%;
+}
+
 .nx-hist-error {
-  margin: 10px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 0;
   padding: 8px 10px;
   border-radius: var(--r);
   background: var(--amber-soft);
@@ -1025,8 +1882,22 @@
 .nx-hist-foot {
   padding: 10px 18px;
   border-top: 1px solid var(--line);
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--ink3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-hist,
+  .nx-hist--open,
+  .nx-hist-scrim,
+  .nx-hist-scrim--on {
+    transition: none;
+  }
+
+  .nx-hist-skelrow > i,
+  .nx .nx-hist-t[aria-expanded="true"] .nx-hist-ic {
+    animation: none;
+  }
 }
 
 .nx-pin-intro {
@@ -1042,7 +1913,8 @@
   border: 1px solid var(--line2);
   border-radius: var(--r-lg);
   background: var(--card);
-  box-shadow: 0 4px 16px #0001;
+  /* 2026-10-06 겹판 손질: 고정 색 그림자(#0001)는 어두운 테마에서 보이지 않았다 — 테마의 팝 그림자로. */
+  box-shadow: var(--pop);
   font-size: 12px;
   color: var(--ink2);
 }
@@ -1052,158 +1924,445 @@
 .nx-pin-intro .nx-btn {
   flex: none;
 }
+/* ---------- 비교 대화상자 — 보기 방식 · 와이프 · 동기 확대(2026-10-06 겹판 손질) ---------- */
+/* 스크림 · 판의 옷(그림자 · 반경 · 들어옴/나감)은 ui/overlay.css, 머리 · 바닥의 뼈대는 ModalFrame 이 정한다 — 여기는 배치만. */
 .nx-compare-back {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  background: #0006;
   padding: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.nx-compare {
+
+.nx-modal.nx-compare {
   width: min(1120px, 100%);
-  max-height: 92vh;
-  overflow: auto;
-  background: var(--card);
-  border: 1px solid var(--line2);
-  border-radius: var(--r-lg);
+  max-height: 100%;
   color: var(--ink);
-  box-shadow: 0 20px 70px #0004;
 }
-.nx-compare > header {
+
+/* 머리 아래의 막대 — 보기 방식 · (번갈아의) 앞뒤 · 확대. 머리처럼 굴러가지 않고 선다. */
+.nx-compare-bar {
+  flex: none;
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 20px;
-  border-bottom: 1px solid var(--line);
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 0 14px 12px 24px;
 }
-.nx-compare h2 {
-  font-size: 17px;
-  margin: 0 0 6px;
+
+/* 분절 — 하나만 눌려 있다. 막대(.nx-seg)와 같은 결: 얹힌 알약이 고른 칸이다. */
+.nx-compare-switch {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 9px;
+  background: var(--nx-hover);
 }
-.nx-compare header p {
-  margin: 0;
-  font-size: 12px;
-  color: var(--ink3);
+
+.nx .nx-compare-switch button {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ink2);
+  white-space: nowrap;
 }
-.nx-compare-meta {
-  font-size: 11px;
-  color: var(--ink3);
-  padding: 12px 20px 0;
+
+.nx .nx-compare-switch button:hover {
+  color: var(--ink);
 }
+
+.nx .nx-compare-switch button[aria-pressed="true"] {
+  background: var(--card);
+  color: var(--ink);
+  font-weight: 600;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+.nx-compare-zoom {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.nx .nx-compare-pct {
+  min-width: 54px;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--r);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink2);
+}
+
+.nx .nx-compare-pct:hover:not([aria-disabled="true"]) {
+  background: var(--nx-hover);
+  color: var(--ink);
+}
+
+/* 한계에서는 흐려질 뿐 잠기지 않는다 — 잠긴(disabled) 단추는 초점을 잃어 키보드의 손이 달아난다. */
+.nx .nx-compare-zoom button[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.nx .nx-compare-zoom .nx-ibtn[aria-disabled="true"]:hover {
+  background: none;
+  color: var(--ink2);
+}
+
+/* 몸 — 사진이 서는 자리. 굴러가지 않고, 사진은 칸 안에서 움직인다. */
+.nx-compare-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 24px 16px;
+}
+
 .nx-compare-pair {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 16px;
-  padding: 16px 20px 20px;
 }
-.nx-compare-side h3 {
-  font-size: 13px;
-  margin: 0 0 8px;
+
+.nx-compare-side {
+  min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   gap: 8px;
 }
-.nx-compare-side h3 small {
-  font-size: 11px;
+
+.nx-compare-cap {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nx-compare-cap-at {
+  font-size: 12px;
   font-weight: 400;
   color: var(--ink3);
+  font-variant-numeric: tabular-nums;
 }
-.nx-compare-tools {
+
+/* 칸 — 사진을 담고, 확대 · 끌기 · 휠이 일어난다. 칸은 사진의 비율(인라인 aspect-ratio)을 따라 서서 사진 둘레에
+   빈자리가 남지 않고, 창이 낮아 모자라면 줄어든다(사진은 칸 안에 통째로 들어와(contain) 처음부터 전체가 보인다). */
+.nx-cv-stage {
+  position: relative;
+  flex: 0 1 auto;
+  width: 100%;
+  min-height: 120px;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nx-cv-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border: 1px solid var(--line);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.nx-cv-stage.is-pannable {
+  cursor: grab;
+}
+
+.nx-cv-stage.has-split:not(.is-pannable) {
+  cursor: ew-resize;
+}
+
+.nx-cv-stage.is-dragging.is-pannable {
+  cursor: grabbing;
+}
+
+.nx-cv-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.nx-cv-layer img {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: block;
+  max-width: none;
+  transform-origin: center;
+  pointer-events: none;
+  /* 고정 — 찍힌 화면의 바탕은 팔레트와 상관없는 흰 종이다. */
+  background: #fff;
+}
+
+/* 번갈아에서 지금 안 보이는 쪽 — 자리는 그대로 두고 감춰서 바꿀 때 사진을 다시 읽지 않는다. */
+.nx-cv-layer.is-off {
+  visibility: hidden;
+}
+
+/* 겹쳐서의 위 겹 — 선의 왼쪽만 보인다. */
+.nx-cv-layer--clip {
+  z-index: 1;
+}
+
+/* 단추 · 키로 움직일 때는 부드럽게, 손으로 끌 때는 손가락을 곧바로 따른다. */
+.nx-cv-stage:not(.is-dragging) .nx-cv-layer img {
+  transition: transform var(--nx-t-touch) var(--drift);
+}
+
+.nx-cv-stage:not(.is-dragging) .nx-cv-layer--clip {
+  transition: clip-path var(--nx-t-touch) var(--drift);
+}
+
+/* 사진 위의 이름표 — 무슨 사진인지, 언제 찍은 것인지. */
+.nx-cv-tag {
+  position: absolute;
+  top: 10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: calc(50% - 20px);
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* 고정 — 사진 위의 이름표는 어두운 반투명 바탕에 흰 글자라야 밝은 사진 위에서도 읽힌다. */
+  color: #fff;
+  background: rgba(20, 20, 24, 0.62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+
+.nx-cv-tag--before {
+  left: 10px;
+}
+
+.nx-cv-tag--after {
+  right: 10px;
+}
+
+.nx-cv-tag-at {
+  font-size: 12px;
+  font-weight: 400;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 겹쳐서의 선 — 손으로 끄는 자리(32px 폭)와 보이는 선(2px)이 따로다. */
+.nx-cv-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  width: 32px;
+  margin-left: -16px;
+  display: grid;
+  place-items: center;
+  cursor: ew-resize;
+}
+
+.nx-cv-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 2px;
+  margin-left: -1px;
+  /* 고정 — 사진 위의 선은 테마와 상관없이 흰 선에 어두운 테두리라야 어느 사진에서도 읽힌다. */
+  background: #fff;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.28),
+    0 0 12px rgba(0, 0, 0, 0.22);
+}
+
+.nx-cv-grip {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--line2);
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: var(--pop);
+  transition: transform var(--nx-t-touch) var(--spring);
+}
+
+.nx-cv-handle:hover .nx-cv-grip {
+  transform: scale(1.08);
+}
+
+.nx-cv-stage.is-dragging .nx-cv-grip {
+  transform: scale(0.96);
+}
+
+/* 슬라이더 자체는 낭독 전용(.nx-sr)이라 안 보인다 — 키보드 초점은 손잡이가 대신 보여 준다. */
+.nx-cv-range:focus-visible + .nx-cv-handle .nx-cv-grip {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* 사진을 기다리는 동안 — 사진이 설 자리를 같은 크기로 잡아 두고 연한 빛이 지나간다. */
+.nx-compare-skel {
+  border-radius: var(--r-md);
+  background:
+    linear-gradient(
+      100deg,
+      transparent 30%,
+      color-mix(in srgb, var(--ink) 7%, transparent) 50%,
+      transparent 70%
+    )
+    0 0 / 200% 100%,
+    var(--bg-2);
+  box-shadow: inset 0 0 0 1px var(--line);
+  animation: nx-cv-shimmer 1.4s linear infinite;
+}
+
+.nx-compare-skel--ratio {
+  aspect-ratio: 16 / 10;
+}
+
+@keyframes nx-cv-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* 사진이 없거나 못 읽었을 때 — 한가운데에 한 줄과 손 하나. */
+.nx-compare-empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 36px 20px 44px;
+  text-align: center;
+  color: var(--ink3);
+}
+
+.nx-compare-msg {
+  margin: 0;
   display: flex;
   align-items: center;
-  gap: 5px;
-  color: var(--ink3);
-}
-.nx .nx-compare-tools button {
-  min-width: 27px;
-  height: 25px;
-  padding: 0 5px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  font-size: 12px;
-}
-.nx .nx-compare-tools button:disabled {
-  opacity: 0.45;
-}
-.nx-compare-photo {
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  overflow: auto;
-  background: var(--bg);
-  min-height: 200px;
-}
-.nx-compare-photo img {
-  display: block;
-  height: auto;
-  max-width: none;
-}
-.nx-compare-photo p,
-.nx-compare-empty {
-  padding: 36px 20px;
-  font-size: 13px;
-  color: var(--ink3);
+  gap: 8px;
+  font-size: 13.5px;
   line-height: 1.7;
+  word-break: keep-all;
 }
-.nx-compare-switch {
-  display: none;
+
+.nx-compare-msg--fail {
+  color: var(--red);
 }
+
+/* 한 장뿐일 때 — 없는 쪽의 사정을 사진 위에 한 줄로. */
+.nx-compare-note {
+  flex: none;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--r);
+  background: var(--bg-2);
+  color: var(--ink2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.nx-modal--frame .nx-mfoot--frame.nx-compare-foot {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 16px;
+  padding: 10px 24px 12px;
+  font-size: 12px;
+  color: var(--ink3);
+}
+
+.nx-compare-hints {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+}
+
+.nx-compare-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* 키캡은 시트와 같은 모양을 한 칸 작게 — `.nx kbd.nx-kc`(ui.css)의 24px 가 바닥 줄에는 크다. */
+.nx .nx-compare-hint kbd.nx-kc {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+@media (max-width: 700px) {
+  .nx-compare-back {
+    padding: 12px;
+  }
+
+  .nx-compare-bar {
+    padding-left: 16px;
+  }
+
+  .nx-compare-body {
+    padding: 0 16px 12px;
+  }
+
+  .nx-modal--frame .nx-mfoot--frame.nx-compare-foot {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-compare-skel {
+    animation: none;
+  }
+
+  .nx-cv-stage .nx-cv-layer img,
+  .nx-cv-stage .nx-cv-layer--clip,
+  .nx-cv-grip {
+    transition: none;
+  }
+}
+
+/* 첫 핀을 알리는 줄(.nx-pin-intro)은 좁은 창에서 줄을 바꾼다 — 칸의 것(PreviewColumn). */
 @media (max-width: 700px) {
   .nx-pin-intro {
     flex-wrap: wrap;
   }
+
   .nx-pin-intro > span {
     flex-basis: calc(100% - 30px);
   }
-  .nx-compare-back {
-    padding: 12px;
-  }
-  .nx-compare-switch {
-    display: flex;
-    padding: 12px 20px 0;
-    gap: 6px;
-  }
-  .nx-compare-switch button {
-    padding: 6px 14px;
-    border-radius: var(--r-pill);
-    background: var(--bg);
-    border: 1px solid var(--line);
-    font-size: 12px;
-  }
-  .nx-compare-switch button[aria-pressed="true"] {
-    color: var(--accent);
-    border-color: var(--accent);
-  }
-  .nx-compare-pair {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .nx-compare-side:not(.nx-compare-side--chosen) {
-    display: none;
-  }
 }
 
-.nx-live-review {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--line);
-  background: var(--card);
-}
-.nx-live-review > span:last-child {
-  font-size: 11px;
-  color: var(--ink3);
-}
 .nx-screen-recent {
-  font-size: 10px;
+  /* 2026-10-04 ux-review: 10px 글자는 읽기 어렵다 — 11.5px 로 통일한다. */
+  font-size: 11.5px;
   color: var(--accent);
-}
-.nx-mi .nx-review-badges {
-  flex-basis: 100%;
-  margin-left: 24px;
 }

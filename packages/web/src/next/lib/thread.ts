@@ -195,6 +195,49 @@ export function splitDuration(ms: number): { minutes: number; seconds: number } 
   return { minutes: Math.floor(total / 60), seconds: total % 60 };
 }
 
+/**
+ * 답의 마크다운을 평문 발췌 한 덩이로 — `고친 화면` 카드의 `답변에서 설명한 변경` 이 쓴다.
+ * 줄바꿈만 공백으로 눌러 붙이면 `**강조**` 의 별표와 표의 세로줄이 글자 그대로 카드에
+ * 섰다(2026-10-06 채팅 결과창 개선). 강조 · 링크 주소 · 목록 기호는 글이 아니라 모양이라
+ * 걷고, 표 · 코드 덩어리 · 가로줄은 설명이 아니라 자료라 뺀다. 목록의 항목은 ` · ` 로 잇는다.
+ * `max` 글자를 넘으면 거기서 자르고 `…` 를 붙인다.
+ */
+export function plainExcerpt(markdown: string, max: number): string {
+  let out = "";
+  let inCode = false;
+  let prevListed = false;
+  for (const raw of markdown.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (line.startsWith("```")) {
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode || line === "" || line.startsWith("|") || /^([-*_])\1{2,}$/.test(line)) {
+      continue;
+    }
+    const listed = /^(?:[-*+]|\d+[.)])\s+/.test(line);
+    const text = line
+      .replace(/^(?:#{1,6}\s+|>\s?|(?:[-*+]|\d+[.)])\s+)/, "")
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+      // 백틱은 정규식 리터럴로 쓰지 않는다 — 한글 리터럴을 훑는 시험의 어휘 분석기가 정규식을
+      // 모르고 백틱을 템플릿 문자열의 시작으로 읽어 파일 나머지를 삼킨다.
+      .replaceAll("`", "")
+      .replace(/(\*\*|__)(.+?)\1/g, "$2")
+      .replace(/(^|[^\w*])\*(?!\s)([^*]+?)\*(?![\w*])/g, "$1$2")
+      .replace(/(^|[^\w])_(?!\s)([^_]+?)_(?!\w)/g, "$1$2")
+      .replace(/~~(.+?)~~/g, "$1")
+      .replace(/<[^>]+>/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (text === "") continue;
+    out += out === "" ? text : `${listed && prevListed ? " · " : " "}${text}`;
+    prevListed = listed;
+  }
+  const chars = Array.from(out);
+  return chars.length > max ? `${chars.slice(0, max).join("").trimEnd()}…` : out;
+}
+
 /** 첨부 한 건의 크기 — 목업의 작은 글씨(`320KB` · `2.4MB`). */
 export function sizeText(bytes: number): string {
   if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;

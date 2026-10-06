@@ -7,6 +7,7 @@ import {
 } from "@colonova-design/protocol";
 import { Fragment, type ReactNode, useRef, useState } from "react";
 import { Markdown } from "../../components/Markdown";
+import { Tip } from "../../components/Tip";
 import { ActivitySummary, groupActivity } from "../../components/transcript/activity";
 import { ThinkingBlock, ToolBlock } from "../../components/transcript/blocks";
 import { TodoCard } from "../../components/transcript/todo";
@@ -23,6 +24,7 @@ import {
   failureCards,
   LIMIT_RESULT,
   noticeKind,
+  plainExcerpt,
   promptNumbers,
   rawErrorLine,
   retryCount,
@@ -30,8 +32,16 @@ import {
   textRoles,
 } from "../lib/thread";
 import { openComparison } from "../preview/ComparisonDialog";
-import { BriefCard, FailCard, GateCard, ReceiptCard, ReviewCard, reviewParts } from "./cards";
-import { CheckIcon, ClockIcon, EditIcon, FwdIcon, SparkIcon } from "./icons";
+import {
+  BriefCard,
+  FailCard,
+  GateCard,
+  NoticeCard,
+  ReceiptCard,
+  ReviewCard,
+  reviewParts,
+} from "./cards";
+import { CheckIcon, ClockIcon, EditIcon, FwdIcon, InfoIcon, ScreenIcon, SparkIcon } from "./icons";
 import { type LoadComparison, ResultScreen } from "./ResultScreens";
 import { SettleLine } from "./SettleLine";
 
@@ -46,11 +56,13 @@ function failed(block: TurnBlock): boolean {
   return block.isError || (block.subtype !== "" && block.subtype !== "success");
 }
 
-/** 사람의 마지막 말(기계 턴 말고) — `다시 시도` 가 다시 보내는 글. */
-function lastOwnWords(blocks: readonly Block[]): string | null {
+/** 사람의 마지막 보내기(기계 턴 말고, 핀 묶음은 살려) — `다시 시도` 가 다시 보내는 말과 몫. */
+function lastOwnSend(blocks: readonly Block[]): Extract<Block, { type: "user" }> | null {
   for (let index = blocks.length - 1; index >= 0; index -= 1) {
     const block = blocks[index];
-    if (block?.type === "user" && readTurn(block.text).marker === null) return block.text;
+    if (block?.type !== "user") continue;
+    const { marker } = readTurn(block.text);
+    if (marker === null || marker.kind === "comments") return block;
   }
   return null;
 }
@@ -85,8 +97,8 @@ export interface ThreadProps {
   /** 이 대화가 잃은 말(데몬의 회복 방) — 실패 카드가 된다(W8). */
   dropped: LostSend[];
   onFork: (turn: number) => void;
-  onEditResend: (prompt: number, text: string) => void;
-  onRetry: (text: string) => void;
+  onEditResend: (prompt: number, send: Extract<Block, { type: "user" }>) => void;
+  onRetry: (send: Extract<Block, { type: "user" }>) => void;
   /** 잃은 말의 `다시 시도` — 되살려 다시 보낸다(입력창이 쓰던 길). */
   onRetryDropped: (itemId: string) => void;
   onOpenScreen: (screen: TurnScreen) => void;
@@ -226,7 +238,7 @@ export function Thread(props: ThreadProps) {
     if (block.type === "turn" && failed(block)) lastFailedId = block.id;
     if (block.type === "human") lastHumanId = block.id;
   }
-  const ownWords = lastOwnWords(blocks);
+  const ownSend = lastOwnSend(blocks);
   // 잃은 말의 실패 카드(W8) — 대화록이 이미 말하는 실패와 겹치면 하나만 선다.
   const lost = failureCards(props.dropped, blocks);
   const handedPrs = new Set<number>();
@@ -270,6 +282,7 @@ export function Thread(props: ThreadProps) {
           );
         }
         if (marker?.kind === "brief") return <BriefCard marker={marker} body={body} />;
+        if (marker?.kind === "notice") return <NoticeCard marker={marker} body={body} />;
         if (marker?.kind === "review") {
           return (
             <ReviewCard
@@ -287,8 +300,10 @@ export function Thread(props: ThreadProps) {
         if (block.text.trim() === INTERRUPTED) return <Note>{L.transcript.stopped}</Note>;
         if (block.text.trim() === NO_RESPONSE) return null;
         const prompt = prompts.get(block.id) ?? 1;
-        const canResend =
-          marker === null && block.text.trim() !== "" && (prompt === 1 || props.canBranch);
+        // 핀 묶음도 고쳐서 보내기의 길에 선다 — 문장만 입력창에서 고치고 몫은
+        // 원래 턴에서 온다(2026-10-04 ux-plan PR1).
+        const own = marker === null || marker.kind === "comments";
+        const canResend = own && block.text.trim() !== "" && (prompt === 1 || props.canBranch);
         const thumbs = marker?.kind === "comments" ? alignThumbs(marker.items, block.thumbs) : [];
         return (
           <div className="nx-m-user">
@@ -309,17 +324,24 @@ export function Thread(props: ThreadProps) {
                 <div className="nx-bpins">
                   {marker.items.map((item, at) => (
                     <div key={item.id ?? at} className="nx-bpin">
-                      {thumbs[at] ? (
-                        <img
-                          className="nx-bpin-shot"
-                          src={`data:image/jpeg;base64,${thumbs[at]}`}
-                          alt=""
-                        />
-                      ) : (
+                      {/* 번호는 사진이 있어도 선다 — 미리보기에서 찍은 번호와 이어 읽힌다. */}
+                      <span className={`nx-bpin-lead${thumbs[at] ? " nx-bpin-lead--shot" : ""}`}>
+                        {thumbs[at] && (
+                          <img
+                            className="nx-bpin-shot"
+                            src={`data:image/jpeg;base64,${thumbs[at]}`}
+                            alt=""
+                          />
+                        )}
                         <span className="nx-pnum nx-pnum--sent">{at + 1}</span>
-                      )}
-                      <b>{item.label ? shownPinLabel(item.label, L.pin.point) : at + 1}</b>
-                      {item.comment && <span>{item.comment}</span>}
+                      </span>
+                      <span className="nx-bpin-text">
+                        {/* 긴 이름은 한 줄로 줄어들므로 전체 이름은 title 에 둔다 — 잘린 글을 보여 주는 자리다. */}
+                        <b className="nx-bpin-name" title={shownPinLabel(item.label, L.pin.point)}>
+                          {shownPinLabel(item.label, L.pin.point)}
+                        </b>
+                        {item.comment && <span className="nx-bpin-note">{item.comment}</span>}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -329,18 +351,25 @@ export function Thread(props: ThreadProps) {
               ) : (
                 <div className="nx-btxt">{block.text}</div>
               )}
-              {/* 고쳐서 다시 보내기 — 말풍선의 왼쪽 아래 옆자리에 매달려 세로 자리를 먹지 않는다. */}
+              {/* 고쳐서 다시 보내기 — 말풍선의 왼쪽 아래 옆자리에 매달려 세로 자리를 먹지 않는다.
+                  이름은 aria-label 이, 뜻(새 대화로 갈라서 고친다 · 화면은 그대로)은 툴팁이 맡는다. */}
               {canResend && (
-                <button
-                  type="button"
-                  // 마지막 말의 것만 늘 연하게 보인다 — AI 가 엉뚱할 때 가장 먼저 찾는 탈출구다.
-                  className={`nx-ue${block.id === lastUserId ? " nx-ue--last" : ""}`}
-                  title={L.transcript.editResendTip}
-                  onClick={() => props.onEditResend(prompt, block.text)}
+                <Tip
+                  label={L.transcript.editResendTip}
+                  side="top"
+                  align="start"
+                  className="nx-bub-edit"
                 >
-                  <EditIcon />
-                  {L.transcript.editResend}
-                </button>
+                  <button
+                    type="button"
+                    // 마지막 말의 것만 늘 연하게 보인다 — AI 가 엉뚱할 때 가장 먼저 찾는 탈출구다.
+                    className={`nx-bub-editbtn${block.id === lastUserId ? " nx-bub-editbtn--last" : ""}`}
+                    aria-label={L.transcript.editResend}
+                    onClick={() => props.onEditResend(prompt, block)}
+                  >
+                    <EditIcon />
+                  </button>
+                </Tip>
               )}
             </div>
           </div>
@@ -409,9 +438,17 @@ export function Thread(props: ThreadProps) {
           fileReference: L.chat.fileReference,
         });
         return (
-          <div className={`nx-m-ai${first ? "" : " nx-m-ai--cont"}`}>
+          <div
+            className={`nx-m-ai${first ? "" : " nx-m-ai--cont"}${
+              first && block.streaming ? " nx-m-ai--live" : ""
+            }`}
+          >
             <div className="nx-av" aria-hidden="true">
-              {first && <SparkIcon />}
+              {first && (
+                <span className="nx-av-spark">
+                  <SparkIcon />
+                </span>
+              )}
             </div>
             <div className={`nx-m-body${block.streaming ? " nx-m-live" : ""}`}>
               <Markdown text={display.answer} />
@@ -452,19 +489,24 @@ export function Thread(props: ThreadProps) {
             : block.escalated
               ? L.cards.failWhy
               : L.chat.failWhyShort;
-          const retryText = block.id === lastFailedId ? ownWords : null;
+          const retrySend = block.id === lastFailedId ? ownSend : null;
           return (
             <FailCard
               why={why}
               notified={block.escalated === true}
               live={live}
-              retry={retryText ? () => props.onRetry(retryText) : null}
+              retry={retrySend ? () => props.onRetry(retrySend) : null}
             />
           );
         }
         const turnNo = turnNumbers.get(block.id) ?? 1;
         const whole = turnAnswers.get(block.id) ?? block.resultText ?? null;
         const screens = screensByTurn.get(block.id) ?? [];
+        const requestText = results.get(block.id)?.prompt.trim() ?? "";
+        const excerpt =
+          screens.length > 0
+            ? plainExcerpt(plainAnswer(results.get(block.id)?.explanation ?? ""), 200)
+            : "";
         // 이번 창에서 막 끝난 답 — 보상(카드 · 체크)은 이 답에만 한 번.
         const fresh = !historyTurns.current?.has(block.id);
         return (
@@ -475,23 +517,26 @@ export function Thread(props: ThreadProps) {
                 aria-label={L.transcript.shotLabel}
               >
                 <div className="nx-results-heading">
+                  <ScreenIcon />
                   <span>{L.transcript.shotLabel}</span>
                   <span className="nx-results-count">{screens.length}</span>
                 </div>
-                <div className="nx-result-context">
-                  <span>{L.requestResult.request}</span>
-                  <p>{results.get(block.id)?.prompt}</p>
-                  {results.get(block.id)?.explanation && (
-                    <>
-                      <span>{L.requestResult.explanation}</span>
-                      <blockquote>
-                        {plainAnswer(results.get(block.id)?.explanation ?? "")
-                          .replace(/\s+/g, " ")
-                          .slice(0, 220)}
-                      </blockquote>
-                    </>
-                  )}
-                </div>
+                {(requestText !== "" || excerpt !== "") && (
+                  <dl className="nx-result-context">
+                    {requestText !== "" && (
+                      <div>
+                        <dt>{L.requestResult.request}</dt>
+                        <dd>{requestText}</dd>
+                      </div>
+                    )}
+                    {excerpt !== "" && (
+                      <div>
+                        <dt>{L.requestResult.explanation}</dt>
+                        <dd>{excerpt}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
                 <div className="nx-results-grid">
                   {screens.map((screen) => (
                     <ResultScreen
@@ -517,6 +562,11 @@ export function Thread(props: ThreadProps) {
                     />
                   ))}
                 </div>
+                {/* 사진이 어느 때의 모습인지는 카드마다 되풀이하지 않고 한 번만 말한다. */}
+                <p className="nx-results-note">
+                  <InfoIcon />
+                  <span>{L.requestResult.historical}</span>
+                </p>
               </section>
             )}
             <SettleLine

@@ -153,6 +153,7 @@ jobs:
           packages/web/test/next-result-card-css.test.ts
           packages/web/test/next-undo-last.test.ts
           packages/web/test/next-checked-line.test.ts
+          packages/web/test/next-run-line.test.ts
           packages/web/test/next-settings-close.test.ts
           packages/web/test/next-settings-reset.test.ts
           packages/web/test/next-settings-css.test.ts

@@ -44,3 +44,30 @@ export function latestTodoItems(blocks: Block[]): TodoItem[] | null {
   }
   return todos;
 }
+
+/** 이보다 짧은 목록은 단계로 말하지 않는다 — `0/1 단계` 는 `작업 중` 보다 아는 것이 없다. */
+export const MIN_TODO_STEPS = 2;
+
+/**
+ * 지금 도는 턴의 할 일 진행 `k/n` — AI 가 이 턴에 할 일 목록을 냈을 때만(2026-10-06 UX 점검). 테이프의 마지막 목록은
+ * 지난 턴의 것(다 끝난 `5/5`)일 수 있어, 마지막 사용자 말 뒤의 블록만 본다 — 목록을 안 낸 턴에 지난 목록이 서면 거짓이다.
+ * 하위 에이전트의 목록은 세지 않는다(제 일의 목록이라 `k/n` 이 뒤로 간다). 새 목록이 아직 읽히지 않으면(입력이
+ * 덜 온 참) 앞의 목록을 쓴다. 목록이 없거나 짧으면 null: 단계를 지어내지 않는다.
+ */
+export function currentTodoProgress(blocks: Block[]): { done: number; total: number } | null {
+  let start = 0;
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    if (blocks[index]?.type === "user") {
+      start = index + 1;
+      break;
+    }
+  }
+  let items: TodoItem[] | null = null;
+  for (let index = start; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (block?.type !== "tool" || block.agentId !== null || block.name !== "TodoWrite") continue;
+    items = readTodoList(block.input) ?? items;
+  }
+  if (items === null || items.length < MIN_TODO_STEPS) return null;
+  return { done: items.filter((item) => item.status === "completed").length, total: items.length };
+}

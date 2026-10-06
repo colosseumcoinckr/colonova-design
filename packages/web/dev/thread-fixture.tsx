@@ -12,7 +12,9 @@ import { type ComponentProps, StrictMode, useEffect, useRef, useState } from "re
 import { createRoot } from "react-dom/client";
 import type { Block } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
+import { RunLine } from "../src/next/chat/RunLine";
 import { Thread } from "../src/next/chat/Thread";
+import { L } from "../src/next/labels";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
 import "../src/next/next.css";
@@ -460,6 +462,37 @@ const undoScene: Block[] = [
   turn("uue2", 22000),
 ];
 
+/**
+ * `?scene=working` — 맨 아래 `작업 중` 줄의 네 모양(2026-10-06): 묶음을 모를 때 · 살펴보는 중 · 고치는 중 + 할 일 진행 ·
+ * 검사 중 + 1분이 넘은 시계. 좁은 칸(`?w=320`)에서 줄이 아래로 감겨도 잘리지 않는지 본다.
+ */
+const workingThread: Block[] = [
+  { type: "user", id: "wk1", text: "회원 목록 맨 위에 검색창을 넣어 줘.", images: 0 },
+];
+
+function WorkingLines() {
+  const since = useRef(Date.now() - 42_000).current;
+  const longer = useRef(Date.now() - 125_000).current;
+  return (
+    <>
+      <RunLine quiet={false} word={L.chat.working} steps={null} startedAt={since} />
+      <RunLine quiet={false} word={L.journey.makingRead} steps={null} startedAt={since} />
+      <RunLine
+        quiet={false}
+        word={L.journey.makingFile}
+        steps={{ done: 2, total: 5 }}
+        startedAt={since}
+      />
+      <RunLine
+        quiet={false}
+        word={L.journey.makingCheck}
+        steps={{ done: 11, total: 12 }}
+        startedAt={longer}
+      />
+    </>
+  );
+}
+
 const scene = query.get("scene");
 
 /** 도는 답 견본 — 사람 말이 올라온 뒤 글이 이어지고 마감까지를 시간대로 밟는다. */
@@ -580,7 +613,9 @@ function Fixture() {
                     ? receipts
                     : scene === "undo"
                       ? undoScene
-                      : blocks
+                      : scene === "working"
+                        ? workingThread
+                        : blocks
             }
             live={scene === "queue"}
             showThinking={false}
@@ -612,6 +647,7 @@ function Fixture() {
             onBackgroundTask={() => {}}
             onStopTask={() => {}}
           />
+          {scene === "working" && <WorkingLines />}
         </div>
       </section>
       {scene === null && <LiveFixture />}

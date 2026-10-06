@@ -3,13 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { openScreenPath } from "../../lib/screen-link";
 import { L } from "../labels";
 import { keyHint } from "../lib/key-hint";
-import {
-  FIRST_TURN_HINT_MS,
-  heldPhase,
-  MAKING_CHECK_MS,
-  MAKING_HOLD_MS,
-  type MakingPhase,
-} from "../lib/making";
+import { FIRST_TURN_HINT_MS, MAKING_CHECK_MS, makingWordOf } from "../lib/making";
 import type { SubmitCopy } from "../lib/submit-copy";
 import {
   SUBMIT_SHAKE_MS,
@@ -17,6 +11,7 @@ import {
   SUBMIT_STORY_POINT_MS,
   submitStoryPhase,
 } from "../lib/submit-story";
+import { useHeldPhase } from "../lib/use-held-phase";
 import { useSubmitReview } from "../lib/use-submit-review";
 import type { CycleScreen } from "../lib/work-ledger";
 import { openComparison } from "../preview/ComparisonDialog";
@@ -192,7 +187,6 @@ export function StatusLine({
   useEffect(() => {
     if (journey.making) {
       setMakingState("on");
-      setWord(null);
       return;
     }
     setMakingState((prev) => (prev === "on" ? "check" : "off"));
@@ -203,32 +197,15 @@ export function StatusLine({
     return () => window.clearTimeout(timer);
   }, [makingState]);
 
-  // 단계 말은 최소 1.5초 산다(making.ts 의 heldPhase) — 몇 초 사이에 묶음이
-  // 바뀌어도 알약이 흔들리지 않게. 시간이 차면 지금의 단계로 곧장 갈아입는다.
-  const [word, setWord] = useState<{ phase: MakingPhase; at: number } | null>(null);
-  useEffect(() => {
-    if (makingState !== "on") return;
-    setWord((prev) => heldPhase(prev, makingPhase, Date.now()));
-  }, [makingPhase, makingState]);
-  useEffect(() => {
-    if (makingState !== "on" || word === null || word.phase === makingPhase) return;
-    const wait = Math.max(0, MAKING_HOLD_MS - (Date.now() - word.at));
-    const timer = window.setTimeout(
-      () => setWord((prev) => heldPhase(prev, makingPhase, Date.now())),
-      wait,
-    );
-    return () => window.clearTimeout(timer);
-  }, [word, makingPhase, makingState]);
-  // 보이는 말 — 갈아입는 사이에는 입던 말을 계속 입는다.
-  const wordPhase = word?.phase ?? makingPhase;
-  const makingText =
-    wordPhase === "read"
-      ? L.journey.makingRead
-      : wordPhase === "file"
-        ? L.journey.makingFile
-        : wordPhase === "command"
-          ? L.journey.makingCheck
-          : L.journey.making;
+  // 단계 말은 최소 1.5초 산다(use-held-phase.ts) — 몇 초 사이에 묶음이 바뀌어도 알약이
+  // 흔들리지 않게. 갈아입는 사이에는 입던 말을 계속 입고, 체크가 보이는 동안도 말은 그대로다.
+  const heldWord = useHeldPhase(makingPhase, makingState === "on");
+  const makingText = makingWordOf(heldWord, {
+    read: L.journey.makingRead,
+    file: L.journey.makingFile,
+    command: L.journey.makingCheck,
+    fallback: L.journey.making,
+  });
 
   // 버튼의 짧은 답 — `done` 은 영수증(cycle.handed)이, `failed` 는 막힘의 시작이 켠다.
   const [flash, setFlash] = useState<"done" | "failed" | null>(null);

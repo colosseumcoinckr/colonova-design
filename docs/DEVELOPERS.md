@@ -149,6 +149,14 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 한 줄로 선다(`journey.submit.reason`). 변경 건수는 클론 준비 · 화면 턴 종료 · 보관 완료
 세 트리거로 갱신된다 — 폴링 없음.
 
+대화 칸 맨 아래의 진행 줄(`chat/RunLine.tsx`, `role="status"`)은 단계 말 · `k/n 단계` · 시계를 싣는다(2026-10-06 UX 점검). 단계 말은 `lib/making.ts` 의
+`makingPhase`(마지막 사용자 말 뒤에서 아직 도는 도구의 묶음 — 없으면 그 턴의 마지막 도구)가 고르고 `makingWordOf` 가 `L.journey.making*` 의 말로 옮긴다. 상태 줄의 알약과
+같은 규칙이라 둘 다 `use-held-phase.ts` 의 `useHeldPhase` 를 쓴다 — 말은 `MAKING_HOLD_MS`(1.5초) 이상 살고, 시간이 차면 지금의 묶음으로 곧장 갈아입는다(그 사이는 건너뛴다).
+꺼진 동안은 말을 얼려 두고(알약의 체크 600ms), 켜지는 렌더에서 곧장 비운다 — 지난 턴의 말이 새 턴의 첫 화면에 비치지 않는다.
+`k/n` 은 `lib/todo-plan.ts` 의 `currentTodoProgress` 가 센다 — **마지막 사용자 말 뒤의 TodoWrite 만** 보고(지난 턴의 `5/5` 가 이번 턴에 서면 거짓), 하위 에이전트의 목록은 빼며
+(제 일의 목록이라 숫자가 뒤로 간다), 새 목록의 입력이 덜 와서 읽히지 않으면 앞의 목록을 쓴다. 목록이 `MIN_TODO_STEPS`(2) 보다 짧으면 null — 단계로 말하지 않는다.
+화면에는 숫자만 오고 항목의 글은 오지 않는다(AI 의 항목에는 개발 말이 섞이기 쉽다). 견본은 `thread-fixture.html?scene=working`.
+
 답이 어긋나면 정산 줄의 `여기서 새 대화` 로 갈라 선다 — 이 답까지를 남기는 포크다.
 절단 재개가 가능한 프로바이더(Claude · Codex)에서만 단추가 보이고, 원래 대화는
 지워지지 않으며, 파일은 되돌리지 않는다(줄 위의 한 문장이 그렇게 말하고, 같은 줄의

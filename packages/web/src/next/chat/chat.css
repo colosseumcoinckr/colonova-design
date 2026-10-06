@@ -975,8 +975,9 @@
    시작하고 멈출 때마다 줄이 붙었다 떨어졌다 하며 대화를 밀어내지 않게. */
 .nx-m-run {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: 2px 8px;
   margin: 2px 0 18px 32px;
   color: var(--ink2);
   font-size: 13px;
@@ -992,6 +993,13 @@
 .nx-m-run .nx-since {
   color: var(--ink3);
   font-variant-numeric: tabular-nums;
+}
+
+/* 할 일의 `k/n 단계` — 시계와 같은 옅은 글씨. 숫자가 바뀌어도 줄이 흔들리지 않게 폭을 맞춘다. */
+.nx-m-run-todo {
+  color: var(--ink3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .nx-m-note {

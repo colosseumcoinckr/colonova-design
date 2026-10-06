@@ -13,20 +13,23 @@ import { pinsToTurn, rewordPinTurn } from "../../lib/preview-turns";
 import { isToolRunning } from "../../lib/progress";
 import { openScreenPath, screenPath } from "../../lib/screen-link";
 import { tailMoving } from "../../lib/tape-visibility";
+import { currentTodoProgress } from "../../lib/todo-plan";
 import type { TurnScreen } from "../../lib/turn-screens";
 import { L } from "../labels";
 import { connectionLock } from "../lib/connection-copy";
+import { makingPhase, makingWordOf } from "../lib/making";
 import { PIN_SHOT_MAX } from "../lib/pin-words";
 import { isPreparing } from "../lib/project-note";
 import { latestResult } from "../lib/request-results";
 import { planRetry } from "../lib/retry-send";
 import { dedupeScreens } from "../lib/thread";
 import { undoTargetFor } from "../lib/undo-last";
+import { useHeldPhase } from "../lib/use-held-phase";
 import type { ChatColumnProps } from "../slots";
-import { Elapsed } from "../status/Elapsed";
 import { Composer, type ComposerHandle } from "./Composer";
 import { AskCard } from "./cards";
 import { ChevIcon, SparkIcon } from "./icons";
+import { RunLine } from "./RunLine";
 import { Thread } from "./Thread";
 
 /**
@@ -410,6 +413,16 @@ export function ChatColumn({
   const clockMounted = sessions.running || awaiting !== null;
   const showClock = clockMounted && !tailLive;
   const empty = blocks.length === 0 && sessions.queue.length === 0 && !clockMounted;
+  // 줄의 말 — 지금 도는 도구의 묶음이 말을 고르고(`화면 파일을 고치는 중`), 이 턴에 AI 가 할 일 목록을 냈을 때만
+  // `k/n 단계` 가 붙는다. 말은 1.5초 이상 산다(상태 줄의 알약과 같은 규칙).
+  const runPhase = useHeldPhase(clockMounted ? makingPhase(blocks) : null, clockMounted);
+  const runWord = makingWordOf(runPhase, {
+    read: L.journey.makingRead,
+    file: L.journey.makingFile,
+    command: L.journey.makingCheck,
+    fallback: L.chat.working,
+  });
+  const runSteps = clockMounted ? currentTodoProgress(blocks) : null;
 
   // --- 빈 화면이 빠지는 모습 · 대화록의 열쇠 ----------------------------------
   // 첫 말이 올라오면 빈 화면은 흐려지며 빠진다 — 깜빡이며 사라지지 않게.
@@ -598,11 +611,7 @@ export function ChatColumn({
           />
         ))}
         {clockMounted && (
-          <div className={`nx-m-run${showClock ? "" : " nx-m-run--quiet"}`} role="status">
-            <i className="nx-spin" aria-hidden="true" />
-            <span>{L.chat.working}</span>
-            {clockStart !== null && <Elapsed startedAt={clockStart} />}
-          </div>
+          <RunLine quiet={!showClock} word={runWord} steps={runSteps} startedAt={clockStart} />
         )}
       </div>
       <div className="nx-cmp-wrap">

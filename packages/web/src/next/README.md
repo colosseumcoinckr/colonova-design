@@ -94,7 +94,7 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
     ├ status/StatusLine  제목 · 만드는 중 · 여정 세 점 · 제출(SubmitPopover) · 이번 작업(WorkPopover)
     ├ status/ProblemLine 문제 문장 셋 · 초대 파일 휴지통에 넣기 줄 — 대화와 미리보기에 걸친 한 줄
     ├ (좁은 창) 대화 | 화면 · <이름> 탭
-    ├ chat/ChatColumn     대화록(Thread) · 카드 · 입력창(Composer · ModelChip — 칩의 주인 subject: next · session)
+    ├ chat/ChatColumn     대화록(Thread) · 카드 · 진행 줄(RunLine) · 입력창(Composer · ModelChip — 칩의 주인 subject: next · session)
     └ preview/PreviewColumn 막대 · 무대(PreviewHost) · 말풍선 · 준비 화면 · 작업 기록 서랍
 ```
 
@@ -164,6 +164,9 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 - `roving.ts` · `use-roving.ts` — 라디오 군의 화살표 걸음 · 로빙 탭 순서(모델 칩의 AI · 모델 · 생각 시간).
 - `use-copied.ts` — 복사 뒤 1.5초만 `복사했어요` 로 바뀌는 단추의 손(`useCopied`). 낭독은 부르는 쪽이 실린다.
 - `use-closing.ts` — 겹판이 닫히는 동안의 모션 타이머 한 곳(`useClosing`).
+- `making.ts` · `use-held-phase.ts` — 단계 말: `makingPhase(blocks)` 가 도는 도구의 묶음을 고르고 `makingWordOf(phase, words)` 가 말로 옮긴다.
+  `useHeldPhase(phase, on)` 은 말을 1.5초 이상 머물게 한다(상태 줄의 알약과 대화 칸의 진행 줄이 함께 쓴다). `k/n 단계` 는
+  `lib/todo-plan.ts` 의 `currentTodoProgress` — 이 턴에 AI 가 목록을 냈을 때만, 숫자만.
 - `undo-last.ts` — `undoTargetFor(entries, screens, requestId)`: `방금 한 것 되돌리기` 가 돌아갈 곳(`{ sha, count }`) — 그 요청의 보관이
   기록의 맨 위부터 이어질 때만. `request-results.ts` 의 `latestResult` 가 「마지막 턴이 낸 결과」 를 고른다.
 - `result-photos.ts` — `readPhotos(record, { requestId, route })` · `photoUrl`: `고친 화면` 카드가 읽는 수정 전 · 수정 후 사진.

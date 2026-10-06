@@ -472,6 +472,8 @@ export const L = {
     connecting: "연결하는 중이에요",
     stopping: "멈추는 중…",
     working: "작업 중",
+    // AI 가 이 턴에 할 일 목록을 냈을 때만 — 숫자만 말한다(항목의 글은 개발 말이 섞여 있어 싣지 않는다).
+    workTodo: (done: number, total: number) => `${done}/${total} 단계`,
     queuedAfter: "지금 답이 끝나면 바로 보낼게요",
     queueEdit: "고쳐서 보내기",
     queueNow: "지금 보내기",

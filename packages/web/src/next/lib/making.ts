@@ -8,6 +8,7 @@ import { bucketOf } from "../../lib/tool-buckets.ts";
  * `화면 파일을 고치는 중` · `검사를 돌리는 중`). 묶음의 표는 대화록의 활동
  * 머리줄과 같은 사본(lib/tool-buckets.ts)이고, 도는지의 판정은 진행 시계와
  * 같은 것(lib/progress.ts)을 쓴다 — next/ 밖의 순수 모듈이라 가져왔다.
+ * 대화 칸 맨 아래의 진행 줄(chat/RunLine)도 같은 말을 쓴다(2026-10-06 UX 점검).
  */
 
 type ToolBlock = Extract<Block, { type: "tool" }>;
@@ -77,4 +78,18 @@ export function firstTurn(blocks: Block[]): boolean {
     if (block.type === "user") sends += 1;
   }
   return sends === 1;
+}
+
+/**
+ * 단계 말 — 상태 줄의 알약과 대화 칸의 진행 줄이 같은 말을 쓰도록 한 곳에 둔다(2026-10-06 UX 점검: 대화 칸은 단계를
+ * 몰라 `작업 중` 만 말했다). 묶음을 모르면 `fallback`.
+ */
+export function makingWordOf(
+  phase: MakingPhase,
+  words: { read: string; file: string; command: string; fallback: string },
+): string {
+  if (phase === "read") return words.read;
+  if (phase === "file") return words.file;
+  if (phase === "command") return words.command;
+  return words.fallback;
 }

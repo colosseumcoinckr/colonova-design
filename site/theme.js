@@ -8,7 +8,7 @@
  *
  * 기본은 어두움이다(속성이 없는 :root). 고르는 자리(기능의 테마 카드)는 bento.js 가
  * 그리고, 여기서는 window.colonovaTheme 로 읽고 쓰는 문만 낸다. 바뀔 때마다 colonova-theme
- * 이벤트(detail = 실제로 입힌 팔레트 이름)를 쏜다 — hero3d 의 파티클 색이 따라온다.
+ * 이벤트(detail = 실제로 입힌 팔레트 이름)를 쏜다 — 테마 카드의 선택 표시가 따라온다.
  */
 (() => {
   const KEY = "colonova-site-theme";

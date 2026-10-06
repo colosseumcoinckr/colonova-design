@@ -95,7 +95,40 @@ function detectOs() {
   return null;
 }
 const myOs = detectOs();
-if (myOs) $(`file-${myOs}`)?.classList.add("mine");
+if (myOs) {
+  $(`file-${myOs}`)?.classList.add("mine");
+  const badge = $(`file-${myOs}-badge`);
+  if (badge) badge.hidden = false;
+}
+
+/* ---------- 작은 화면의 메뉴 ---------- */
+const menu = document.querySelector(".top__menu");
+const header = document.querySelector(".top");
+const mobile = matchMedia("(max-width: 560px)");
+function closeMenu() {
+  header?.classList.remove("is-open");
+  menu?.setAttribute("aria-expanded", "false");
+}
+function fitMenu() {
+  if (menu) menu.hidden = !mobile.matches;
+  closeMenu();
+}
+menu?.addEventListener("click", () => {
+  const open = menu.getAttribute("aria-expanded") !== "true";
+  header?.classList.toggle("is-open", open);
+  menu.setAttribute("aria-expanded", String(open));
+});
+header?.addEventListener("click", (event) => {
+  if (event.target.closest("a")) closeMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && menu?.getAttribute("aria-expanded") === "true") {
+    closeMenu();
+    menu.focus();
+  }
+});
+mobile.addEventListener("change", fitMenu);
+fitMenu();
 
 /* ---------- 복사 ---------- */
 async function copyText(text) {

@@ -107,6 +107,7 @@ export function ResultScreen({
               }}
             />
             {before ? (
+              // biome-ignore lint/a11y/useSemanticElements: 분절은 fieldset 의 모양(테두리 · 범례)을 입지 않는다 — 눌림 단추 둘을 이름 붙여 묶을 뿐이다.
               <div className="nx-result-ba" role="group" aria-label={L.compare.flipGroup}>
                 <button
                   type="button"

@@ -13,6 +13,9 @@ import { readTape } from "../dist/session-tape.js";
  * 자동 보관이 서는 순간 `screens.saved` 와 대화록에 싣는다 — 사용자의 카드가 본 것만 말하게.
  */
 
+/** 서버가 내보낸 사건 하나 — 시험이 읽는 칸만. */
+type Broadcast = { event?: { kind?: string; checked?: unknown } };
+
 /** 화면마다 데스크톱 · 휴대폰 열기의 성공을 정하는 가짜 창. */
 function drivers(opens: (route: string, viewport: string) => { ok: boolean }) {
   return new PreviewDrivers({
@@ -164,8 +167,8 @@ test("runAutoSave: 기록은 screens.saved 와 대화록에 실리고 다음 턴
     server.gateChecked.set("s", { screens: 2, phone: true });
     server.runAutoSave("s");
     await new Promise((resolve) => setTimeout(resolve, 30));
-    const saved = events.find((event: any) => event.event?.kind === "screens.saved") as any;
-    assert.deepEqual(saved?.event.checked, { screens: 2, phone: true });
+    const saved = (events as Broadcast[]).find((event) => event.event?.kind === "screens.saved");
+    assert.deepEqual(saved?.event?.checked, { screens: 2, phone: true });
     assert.equal(server.gateChecked.has("s"), false, "쓴 기록은 비운다");
     const echo = readTape(root, "s")
       .filter((row) => row.event.kind === "user.echo")
@@ -178,8 +181,9 @@ test("runAutoSave: 기록은 screens.saved 와 대화록에 실리고 다음 턴
     server.autoSaveDue.add("s");
     server.runAutoSave("s");
     await new Promise((resolve) => setTimeout(resolve, 30));
-    const plain = events.find((event: any) => event.event?.kind === "screens.saved") as any;
-    assert.equal(plain?.event.checked, undefined);
+    const plain = (events as Broadcast[]).find((event) => event.event?.kind === "screens.saved");
+    assert.ok(plain, "보관은 기록이 없어도 알린다");
+    assert.equal(plain.event?.checked, undefined);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

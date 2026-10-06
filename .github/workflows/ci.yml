@@ -137,10 +137,32 @@ jobs:
           packages/web/test/next-session-target.test.ts
           packages/web/test/next-sent-draft.test.ts
           packages/web/test/next-request-results.test.ts
-          packages/web/test/next-screen-review.test.ts
+          packages/web/test/next-submit-review.test.ts
           packages/web/test/next-usage.test.ts
           packages/web/test/next-invite-rows.test.ts
           packages/web/test/next-feedback-draft.test.ts
+          packages/web/test/next-shortcut-sheet.test.ts
+          packages/web/test/next-crash.test.ts
+          packages/web/test/next-submit-view.test.ts
+          packages/web/test/next-agent-fix.test.ts
+          packages/web/test/next-settings-close.test.ts
+          packages/web/test/next-settings-reset.test.ts
+          packages/web/test/next-settings-css.test.ts
+          packages/web/test/next-update-row.test.ts
+          packages/web/test/next-connection-copy.test.ts
+          packages/web/test/next-compare-zoom.test.ts
+          packages/web/test/next-preview-overlays.test.ts
+          packages/web/test/next-preview-bar.test.ts
+          packages/web/test/next-revert-summary.test.ts
+          packages/web/test/next-roving.test.ts
+          packages/web/test/next-chat-popups.test.ts
+          packages/web/test/next-feedback-gate.test.ts
+          packages/web/test/next-feedback-css.test.ts
+          packages/web/test/next-invite-css.test.ts
+          packages/web/test/next-sidebar-css.test.ts
+          packages/web/test/next-status-css.test.ts
+          packages/web/test/palette-match.test.ts
           packages/desktop/test/app-reset.test.ts
+          packages/desktop/test/notices.test.ts
           packages/desktop/test/pin-envelope.test.ts
           scripts/bench/lib.test.mjs

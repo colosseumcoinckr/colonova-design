@@ -38,7 +38,7 @@ test("submitCopy: 막힘 — 버튼은 제출하지 못했어요, 첫 점과 잠
   assert.equal(auth.busy, null);
   assert.equal(auth.firstPoint, "제출 전 · 제출하지 못했어요");
   assert.equal(auth.reason, "연결 코드가 만료돼 제출이 막혔어요 — 새 초대 파일이 필요해요");
-  for (const lastError of ["network", "rejected", "other", undefined] as const) {
+  for (const lastError of ["rejected", "other", undefined] as const) {
     const notified = submitCopy({ phase: "blocked", attempts: 5, lastError, log }, L);
     assert.equal(
       notified.reason,
@@ -46,6 +46,15 @@ test("submitCopy: 막힘 — 버튼은 제출하지 못했어요, 첫 점과 잠
       String(lastError),
     );
   }
+});
+
+test("submitCopy: 인터넷 문제로 막힌 제출은 담당자 · 개발자를 말하지 않는다(2026-10-06)", () => {
+  const network = submitCopy({ phase: "blocked", attempts: 5, lastError: "network", log }, L);
+  assert.equal(network.reason, "인터넷 연결이 끊겨 제출이 막혔어요 — 연결되면 다시 제출해요");
+  // 막힌 제출의 버튼 · 첫 점은 그대로다 — 이유 한 줄만 다르다.
+  assert.equal(network.label, "제출하지 못했어요");
+  assert.equal(network.firstPoint, "제출 전 · 제출하지 못했어요");
+  assert.doesNotMatch(network.reason ?? "", /안내를 확인|담당자|개발자/);
 });
 
 test("submitCopy: 마지막 제출 시각은 기록 중 가장 늦은 것 — 순서와 표기에 기대지 않는다", () => {

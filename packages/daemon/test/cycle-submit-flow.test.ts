@@ -563,7 +563,8 @@ test("N6 — 다섯 번 실패의 막힘 판정은 3분 안팎에 선다 (12분�
     assert.equal(view.phase, "blocked", "예산 다섯 번을 다 쓰면 막힌다");
     assert.equal(view.attempts, 5);
     assert.equal(view.lastError, "network");
-    assert.deepEqual(scene.submitBlocked, ["developer-notified"], "막힘 알림은 한 번");
+    // 까닭은 인터넷이다(2026-10-06) — 개발자에게 알렸다고 말하지 않는 알림이 한 번 나간다.
+    assert.deepEqual(scene.submitBlocked, ["network"], "막힘 알림은 한 번");
     assert.equal(
       scene.notices.filter((notice) => notice.key === "submit:pr").length,
       1,

@@ -124,6 +124,17 @@ export function problemFor(
           dismissId: null,
         };
   }
+  // 인터넷이 끊겨 막힌 제출은 개발자 몫이 아니다 — 담당자에게 보낼 말도, 개발자에게 알렸다는
+  // 말도 하지 않는다. 연결되면 도구가 다시 제출한다(2026-10-06 UX 점검).
+  if (repo?.submit?.phase === "blocked" && repo.submit.lastError === "network") {
+    return {
+      kind: "blocked",
+      title: W.problem.blocked,
+      body: W.problem.blockedNetwork,
+      action: null,
+      dismissId: `submit:${repo.submit.since ?? "?"}`,
+    };
+  }
   // 제출이 막힌 것은 개발자 몫의 문제다(U13) — 데몬이 알림을 세우기 전에도
   // 막힘 자체가 그 문장을 말한다.
   if (

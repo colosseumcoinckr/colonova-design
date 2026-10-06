@@ -48,10 +48,15 @@ export type DaemonNotice =
   /** 처음 여는 프로젝트의 준비가 배경에서 끝났다(PLAN-UI U8) — 행선은 프로젝트. */
   | { kind: "ready"; slug: string; title: string }
   /**
-   * 제출이 개발자 몫으로 막혔다(PLAN-UI U13) — `auth` 는 연결 코드 만료,
-   * `developer-notified` 는 재시도 예산을 다 써 개발자에게 알린 경우.
+   * 제출이 막혔다(PLAN-UI U13) — `auth` 는 연결 코드 만료, `network` 는 이 기계의 인터넷 문제
+   * (연결되면 저절로 풀린다), `developer-notified` 는 재시도 예산을 다 써 개발자에게 알린 경우.
    */
-  | { kind: "submit-blocked"; slug: string; title: string; reason: "auth" | "developer-notified" }
+  | {
+      kind: "submit-blocked";
+      slug: string;
+      title: string;
+      reason: "auth" | "developer-notified" | "network";
+    }
   /** 에이전트 CLI 를 새 버전으로 바꿨다(PLAN-UI U12). */
   | { kind: "update-done"; agent: "claude" | "codex"; version: string };
 

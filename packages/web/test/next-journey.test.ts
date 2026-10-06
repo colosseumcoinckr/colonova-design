@@ -174,14 +174,21 @@ test("막힘 — 첫 점이 제출하지 못했어요, 제출은 잠기고 이�
   assert.equal(j.blocked, true);
   assert.equal(j.points[0].label, L.journey.beforeBlocked);
   assert.equal(j.submit.enabled, false);
-  // 연결 코드 만료(auth)는 새 초대 파일이 풀고, 그 밖은 개발자에게 알린 막힘이다.
+  // 연결 코드 만료(auth)는 새 초대 파일이 풀고, 인터넷 문제(network)는 연결되면 저절로 풀리며,
+  // 그 밖은 개발자에게 알린 막힘이다.
   assert.equal(j.submit.reason, L.submit.whyAuth);
   const notified = run({
     branch: "b",
-    submit: { phase: "blocked", attempts: 5, lastError: "network", log: [] },
+    submit: { phase: "blocked", attempts: 5, lastError: "other", log: [] },
   });
   assert.equal(notified.submit.reason, L.submit.whyBlocked);
   assert.equal(notified.points[0].label, "제출 전 · 제출하지 못했어요");
+  const offline = run({
+    branch: "b",
+    submit: { phase: "blocked", attempts: 5, lastError: "network", log: [] },
+  });
+  assert.equal(offline.submit.reason, L.submit.whyNetwork);
+  assert.equal(offline.submit.enabled, false);
 });
 
 test("보낸 뒤의 화면은 시각을 수로 견준다 — git 의 +09:00 과 기록의 Z", () => {

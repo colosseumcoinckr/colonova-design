@@ -44,14 +44,20 @@ export function submitCopy(
     case "retrying":
       return { ...base, label: S.retrying, busy: "retrying", firstPoint: null, reason: S.retrying };
     case "blocked":
-      // auth 는 사람의 손(새 초대 파일)이 풀고, 그 밖의 막힘은 개발자가 푼다 —
-      // 둘 다 계속 만들 수 있고, 풀리면 도구가 다시 제출한다.
+      // auth 는 사람의 손(새 초대 파일)이 풀고, network 는 연결이 돌아오면 저절로 풀리며, 그 밖의
+      // 막힘은 개발자가 푼다 — 모두 계속 만들 수 있고, 풀리면 도구가 다시 제출한다. 인터넷 문제를
+      // 담당자의 일로 읽히게 하지 않는다(2026-10-06 UX 점검).
       return {
         ...base,
         label: S.failed,
         busy: null,
         firstPoint: J.beforeBlocked,
-        reason: submit?.lastError === "auth" ? S.whyAuth : S.whyBlocked,
+        reason:
+          submit?.lastError === "auth"
+            ? S.whyAuth
+            : submit?.lastError === "network"
+              ? S.whyNetwork
+              : S.whyBlocked,
       };
     default:
       return { ...base, label: S.idle, busy: null, firstPoint: null, reason: null };

@@ -101,6 +101,7 @@ const NOTICES: DaemonNotice[] = [
   { kind: "ready", slug: "members", title: NAME },
   { kind: "submit-blocked", slug: "members", title: NAME, reason: "auth" },
   { kind: "submit-blocked", slug: "members", title: NAME, reason: "developer-notified" },
+  { kind: "submit-blocked", slug: "members", title: NAME, reason: "network" },
   { kind: "update-done", agent: "claude", version: "2.2.0" },
   { kind: "update-done", agent: "codex", version: "0.9.1" },
 ];
@@ -153,10 +154,10 @@ test("noticeCopy: 개발자 쪽 사건 — 반영됨 · 요청 닫힘 · 코멘�
   assert.match(bare.body, /1건/, "개수를 모르면 한 건");
 });
 
-test("noticeCopy: 제출이 막힌 알림 — 제목은 짧고, 개발자에게 알린 것은 몸글이 말하며, 연결 코드 만료는 알렸다고 하지 않는다", () => {
-  const blocked = (reason: "auth" | "developer-notified") =>
+test("noticeCopy: 제출이 막힌 알림 — 제목은 짧고, 개발자에게 알린 것은 몸글이 말하며, 연결 코드 만료 · 인터넷 문제는 알렸다고 하지 않는다", () => {
+  const blocked = (reason: "auth" | "developer-notified" | "network") =>
     noticeCopy({ kind: "submit-blocked", slug: "members", title: NAME, reason });
-  for (const reason of ["auth", "developer-notified"] as const) {
+  for (const reason of ["auth", "developer-notified", "network"] as const) {
     assert.equal(blocked(reason).title, `${NAME} · 제출하지 못했어요`);
   }
   assert.match(blocked("developer-notified").body, /^개발자에게 알렸어요/);
@@ -164,6 +165,10 @@ test("noticeCopy: 제출이 막힌 알림 — 제목은 짧고, 개발자에게 
   // 연결 코드가 끝난 막힘은 사용자의 손이 필요한 일이다 — 개발자에게 알린 것이 아니다.
   assert.doesNotMatch(blocked("auth").body, /알렸어요/);
   assert.match(blocked("auth").body, /새 초대 파일을 열어 주세요/);
+  // 이 기계의 인터넷 문제(2026-10-06) — 개발자를 기다릴 일이 아니라 연결이 돌아오면 풀린다.
+  assert.doesNotMatch(blocked("network").body, /알렸어요/);
+  assert.match(blocked("network").body, /인터넷 연결/);
+  assert.match(blocked("network").body, /연결되면 도구가 다시 제출해요/);
 });
 
 test("noticeCopy: AI 업데이트 알림은 에이전트 이름과 버전을 말한다", () => {
@@ -202,6 +207,7 @@ test("웹과 같은 말: 반영됨 · 요청 닫힘 · 연결 코드 만료 · �
   assertMirrors("changedEmptyMerged", NOTICE.handoff.merged.body);
   assertMirrors("closed", NOTICE.handoff.closed.body);
   assertMirrors("reconnectInvite", NOTICE.submitBlocked.auth.body);
+  assertMirrors("blockedNetwork", NOTICE.submitBlocked.network.body);
   assertMirrors("testNotify", BRIDGE.testNotice.title);
   assertMirrors("testNotifyBody", BRIDGE.testNotice.body);
 });

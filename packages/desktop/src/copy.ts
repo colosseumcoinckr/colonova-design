@@ -94,7 +94,12 @@ export const NOTICE = {
       tail: "제출하지 못했어요",
       body: "연결 코드가 만료됐어요. 개발자에게 받은 새 초대 파일을 열어 주세요. 대화와 작업은 그대로예요.",
     },
-  } satisfies Record<"notified" | "auth", NoticeLine>,
+    // 이 기계의 인터넷 문제 — 개발자에게 알렸다고 말하지 않는다(웹 L.problem.blockedNetwork 와 같은 말).
+    network: {
+      tail: "제출하지 못했어요",
+      body: "인터넷 연결이 끊겨 멈췄어요. 작업은 보관돼 있고, 연결되면 도구가 다시 제출해요.",
+    },
+  } satisfies Record<"notified" | "auth" | "network", NoticeLine>,
   updateDone: (agent: string, version: string): NoticeText => ({
     title: "AI를 업데이트했어요",
     body: `${agent} ${version} — 다음 새 대화부터 써요.`,

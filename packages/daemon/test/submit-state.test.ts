@@ -69,6 +69,33 @@ test("deriveSubmitPhase — 예산을 다 써 알렸으면 developer-notified", 
   );
 });
 
+test("deriveSubmitPhase — 인터넷 문제로 예산을 다 쓴 막힘은 network (개발자를 기다릴 일이 아니다)", () => {
+  const budgets = {
+    "submit:pr": { spent: 5, firstAt: AT, lastAt: AT, escalated: true },
+  };
+  assert.deepEqual(
+    deriveSubmitPhase({ ...base, budgets, intent: intent({ attempts: 5, lastError: "network" }) }),
+    { phase: "blocked", attempts: 5, lastError: "network", blockedBy: "network" },
+  );
+  // 밀린 푸시가 1시간을 넘긴 막힘도 마지막 오류가 인터넷이면 같다.
+  const notices = { "push:behind": { via: "issue" as const, raisedAt: AT, count: 1 } };
+  const push = { behindSince: AT, attempts: 4, nextAttemptAt: AT, lastError: "network" as const };
+  assert.equal(
+    deriveSubmitPhase({ ...base, notices, push, intent: intent() }).blockedBy,
+    "network",
+  );
+  // 인증이 먼저다 — 둘이 겹치면 사람의 손이 필요한 쪽이 이긴다.
+  assert.equal(
+    deriveSubmitPhase({
+      ...base,
+      budgets,
+      authExpired: true,
+      intent: intent({ attempts: 5, lastError: "network" }),
+    }).blockedBy,
+    "auth",
+  );
+});
+
 test("advanceSubmitTrail — 같은 국면은 기록하지 않는다(틱은 사건이 아니다)", () => {
   const trail = { phase: "retrying" as const, log: [{ at: AT, text: SUBMIT_LOG_TEXT.retrying }] };
   const step = advanceSubmitTrail(trail, { phase: "retrying", attempts: 3 }, AT);

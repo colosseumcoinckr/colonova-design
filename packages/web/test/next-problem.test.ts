@@ -126,6 +126,35 @@ test("problemFor: 제출 막힘만으로 알림 성공을 말하지 않는다", 
   assert.equal(problem?.dismissId, "submit:2026-09-27T00:00:00.000Z");
 });
 
+test("problemFor: 인터넷 문제로 막힌 제출은 담당자에게 보낼 말도 개발자에게 알렸다는 말도 하지 않는다", () => {
+  const submit = {
+    phase: "blocked" as const,
+    attempts: 5,
+    lastError: "network" as const,
+    since: "2026-09-27T00:00:00.000Z",
+    log: [],
+  };
+  // 개발자 알림이 서 있어도(예산을 다 쓴 알림) 이 막힘은 이 기계의 연결 문제다.
+  const developerNotified: Attention = {
+    kind: "developer-notified",
+    since,
+    via: "pr",
+    key: "submit:pr",
+  };
+  for (const repo of [
+    { ...REPO, submit },
+    { ...REPO, attention: developerNotified, submit },
+  ]) {
+    const problem = problemFor(null, repo, L);
+    assert.equal(problem?.kind, "blocked");
+    assert.equal(problem?.title, L.problem.blocked);
+    assert.equal(problem?.body, L.problem.blockedNetwork);
+    assert.equal(problem?.action, null, "담당자에게 보낼 내용을 복사하는 단추가 없다");
+    assert.equal(problem?.dismissId, "submit:2026-09-27T00:00:00.000Z");
+  }
+  assert.doesNotMatch(L.problem.blockedNetwork, /담당자|개발자/);
+});
+
 test("problemFor: 막히지 않은 제출(retrying)은 문제 문장이 아니다", () => {
   const repo = { ...REPO, submit: { phase: "retrying" as const, attempts: 1, log: [] } };
   assert.equal(problemFor(null, repo, L), null);

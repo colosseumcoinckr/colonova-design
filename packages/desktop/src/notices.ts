@@ -42,7 +42,11 @@ export function noticeCopy(notice: DaemonNotice): {
     case "submit-blocked":
       return titled(
         notice.title,
-        notice.reason === "auth" ? NOTICE.submitBlocked.auth : NOTICE.submitBlocked.notified,
+        notice.reason === "auth"
+          ? NOTICE.submitBlocked.auth
+          : notice.reason === "network"
+            ? NOTICE.submitBlocked.network
+            : NOTICE.submitBlocked.notified,
       );
     case "update-done":
       return NOTICE.updateDone(notice.agent === "claude" ? "Claude Code" : "Codex", notice.version);

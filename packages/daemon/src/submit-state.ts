@@ -37,7 +37,12 @@ export const SUBMIT_LOG_TEXT = {
 /** 선로에 싣는 기록 줄의 수 — `이번 작업` 은 최근 셋을 보인다. */
 export const SUBMIT_LOG_MAX = 3;
 
-export type SubmitBlockReason = "auth" | "developer-notified";
+/**
+ * 막힘의 까닭 — `auth` 는 연결 코드 만료(사람의 손), `network` 는 이 기계의 인터넷 문제(풀리면 저절로),
+ * `developer-notified` 는 그 밖의 문제로 재시도 예산을 다 써 개발자에게 알린 경우. 네트워크 문제를
+ * 개발자에게 알렸다고 말하면 사용자는 제 연결이 아니라 개발자를 기다린다(2026-10-06 UX 점검).
+ */
+export type SubmitBlockReason = "auth" | "developer-notified" | "network";
 
 export interface SubmitPhaseView {
   phase: SubmitPhase;
@@ -86,7 +91,7 @@ export function deriveSubmitPhase(input: {
       phase: "blocked",
       attempts,
       lastError: lastError ?? "other",
-      blockedBy: "developer-notified",
+      blockedBy: lastError === "network" ? "network" : "developer-notified",
     };
   }
   if (attempts > 0) {

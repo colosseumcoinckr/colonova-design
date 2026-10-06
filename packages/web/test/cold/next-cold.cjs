@@ -727,7 +727,7 @@ TASK[5] = async () => {
       if (REAL) block(`되돌릴 앞 차례가 없음 (기록 ${count}줄)`);
       skip(`기록 ${count}줄`);
     }
-    await page.locator(".nx-hitem").nth(1).locator(".nx-hbody").click();
+    await page.locator(".nx-hitem").nth(1).locator(".nx-hmain").click();
     const dlg = page.getByRole("alertdialog");
     await dlg.waitFor({ state: "visible", timeout: 3_000 }).catch(() => block("확인이 열리지 않음"));
     const text = (await dlg.innerText()).replace(/\s+/g, " ");

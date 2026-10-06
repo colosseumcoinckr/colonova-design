@@ -8,7 +8,10 @@ import {
   type ModalLayer,
   modalReturnTarget,
   type OverlayLike,
+  panelReachable,
+  returnsFocus,
   topmostOverlay,
+  trapYields,
 } from "../src/hooks/use-modal-focus.ts";
 
 /** DOM 없이 쓸 덮개 흉내 — 클래스 이름만으로 층을 판정하는지 본다. */
@@ -95,4 +98,45 @@ test("nested comparison isolates the underlying submit dialog and restores it be
   assert.equal(submit.getAttribute("aria-hidden"), "false");
   assert.equal(submitDialog.getAttribute("aria-modal"), "true");
   assert.equal(escapeCloses(submit, [submit]), true);
+});
+
+test("trapYields: 초점이 이 판 밖의 다른 겹판 안에 있으면 가두기가 물러난다", () => {
+  // 서랍(root) 위에 비교창이 떠 있고 초점은 비교창 안 — 서랍의 Tab 가두기가 끼어들면 안 된다.
+  const compare = {};
+  const drawer = { contains: (node: unknown) => node === drawer };
+  const active = { closest: () => compare as never };
+  assert.equal(trapYields(active, drawer), true);
+});
+
+test("trapYields: 초점이 이 판 안이거나 어느 겹판 안도 아니면 가두기가 맡는다", () => {
+  const panel: { contains: (node: unknown) => boolean } = { contains: (node) => node === panel };
+  // 초점이 제 판의 aria-modal 안 — 자기 것이다.
+  assert.equal(trapYields({ closest: () => panel as never }, panel), false);
+  // 초점이 어느 겹판 안도 아님(뒷배경을 눌러 새어 나옴) — 되돌려야 하니 물러나지 않는다.
+  assert.equal(trapYields({ closest: () => null }, panel), false);
+  // 초점이 문서에 없음.
+  assert.equal(trapYields(null, panel), false);
+});
+
+test("returnsFocus: 초점이 판 안이거나 허공(body · 없음)일 때만 여는 요소로 돌려 보낸다", () => {
+  const body = { id: "body" };
+  const inside = { id: "inside" };
+  const elsewhere = { id: "composer" };
+  const panel = { contains: (node: unknown) => node === inside };
+  assert.equal(returnsFocus(inside, body, panel), true);
+  assert.equal(returnsFocus(body, body, panel), true);
+  assert.equal(returnsFocus(null, body, panel), true);
+  // 되돌리기가 끝나 서랍이 저절로 접히는 때 — 사용자가 이미 입력창에 있으면 초점을 빼앗지 않는다.
+  assert.equal(returnsFocus(elsewhere, body, panel), false);
+  // 이미 걷힌 판(마운트가 풀린 모달)은 초점이 허공에 있으니 돌려 보내고, 판을 모르면 허공이 아닌 한 두고 본다.
+  assert.equal(returnsFocus(body, body, null), true);
+  assert.equal(returnsFocus(elsewhere, body, null), false);
+});
+
+test("panelReachable: 숨었거나 inert 인 판은 손이 닿지 않아 가두지 않는다", () => {
+  assert.equal(panelReachable(null, "visible"), true);
+  assert.equal(panelReachable(undefined, "visible"), true);
+  assert.equal(panelReachable({ tag: "main" }, "visible"), false);
+  assert.equal(panelReachable(null, "hidden"), false);
+  assert.equal(panelReachable(null, "collapse"), true);
 });

@@ -17,6 +17,7 @@ import {
   handoffOpen,
   noteAllowed,
   noticeKind,
+  plainExcerpt,
   promptNumbers,
   rawErrorLine,
   retryCount,
@@ -429,4 +430,51 @@ test("textRoles: 묶음의 경계와 머리 · 하위 에이전트의 글", () =
   assert(!roles.steps.has("sub1"));
   // 경계 블록들만으로는 묶음이 생기지 않는다.
   assert.equal(textRoles([{ type: "user", id: "u" }], true).steps.size, 0);
+});
+
+test("plainExcerpt: 강조 · 링크 주소 · 목록 기호를 걷고 표 · 코드 덩어리는 뺀다", () => {
+  const markdown = [
+    "네 화면의 머리 문구를 **~해요** 말투로 맞췄어요.",
+    "",
+    "| 화면 | 바뀐 곳 |",
+    "| --- | --- |",
+    "| 회원 상세 | 머리 문구 |",
+    "",
+    "- 상세 화면에는 `연락처`가 보여요",
+    "- [회원 목록](http://127.0.0.1:5274/member/list)으로 돌아가요",
+    "",
+    "```ts",
+    "const hidden = 1;",
+    "```",
+    "끝이에요.",
+  ].join("\n");
+  // 별표 · 세로줄 · 백틱 · 주소가 글자 그대로 카드에 서지 않는다(2026-10-06).
+  assert.equal(
+    plainExcerpt(markdown, 200),
+    "네 화면의 머리 문구를 ~해요 말투로 맞췄어요. 상세 화면에는 연락처가 보여요 · 회원 목록으로 돌아가요 끝이에요.",
+  );
+});
+
+test("plainExcerpt: 제목 · 인용 기호와 한 줄짜리 강조도 걷는다", () => {
+  assert.equal(
+    plainExcerpt("## 바꾼 내용\n> *조금* 키웠어요\n~~옛~~ 새 문구", 200),
+    "바꾼 내용 조금 키웠어요 옛 새 문구",
+  );
+});
+
+test("plainExcerpt: 단어 속 밑줄과 곱셈 별표는 글자로 남긴다", () => {
+  assert.equal(
+    plainExcerpt("snake_case_name 과 2*3*4 는 그대로", 200),
+    "snake_case_name 과 2*3*4 는 그대로",
+  );
+});
+
+test("plainExcerpt: 길면 max 글자에서 자르고 말줄임표를 붙인다 — 짧으면 그대로", () => {
+  assert.equal(plainExcerpt("가".repeat(10), 5), "가가가가가…");
+  assert.equal(plainExcerpt("가".repeat(5), 5), "가가가가가");
+});
+
+test("plainExcerpt: 글이 없으면 빈 문자열이다 — 카드가 설명 줄을 빼는 근거", () => {
+  assert.equal(plainExcerpt("", 200), "");
+  assert.equal(plainExcerpt("| a | b |\n| --- | --- |\n```\ncode\n```\n---", 200), "");
 });

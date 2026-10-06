@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 // 순수 모듈 — src 에서 곧장 읽는다(next-connection-copy.test.ts 와 같은 모양).
 import { L } from "../src/next/labels.ts";
-import { keyHint } from "../src/next/lib/key-hint.ts";
+import { keyHint, tipWithKeys } from "../src/next/lib/key-hint.ts";
 
 test("keyHint: mac 이면 문장 그대로다", () => {
   assert.equal(keyHint("⌘⇧P", true), "⌘⇧P");
@@ -32,4 +32,15 @@ test("keyHint: 문장 속의 표기만 바뀌고 나머지 글자는 그대로�
 test("keyHint: 글리프가 없는 문장은 어느 컴퓨터에서나 그대로다", () => {
   assert.equal(keyHint("보내기 · ↵", false), "보내기 · ↵");
   assert.equal(keyHint("", false), "");
+});
+
+test("tipWithKeys: 문장 뒤에 단축키를 덧붙이고, 이 컴퓨터의 표기로 바꾼다", () => {
+  assert.equal(tipWithKeys("뒤로", "⌘[", true), "뒤로 · ⌘[");
+  assert.equal(tipWithKeys("뒤로", "⌘[", false), "뒤로 · Ctrl+[");
+  assert.equal(tipWithKeys("화면 고르기", "⌘L", false), "화면 고르기 · Ctrl+L");
+});
+
+test("tipWithKeys: 표에 키가 없는 손은 문장 그대로다", () => {
+  assert.equal(tipWithKeys("뒤로", null, true), "뒤로");
+  assert.equal(tipWithKeys("뒤로", null, false), "뒤로");
 });

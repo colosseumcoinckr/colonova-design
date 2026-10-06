@@ -154,7 +154,6 @@ const KOREAN_EXEMPT: Record<string, string> = {
   "lib/transcript-export.ts": "내보낸 markdown 의 머리 — 파일을 받는 개발자가 읽는다",
   "components/CopyButton.tsx": "낡은 공용 단추의 복사 · 복사됨",
   "components/Markdown.tsx": "대화록 마크다운의 접기 · 복사 · 표 — 낡은 면의 어휘",
-  "components/dialogs/ShortcutsSheet.tsx": "낡은 단축키 장의 제목 · 닫기",
   "components/transcript/activity.tsx": "낡은 대화록의 활동 머리",
   "components/transcript/blocks.tsx": "낡은 대화록의 도구 · 생각 카드",
   "components/transcript/shared.ts": "낡은 대화록의 시각 · 날짜 읽기",
@@ -163,7 +162,6 @@ const KOREAN_EXEMPT: Record<string, string> = {
   "lib/daemon-client.ts": "선로 사건을 카드로 접는 층의 문장 — L 이동은 별도 작업로 둔다",
   "lib/error-words.ts": "오류 id → 한국어 문장의 사전",
   "lib/format.ts": "시각 읽기(방금 · N분 전) — 낡은 대화록과 함께 쓴다",
-  "lib/invite-import.ts": "초대 파일 오류 안내",
   "lib/labels.ts": "낡은 게이트 · 도구 이름 묶음 — 개발자 면",
   "lib/thread-visibility.ts":
     "도구 대화의 고정 제목 — 표시 판정의 열쇠. 선로 상수로 옮기는 것이 다음 걸음이다(2026-10-02)",

@@ -4,7 +4,12 @@ import type { ProjectSummary } from "@colonova-design/protocol";
 // 순수 모듈 — src 에서 곧장 읽는다(turn-screens.test.ts 와 같은 모양).
 import { L } from "../src/next/labels.ts";
 import { initialNav, navReducer } from "../src/next/lib/nav.ts";
-import { neverPrepared, projectNote, projectStatus } from "../src/next/lib/project-note.ts";
+import {
+  neverPrepared,
+  pickOthers,
+  projectNote,
+  projectStatus,
+} from "../src/next/lib/project-note.ts";
 
 const BASE: ProjectSummary = {
   slug: "member",
@@ -120,4 +125,77 @@ test("셸 이동 — 지울 수 있는 초대 파일의 자리는 세우고 거�
   assert.equal(navReducer(s, { type: "invite-path", path: "/tmp/a.colonova-invite" }), s);
   s = navReducer(s, { type: "invite-path", path: null });
   assert.equal(s.discardableInvitePath, null);
+});
+
+test("다른 프로젝트 줄 — 넷 이하면 모두를 등록 순서대로, 활성은 뺀다", () => {
+  const list = [
+    { ...BASE, slug: "a", name: "a" },
+    { ...BASE, slug: "b", name: "b", pendingCount: 2 },
+    { ...BASE, slug: "c", name: "c" },
+  ];
+  const picked = pickOthers(list, "a", L);
+  assert.deepEqual(
+    picked.shown.map((project) => project.slug),
+    ["b", "c"],
+  );
+  assert.equal(picked.hidden, 0);
+  assert.deepEqual(
+    pickOthers(list, null, L).shown.map((project) => project.slug),
+    ["a", "b", "c"],
+    "세 개까지는 급해도 순서를 바꾸지 않는다",
+  );
+  // 하나만 가려지면 `1개 더 보기` 줄이 그 한 줄의 자리를 먹는다 — 숨기지 않고 모두 세운다.
+  const four = [...list, { ...BASE, slug: "d", name: "d", working: true }];
+  const all = pickOthers(four, null, L);
+  assert.deepEqual(
+    all.shown.map((project) => project.slug),
+    ["a", "b", "c", "d"],
+  );
+  assert.equal(all.hidden, 0);
+});
+
+test("다른 프로젝트 줄 — 셋을 넘으면 가장 급한 셋만 서고 나머지 수를 알려 준다", () => {
+  const list = [
+    { ...BASE, slug: "active", name: "active" },
+    { ...BASE, slug: "quiet1", name: "quiet1" },
+    { ...BASE, slug: "making", name: "making", working: true },
+    { ...BASE, slug: "quiet2", name: "quiet2", handoff: handoff("open") },
+    { ...BASE, slug: "waiting", name: "waiting", pendingCount: 1 },
+    {
+      ...BASE,
+      slug: "comments",
+      name: "comments",
+      handoff: handoff("changes_requested"),
+      lastEventKind: "changes_requested" as const,
+    },
+    { ...BASE, slug: "merged", name: "merged", handoff: handoff("merged") },
+  ];
+  const picked = pickOthers(list, "active", L);
+  // 답을 기다림 > 코멘트 > 만드는 중 — 조용한 것은 뒤로 밀려 `더 보기` 가 된다.
+  assert.deepEqual(
+    picked.shown.map((project) => project.slug),
+    ["waiting", "comments", "making"],
+  );
+  assert.equal(picked.hidden, 3);
+  assert.deepEqual(
+    pickOthers(list, "active", L, 2).shown.map((project) => project.slug),
+    ["waiting", "comments"],
+    "한도를 바꿀 수 있다",
+  );
+});
+
+test("다른 프로젝트 줄 — 같은 급함은 등록 순서를 지킨다", () => {
+  const list = [
+    { ...BASE, slug: "a", name: "a" },
+    { ...BASE, slug: "b", name: "b" },
+    { ...BASE, slug: "c", name: "c" },
+    { ...BASE, slug: "d", name: "d" },
+    { ...BASE, slug: "e", name: "e" },
+  ];
+  const picked = pickOthers(list, null, L);
+  assert.deepEqual(
+    picked.shown.map((project) => project.slug),
+    ["a", "b", "c"],
+  );
+  assert.equal(picked.hidden, 2);
 });

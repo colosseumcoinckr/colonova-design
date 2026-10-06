@@ -7,13 +7,15 @@
  * 만지고 사용자의 자격 증명 · 다른 저장 값을 읽지 않는다.
  */
 
-import { StrictMode, useState } from "react";
+import { StrictMode, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Daemon } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
 import { FeedbackDialog } from "../src/next/feedback/FeedbackDialog";
 import { FEEDBACK_DRAFT_KEY, loadDraft } from "../src/next/feedback/lib";
 import { L } from "../src/next/labels";
+import type { ToastNote } from "../src/next/lib/use-shell-nav";
+import { Toast } from "../src/next/ui/Toast";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
 import "../src/next/next.css";
@@ -21,7 +23,8 @@ import "../src/next/next.css";
 applyStoredTheme();
 applyStoredTypeScale();
 
-type Scenario = "sent" | "browser" | "failed" | "uncertain" | "disconnected" | "hold";
+type Scenario = "sent" | "browser" | "failed" | "uncertain" | "disconnected" | "notSent" | "hold";
+type Connection = "open" | "closed" | "connecting";
 
 interface FixtureCall {
   input: unknown;
@@ -31,6 +34,8 @@ interface FixtureCall {
 
 interface FixtureState {
   scenario: Scenario;
+  /** 데몬 연결 상태 — `closed` 면 보내기가 잠긴다(`connectionLock`). */
+  connection: Connection;
   delayMs: number;
   calls: FixtureCall[];
   /** hold 시나리오의 갇힌 약속 — `settle()` · `abort()` 로 화면 밖에서 푼다. */
@@ -41,6 +46,7 @@ interface FixtureState {
 /** 화면 밖의 시험이 읽는 기록 — 호출마다 한 줄씩 쌓인다. */
 const fixture: FixtureState = {
   scenario: "sent",
+  connection: "open",
   delayMs: 800,
   calls: [],
   settle: () => {},
@@ -73,8 +79,14 @@ const delay = () => {
 
 /** 가짜 API — 접수는 일어나지 않고 시나리오의 답만 돌려준다. */
 const daemon = {
+  get connection() {
+    return fixture.connection;
+  },
   api: {
     feedbackSubmit: async (input: unknown, commandId?: string) => {
+      // 나가기 전의 거절 — 실제 `call` 이 소켓이 열려 있지 않을 때 보내지도 않고 곧바로 거절하는 모양이다.
+      // 호출 기록에 남기지 않는다: 아무것도 나가지 않았다.
+      if (fixture.scenario === "notSent") throw new Error("아직 연결되지 않았습니다");
       fixture.calls.push({
         input,
         commandId: commandId ?? null,
@@ -118,6 +130,8 @@ function FakeSidebar({ onOpen }: { onOpen: () => void }) {
 function Fixture() {
   const [open, setOpen] = useState(false);
   const [, reroll] = useState(0);
+  const [toast, setToast] = useState<ToastNote | null>(null);
+  const seq = useRef(0);
   return (
     <div
       className="nx"
@@ -143,7 +157,8 @@ function Fixture() {
             <option value="browser">브라우저(browser)</option>
             <option value="failed">거절(failed)</option>
             <option value="uncertain">확인 불가(uncertain)</option>
-            <option value="disconnected">연결 끊김(disconnected)</option>
+            <option value="disconnected">연결 끊김(disconnected — 보낸 뒤)</option>
+            <option value="notSent">나가기 전 거절(notSent)</option>
             <option value="hold">답을 갇음(hold — settle/abort)</option>
           </select>
         </label>
@@ -157,6 +172,20 @@ function Fixture() {
             </button>
           </span>
         )}
+        <label style={{ display: "block", fontSize: 13, margin: "8px 0" }}>
+          데몬 연결{" "}
+          <select
+            value={fixture.connection}
+            onChange={(event) => {
+              fixture.connection = event.target.value as Connection;
+              reroll((n) => n + 1);
+            }}
+          >
+            <option value="open">열림(open)</option>
+            <option value="closed">끊김(closed)</option>
+            <option value="connecting">잇는 중(connecting)</option>
+          </select>
+        </label>
         <label style={{ display: "block", fontSize: 13, margin: "8px 0" }}>
           응답 지연(ms){" "}
           <input
@@ -190,7 +219,16 @@ function Fixture() {
           {JSON.stringify(fixture.calls, null, 2)}
         </pre>
       </main>
-      <FeedbackDialog daemon={daemon} open={open} onClose={() => setOpen(false)} />
+      <FeedbackDialog
+        daemon={daemon}
+        open={open}
+        onClose={() => setOpen(false)}
+        onToast={(text) => {
+          seq.current += 1;
+          setToast({ text, seq: seq.current });
+        }}
+      />
+      <Toast toast={toast} onDone={() => setToast(null)} />
     </div>
   );
 }

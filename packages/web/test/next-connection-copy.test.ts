@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 // 순수 모듈 — src 에서 곧장 읽는다(turn-screens.test.ts 와 같은 모양).
 import { L } from "../src/next/labels.ts";
-import { connectionCopy } from "../src/next/lib/connection-copy.ts";
+import { connectionCopy, reconnectNeeds } from "../src/next/lib/connection-copy.ts";
 
 /** 모든 케이스가 함께 보는 기준 시각 — 경계가 실행 속도에 흔들리지 않게. */
 const NOW = Date.now();
@@ -91,4 +91,33 @@ test("connectionCopy: 지났거나 이미 만료면 다시 연결 문장 — 빨
   );
   assert.equal(expired.dot, "red");
   assert.equal(expired.text, L.problem.reconnectInvite);
+});
+
+test("reconnectNeeds: AI 로그인이 끝난 것을 연결 코드의 만료로 읽지 않는다", () => {
+  const since = new Date(NOW).toISOString();
+  // 로그인 — AI 쪽의 일이다. 연결 쪽에 빨간 점도 초대 파일 부탁도 서지 않는다.
+  assert.deepEqual(
+    reconnectNeeds({ attention: { kind: "reconnect", what: "agent-login", since } }),
+    { github: false, login: true },
+  );
+  // 연결 코드 — 이미 본 401 이거나 데몬이 다시 연결을 청한다.
+  assert.deepEqual(reconnectNeeds({ githubAuthExpired: true }), { github: true, login: false });
+  assert.deepEqual(reconnectNeeds({ attention: { kind: "reconnect", what: "github", since } }), {
+    github: true,
+    login: false,
+  });
+});
+
+test("reconnectNeeds: 다시 연결이 아닌 주의 · 상태 없음은 아무것도 청하지 않는다", () => {
+  const since = new Date(NOW).toISOString();
+  assert.deepEqual(reconnectNeeds({ attention: { kind: "ai-fixing", since } }), {
+    github: false,
+    login: false,
+  });
+  assert.deepEqual(reconnectNeeds({ attention: null, githubAuthExpired: false }), {
+    github: false,
+    login: false,
+  });
+  assert.deepEqual(reconnectNeeds(null), { github: false, login: false });
+  assert.deepEqual(reconnectNeeds(undefined), { github: false, login: false });
 });

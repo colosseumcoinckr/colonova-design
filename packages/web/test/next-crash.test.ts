@@ -5,8 +5,11 @@ import {
   type CrashStorage,
   createCrashStore,
   installGlobalHandlers,
+  isRepeatCrash,
   MIRROR_CLEAR_MS,
+  MIRROR_KEY,
   markAppMounted,
+  REPEAT_WINDOW_MS,
   readLastCrash,
 } from "../src/lib/crash.ts";
 
@@ -115,4 +118,34 @@ test("crash: markAppMounted 는 10초 뒤 낡은 미러만 비운다", () => {
   store.publish({ source: "render", message: "마운트 뒤의 사고" }); // 이 기록은 다음 부팅의 문맥이다
   sweep?.(); // 같은 판정을 다시 — 새 사고는 살아 남는다
   assert.equal(readLastCrash(storage)?.message, "마운트 뒤의 사고");
+});
+
+test("crash: 저장소가 태어난 순간의 미러가 직전 실행의 사고로 남는다", () => {
+  const storage = memoryStorage();
+  storage.setItem(
+    MIRROR_KEY,
+    JSON.stringify({ source: "render", message: "지난 실행의 사고", time: 1_000 }),
+  );
+  const clock = fakeClock();
+  const store = createCrashStore({ storage, now: clock.now });
+  // 이번 실행의 새 사고가 미러를 덮어써도 previous 는 처음 본 그대로다.
+  clock.tick(5_000);
+  store.publish({ source: "render", message: "이번 사고" });
+  assert.equal(store.previous()?.message, "지난 실행의 사고");
+  assert.equal(readLastCrash(storage)?.message, "이번 사고");
+});
+
+test("crash: 직전 사고가 없으면 previous 도 없다", () => {
+  const store = createCrashStore({ storage: memoryStorage(), now: () => 0 });
+  assert.equal(store.previous(), null);
+});
+
+test("isRepeatCrash: 직전 사고가 한 분 안이면 되풀이고, 그보다 멀거나 없으면 아니다", () => {
+  const previous = { source: "render" as const, message: "a", time: 10_000 };
+  const at = (time: number) => ({ source: "render" as const, message: "a", time });
+  assert.equal(isRepeatCrash(at(10_000 + REPEAT_WINDOW_MS - 1), previous), true);
+  assert.equal(isRepeatCrash(at(10_000 + REPEAT_WINDOW_MS), previous), false);
+  assert.equal(isRepeatCrash(at(20_000), null), false);
+  // 시계가 거꾸로 간 기록(직전 사고가 미래)은 되풀이로 치지 않는다.
+  assert.equal(isRepeatCrash(at(5_000), previous), false);
 });

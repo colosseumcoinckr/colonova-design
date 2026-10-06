@@ -95,11 +95,13 @@ function sourceFiles(dir: string): string[] {
 
 test("next/: labels.ts 밖에 한글 리터럴이 없다(린트 규칙)", () => {
   const root = join(import.meta.dirname, "../src/next");
-  // 셸 밖에 빌려 쓰는 부품(components/shell 의 팔레트 · 열 경계)도 같은
-  // 규칙 아래 있다 — 문장은 labels.ts 로 옮겨 두었다.
-  const files = [...sourceFiles(root), ...sourceFiles(join(root, "../components/shell"))].filter(
-    (file) => relative(root, file) !== "labels.ts",
-  );
+  // 셸 밖에 빌려 쓰는 부품(components/shell 의 팔레트 · 열 경계, components/dialogs 의 단축키 시트)도
+  // 같은 규칙 아래 있다 — 문장은 labels.ts 로 옮겨 두었다.
+  const files = [
+    ...sourceFiles(root),
+    ...sourceFiles(join(root, "../components/shell")),
+    ...sourceFiles(join(root, "../components/dialogs")),
+  ].filter((file) => relative(root, file) !== "labels.ts");
   assert.ok(files.length > 0, "next/ 에 검사할 파일이 없다");
   const hits: string[] = [];
   for (const file of files) {
@@ -155,7 +157,11 @@ const WHOLE_GROUP: Record<string, string> = {
  */
 test("labels: L 의 칸은 모두 next/ 어딘가에서 불린다", () => {
   const root = join(import.meta.dirname, "../src/next");
-  const files = [...sourceFiles(root), ...sourceFiles(join(root, "../components/shell"))]
+  const files = [
+    ...sourceFiles(root),
+    ...sourceFiles(join(root, "../components/shell")),
+    ...sourceFiles(join(root, "../components/dialogs")),
+  ]
     .filter((file) => relative(root, file) !== "labels.ts")
     .map((file) => ({
       name: relative(root, file),
@@ -216,7 +222,7 @@ test("labels: L 의 칸은 모두 next/ 어딘가에서 불린다", () => {
  */
 test("watchdog: 문장이 L.crash 와 글자 그대로 같다", () => {
   const source = readFileSync(join(import.meta.dirname, "../public/boot-watchdog.js"), "utf8");
-  for (const text of [L.crash.bootTitle, L.crash.reopen]) {
+  for (const text of [L.crash.bootTitle, L.crash.body, L.crash.reopen, DEV.crash.details]) {
     assert.ok(source.includes(text), `boot-watchdog.js 에 이 문장이 없다: ${text}`);
   }
 });

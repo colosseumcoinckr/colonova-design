@@ -11,6 +11,7 @@ import {
   finalOutgoingChanges,
   outgoingScreens,
   outsideChanges,
+  reviewsRead,
 } from "../src/next/lib/work-ledger.ts";
 
 const screen = (route: string, title: string, note: string, at: string) => ({
@@ -176,4 +177,27 @@ test("시작일 · 시각 한 칸", () => {
     L.work.headerSub("회원 관리", "9월 25일", L.work.subDraft),
     "회원 관리 · 9월 25일부터 · 이 컴퓨터에 보관돼 있어요",
   );
+});
+
+test("코멘트 장부 — 작업 기록을 못 읽었으면 `고치는 중` 이라고 짐작하지 않는다(모르면 모른다)", () => {
+  const reviews = [review(1, "버튼 색을 바꿔 주세요", "2026-09-25T03:00:00Z")];
+  const options = { merged: false, reflectionPrefix: L.work.reflectionPrefix };
+  assert.equal(commentRows(reviews, null, options)[0]?.state, "unknown");
+  // 기록을 읽었는데 반영 차례가 없으면 그때는 정말 고치는 중이다.
+  assert.equal(commentRows(reviews, [], options)[0]?.state, "fixing");
+  // 반영된 사이클은 기록이 사라져도 모두 반영됨이다.
+  assert.equal(commentRows(reviews, null, { ...options, merged: true })[0]?.state, "done");
+});
+
+test("코멘트 읽기의 상태 — 요청이 없으면 읽을 것이 없고, 읽은 적이 있으면 다시 읽다 실패해도 그 값을 지킨다", () => {
+  // 요청이 없다: 읽을 것이 없어 빈 목록이 곧 사실이다.
+  assert.equal(reviewsRead({ hasHandoff: false, loaded: false, failed: false }), "ready");
+  assert.equal(reviewsRead({ hasHandoff: false, loaded: false, failed: true }), "ready");
+  // 처음 읽는 중에는 `아직 없어요` 가 아니라 읽는 중이다.
+  assert.equal(reviewsRead({ hasHandoff: true, loaded: false, failed: false }), "loading");
+  // 처음 읽기가 실패했다: 거짓 빈 상태가 아니라 읽지 못함이다.
+  assert.equal(reviewsRead({ hasHandoff: true, loaded: false, failed: true }), "failed");
+  // 한 번 읽었다: 이후의 새로고침이 실패해도 보이던 목록을 지우지 않는다.
+  assert.equal(reviewsRead({ hasHandoff: true, loaded: true, failed: false }), "ready");
+  assert.equal(reviewsRead({ hasHandoff: true, loaded: true, failed: true }), "ready");
 });

@@ -22,7 +22,13 @@ test("말풍선 — 요소 바로 아래, 게스트의 화면 위치만큼 옮�
     box: BOX,
     bubble: BUBBLE,
   });
-  assert.deepEqual(place, { left: 106, top: 138, up: false, arrowLeft: 54 });
+  assert.deepEqual(
+    { left: place.left, top: place.top, up: place.up, arrowLeft: place.arrowLeft },
+    { left: 106, top: 138, up: false, arrowLeft: 54 },
+  );
+  // 아래로 열면 위끝이 붙들리고, 쓸 수 있는 높이는 요소 아래의 남은 자리다(칸 바닥 8px 앞까지).
+  assert.deepEqual(place.anchor, { edge: "top", at: 138 });
+  assert.equal(place.maxHeight, 600 - 8 - 138);
 });
 
 test("말풍선 — 배율을 곱한다", () => {
@@ -107,6 +113,80 @@ test("말풍선 화살표 — 요소의 가운데를 가리키되 말풍선 안�
   });
   assert.equal(left.left, 8);
   assert.equal(left.arrowLeft, 10);
+});
+
+test("말풍선 — 위로 열면 아랫끝이 붙들린다: 높이가 늘어도 요소와의 간격이 그대로", () => {
+  const input = {
+    rect: { x: 100, y: 480, width: 80, height: 40 },
+    frame: { left: 0, top: 48 },
+    zoom: 1,
+    box: BOX,
+  };
+  const small = bubblePlacement({ ...input, bubble: BUBBLE });
+  assert.equal(small.up, true);
+  // 요소 위끝(528) 10px 위가 말풍선의 아랫끝 — 칸 바닥에서 600 - 518 = 82px.
+  assert.deepEqual(small.anchor, { edge: "bottom", at: 82 });
+  assert.equal(small.maxHeight, 528 - 10 - 8);
+  // 높이가 늘어 다시 불러도 아랫끝은 같다 — 위끝만 올라간다.
+  const tall = bubblePlacement({ ...input, bubble: { width: 300, height: 260 }, prefer: "up" });
+  assert.equal(tall.up, true);
+  assert.deepEqual(tall.anchor, { edge: "bottom", at: 82 });
+  assert.equal(tall.top, 528 - 10 - 260);
+});
+
+test("말풍선 — 지금 서 있는 쪽에 아직 들어가면 옮기지 않는다(prefer)", () => {
+  // 요소 아래 자리 = 600 - 8 - (128 + 10) = 454. 위 자리 = 98 - 10 - 8 = 80.
+  const input = {
+    rect: { x: 100, y: 50, width: 80, height: 30 },
+    frame: { left: 0, top: 48 },
+    zoom: 1,
+    box: BOX,
+  };
+  // 위로 서 있던 말풍선이 아직 위에 들어가면(80 이하) 그대로 위.
+  const keepUp = bubblePlacement({ ...input, bubble: { width: 300, height: 70 }, prefer: "up" });
+  assert.equal(keepUp.up, true);
+  // 위에 안 들어가면 아래가 통째로 들어가니 아래로 간다.
+  const flip = bubblePlacement({ ...input, bubble: { width: 300, height: 200 }, prefer: "up" });
+  assert.equal(flip.up, false);
+  assert.deepEqual(flip.anchor, { edge: "top", at: 138 });
+});
+
+test("말풍선 — 어느 쪽에도 통째로 안 들어가면 더 넓은 쪽에 서고 높이를 조인다", () => {
+  // 칸 가운데의 요소: 아래 자리 = 600 - 8 - (298 + 10) = 284, 위 자리 = 248 - 10 - 8 = 230. 말풍선이 400.
+  const place = bubblePlacement({
+    rect: { x: 100, y: 200, width: 80, height: 50 },
+    frame: { left: 0, top: 48 },
+    zoom: 1,
+    box: BOX,
+    bubble: { width: 300, height: 400 },
+  });
+  assert.equal(place.up, false);
+  assert.deepEqual(place.anchor, { edge: "top", at: 308 });
+  assert.equal(place.maxHeight, 284);
+  // 위가 더 넓은 자리면 위로 서고 같은 식으로 조인다.
+  const above = bubblePlacement({
+    rect: { x: 100, y: 300, width: 80, height: 50 },
+    frame: { left: 0, top: 48 },
+    zoom: 1,
+    box: BOX,
+    bubble: { width: 300, height: 500 },
+  });
+  assert.equal(above.up, true);
+  assert.equal(above.maxHeight, 348 - 10 - 8);
+  assert.deepEqual(above.anchor, { edge: "bottom", at: 600 - 338 });
+});
+
+test("말풍선 — 칸을 덮는 요소는 칸 안에 붙들고, 높이는 칸에서 여백을 뺀 만큼", () => {
+  const place = bubblePlacement({
+    rect: { x: 0, y: 0, width: 800, height: 600 },
+    frame: { left: 0, top: 0 },
+    zoom: 1,
+    box: BOX,
+    bubble: BUBBLE,
+  });
+  assert.equal(place.up, false);
+  assert.deepEqual(place.anchor, { edge: "top", at: 600 - 8 - 110 });
+  assert.equal(place.maxHeight, 600 - 16);
 });
 
 test("도착 판정 — 답이 끝났을 때 한 번, 옮겨 감과 이미 거기서 바뀜을 가른다", () => {

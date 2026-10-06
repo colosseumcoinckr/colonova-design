@@ -1,4 +1,5 @@
 import type { Attention } from "./attention.js";
+import type { GateChecked } from "./session.js";
 
 // ---------------------------------------------------------------------------
 // 코멘트 저장소 (PLAN D57)
@@ -215,6 +216,11 @@ export interface RepoStatus {
     sha?: string;
     sessionId?: string;
     requestId?: string;
+    /**
+     * 이 작업(보관)을 끝낸 턴의 자동 확인이 문제 없이 지나간 기록(2026-10-07 UX 점검 3단계) — 데몬이 보관 때
+     * 화면 지도에 적는다. 요청 본문의 `### 확인한 것` 이 이것을 센다. 문제를 찾았거나 확인하지 못한 턴에는 없다.
+     */
+    checked?: GateChecked;
   }>;
 
   /**
@@ -360,6 +366,16 @@ export interface DiffStatus {
 // 넘기기 (비개발자 넘기기)
 // ---------------------------------------------------------------------------
 
+/** 요청 본문의 `### 확인한 것` 이 말하는 수(2026-10-07 UX 점검 3단계). */
+export interface HandoffChecks {
+  /** 이번 제출에 담긴 화면 작업(보관)의 수. */
+  total: number;
+  /** 그중 자동 확인이 문제 없이 지나간 작업의 수. */
+  checked: number;
+  /** 확인이 지나간 작업이 모두 휴대폰 폭까지 봤다. */
+  phone: boolean;
+}
+
 /** `repo.handoffDraft` — what the 넘기기 dialog opens filled with. */
 export interface RepoHandoffDraft {
   /** One line for the pull request title. Empty when the machine turn could not answer. */
@@ -383,6 +399,10 @@ export interface RepoHandoffDraft {
     /** `### 바뀐 파일` — the same string the body carries, or null. */
     filesSection: string | null;
     shotCount: number;
+    /** `### 확인한 것` — 본문이 싣는 같은 글(2026-10-07 UX 점검 3단계), 확인 기록이 없으면 null. */
+    checksSection?: string | null;
+    /** 그 글의 숫자 — 화면 작업 몇 건 중 몇 건의 확인이 문제 없이 지나갔는가. 없으면 null. */
+    checks?: HandoffChecks | null;
   };
   /** Who wrote it: the machine turn (machine-provider 의 담당), or nothing at all. */
   source: "machine" | "fallback";

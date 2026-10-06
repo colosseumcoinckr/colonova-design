@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { buildChecksSection } from "../dist/handoff-body.js";
 import { handoffPrompt } from "../dist/repo-prompts.js";
 import { RepoSummarizer } from "../dist/repo-summary.js";
 import { makeScene } from "./helpers/cycle-harness.ts";
@@ -37,6 +38,44 @@ test("PR 초안 — 최종 diff를 전달하고 본문의 Markdown과 같은 작
     assert.ok(prompts[0]?.includes("임시 기능을 추가해 줘"), "요청은 배경으로만 전달된다");
     assert.deepEqual(await summarizer.handoffDraft(), draft);
     assert.equal(prompts.length, 1, "같은 tip은 모델 턴을 추가로 쓰지 않는다");
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("PR 초안 — 미리보기의 extras 가 본문과 같은 `확인한 것` 을 싣고, 기록이 없으면 비어 있다", async () => {
+  let screens: Array<Record<string, unknown>> = [];
+  const scene = await makeScene({ cycleScreens: () => screens as never });
+  try {
+    const branch = "colonova-design/checks-test";
+    await scene.git(["checkout", "-b", branch]);
+    writeFileSync(join(scene.clone.path, "members.ts"), "export const searchByName = true;\n");
+    await scene.git(["add", "members.ts"]);
+    await scene.git(["commit", "-m", "이름 검색을 넣어 줘"]);
+    scene.core.setCycle(branch, null);
+    const summarizer = new RepoSummarizer(scene.core, async () => "feat: 이름 검색\n\n본문");
+
+    const none = await summarizer.handoffDraft();
+    assert.equal(none.extras?.checks, null);
+    assert.equal(none.extras?.checksSection, null);
+
+    screens = [
+      {
+        route: "/members",
+        title: "회원",
+        note: "n",
+        at: "T",
+        sha: "s2",
+        checked: { screens: 1, phone: true },
+      },
+      { route: "/pay", title: "결제", note: "n", at: "T", sha: "s1" },
+    ];
+    const some = await summarizer.handoffDraft();
+    assert.deepEqual(some.extras?.checks, { total: 2, checked: 1, phone: true });
+    assert.equal(
+      some.extras?.checksSection,
+      buildChecksSection({ total: 2, checked: 1, phone: true }),
+    );
   } finally {
     await scene.dispose();
   }

@@ -397,7 +397,13 @@ function Row({ spec }: { spec: Case }) {
                           ? "회원 목록 맨 위에 검색창을 넣고 이름 일부만 쳐도 결과가 바로 걸러지게 했습니다. 결과가 없을 때는 안내 문구를 보여 주고, 휴대폰 폭에서도 검색창이 옆으로 밀리지 않도록 폭을 맞췄습니다. 검색어를 지우면 전체 목록으로 돌아오고, 목록의 정렬은 그대로 유지됩니다. 접근성을 위해 검색창에 이름표를 달았고 키보드만으로도 조작할 수 있습니다."
                           : "회원 목록 맨 위에 검색창을 넣어 이름으로 거를 수 있게 했습니다.\n\n- 검색 결과가 없으면 안내 문구를 보여 줍니다\n- 휴대폰 폭에서도 옆으로 밀리지 않습니다",
                       source: "machine" as const,
-                      extras: { commentsSection: null, filesSection: null, shotCount: 3 },
+                      extras: {
+                        commentsSection: null,
+                        filesSection: null,
+                        shotCount: 3,
+                        checksSection: null,
+                        checks: { total: 5, checked: 4, phone: true },
+                      },
                     },
               ),
       noteToDeveloper: async () => {

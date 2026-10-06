@@ -443,6 +443,57 @@ test("요청이 열린 때 — 만들 때 GitHub 의 created_at 이 since 로 �
   }
 });
 
+test("확인한 것 — 도구 구간에 화면 작업의 자동 확인 기록이 서고, 기록이 없으면 절도 없다(D38 — 이름 없이 숫자만)", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    const at = new Date().toISOString();
+    const screen = (route: string, sha: string, checked?: { screens: number; phone: boolean }) => ({
+      route,
+      title: `이름${route}`,
+      note: "고쳐 줘",
+      at,
+      sha,
+      ...(checked ? { checked } : {}),
+    });
+    const bodyOf = () => scene.github.pull(scene.core.openHandoff?.number ?? 0)?.body ?? "";
+
+    // 확인 기록이 없는 사이클 — 절이 없다(하지 않은 확인을 말하지 않는다).
+    scene.supervisor.submit("chat");
+    await scene.supervisor.settled();
+    assert.ok(scene.core.openHandoff);
+    assert.ok(!bodyOf().includes("### 확인한 것"));
+
+    // 확인이 문제 없이 지난 작업이 둘 — 다시 제출하면 도구 구간에 절이 선다.
+    scene.cycleScreens = [
+      screen("/c", "s3", { screens: 2, phone: true }),
+      screen("/b", "s2"),
+      screen("/a", "s1", { screens: 1, phone: true }),
+    ];
+    scene.supervisor.submit("chat");
+    await scene.supervisor.settled();
+    const body = bodyOf();
+    const block = body.slice(
+      body.indexOf("colonova-design:start"),
+      body.indexOf("colonova-design:end"),
+    );
+    assert.ok(block.includes("### 확인한 것"), "절은 도구 구간 안에 선다");
+    assert.ok(block.includes("화면 작업 3건 중 2건에서 확인이 문제 없이 지나갔습니다"));
+    assert.ok(block.includes("나머지 1건은 확인 기록이 없습니다."));
+    assert.ok(block.includes("휴대폰 폭의 가로 넘침"), "확인이 지난 작업이 모두 봤다");
+    assert.ok(!body.includes("이름/"), "화면 이름은 이 절에 없다 — 숫자뿐이다");
+    assert.equal(body.split("colonova-design:end").length - 1, 1, "구간의 끝 표식은 하나");
+
+    // 확인이 지난 작업이 없어지면 구간을 새로 짤 때 절도 거두어진다.
+    scene.cycleScreens = [screen("/a", "s1")];
+    scene.supervisor.submit("chat");
+    await scene.supervisor.settled();
+    assert.ok(!bodyOf().includes("### 확인한 것"));
+  } finally {
+    await scene.dispose();
+  }
+});
+
 test("채팅 제출은 한마디 없이 그대로 간다 — 줄도 사건의 note 도 없다", async () => {
   const scene = await makeSupervisedScene();
   try {

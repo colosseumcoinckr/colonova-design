@@ -17,10 +17,12 @@ import {
 import { readComments } from "./comments.js";
 import { replyFooter } from "./developer-replies.js";
 import {
+  buildChecksSection,
   buildCommentsSection,
   buildFilesSection,
   formatHandoffTitle,
   noteLine,
+  summarizeChecks,
   TOOL_BLOCK_END,
   TOOL_BLOCK_START,
 } from "./handoff-body.js";
@@ -619,6 +621,13 @@ export class PublishCycle {
         const section = buildCommentsSection(readComments(options.commentsFile), since);
         if (section) sections.push(section);
       }
+    } catch {
+      // 같은 이유.
+    }
+    try {
+      // 2026-10-07 UX 점검 3단계 — 이번 제출에 담긴 화면 작업의 자동 확인 기록. 기록이 없으면 절도 없다.
+      const checks = summarizeChecks(this.core.snapshot().cycleScreens ?? []);
+      if (checks) sections.push(buildChecksSection(checks));
     } catch {
       // 같은 이유.
     }

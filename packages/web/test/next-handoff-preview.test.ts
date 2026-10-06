@@ -103,7 +103,12 @@ test("handoffPreviewOf: 초안의 제목과 설명과 사진 수를 한 모습�
     {
       title: "feat(members): 회원 목록에 이름 검색 추가 (작성: 김기획)",
       body: "회원 목록에서 이름으로 찾을 수 있다.\n\n- 세부",
-      extras: { commentsSection: null, filesSection: null, shotCount: 3 },
+      extras: {
+        commentsSection: null,
+        filesSection: null,
+        shotCount: 3,
+        checks: { total: 5, checked: 4, phone: true },
+      },
     },
     "첫 보관 제목",
   );
@@ -111,6 +116,7 @@ test("handoffPreviewOf: 초안의 제목과 설명과 사진 수를 한 모습�
     title: "회원 목록에 이름 검색 추가",
     summary: "회원 목록에서 이름으로 찾을 수 있다.",
     photos: 3,
+    checks: { total: 5, checked: 4 },
     by: "ai",
   });
 });
@@ -121,6 +127,7 @@ test("handoffPreviewOf: AI 가 제목을 못 낸 초안은 첫 보관의 제목�
     title: "회원 목록 맨 위에 검색창을 넣어 줘",
     summary: null,
     photos: 0,
+    checks: null,
     by: "request",
   });
 });
@@ -136,6 +143,7 @@ test("handoffPreviewOf: 제목은 없고 설명만 있어도 설명은 보여 �
     title: "",
     summary: "화면 두 곳을 고쳤다.",
     photos: 0,
+    checks: null,
     by: "ai",
   });
 });

@@ -100,6 +100,42 @@ test("deriveCycleScreens — 최근 커밋부터, 화면 없는 커밋은 빠지
   ]);
 });
 
+test("deriveCycleScreens — 지도 행의 확인 기록이 그 보관의 모든 화면 줄에 실린다", () => {
+  const commits = [
+    { sha: "c2", subject: "쿠폰 화면도", at: "T2" },
+    { sha: "c1", subject: "회원 목록에 검색창", at: "T1" },
+  ];
+  const rows = [
+    {
+      at: "T1",
+      sha: "c1",
+      routes: [],
+      files: ["a.tsx"],
+      screens: [{ route: "/member/list", title: "회원 목록" }],
+    },
+    {
+      at: "T2",
+      sha: "c2",
+      routes: [],
+      files: ["b.tsx"],
+      screens: [
+        { route: "/coupon", title: "쿠폰" },
+        { route: "/coupon/new", title: "쿠폰 만들기" },
+      ],
+      checked: { screens: 2, phone: true },
+    },
+  ];
+  const out = deriveCycleScreens(commits, rows);
+  assert.deepEqual(
+    out.map((screen) => [screen.route, screen.checked]),
+    [
+      ["/coupon", { screens: 2, phone: true }],
+      ["/coupon/new", { screens: 2, phone: true }],
+      ["/member/list", undefined],
+    ],
+  );
+});
+
 test("deriveCycleScreens — screens 가 없는 옛 행은 routes 를 읽고 제목을 빌린다", () => {
   const rows = [
     {

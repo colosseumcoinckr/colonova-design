@@ -23,7 +23,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
-import type { HandoffShot } from "@colonova-design/protocol";
+import type { HandoffShot, RepoStatus } from "@colonova-design/protocol";
 import { type CycleLedger, emptyLedger } from "../../dist/cycle-ledger.js";
 import { type ObserveDeps, observeCycle } from "../../dist/cycle-observe.js";
 import type { CycleSnapshot } from "../../dist/cycle-reconcile.js";
@@ -99,6 +99,8 @@ export interface HandoffLike {
 export interface HarnessCoreOptions {
   reviewers?: string[];
   authorName?: () => string | null;
+  /** 이번 사이클의 화면 작업(지도) — 제출 본문의 `### 확인한 것` 이 센다(2026-10-07). */
+  cycleScreens?: () => RepoStatus["cycleScreens"];
   baseBranch?: string;
   /** 레지스트리가 기억하는 사이클 브랜치. */
   branch?: string | null;
@@ -127,6 +129,7 @@ export function makeCore(
     baseBranch: opts.baseBranch ?? "main",
     reviewers: () => opts.reviewers ?? [],
     authorName: opts.authorName,
+    ...(opts.cycleScreens ? { cycleView: () => ({ cycleScreens: opts.cycleScreens?.() }) } : {}),
     cycle: { branch: opts.branch ?? null, handoff: opts.handoff ?? null },
     gitHubClient: opts.github ? () => new GitHubClient("harness-token", opts.github) : undefined,
   });
@@ -832,6 +835,8 @@ export interface SupervisedScene extends Scene {
   submitBlocked: string[];
   /** 연결 코드 만료의 기록 — githubAuthExpired 가 읽는다(기본 false). */
   authExpired: boolean;
+  /** 이번 사이클의 화면 작업(화면 지도) — 제출 본문의 `### 확인한 것` 이 센다. 기본 없음(2026-10-07). */
+  cycleScreens: RepoStatus["cycleScreens"];
   /** 감독자가 건 제출 재시도 타이머 (N6) — 건 순간의 가짜 시계와 간격, 정리
    * 되었는지. 실제로 도는 타이머는 없다: 시험은 가짜 시계로 틱을 직접 돈다. */
   retryTimers: Array<{ at: number; delayMs: number; cancelled: boolean }>;
@@ -850,9 +855,12 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
   const urlChanges: Array<string | null> = [];
   // PR 본문의 `> 작성:` 줄 — 장면의 authorName 을 워크스페이스도 읽는다.
   let authorOf: () => string | null = () => null;
+  // PR 본문의 `### 확인한 것` — 장면의 cycleScreens 를 fleet 의 cycleView 처럼 읽는다(부르는 순간에 묻는다).
+  let screensOf: () => RepoStatus["cycleScreens"] = () => undefined;
   const workspace = new RepoWorkspace({
     reviewers: () => opts.reviewers ?? [],
     authorName: () => authorOf(),
+    cycleView: () => ({ cycleScreens: screensOf() }),
     root: clone.path,
     url: remote.path,
     onStatus: () => {},
@@ -880,12 +888,14 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
     // PLAN L9 자동 답장의 재료 — 초대 v4 의 lifecycle.autoReply · machine 의 이름.
     autoReply: true,
     authorName: null as string | null,
+    cycleScreens: undefined as RepoStatus["cycleScreens"],
     keepRejectedDays: 14,
     freeBytes: 100 * 1024 ** 3,
     installJudge: null as (() => boolean) | null,
     authExpired: false,
   };
   authorOf = () => scene.authorName;
+  screensOf = () => scene.cycleScreens;
   const submitBlocked: string[] = [];
   const machineNotices: SupervisedScene["machineNotices"] = [];
   const briefs: string[] = [];
@@ -995,6 +1005,12 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
     },
     set authorName(v: string | null) {
       scene.authorName = v;
+    },
+    get cycleScreens() {
+      return scene.cycleScreens;
+    },
+    set cycleScreens(v: RepoStatus["cycleScreens"]) {
+      scene.cycleScreens = v;
     },
     get active() {
       return scene.active;

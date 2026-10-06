@@ -1,3 +1,4 @@
+import type { GateChecked, HandoffChecks } from "@colonova-design/protocol";
 import { HANDOFF_TITLE_MAX_CHARS } from "./repo-prompts.js";
 
 /**
@@ -110,6 +111,60 @@ export function buildFilesSection(numstat: string, max = 60): string | null {
   );
   const tail = overflow > 0 ? `\n- 외 ${overflow}건` : "";
   return `### 바뀐 파일\n\n${lead}\n\n${lines.join("\n")}${tail}\n`;
+}
+
+/**
+ * 이번 제출에 담긴 화면 작업(보관)마다의 자동 확인 기록을 센다(2026-10-07 UX 점검 3단계). 한 작업은 지도의 보관 하나
+ * (`sha`)다 — 한 보관이 여러 화면을 고쳐도 하나로 센다. 되돌리기 · 병합 · 코멘트 반영(`kind`)은 사용자의 화면
+ * 작업이 아니라 세지 않는다. 확인이 문제 없이 지난 작업만 기록이 있으므로, 기록이 하나도 없으면 null — 하지 않은
+ * 확인을 말하지 않는다.
+ */
+export function summarizeChecks(
+  screens: ReadonlyArray<{ sha?: string; kind?: string; checked?: GateChecked }>,
+): HandoffChecks | null {
+  const rows = new Map<string, GateChecked | null>();
+  for (const screen of screens) {
+    if (!screen.sha || screen.kind) continue;
+    if (!rows.has(screen.sha)) rows.set(screen.sha, screen.checked ?? null);
+  }
+  const passed = [...rows.values()].filter((checked): checked is GateChecked => checked !== null);
+  if (passed.length === 0) return null;
+  return {
+    total: rows.size,
+    checked: passed.length,
+    phone: passed.every((checked) => checked.phone),
+  };
+}
+
+/**
+ * `### 확인한 것` 절 — 개발자가 이 화면 작업을 얼마나 믿어도 되는지 읽는 한 단락. 도구가 한 것(다시 열어 본 것)만 말하고,
+ * 하지 않은 것(레포의 검사 · 빌드)은 하지 않았다고 말한다. 접근성 · 대비는 지난번에 본 문제를 다시 말하지 않으므로
+ * 「새로 찾은 문제가 없었다」 고만 한다. 화면 이름 · 요소 · 경로는 쓰지 않는다(D38) — 숫자뿐이다.
+ */
+export function buildChecksSection(checks: HandoffChecks): string {
+  const count =
+    checks.checked >= checks.total
+      ? `이번 제출에 담긴 화면 작업 ${checks.total}건 모두`
+      : `이번 제출에 담긴 화면 작업 ${checks.total}건 중 ${checks.checked}건`;
+  const kinds = [
+    "콘솔 오류",
+    "실패한 요청",
+    "이름 없는 컨트롤",
+    "너무 흐린 글자",
+    ...(checks.phone ? ["휴대폰 폭의 가로 넘침"] : []),
+  ].join(" · ");
+  const rest =
+    checks.checked < checks.total
+      ? ` 나머지 ${checks.total - checks.checked}건은 확인 기록이 없습니다.`
+      : "";
+  return [
+    "### 확인한 것",
+    "",
+    `AI 가 작업을 끝낼 때마다 도구가 바뀐 화면을 다시 열어 봅니다. ${count}에서 확인이 문제 없이 지나갔습니다 — 화면이 끝까지 열렸고, ${kinds}에서 새로 찾은 문제가 없었습니다.${rest}`,
+    "",
+    "레포의 검사(check)와 빌드는 이 확인에 들어 있지 않습니다.",
+    "",
+  ].join("\n");
 }
 
 /** PR 본문에서 도구의 구간을 표시하는 말뭉치 (PLAN L6) — 이 안이 도구의

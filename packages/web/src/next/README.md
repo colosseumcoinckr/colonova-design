@@ -165,7 +165,7 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 - `use-copied.ts` — 복사 뒤 1.5초만 `복사했어요` 로 바뀌는 단추의 손(`useCopied`). 낭독은 부르는 쪽이 실린다.
 - `use-closing.ts` — 겹판이 닫히는 동안의 모션 타이머 한 곳(`useClosing`).
 - `handoff-preview.ts` · `use-handoff-draft.ts` — 제출 확인의 `개발자에게는 이렇게 보여요`: `handoffPreviewOf(draft, firstSubject)` 가 데몬의 요청 초안
-  (`repo.handoffDraft`)에서 사용자가 읽는 제목(종류 접두어 · 작성자 꼬리를 뗌) · 설명 첫 대목 · 사진 수를 뽑고, `useHandoffDraft` 가 제출을 붙잡지 않고 따로 읽는다.
+  (`repo.handoffDraft`)에서 사용자가 읽는 제목(종류 접두어 · 작성자 꼬리를 뗌) · 설명 첫 대목 · 사진 수 · 자동 확인 결과(`extras.checks`)를 뽑고, `useHandoffDraft` 가 제출을 붙잡지 않고 따로 읽는다.
   첫 제출에만 읽는다 — 더하는 제출은 개발자의 글이 그대로라 지금 제목만 보인다. 정규식 안의 한글 · 역따옴표는 `\u` 로 적는다(한글 리터럴 린트가 정규식을 읽지 못한다).
 - `waiting.ts` — 기다림이 보이게: `daysSince(since, today)` 가 요청이 열린 지 달력으로 며칠인지(오늘 0), `waitingRows(projects, today)` 가 홈의
   `지금 진행 중` 에 설 한 줄들(`open` 요청만 · 오래 기다린 것이 먼저 · 때를 모르면 맨 뒤)을 낸다. 오늘의 자정은 부르는 쪽(`useToday`)이 쥔다.

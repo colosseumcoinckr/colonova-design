@@ -114,6 +114,7 @@ jobs:
           packages/daemon/test/screen-comparisons.test.ts
           packages/daemon/test/submit-sent-wire.test.ts
           packages/daemon/test/github-pr-since.test.ts
+          packages/daemon/test/screen-map-checked.test.ts
           packages/daemon/test/session-identity.test.ts
           packages/daemon/test/session-manager-close.test.ts
           packages/daemon/test/log-sanitize.test.ts

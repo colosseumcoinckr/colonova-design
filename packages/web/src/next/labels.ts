@@ -875,7 +875,14 @@ export const L = {
     // 2026-10-07 UX 점검 3단계 — 개발자가 처음 읽는 제목과 설명을 보내기 전에 먼저 보인다.
     previewHead: "개발자에게는 이렇게 보여요",
     previewLoading: "개발자에게 보이는 모습을 정리하는 중…",
-    previewPhotos: (n: number) => `화면 사진 ${n}장도 함께 가요`,
+    /** 개발자에게 함께 가는 것 — 화면 사진과 자동 확인 결과(작업 몇 건 중 몇 건이 문제 없이 지났는가). 둘 다 없으면 빈 글이다. */
+    previewWith: (photos: number, checked: number, total: number) => {
+      const parts = [
+        photos > 0 ? `화면 사진 ${photos}장` : "",
+        checked > 0 ? `자동 확인 결과(작업 ${total}건 중 ${checked}건)` : "",
+      ].filter((part) => part !== "");
+      return parts.length > 0 ? `${parts.join(" · ")}도 함께 가요` : "";
+    },
     /** AI 가 쓴 글이라 고칠 길은 한마디다 — 상자의 마지막 줄이 그 길을 가리킨다. */
     previewHint: "AI 가 정리한 글이에요 · 틀린 곳이 있으면 아래 한마디에 적어 주세요",
     previewHintRequest: "AI 가 글을 쓰지 못해 처음 한 말이 제목이 돼요 · 더 알려 줄 것은 아래 한마디에 적어 주세요",

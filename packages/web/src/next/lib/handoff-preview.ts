@@ -15,6 +15,8 @@ export interface HandoffPreview {
   summary: string | null;
   /** 함께 가는 화면 사진의 수. */
   photos: number;
+  /** 함께 가는 자동 확인 결과 — 화면 작업 몇 건 중 몇 건의 확인이 문제 없이 지났는가. 기록이 없으면 null. */
+  checks: { total: number; checked: number } | null;
   /** 글의 주인 — `ai` 는 AI 가 쓴 제목 · 설명, `request` 는 AI 가 못 써서 처음 한 말이 제목이 된 것. */
   by: "ai" | "request";
 }
@@ -95,10 +97,12 @@ export function handoffPreviewOf(
   const title = drafted || previewTitle(firstSubject ?? "");
   const summary = previewSummary(draft.body);
   if (title === "" && summary === null) return null;
+  const checks = draft.extras?.checks;
   return {
     title,
     summary,
     photos: draft.extras?.shotCount ?? 0,
+    checks: checks ? { total: checks.total, checked: checks.checked } : null,
     by: drafted !== "" || summary !== null ? "ai" : "request",
   };
 }

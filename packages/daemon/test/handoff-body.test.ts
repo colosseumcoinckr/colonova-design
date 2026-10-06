@@ -4,11 +4,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  buildChecksSection,
   formatHandoffTitle,
   mergeToolBlock,
   noteLine,
   pickHandoffTitle,
   readToolNote,
+  summarizeChecks,
   TOOL_BLOCK_END,
   TOOL_BLOCK_START,
 } from "../dist/handoff-body.js";
@@ -135,4 +137,73 @@ test("readToolNote — 구간의 지난 한마디를 되읽는다(작성자 줄 
   assert.equal(readToolNote(`개발자 글.\n\n${wrap(BLOCK)}`), null, "한마디가 없던 구간");
   assert.equal(readToolNote("> 한마디: 구간 밖의 글"), null, "구간 밖은 개발자의 것");
   assert.equal(readToolNote(null), null);
+});
+
+// ————— 2026-10-07 UX 점검 3단계 — 요청 본문의 `### 확인한 것` —————
+
+const pass = (phone: boolean, screens = 1) => ({ screens, phone });
+
+test("summarizeChecks — 화면 작업(보관)마다 하나로 센다: 한 보관이 여러 화면을 고쳐도 하나", () => {
+  const checks = summarizeChecks([
+    { sha: "c3", checked: pass(true, 2) },
+    { sha: "c3", checked: pass(true, 2) },
+    { sha: "c2" },
+    { sha: "c1", checked: pass(true) },
+  ]);
+  assert.deepEqual(checks, { total: 3, checked: 2, phone: true });
+});
+
+test("summarizeChecks — 되돌리기 · 병합 · 코멘트 반영과 보관 표식이 없는 줄은 세지 않는다", () => {
+  const checks = summarizeChecks([
+    { sha: "c4", kind: "restore", checked: pass(true) },
+    { sha: "c3", kind: "merge" },
+    { sha: "c2", kind: "comment" },
+    { checked: pass(true) },
+    { sha: "c1", checked: pass(false) },
+  ]);
+  assert.deepEqual(checks, { total: 1, checked: 1, phone: false });
+});
+
+test("summarizeChecks — 확인 기록이 하나도 없으면 null: 하지 않은 확인을 말하지 않는다", () => {
+  assert.equal(summarizeChecks([]), null);
+  assert.equal(summarizeChecks([{ sha: "c1" }, { sha: "c2" }]), null);
+});
+
+test("summarizeChecks — 휴대폰 폭은 확인이 지난 작업이 모두 봤을 때만 말한다", () => {
+  assert.equal(
+    summarizeChecks([
+      { sha: "c2", checked: pass(true) },
+      { sha: "c1", checked: pass(false) },
+    ])?.phone,
+    false,
+  );
+  // 확인이 지나지 않은 작업의 휴대폰 여부는 묻지 않는다 — 기록이 없는 작업이다.
+  assert.equal(summarizeChecks([{ sha: "c2", checked: pass(true) }, { sha: "c1" }])?.phone, true);
+});
+
+test("buildChecksSection — 모두 지났고 휴대폰 폭까지 봤을 때의 글", () => {
+  assert.equal(
+    buildChecksSection({ total: 3, checked: 3, phone: true }),
+    [
+      "### 확인한 것",
+      "",
+      "AI 가 작업을 끝낼 때마다 도구가 바뀐 화면을 다시 열어 봅니다. 이번 제출에 담긴 화면 작업 3건 모두에서 확인이 문제 없이 지나갔습니다 — 화면이 끝까지 열렸고, 콘솔 오류 · 실패한 요청 · 이름 없는 컨트롤 · 너무 흐린 글자 · 휴대폰 폭의 가로 넘침에서 새로 찾은 문제가 없었습니다.",
+      "",
+      "레포의 검사(check)와 빌드는 이 확인에 들어 있지 않습니다.",
+      "",
+    ].join("\n"),
+  );
+});
+
+test("buildChecksSection — 일부만 지났으면 나머지는 확인 기록이 없다고 말한다 · 휴대폰 말은 빠진다", () => {
+  const section = buildChecksSection({ total: 5, checked: 2, phone: false });
+  assert.ok(section.includes("화면 작업 5건 중 2건에서 확인이 문제 없이 지나갔습니다"));
+  assert.ok(section.includes("나머지 3건은 확인 기록이 없습니다."));
+  assert.ok(!section.includes("휴대폰"), "보지 않은 것은 말하지 않는다");
+  assert.ok(section.endsWith("\n"), "다른 절처럼 줄바꿈으로 끝난다");
+});
+
+test("buildChecksSection — 숫자뿐이다: 화면 이름 · 요소 · 경로가 들어갈 자리가 없다(D38)", () => {
+  const section = buildChecksSection({ total: 2, checked: 1, phone: true });
+  assert.ok(!/[\w-]+\/[\w-]+|\.tsx?\b|"/.test(section.replace("check", "")), section);
 });

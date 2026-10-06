@@ -5,6 +5,7 @@ import type {
   ChatEvent,
   DeveloperReview,
   DiffStatus,
+  GateChecked,
   ProjectDefaults,
   ProjectLifecycle,
   ProjectSummary,
@@ -852,6 +853,7 @@ export class ProjectFleet {
   async autoSaveTurn(
     sessionId: string,
     screenRoutes?: string[],
+    checked?: GateChecked,
   ): Promise<{ sha: string; requestId: string | null } | undefined> {
     const workspaces = this.workspaceOfSession(sessionId);
     const session = this.deps.manager.get(sessionId);
@@ -913,6 +915,8 @@ export class ProjectFleet {
             routes: screenRoutes,
             files: head.files,
             screens: screensOfTurn(screenRoutes, answer, origin),
+            // 이 턴의 자동 확인이 문제 없이 지났다는 기록 — 제출의 `### 확인한 것` 이 센다(2026-10-07).
+            ...(checked ? { checked } : {}),
           }).catch(() => undefined);
         }
       }

@@ -5,7 +5,13 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DiffFile, RepoHandoffDraft } from "@colonova-design/protocol";
 import { readComments } from "./comments.js";
-import { buildCommentsSection, buildFilesSection, formatHandoffTitle } from "./handoff-body.js";
+import {
+  buildChecksSection,
+  buildCommentsSection,
+  buildFilesSection,
+  formatHandoffTitle,
+  summarizeChecks,
+} from "./handoff-body.js";
 import { type MachineTurn, NO_MACHINE_TURN } from "./machine-provider.js";
 import { HANDOFF_DRAFT_TIMEOUT_MS, MEMO_TIMEOUT_MS, type RepoCore } from "./repo-core.js";
 import { parseUnifiedDiff } from "./repo-diff.js";
@@ -137,10 +143,19 @@ export class RepoSummarizer {
     } catch {
       // A history that will not read costs only the preview line.
     }
+    // 2026-10-07 UX 점검 3단계 — 본문이 싣는 `### 확인한 것` 과 같은 빌더를 지난다. 기록이 없으면 둘 다 null.
+    let checks: ReturnType<typeof summarizeChecks> = null;
+    try {
+      checks = summarizeChecks(this.core.snapshot().cycleScreens ?? []);
+    } catch {
+      // 지도가 읽히지 않으면 미리보기 한 줄만 빠진다.
+    }
     return {
       commentsSection,
       filesSection,
       shotCount: options.shotCount ?? 0,
+      checksSection: checks ? buildChecksSection(checks) : null,
+      checks,
     };
   }
 

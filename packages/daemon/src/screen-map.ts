@@ -11,6 +11,7 @@
  */
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { GateChecked } from "@colonova-design/protocol";
 
 /** 지도 파일의 행 수 상한 — 넘으면 오래된 것부터 버린다. */
 const MAX_ROWS = 500;
@@ -38,6 +39,20 @@ export interface ScreenMapRow {
    * routes 는 날것 그대로 둔다 — 핀의 관찰 후보가 그 값으로 찾는다. 옛 행에는 없다.
    */
   screens?: Array<{ route: string; title: string }>;
+  /**
+   * 그 턴의 자동 확인이 문제 없이 지나가 화면을 실제로 열어 봤다는 기록(2026-10-07 UX 점검 3단계) — 제출의
+   * `### 확인한 것` 이 센다. 문제를 찾았거나 확인하지 못한 턴 · 옛 행에는 없다.
+   */
+  checked?: GateChecked;
+}
+
+/** 확인 기록의 판독 — 열어 본 화면 수(1 이상)와 휴대폰 여부가 맞는 모양일 때만 기록이다. */
+function cleanChecked(raw: unknown): GateChecked | undefined {
+  if (raw === null || typeof raw !== "object") return undefined;
+  const { screens, phone } = raw as { screens?: unknown; phone?: unknown };
+  if (typeof screens !== "number" || !Number.isInteger(screens) || screens < 1) return undefined;
+  if (typeof phone !== "boolean") return undefined;
+  return { screens, phone };
 }
 
 /** 지도 전부 — 오래된 행부터. 없거나 깨진 파일은 빈 목록이다. */
@@ -55,7 +70,13 @@ function readRows(file: string): Promise<ScreenMapRow[]> {
         .filter(
           (row) =>
             typeof row?.sha === "string" && Array.isArray(row?.routes) && Array.isArray(row?.files),
-        ),
+        )
+        .map((row) => {
+          // 손으로 고친 파일이나 옛 모양이 확인 기록을 속이지 못하게 모양이 맞는 것만 남긴다.
+          const { checked: raw, ...rest } = row;
+          const checked = cleanChecked(raw);
+          return checked ? { ...rest, checked } : rest;
+        }),
     () => [] as ScreenMapRow[],
   );
 }

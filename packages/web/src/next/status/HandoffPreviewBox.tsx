@@ -46,6 +46,12 @@ export function HandoffPreviewBox({
     );
   }
   if (preview === null) return null;
+  // 개발자에게 함께 가는 것 — 화면 사진과 자동 확인 결과. 없으면 줄도 없다.
+  const with_ = L.submitConfirm.previewWith(
+    preview.photos,
+    preview.checks?.checked ?? 0,
+    preview.checks?.total ?? 0,
+  );
   return (
     <section className="nx-sub-preview" aria-labelledby={headId}>
       <h3 className="nx-sub-h" id={headId}>
@@ -53,8 +59,8 @@ export function HandoffPreviewBox({
       </h3>
       {preview.title !== "" && <p className="nx-sub-pt">{preview.title}</p>}
       {preview.summary !== null && <p className="nx-sub-ps">{preview.summary}</p>}
+      {with_ !== "" && <p className="nx-sub-pm">{with_}</p>}
       <p className="nx-sub-pm">
-        {preview.photos > 0 && `${L.submitConfirm.previewPhotos(preview.photos)} · `}
         {preview.by === "ai" ? L.submitConfirm.previewHint : L.submitConfirm.previewHintRequest}
       </p>
     </section>

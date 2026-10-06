@@ -1671,7 +1671,7 @@ export class DaemonServer {
     const source = routes ?? [...(this.drivers.pinnedThisTurn.get(sessionId)?.keys() ?? [])];
     const answer = this.manager.get(sessionId)?.lastAssistantText ?? null;
     const saving = this.fleet
-      .autoSaveTurn(sessionId, source)
+      .autoSaveTurn(sessionId, source, checked)
       .then(async (saved) => {
         if (!workspaces || !saved?.requestId) return;
         const url = workspaces.repo.repoCore().previewUrl;

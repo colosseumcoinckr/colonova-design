@@ -15,6 +15,7 @@
  */
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import type { GateChecked } from "@colonova-design/protocol";
 import type { RepoCore } from "./repo-core.js";
 import { repoEventKind } from "./repo-event-kind.js";
 import { readScreenMap, type ScreenMapRow } from "./screen-map.js";
@@ -28,6 +29,8 @@ export interface CycleScreen {
   sha?: string;
   sessionId?: string;
   requestId?: string;
+  /** 이 작업의 턴이 자동 확인을 문제 없이 지났다는 기록 — 지도 행에서 온다(2026-10-07). */
+  checked?: GateChecked;
 }
 
 /** 사이클의 커밋 하나 — git log 의 sha · 제목 · 커밋 시각. */
@@ -172,6 +175,7 @@ export function deriveCycleScreens(
         sha: commit.sha,
         ...(row.sessionId ? { sessionId: row.sessionId } : {}),
         ...(row.requestId ? { requestId: row.requestId } : {}),
+        ...(row.checked ? { checked: row.checked } : {}),
         title,
         note: commit.subject,
         at: commit.at,

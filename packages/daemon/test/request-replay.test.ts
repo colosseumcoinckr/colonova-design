@@ -41,3 +41,41 @@ test("reopening a conversation preserves request/photo identity, including repea
     undefined,
   );
 });
+
+test("reopening a conversation keeps what the turn-end check looked at (checked) for the result card", () => {
+  const user = (text: string): ChatEvent => ({ kind: "user.echo", text, images: 0 });
+  const rows = [
+    {
+      sessionId: "one",
+      afterTurn: 1,
+      event: { ...user("fix it"), requestId: "first" } as ChatEvent,
+    },
+    {
+      sessionId: "one",
+      afterTurn: 1,
+      event: {
+        ...user("fix it"),
+        requestId: "first",
+        changedScreens: [{ route: "/", title: "홈" }],
+        checked: { screens: 2, phone: true },
+      } as ChatEvent,
+    },
+  ];
+  const replay = spliceTape([user("fix it")], rows);
+  assert.deepEqual((replay[0] as Extract<ChatEvent, { kind: "user.echo" }>).checked, {
+    screens: 2,
+    phone: true,
+  });
+  // 기록이 없는 요청(문제를 찾았거나 확인하지 못한 턴)은 checked 가 없다.
+  const plain = spliceTape(
+    [user("fix it")],
+    [
+      {
+        sessionId: "one",
+        afterTurn: 1,
+        event: { ...user("fix it"), requestId: "first" } as ChatEvent,
+      },
+    ],
+  );
+  assert.equal((plain[0] as Extract<ChatEvent, { kind: "user.echo" }>).checked, undefined);
+});

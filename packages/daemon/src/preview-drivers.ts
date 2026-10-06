@@ -38,7 +38,14 @@ export interface GateTypeCheck {
 /** 게이트 한 바퀴의 결과(2026-09-22) — 서버가 통계 행으로 내려앉히는 것. */
 export type GateOutcome = (
   | { status: "trouble"; kept: number; troubles: ScreenTrouble[] }
-  | { status: "ok"; kept: number }
+  | {
+      status: "ok";
+      kept: number;
+      /** 실제로 열어 본 화면의 수 — 열지 못한 화면은 `kept` 에만 들어 있다. */
+      opened: number;
+      /** 열어 본 화면이 모두 휴대폰 폭으로도 열려 넘침까지 봤다. */
+      phone: boolean;
+    }
   | { status: "broken" }
   | {
       status: "skipped";
@@ -263,6 +270,9 @@ export class PreviewDrivers {
       [...this.a11yBaselineOf(repo?.root ?? "")].map(([route, seen]) => [route, new Set(seen)]),
     );
     let troubles: ScreenTrouble[] = [];
+    // 통과한 확인이 사용자에게 「무엇을 열어 봤는지」 말할 재료(2026-10-06) — 실제로 열린 화면과 휴대폰 폭까지 본 화면.
+    const opened = new Set<string>();
+    const phone = new Set<string>();
     if (previewUrl) {
       // preview origin 밖의 주소는 게이트가 재검증할 대상이 아니다 — 허용된
       // 추가 origin 은 레포의 다른 서버이지, 게이트가 다시 열 화면이 아니다.
@@ -289,6 +299,8 @@ export class PreviewDrivers {
         try {
           troubles = await inspectScreens(driver, kept, {
             a11y: this.a11yBaselineOf(repo?.root ?? ""),
+            opened,
+            phone,
           });
         } catch {
           // 게이트가 깨지는 것은 턴의 실패가 아니다 — 확인을 못 했을 뿐이다. 그러나
@@ -308,7 +320,16 @@ export class PreviewDrivers {
     // (D-3 ⑥) 화면 문제도 타입 줄도 없으면 ok — origin 을 지난 화면이 0 이면
     // kept 도 0 이다.
     if (troubles.length === 0 && typeLines.length === 0) {
-      return done(), { status: "ok", kept: kept.length, ...typeFields };
+      return (
+        done(),
+        {
+          status: "ok",
+          kept: kept.length,
+          opened: opened.size,
+          phone: opened.size > 0 && phone.size === opened.size,
+          ...typeFields,
+        }
+      );
     }
     // 사용자가 그 사이 다시 보냈으면 이 판정은 낡았다 — 도는 턴에 끼어들지 않는다.
     if (this.deps.session(sessionId)?.state !== "idle") {

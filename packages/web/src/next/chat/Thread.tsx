@@ -579,6 +579,15 @@ export function Thread(props: ThreadProps) {
                   ))}
                 </div>
                 {/* 사진이 어느 때의 모습인지는 카드마다 되풀이하지 않고 한 번만 말한다. */}
+                {/* 턴 끝의 자동 확인이 문제 없이 지나갔을 때만 — 무엇을 열어 봤는지 실제로 본 것만 말한다. */}
+                {result?.checked && (
+                  <p className="nx-results-checked">
+                    <CheckIcon />
+                    <span>
+                      {L.requestResult.checked(result.checked.screens, result.checked.phone)}
+                    </span>
+                  </p>
+                )}
                 <p className="nx-results-note">
                   <InfoIcon />
                   <span>{L.requestResult.historical}</span>

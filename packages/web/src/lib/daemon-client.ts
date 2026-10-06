@@ -61,6 +61,8 @@ export type Block =
       requestId?: string;
       changedScreens?: Array<{ route: string; title: string }>;
       gateResult?: import("@colonova-design/protocol").GateResult;
+      /** 턴 끝의 자동 확인이 문제 없이 지나간 기록 — 결과 카드가 무엇을 확인했는지 한 줄로 말한다. */
+      checked?: import("@colonova-design/protocol").GateChecked;
       id: string;
       text: string;
       images: number;
@@ -197,7 +199,11 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
     case "screens.saved":
       return blocks.map((block) =>
         block.type === "user" && block.requestId === event.requestId
-          ? { ...block, changedScreens: event.screens }
+          ? {
+              ...block,
+              changedScreens: event.screens,
+              ...(event.checked ? { checked: event.checked } : {}),
+            }
           : block,
       );
     case "user.echo":
@@ -208,6 +214,7 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
           ...(event.requestId ? { requestId: event.requestId } : {}),
           ...(event.changedScreens ? { changedScreens: event.changedScreens } : {}),
           ...(event.gateResult ? { gateResult: event.gateResult } : {}),
+          ...(event.checked ? { checked: event.checked } : {}),
           id: `u${++noticeSeq}`,
           text: event.text,
           images: event.images,

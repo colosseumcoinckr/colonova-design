@@ -7,6 +7,7 @@ import {
   type ClientMessage,
   type ColoNovaDesignCommentTarget,
   composeAttention,
+  type GateChecked,
   PROTOCOL_VERSION,
   type ProjectSummary,
   parseClientMessage,
@@ -1458,6 +1459,11 @@ export class DaemonServer {
     { requestId: string; afterTurn: number; text: string }
   >();
   private readonly turnEnds = new Map<string, "success" | "failed" | "interrupted">();
+  /**
+   * 문제 없이 지나간 턴 끝 확인의 기록(2026-10-06) — 게이트 판정이 나서 자동 보관이 치러질 때까지 여기 산다. 보관이 서면
+   * `screens.saved` 와 대화록에 실려 결과 카드가 「무엇을 확인했는지」 말한다. 문제를 찾았거나 확인하지 못한 턴에는 없다.
+   */
+  private readonly gateChecked = new Map<string, GateChecked>();
 
   /** Gate eligibility comes from this request's content delta, never its wording or pins alone. */
   private async finishChangedTurn(sessionId: string, duration: number | undefined): Promise<void> {
@@ -1549,6 +1555,9 @@ export class DaemonServer {
     this.gateFallbackCount.delete(sessionId);
     void this.drivers.runGate(sessionId, turnDurationMs).then(
       (outcome) => {
+        if (outcome.status === "ok" && outcome.opened > 0) {
+          this.gateChecked.set(sessionId, { screens: outcome.opened, phone: outcome.phone });
+        }
         this.stats.noteGateCheck(sessionId, {
           ms: Date.now() - gateStart,
           reopened: this.drivers.gatedSessions.has(sessionId),
@@ -1654,6 +1663,9 @@ export class DaemonServer {
   private runAutoSave(sessionId: string): void {
     const routes = this.screenMapDue.get(sessionId);
     this.screenMapDue.delete(sessionId);
+    // 이 턴의 확인 기록은 이 보관이 가져가고 — 보관이 없는 턴에서도 다음 턴으로 새지 않게 여기서 비운다.
+    const checked = this.gateChecked.get(sessionId);
+    this.gateChecked.delete(sessionId);
     if (!this.autoSaveDue.delete(sessionId)) return;
     const workspaces = this.workspaceOfSession(sessionId);
     const source = routes ?? [...(this.drivers.pinnedThisTurn.get(sessionId)?.keys() ?? [])];
@@ -1670,7 +1682,7 @@ export class DaemonServer {
         if (prompt && prompt.event.kind === "user.echo") {
           appendTape(workspaces.paths.root, {
             ...prompt,
-            event: { ...prompt.event, changedScreens },
+            event: { ...prompt.event, changedScreens, ...(checked ? { checked } : {}) },
           });
         }
         await this.comparisons.finish({
@@ -1684,7 +1696,12 @@ export class DaemonServer {
         this.broadcast({
           type: "session.event",
           sessionId,
-          event: { kind: "screens.saved", requestId: saved.requestId, screens: changedScreens },
+          event: {
+            kind: "screens.saved",
+            requestId: saved.requestId,
+            screens: changedScreens,
+            ...(checked ? { checked } : {}),
+          },
         });
         this.broadcast({ type: "repo.status", status: workspaces.repo.repoCore().snapshot() });
       })

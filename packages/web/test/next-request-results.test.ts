@@ -174,3 +174,30 @@ test("latestResult: 자동 고침 턴이 끝난 요청도 마지막 결과다 �
   ];
   assert.equal(latestResult(repaired as never, [])?.requestId, "a");
 });
+
+test("requestResults: 턴 끝 확인이 문제 없이 지나간 요청만 checked 를 든다(2026-10-06)", () => {
+  const blocks = [
+    {
+      type: "user",
+      id: "u1",
+      requestId: "a",
+      text: "Make the title smaller",
+      changedScreens: [{ route: "/", title: "Home" }],
+      checked: { screens: 2, phone: true },
+    },
+    { type: "text", text: "Done", agentId: null },
+    { type: "turn", id: "t1", isError: false },
+    {
+      type: "user",
+      id: "u2",
+      requestId: "b",
+      text: "Next",
+      changedScreens: [{ route: "/x", title: "X" }],
+    },
+    { type: "text", text: "Done too", agentId: null },
+    { type: "turn", id: "t2", isError: false },
+  ] as never;
+  const results = requestResults(blocks, []);
+  assert.deepEqual(results.get("t1")?.checked, { screens: 2, phone: true });
+  assert.equal(results.get("t2")?.checked, null, "확인 기록이 없는 요청은 말하지 않는다");
+});

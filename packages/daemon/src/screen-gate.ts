@@ -424,6 +424,11 @@ export interface InspectOptions {
   /** Callers verifying a repair distinguish an opened screen from a skipped one. */
   opened?: Set<string>;
   /**
+   * 휴대폰 폭의 점검이 실제로 돈 화면들(2026-10-06) — 휴대폰 폭으로 못 연 화면은 문제로 세지 않고 건너뛰므로, 「휴대폰에서도
+   * 옆으로 안 밀려요」 라는 말은 이 집합이 열어 본 화면을 모두 덮을 때만 참이다.
+   */
+  phone?: Set<string>;
+  /**
    * 접근성 점검을 켠다 — 화면 주소별로 지난번에 본 문제의 기억이다. 데스크톱 폭의 열기에서
    * 접근성의 재료를 모으고, 지난번에 못 본 **새** 문제만 문제로 센다. 없으면 접근성은 보지 않는다.
    */
@@ -502,6 +507,7 @@ export async function inspectScreens(
       if (fresh !== null) a11y = fresh;
     }
     const phone = await judgeScreen(driver, screen.route, { viewport: "mobile" });
+    if (phone.opened) options.phone?.add(screen.route);
     const overflow = phone.opened ? phone.overflow : undefined;
     if (a11y === undefined && overflow === undefined) continue;
     troubles.push({

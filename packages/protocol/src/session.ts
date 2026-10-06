@@ -112,12 +112,14 @@ export type ChatEvent =
       kind: "screens.saved";
       requestId: string;
       screens: Array<{ route: string; title: string }>;
+      checked?: GateChecked;
     }
   | {
       kind: "user.echo";
       requestId?: string;
       changedScreens?: Array<{ route: string; title: string }>;
       gateResult?: GateResult;
+      checked?: GateChecked;
       text: string;
       images: number;
       /** Non-image attachment names — the card lists what it cannot thumb. */
@@ -302,6 +304,18 @@ export type ChatEvent =
    */
   | { kind: "cycle.carried"; at: string; from: string; to: string; commits: number }
   | { kind: "review.arrived"; reviews: DeveloperReview[] };
+
+/**
+ * 턴 끝의 자동 확인이 문제 없이 지나간 기록(2026-10-06 UX 점검) — 이 요청의 결과 카드가 「무엇을 확인했는지」 를 한 줄로
+ * 말하는 재료다. 예전에는 문제를 찾았을 때(게이트 카드)만 사용자에게 닿고, 문제 없이 통과한 확인은 아무 흔적이 없어서
+ * 「끝났다」 가 확인된 말인지 알 수 없었다. 문제를 찾았거나 확인하지 못한 턴에는 없다.
+ */
+export interface GateChecked {
+  /** 실제로 열어 본 화면의 수 — 열지 못한 화면은 세지 않는다. */
+  screens: number;
+  /** 열어 본 화면이 모두 휴대폰 폭으로도 열려 문서가 옆으로 밀리는지까지 봤다. */
+  phone: boolean;
+}
 
 export type GateResult =
   | "verified"

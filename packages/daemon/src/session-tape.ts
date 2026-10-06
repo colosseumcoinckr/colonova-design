@@ -128,6 +128,7 @@ export function spliceTape(events: ChatEvent[], rows: TapeRow[]): ChatEvent[] {
               gateResult: (match.event as Extract<ChatEvent, { kind: "user.echo" }>).gateResult,
               changedScreens: (match.event as Extract<ChatEvent, { kind: "user.echo" }>)
                 .changedScreens,
+              checked: (match.event as Extract<ChatEvent, { kind: "user.echo" }>).checked,
             }
           : event,
       );

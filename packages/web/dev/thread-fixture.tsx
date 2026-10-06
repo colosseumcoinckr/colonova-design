@@ -118,7 +118,17 @@ const withResult = (
   text: string,
   requestId: string,
   changedScreens: Array<{ route: string; title: string }>,
-): Block => ({ type: "user", id, text, images: 0, requestId, changedScreens });
+  /** 턴 끝의 자동 확인이 문제 없이 지나갔다 — 카드가 한 줄로 말한다(없으면 말하지 않는다). */
+  checked?: { screens: number; phone: boolean },
+): Block => ({
+  type: "user",
+  id,
+  text,
+  images: 0,
+  requestId,
+  changedScreens,
+  ...(checked ? { checked } : {}),
+});
 const step = (id: string, text: string): Block => ({
   type: "text",
   id,
@@ -241,9 +251,13 @@ const blocks: Block[] = [
   turn("e4", 4000),
 
   // ⑤ 고친 화면 한 곳 — 사진 · 제목 · 이어 하기의 모양을 본다.
-  withResult("u5", "회원 목록 맨 위에 검색창을 넣어 줘.", "req-5", [
-    { route: "member/list", title: "회원 목록" },
-  ]),
+  withResult(
+    "u5",
+    "회원 목록 맨 위에 검색창을 넣어 줘.",
+    "req-5",
+    [{ route: "member/list", title: "회원 목록" }],
+    { screens: 1, phone: true },
+  ),
   step("t5a", "회원 목록 화면의 머리를 살펴봤어요"),
   step("t5b", "검색창을 머리 오른쪽에 넣었어요"),
   answer(
@@ -284,12 +298,19 @@ const blocks: Block[] = [
   turn("e6", 27000),
 
   // ⑦ 고친 화면 네 곳 — 사진이 있는 · 없는 · 읽다 실패한 · 아직 읽는 중인 모양이 함께.
-  withResult("u7", "회원 상세와 결제 내역, 환불 내역의 머리 문구를 같은 말투로 맞춰 줘.", "req-7", [
-    { route: "member/1", title: "회원 상세" },
-    { route: "member/empty", title: "결제 내역" },
-    { route: "member/fail", title: "환불 내역" },
-    { route: "member/slow", title: "포인트 내역" },
-  ]),
+  withResult(
+    "u7",
+    "회원 상세와 결제 내역, 환불 내역의 머리 문구를 같은 말투로 맞춰 줘.",
+    "req-7",
+    [
+      { route: "member/1", title: "회원 상세" },
+      { route: "member/empty", title: "결제 내역" },
+      { route: "member/fail", title: "환불 내역" },
+      { route: "member/slow", title: "포인트 내역" },
+    ],
+    // 네 화면 중 둘만 열렸고 휴대폰 폭은 다 보지 못했다 — 본 것만 말하는 모양.
+    { screens: 2, phone: false },
+  ),
   answer(
     "t7a",
     [

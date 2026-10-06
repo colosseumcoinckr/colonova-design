@@ -169,4 +169,5 @@ jobs:
           packages/desktop/test/notices.test.ts
           packages/desktop/test/pin-envelope.test.ts
           packages/desktop/test/pin-envelope-overlay.test.ts
+          packages/desktop/test/quit-contract.test.ts
           scripts/bench/lib.test.mjs

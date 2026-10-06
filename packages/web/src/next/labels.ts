@@ -434,6 +434,8 @@ export const L = {
     receiptMore: "같은 요청에 더해 제출했어요",
     receiptReviewers: (n: number) => `받을 개발자 ${n}명`,
     receiptNote: (note: string) => `내 한마디 · “${note}”`,
+    /** 첫 제출의 영수증에만 — 앱이 꺼져 있으면 소식이 알림으로 오지 않는다(2026-10-06 UX 점검: 데몬은 앱 안에서 돌아 앱과 함께 끝난다). */
+    receiptAway: "개발자 소식은 앱이 켜져 있으면 알림으로 오고, 꺼 두면 다시 켤 때 홈에서 알려요",
     askTitle: "AI가 물어봐요",
     askFree: "직접 답하기",
     failTitle: "AI가 답을 못 했어요",

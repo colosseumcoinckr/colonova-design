@@ -343,7 +343,7 @@ export function ReceiptCard({
         <b>{more ? L.cards.receiptMore : L.cards.receiptFirst}</b>
         <span className="nx-time">{clockOf(block.at)}</span>
       </div>
-      {(reviewers.length > 0 || block.note) && (
+      {(reviewers.length > 0 || block.note || !more) && (
         <div className="nx-cs">
           {reviewers.length > 0 && (
             <div>
@@ -351,6 +351,8 @@ export function ReceiptCard({
             </div>
           )}
           {block.note && <div>{L.cards.receiptNote(block.note)}</div>}
+          {/* 첫 제출에만 — 소식이 어떻게 오는지 한 번 알면 된다(앱이 꺼져 있으면 알림이 없다). */}
+          {!more && <div>{L.cards.receiptAway}</div>}
         </div>
       )}
       {(same?.url || noteOk) && (

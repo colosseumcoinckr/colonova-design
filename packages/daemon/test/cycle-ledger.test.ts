@@ -114,6 +114,35 @@ test("submit 의 재시도 상태와 리뷰어도 왕복한다 — 모르는 값
   );
 });
 
+test("submit 의 확인한 화면(sent)은 왕복한다 — 깨진 값은 버리고 의도는 산다", () => {
+  const base = { requestedAt: "2026-10-07T10:00:00.000Z", via: "button" };
+  const sent = { screens: 3, titles: ["회원 목록", "회원 상세", "결제 내역"] };
+  assert.deepEqual(parseLedger({ submit: { ...base, sent } }).submit, { ...base, sent });
+  // 제목은 많아야 셋 · 60자까지 — 빈 제목과 문자열이 아닌 것은 버린다.
+  const long = "가".repeat(80);
+  assert.deepEqual(
+    parseLedger({
+      submit: { ...base, sent: { screens: 5, titles: ["가", " ", "나", long, "라", 3] } },
+    }).submit?.sent,
+    { screens: 5, titles: ["가", "나", "가".repeat(60)] },
+  );
+  // 제목 목록이 없어도 수만으로 산다.
+  assert.deepEqual(parseLedger({ submit: { ...base, sent: { screens: 2 } } }).submit?.sent, {
+    screens: 2,
+    titles: [],
+  });
+  // 수가 깨지면 sent 만 없고 의도는 산다.
+  for (const broken of [
+    { screens: 0, titles: [] },
+    { screens: 1000 },
+    { screens: "3" },
+    null,
+    "x",
+  ]) {
+    assert.deepEqual(parseLedger({ submit: { ...base, sent: broken } }).submit, base);
+  }
+});
+
 test("없거나 깨진 파일은 빈 원장 — 시작이 실패할 이유가 아니다", () => {
   const dir = mkdtempSync(join(tmpdir(), "cycle-ledger-"));
   assert.deepEqual(readLedger(join(dir, "cycle.json")), emptyLedger());

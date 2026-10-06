@@ -549,6 +549,13 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     sessionId: z.string().min(1).optional(),
     /** 제출 확인의 `개발자에게 한마디`(PLAN-UI U3) — 요청 본문의 `> 한마디:` 줄. */
     note: z.string().trim().max(500).optional(),
+    /** 확인 창에서 사용자가 본 화면(2026-10-07 UX 점검 3단계) — 영수증이 되읽는다. */
+    sent: z
+      .object({
+        screens: z.number().int().min(1).max(999),
+        titles: z.array(z.string().trim().min(1).max(60)).max(3),
+      })
+      .optional(),
   }),
   /**
    * Re-read the open pull request from GitHub: merged, closed, or still open.

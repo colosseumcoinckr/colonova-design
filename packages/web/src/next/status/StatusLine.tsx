@@ -1,4 +1,4 @@
-import type { SubmitPreview } from "@colonova-design/protocol";
+import type { SubmitPreview, SubmitSent } from "@colonova-design/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openScreenPath } from "../../lib/screen-link";
 import { L } from "../labels";
@@ -320,13 +320,13 @@ export function StatusLine({
     nav.showTab("preview");
   };
 
-  const send = (note: string, head: string, token: string) => {
+  const send = (note: string, head: string, token: string, sent?: SubmitSent) => {
     if (!journey.submit.enabled || sending || reviewChanged) return;
     setSending(true);
     setSendError(null);
     onSubmit();
     daemon.api
-      .submit(sessions.activeId, note || undefined, head, token)
+      .submit(sessions.activeId, note || undefined, head, token, sent)
       .then(() => {
         leaveConfirm();
         // 보낸 한마디는 다음 제출에 다시 실리지 않게 비운다 — 프로젝트별 로컬

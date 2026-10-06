@@ -1113,6 +1113,36 @@
   color: var(--red);
 }
 
+/* 영수증의 「이제부터」 — 앞의 줄들(보낸 것 · 받는 사람 · 한마디)은 사실이고 이 목록은 앞으로의 일이라 한 칸 옅게 선다
+   (2026-10-07 UX 점검 3단계). 줄마다 점 하나로 이어 읽힌다. */
+.nx-cnext {
+  margin: 8px 0 0;
+  padding: 8px 0 0 16px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--ink3);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.nx-cs .nx-cnext li + li {
+  margin-top: 2px;
+}
+
+/* 받을 개발자가 없다 — 소식이 저절로 가지 않는다는 사실이라 호박색으로 한 번 눈에 띈다. */
+.nx-cwarn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 4px;
+  color: var(--ink);
+}
+
+.nx-cwarn > svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--amber);
+}
+
 .nx-ctext {
   margin-top: 7px;
   line-height: 1.55;
@@ -1128,6 +1158,13 @@
   gap: 8px;
   margin-top: 10px;
   flex-wrap: wrap;
+}
+
+/* 링크로 선 단추(`제출한 내용 열기`)는 전역 `a` 의 파란 밑줄을 걷는다 — 영수증의 링크는 지금의 요청이 있을 때만 서서
+   견본에 한 번도 선 적이 없었고, 그래서 놓쳤다(2026-10-07 UX 점검 3단계). 주 단추는 쓰지 않는 자리다. */
+.nx .nx-cfoot a.nx-btn {
+  color: var(--ink);
+  text-decoration: none;
 }
 
 .nx-card-fold {

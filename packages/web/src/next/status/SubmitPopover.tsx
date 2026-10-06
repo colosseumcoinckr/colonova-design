@@ -1,10 +1,11 @@
-import type { RepoHandoffDraft, SubmitPreview } from "@colonova-design/protocol";
+import type { RepoHandoffDraft, SubmitPreview, SubmitSent } from "@colonova-design/protocol";
 import { type CSSProperties, type RefObject, useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { composing } from "../../lib/ime";
 import { L } from "../labels";
 import { firstSubjectOf, handoffPreviewOf, previewTitle } from "../lib/handoff-preview";
 import type { Journey } from "../lib/journey";
+import { sentOf } from "../lib/receipt";
 import { type SubmitNotice, submitView } from "../lib/submit-view";
 import { useHandoffDraft } from "../lib/use-handoff-draft";
 import type { CycleScreen } from "../lib/work-ledger";
@@ -39,7 +40,8 @@ interface SubmitPopoverProps {
   leaveToken: number;
   onRefresh: () => void;
   onClose: () => void;
-  onConfirm: (note: string, head: string, token: string) => void;
+  /** `sent` 는 이번에 제출하는 화면 — 영수증이 되읽는다. 화면이 없으면 없다. */
+  onConfirm: (note: string, head: string, token: string, sent?: SubmitSent) => void;
   note: string;
   onNote: (note: string) => void;
   onPreview: (screen: CycleScreen) => void;
@@ -165,7 +167,7 @@ function SubmitBody({
   const noteId = useId();
   const confirm = () => {
     if (view.enabled && snapshot) {
-      onConfirm(note.trim(), snapshot.head, snapshot.expectedPreview);
+      onConfirm(note.trim(), snapshot.head, snapshot.expectedPreview, sentOf(lead));
       return;
     }
     if (busy) return;

@@ -35,6 +35,7 @@ import type {
   SessionSelectors,
   SessionState,
   SessionSummary,
+  SubmitSent,
 } from "@colonova-design/protocol";
 import { PROTOCOL_VERSION } from "@colonova-design/protocol";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -164,6 +165,8 @@ export type Block =
       reviewer?: string;
       /** 제출 확인의 `개발자에게 한마디`(PLAN-UI U3) — 영수증 카드가 되읽는다. */
       note?: string;
+      /** 제출을 누를 때 확인 창이 보인 화면(2026-10-07 UX 점검 3단계) — 영수증이 되읽는다. 대화로 낸 제출에는 없다. */
+      sent?: SubmitSent;
     }
   | {
       /** 개발자 코멘트 도착 (review.arrived): 하나의 이벤트에 달려온 리뷰들을
@@ -428,6 +431,7 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
           pr: event.pr,
           ...(event.reviewer !== undefined ? { reviewer: event.reviewer } : {}),
           ...(event.note ? { note: event.note } : {}),
+          ...(event.sent ? { sent: event.sent } : {}),
         },
       ];
 
@@ -783,13 +787,15 @@ interface DaemonApi {
    * 네 단계(보관 → 푸시 → PR → 리뷰어)가 끝까지 간다 — 이 호출은 그 틱의
    * 끝을 기다렸다 지금 DiffStatus 를 돌려줄 뿐, 실패해도 의도는 데몬에
    * 남아 다음 틱이 이어받는다(다시 누를 일이 생기지 않는다).
-   * `note` 는 제출 확인의 `개발자에게 한마디`(PLAN-UI U3) — 비면 싣지 않는다.
+   * `note` 는 제출 확인의 `개발자에게 한마디`(PLAN-UI U3) — 비면 싣지 않는다. `sent` 는 확인 창이 보인 화면 —
+   * 영수증이 되읽는다(2026-10-07 UX 점검 3단계).
    */
   submit: (
     sessionId?: string | null,
     note?: string,
     expectedHead?: string,
     expectedPreview?: string,
+    sent?: SubmitSent,
   ) => Promise<DiffStatus>;
   comparison: (input: {
     route: string;
@@ -1880,6 +1886,7 @@ export function useDaemon(url: string | null): Daemon {
         note?: string,
         expectedHead?: string,
         expectedPreview?: string,
+        sent?: SubmitSent,
       ) =>
         call<DiffStatus>(
           {
@@ -1888,6 +1895,7 @@ export function useDaemon(url: string | null): Daemon {
             ...(expectedPreview ? { expectedPreview } : {}),
             ...(sessionId ? { sessionId } : {}),
             ...(note?.trim() ? { note: note.trim() } : {}),
+            ...(sent ? { sent } : {}),
           },
           90_000,
         ),

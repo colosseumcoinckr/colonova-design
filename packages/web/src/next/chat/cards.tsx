@@ -10,7 +10,10 @@ import { composing } from "../../lib/ime";
 import { bashHeadline, toolLabel } from "../../lib/labels";
 import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
+import { receiptFacts } from "../lib/receipt";
 import { noteAllowed } from "../lib/thread";
+import { useCopied } from "../lib/use-copied";
+import { whenText } from "../status/parts";
 import { AlertIcon, CheckIcon, ClockIcon, ExtIcon, EyeIcon, SparkIcon } from "./icons";
 
 /** `오후 3:12` 가 아니라 `15:12` — 목업의 시각 표기. */
@@ -308,9 +311,13 @@ export function reviewParts(reviews: DeveloperReview[]): {
 
 /**
  * 제출 영수증(U3 · E5) — `개발자에게 제출했어요`(같은 요청에 더했으면 그 말) ·
- * 받을 개발자 · 내 한마디 · `제출한 내용 열기`. 요청이 아직 열려 있으면
+ * 보낸 화면 · 받을 개발자 · 내 한마디 · `제출한 내용 열기`. 요청이 아직 열려 있으면
  * `한마디 더` 상자가 같은 발 밑에 선다(U20): 잘못 보냈거나 덧붙일 말을
  * 대화를 떠나지 않고 개발자에게 남긴다.
+ *
+ * 2026-10-07 UX 점검 3단계 — 영수증은 「무엇을 보냈고 · 누가 받고 · 이제 어떻게 되는가」 를 말한다. 보낸 화면은
+ * 제출을 누를 때 확인 창이 보인 목록이고(대화로 낸 제출은 모르니 말하지 않는다), 첫 제출에는 받을 개발자가 정해지지
+ * 않았을 때 링크를 직접 전해야 한다는 말과 복사 단추가 서며, 시각은 오늘이 아니면 날짜까지 말한다.
  */
 export function ReceiptCard({
   block,
@@ -326,11 +333,8 @@ export function ReceiptCard({
   onToast: (text: string) => void;
 }) {
   const same = handoff && handoff.number === block.pr ? handoff : null;
-  const reviewers = same?.reviewers?.length
-    ? same.reviewers
-    : block.reviewer
-      ? [block.reviewer]
-      : [];
+  const { reviewers, sent, nobody } = receiptFacts(block, same, more);
+  const { copied, copy } = useCopied(() => onToast(L.transcript.copyFailed));
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteSentAt, setNoteSentAt] = useState<string | null>(null);
   const noteOk = noteAllowed(block, handoff);
@@ -341,18 +345,33 @@ export function ReceiptCard({
           <CheckIcon />
         </span>
         <b>{more ? L.cards.receiptMore : L.cards.receiptFirst}</b>
-        <span className="nx-time">{clockOf(block.at)}</span>
+        <span className="nx-time">{whenText(block.at)}</span>
       </div>
-      {(reviewers.length > 0 || block.note || !more) && (
+      {(sent || reviewers.length > 0 || nobody || block.note || !more) && (
         <div className="nx-cs">
+          {sent && <div>{L.cards.receiptSent(sent.screens, sent.names, sent.rest)}</div>}
           {reviewers.length > 0 && (
             <div>
               {L.cards.receiptReviewers(reviewers.length)} · {reviewers.join(" · ")}
             </div>
           )}
+          {/* 받을 개발자가 정해지지 않았다 — 소식이 저절로 가지 않으니 링크를 직접 전해야 한다. 늦게 채워지는
+              지정이 오면 이 줄은 저절로 사라진다. */}
+          {nobody && (
+            <div className="nx-cwarn">
+              <AlertIcon />
+              <span>{L.cards.receiptNobody}</span>
+            </div>
+          )}
           {block.note && <div>{L.cards.receiptNote(block.note)}</div>}
-          {/* 첫 제출에만 — 소식이 어떻게 오는지 한 번 알면 된다(앱이 꺼져 있으면 알림이 없다). */}
-          {!more && <div>{L.cards.receiptAway}</div>}
+          {/* 첫 제출에만 — 이제 어떻게 되는지 한 번 알면 된다. 마지막 줄은 소식이 오는 길이다(앱이 꺼져 있으면 알림이 없다). */}
+          {!more && (
+            <ul className="nx-cnext" aria-label={L.cards.receiptNextHead}>
+              <li>{L.cards.receiptNextComments}</li>
+              <li>{L.cards.receiptNextOriginal}</li>
+              <li>{L.cards.receiptAway}</li>
+            </ul>
+          )}
         </div>
       )}
       {(same?.url || noteOk) && (
@@ -368,6 +387,11 @@ export function ReceiptCard({
               {L.vocab.openSubmitted}
               <ExtIcon />
             </a>
+          )}
+          {nobody && same?.url && (
+            <button type="button" className="nx-btn nx-btn--sm" onClick={() => copy(same.url)}>
+              {copied ? L.cards.receiptLinkCopied : L.cards.receiptCopyLink}
+            </button>
           )}
           {noteOk && (
             <button
@@ -398,6 +422,10 @@ export function ReceiptCard({
           <span>{L.cards.noteSent(noteSentAt)}</span>
         </div>
       )}
+      {/* 복사했다는 말은 단추 글자만 바뀌어서는 낭독기가 모른다. */}
+      <span className="nx-sr" role="status">
+        {copied ? L.cards.receiptLinkCopied : ""}
+      </span>
     </div>
   );
 }

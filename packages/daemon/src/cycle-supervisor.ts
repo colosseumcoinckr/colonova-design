@@ -25,6 +25,7 @@ import {
   markTurn,
   type RepoStatus,
   reviewToTurn,
+  type SubmitSent,
 } from "@colonova-design/protocol";
 import {
   BUDGETS,
@@ -369,7 +370,7 @@ export class CycleSupervisor {
    * `sessionId` 는 완료 사건(cycle.handed)의 귀속줄 — 원장이 아니라 메모리에
    * 둔다(재시작 뒤엔 fleet 의 기본 귀속 규칙이 이어받는다).
    */
-  submit(via: "button" | "chat", sessionId?: string, note?: string): void {
+  submit(via: "button" | "chat", sessionId?: string, note?: string, sent?: SubmitSent): void {
     this.submitSessionId = sessionId ?? null;
     const words = note?.trim() ? note.trim() : undefined;
     if (this.ledger.submit === null) {
@@ -379,14 +380,25 @@ export class CycleSupervisor {
           requestedAt: new Date(this.now()).toISOString(),
           via,
           ...(words ? { note: words } : {}),
+          ...(sent ? { sent } : {}),
         },
       };
       writeLedger(this.ledgerPath, this.ledger);
       this.log(`제출 의도 (${via})`);
-    } else if (words && this.ledger.submit.note !== words) {
-      // 도는 제출에 한마디를 더한 누름 — 의도는 하나 그대로, 말만 새것으로
+    } else if (
+      (words && this.ledger.submit.note !== words) ||
+      (sent && JSON.stringify(this.ledger.submit.sent) !== JSON.stringify(sent))
+    ) {
+      // 도는 제출에 한마디(또는 확인한 화면)를 더한 누름 — 의도는 하나 그대로, 말만 새것으로
       // (PLAN-UI U3). 단계는 처음부터 다시 시작하지 않는다.
-      this.ledger = { ...this.ledger, submit: { ...this.ledger.submit, note: words } };
+      this.ledger = {
+        ...this.ledger,
+        submit: {
+          ...this.ledger.submit,
+          ...(words ? { note: words } : {}),
+          ...(sent ? { sent } : {}),
+        },
+      };
       writeLedger(this.ledgerPath, this.ledger);
     }
     this.syncSubmitTrail();
@@ -1779,6 +1791,7 @@ export class CycleSupervisor {
         pr: handoff.number,
         ...(handoff.reviewers?.[0] ? { reviewer: handoff.reviewers[0] } : {}),
         ...(intent.note ? { note: intent.note } : {}),
+        ...(intent.sent ? { sent: intent.sent } : {}),
       };
       core.lane.outside(() =>
         this.deps.cycleEvent?.(handedEvent, this.submitSessionId ?? undefined),

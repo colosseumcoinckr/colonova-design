@@ -17,7 +17,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { DeveloperReview } from "@colonova-design/protocol";
+import type { DeveloperReview, SubmitSent } from "@colonova-design/protocol";
 import { BUDGETS, type BudgetEntry, backoffDelay } from "./budgets.js";
 
 /** 원장 파일의 자리 — 프로젝트 폴더(<slug>) 아래의 cycle.json. */
@@ -124,6 +124,11 @@ export interface CycleLedger {
      * 영수증 사건이 읽는다. 재시작 뒤의 이어받기도 같은 말을 싣도록 원장에 둔다.
      */
     note?: string;
+    /**
+     * 제출을 누를 때 확인 창이 보인 화면(2026-10-07 UX 점검 3단계) — 영수증 사건이 읽는다. 버튼 제출에만 있고
+     * 재시작 뒤의 이어받기도 같은 영수증을 내도록 원장에 둔다.
+     */
+    sent?: SubmitSent;
     /** 마지막으로 실패한 단계의 분류(PLAN-UI U13) — 제출 상태의 lastError 재료. */
     lastError?: SubmitErrorKind;
   } | null;
@@ -301,6 +306,20 @@ function parseLastPr(raw: unknown): CycleLedger["lastPr"] {
   return { number, reviewCount };
 }
 
+/** 확인한 화면 — 수는 1~999, 제목은 많아야 셋(글자는 60자까지). 깨졌으면 없는 것이다. */
+function parseSent(raw: unknown): SubmitSent | null {
+  const record = asRecord(raw);
+  if (record === null) return null;
+  const screens = asInt(record.screens);
+  if (screens === null || screens < 1 || screens > 999) return null;
+  const titles = (Array.isArray(record.titles) ? record.titles : [])
+    .filter((title): title is string => typeof title === "string")
+    .map((title) => title.trim().slice(0, 60))
+    .filter((title) => title !== "")
+    .slice(0, 3);
+  return { screens, titles };
+}
+
 function parseSubmit(raw: unknown): CycleLedger["submit"] {
   const record = asRecord(raw);
   if (record === null) return null;
@@ -320,6 +339,8 @@ function parseSubmit(raw: unknown): CycleLedger["submit"] {
   if (reviewers !== null) submit.reviewers = reviewers;
   const note = asString(record.note);
   if (note !== null && note.trim() !== "") submit.note = note;
+  const sent = parseSent(record.sent);
+  if (sent !== null) submit.sent = sent;
   const lastError = asString(record.lastError);
   if (
     lastError === "auth" ||

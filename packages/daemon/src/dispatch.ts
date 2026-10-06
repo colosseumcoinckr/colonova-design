@@ -894,10 +894,20 @@ export class RequestRouter {
           if ((await active.repo.repoCore().finalChangedFiles()).length === 0) {
             throw new Error("제출할 변경이 없어요.");
           }
-          active.supervisor.submit("button", message.sessionId, message.note || undefined);
+          active.supervisor.submit(
+            "button",
+            message.sessionId,
+            message.note || undefined,
+            message.sent,
+          );
         });
       } else {
-        active.supervisor.submit("button", message.sessionId, message.note || undefined);
+        active.supervisor.submit(
+          "button",
+          message.sessionId,
+          message.note || undefined,
+          message.sent,
+        );
       }
       await new Promise<void>((resolve) => {
         const timer = setTimeout(resolve, SUBMIT_WAIT_MS);

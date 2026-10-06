@@ -432,7 +432,20 @@ export const L = {
     replyToast: (name: string) => `${name}님에게 답을 달았어요`,
     receiptFirst: "개발자에게 제출했어요",
     receiptMore: "같은 요청에 더해 제출했어요",
+    /** 보낸 화면 — 제목은 앞선 몇 개까지, 닿지 않은 화면은 `외 N곳`(`rest`). 확인 창이 보인 목록이다. */
+    receiptSent: (n: number, names: string, rest: number) =>
+      names ? `보낸 화면 ${n}개 · ${names}${rest > 0 ? ` 외 ${rest}곳` : ""}` : `보낸 화면 ${n}개`,
     receiptReviewers: (n: number) => `받을 개발자 ${n}명`,
+    /**
+     * 도구가 아는 것은 요청에 적힌 개발자(`requested_reviewers`)뿐이다 — 팀 단위 코드 소유자나 늦게 채워지는 지정은
+     * 닿지 않을 수 있어 「없다」 가 아니라 「확인하지 못했다」 를 말한다.
+     */
+    receiptNobody: "받을 개발자를 확인하지 못했어요 — 알림이 가지 않았을 수 있으니 제출한 내용의 링크를 개발자에게 전해 주세요",
+    receiptCopyLink: "링크 복사",
+    receiptLinkCopied: "복사했어요",
+    receiptNextHead: "이제부터",
+    receiptNextComments: "개발자가 코멘트를 남기면 이 대화에 카드로 오고, AI 가 바로 반영해 같은 요청에 다시 제출해요",
+    receiptNextOriginal: "서비스 원본은 개발자가 반영하기 전까지 그대로예요",
     receiptNote: (note: string) => `내 한마디 · “${note}”`,
     /** 첫 제출의 영수증에만 — 앱이 꺼져 있으면 소식이 알림으로 오지 않는다(2026-10-06 UX 점검: 데몬은 앱 안에서 돌아 앱과 함께 끝난다). */
     receiptAway: "개발자 소식은 앱이 켜져 있으면 알림으로 오고, 꺼 두면 다시 켤 때 홈에서 알려요",

@@ -289,8 +289,18 @@ export type ChatEvent =
    * 테스트 B6). 테이프의 한 줄로 남아 연대기의 일부가 된다.
    */
   | { kind: "cycle.saveBlocked"; at: string; detail: string }
-  /** `note` 는 제출 확인에서 사용자가 남긴 한마디(PLAN-UI U3) — 영수증 카드가 되돌려 보인다. */
-  | { kind: "cycle.handed"; at: string; pr: number; reviewer?: string; note?: string }
+  /**
+   * `note` 는 제출 확인에서 사용자가 남긴 한마디(PLAN-UI U3) — 영수증 카드가 되돌려 보인다. `sent` 는 사용자가
+   * 제출을 누를 때 확인한 화면(2026-10-07 UX 점검 3단계) — 버튼으로 낸 제출에만 있다.
+   */
+  | {
+      kind: "cycle.handed";
+      at: string;
+      pr: number;
+      reviewer?: string;
+      note?: string;
+      sent?: SubmitSent;
+    }
   | { kind: "cycle.merged"; at: string; pr: number }
   /**
    * 넘긴 요청이 병합 없이 닫혔다(반려, PLAN L4) — 작업은 새 사이클 브랜치로
@@ -304,6 +314,18 @@ export type ChatEvent =
    */
   | { kind: "cycle.carried"; at: string; from: string; to: string; commits: number }
   | { kind: "review.arrived"; reviews: DeveloperReview[] };
+
+/**
+ * 제출을 누를 때 사용자가 확인 창에서 본 화면(2026-10-07 UX 점검 3단계) — 영수증이 「무엇을 보냈는지」 를 말하는 재료다.
+ * 확인 창의 목록이 곧 사용자가 확인한 것이라 웹이 정해 데몬에 건넨다(데몬은 최종 변경의 귀속을 모른다). 대화로 낸
+ * 제출(`submit_for_review`)에는 확인 창이 없어 이 값도 없다 — 영수증은 모르는 것을 말하지 않는다.
+ */
+export interface SubmitSent {
+  /** 이번에 새로 제출하는 화면의 수. */
+  screens: number;
+  /** 그중 앞선 화면의 제목 — 많아야 셋. */
+  titles: string[];
+}
 
 /**
  * 턴 끝의 자동 확인이 문제 없이 지나간 기록(2026-10-06 UX 점검) — 이 요청의 결과 카드가 「무엇을 확인했는지」 를 한 줄로

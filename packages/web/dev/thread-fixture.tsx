@@ -407,8 +407,12 @@ const queueItems = [
 ];
 
 /**
- * `?scene=receipt` — 제출 영수증. 첫 제출에는 소식이 오는 길 한 줄(`개발자 소식은 앱이 켜져 있으면…`)이 서고,
- * 같은 요청에 더한 제출에는 그 줄이 없다(2026-10-06).
+ * `?scene=receipt` — 제출 영수증. 첫 제출에는 「이제부터」 세 줄(코멘트가 오는 길 · 원본이 그대로라는 말 · 소식이 오는 길
+ * `개발자 소식은 앱이 켜져 있으면…`)이 서고, 같은 요청에 더한 제출에는 그 줄들이 없다(2026-10-06 · 2026-10-07).
+ * 보낸 화면은 제출을 누를 때 확인 창이 보인 목록이다. 변형 셋:
+ *   `?scene=receipt-none` 받을 개발자가 정해지지 않은 요청(호박색 줄 + `링크 복사`),
+ *   `?scene=receipt-chat` 대화로 낸 제출(확인 창이 없어 보낸 화면을 모른다 — 그 줄이 없다),
+ *   `?scene=receipt-old` 엿새 전의 영수증(시각이 날짜까지 말하고, 지금의 요청이 아니라 받을 개발자는 사건이 적은 한 명뿐).
  */
 const done = (id: string): Block => ({
   type: "turn",
@@ -431,6 +435,7 @@ const receipts: Block[] = [
     pr: 12,
     reviewer: "kim",
     note: "급하지 않아요",
+    sent: { screens: 5, titles: ["회원 목록", "회원 상세", "결제 내역"] },
   },
   user("rc2", "빈 결과 안내도 넣어 줘."),
   answer("rc2a", "안내 문구를 넣었어요."),
@@ -442,8 +447,47 @@ const receipts: Block[] = [
     at: "2026-10-06T11:00:00+09:00",
     pr: 12,
     reviewer: "kim",
+    sent: { screens: 1, titles: ["회원 목록"] },
   },
 ];
+
+/** 영수증 변형 하나 — 말 하나, 답 하나, 영수증 하나. */
+const oneReceipt = (
+  id: string,
+  milestone: Partial<Extract<Block, { type: "milestone" }>>,
+): Block[] => [
+  user(`${id}u`, "회원 목록에 검색창을 넣어 줘."),
+  answer(`${id}a`, "검색창을 넣었어요."),
+  done(`${id}e`),
+  {
+    type: "milestone",
+    id: `${id}m`,
+    subtype: "handed",
+    at: "2026-10-06T10:00:00+09:00",
+    pr: 12,
+    ...milestone,
+  },
+];
+const receiptNone = oneReceipt("rn", {
+  note: "급하지 않아요",
+  sent: { screens: 2, titles: ["회원 목록", "회원 상세"] },
+});
+const receiptChat = oneReceipt("rt", { reviewer: "kim" });
+const receiptOld = oneReceipt("ro", {
+  at: new Date(Date.now() - 6 * 86_400_000).toISOString(),
+  reviewer: "kim",
+  sent: { screens: 3, titles: ["회원 목록", "회원 상세", "결제 내역"] },
+});
+
+/** 지금의 요청 — 영수증 변형이 `same` 으로 읽는다(받을 개발자 · 링크). */
+const openRequest = (reviewers: string[]) => ({
+  number: 12,
+  url: "https://example.com/pull/12",
+  title: "feat(members): 회원 목록에 검색창 추가 (작성: 정인권)",
+  state: "open" as const,
+  branch: "colonova-design/20261006-1",
+  reviewers,
+});
 
 /**
  * `?scene=undo` — 마지막 결과에만 `방금 한 것 되돌리기` 가 선다(2026-10-06). 앞선 결과의 카드에는 없다 — 작업 기록의
@@ -611,18 +655,30 @@ function Fixture() {
                   ? queued
                   : scene === "receipt"
                     ? receipts
-                    : scene === "undo"
-                      ? undoScene
-                      : scene === "working"
-                        ? workingThread
-                        : blocks
+                    : scene === "receipt-none"
+                      ? receiptNone
+                      : scene === "receipt-chat"
+                        ? receiptChat
+                        : scene === "receipt-old"
+                          ? receiptOld
+                          : scene === "undo"
+                            ? undoScene
+                            : scene === "working"
+                              ? workingThread
+                              : blocks
             }
             live={scene === "queue"}
             showThinking={false}
             showTools={false}
             previewUrl={PREVIEW_URL}
             cycleScreens={[{ route: "member/list", title: "회원 목록", note: "", at: "" }]}
-            handoff={null}
+            handoff={
+              scene === "receipt" || scene === "receipt-chat"
+                ? openRequest(["kim", "lee"])
+                : scene === "receipt-none"
+                  ? openRequest([])
+                  : null
+            }
             projectWorking={false}
             canBranch={CAN_BRANCH}
             queue={scene === "queue" ? queueItems : []}

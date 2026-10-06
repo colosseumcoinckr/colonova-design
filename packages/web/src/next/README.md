@@ -167,6 +167,8 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 - `handoff-preview.ts` · `use-handoff-draft.ts` — 제출 확인의 `개발자에게는 이렇게 보여요`: `handoffPreviewOf(draft, firstSubject)` 가 데몬의 요청 초안
   (`repo.handoffDraft`)에서 사용자가 읽는 제목(종류 접두어 · 작성자 꼬리를 뗌) · 설명 첫 대목 · 사진 수를 뽑고, `useHandoffDraft` 가 제출을 붙잡지 않고 따로 읽는다.
   첫 제출에만 읽는다 — 더하는 제출은 개발자의 글이 그대로라 지금 제목만 보인다. 정규식 안의 한글 · 역따옴표는 `\u` 로 적는다(한글 리터럴 린트가 정규식을 읽지 못한다).
+- `receipt.ts` — 제출 영수증이 말하는 것: `sentOf(screens)` 가 확인 창의 이번 제출 화면을 사건에 실을 모양(`SubmitSent`)으로,
+  `receiptFacts(block, same, more)` 가 받을 개발자 · 보낸 화면 · `nobody`(링크를 직접 전해야 하는가)를 가린다. 모르는 것은 말하지 않는다.
 - `making.ts` · `use-held-phase.ts` — 단계 말: `makingPhase(blocks)` 가 도는 도구의 묶음을 고르고 `makingWordOf(phase, words)` 가 말로 옮긴다.
   `useHeldPhase(phase, on)` 은 말을 1.5초 이상 머물게 한다(상태 줄의 알약과 대화 칸의 진행 줄이 함께 쓴다). `k/n 단계` 는
   `lib/todo-plan.ts` 의 `currentTodoProgress` — 이 턴에 AI 가 목록을 냈을 때만, 숫자만.

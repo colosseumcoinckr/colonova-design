@@ -366,6 +366,58 @@ test("한마디 — 작성자 줄 바로 아래 `> 한마디:`, 영수증 사건
   }
 });
 
+test("확인한 화면 — 버튼 제출의 영수증 사건에 실리고 다음 제출로 새지 않는다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    const sent = { screens: 2, titles: ["회원 목록", "회원 상세"] };
+    scene.supervisor.submit("button", undefined, undefined, sent);
+    await scene.supervisor.settled();
+    const first = scene.chatEvents.filter((event) => event.kind === "cycle.handed").at(-1);
+    assert.deepEqual(first?.sent, sent);
+    assert.equal(ledgerOf(scene).submit, null, "성공과 함께 의도도 지워진다");
+
+    // 확인 창을 거치지 않은 다음 제출(채팅)에는 지난 화면이 따라오지 않는다 — 모르는 것은 말하지 않는다.
+    await commit(scene, { "screen2.tsx": "export default () => null;\n" }, "두 번째 화면");
+    scene.supervisor.submit("chat");
+    await scene.supervisor.settled();
+    const second = scene.chatEvents.filter((event) => event.kind === "cycle.handed").at(-1);
+    assert.notEqual(second, first);
+    assert.equal(second?.sent, undefined);
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("확인한 화면 — 막혀 재시도하는 동안 다시 누르면 새 화면으로, 재시작 뒤에도 이어진다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    await scene.git(["push", "-u", "origin", BRANCH]);
+    scene.github.failPullCreates();
+    scene.supervisor.submit("button", undefined, undefined, { screens: 1, titles: ["회원 목록"] });
+    await scene.supervisor.settled();
+    assert.deepEqual(ledgerOf(scene).submit?.sent, { screens: 1, titles: ["회원 목록"] });
+
+    // 도는 제출에 다시 누른 말 — 의도는 하나, 확인한 화면만 새것으로.
+    const newer = { screens: 3, titles: ["회원 목록", "회원 상세", "결제 내역"] };
+    scene.supervisor.submit("button", undefined, undefined, newer);
+    assert.deepEqual(ledgerOf(scene).submit?.sent, newer);
+
+    // 재시작 — 원장이 같은 영수증을 낸다.
+    scene.github.healPullCreates();
+    const reborn = scene.respawn();
+    const intent = ledgerOf(scene).submit;
+    assert.ok(intent?.nextAttemptAt);
+    scene.setNow(Date.parse(intent.nextAttemptAt) + 1000);
+    await reborn.tick("manual");
+    const handed = scene.chatEvents.filter((event) => event.kind === "cycle.handed").at(-1);
+    assert.deepEqual(handed?.sent, newer);
+  } finally {
+    await scene.dispose();
+  }
+});
+
 test("채팅 제출은 한마디 없이 그대로 간다 — 줄도 사건의 note 도 없다", async () => {
   const scene = await makeSupervisedScene();
   try {
@@ -377,6 +429,7 @@ test("채팅 제출은 한마디 없이 그대로 간다 — 줄도 사건의 no
     const handed = scene.chatEvents.find((event) => event.kind === "cycle.handed");
     assert.ok(handed);
     assert.equal(handed.note, undefined);
+    assert.equal(handed.sent, undefined, "확인 창이 없으니 확인한 화면도 없다");
     assert.equal(scene.supervisor.submitView().phase, "idle");
     assert.deepEqual(
       scene.supervisor.submitView().log.map((line) => line.text),

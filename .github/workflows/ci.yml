@@ -112,6 +112,7 @@ jobs:
           packages/daemon/test/capture-targets.test.ts
           packages/daemon/test/request-replay.test.ts
           packages/daemon/test/screen-comparisons.test.ts
+          packages/daemon/test/submit-sent-wire.test.ts
           packages/daemon/test/session-identity.test.ts
           packages/daemon/test/session-manager-close.test.ts
           packages/daemon/test/log-sanitize.test.ts
@@ -155,6 +156,7 @@ jobs:
           packages/web/test/next-checked-line.test.ts
           packages/web/test/next-run-line.test.ts
           packages/web/test/next-handoff-preview.test.ts
+          packages/web/test/next-receipt.test.ts
           packages/web/test/next-settings-close.test.ts
           packages/web/test/next-settings-reset.test.ts
           packages/web/test/next-settings-css.test.ts

@@ -48,6 +48,36 @@ test("submitCopy: 막힘 — 버튼은 제출하지 못했어요, 첫 점과 잠
   }
 });
 
+test("submitCopy: 권한 부족은 새 초대 파일이 아니라 개발자가 코드의 권한을 고치면 풀린다고 말한다(2026-10-07)", () => {
+  const permission = submitCopy({ phase: "blocked", attempts: 1, lastError: "permission", log }, L);
+  assert.equal(
+    permission.reason,
+    "연결 코드의 권한이 모자라 제출이 막혔어요 — 개발자가 코드의 권한을 고치면 풀려요",
+  );
+  assert.doesNotMatch(
+    permission.reason ?? "",
+    /새 초대 파일|만료/,
+    "새 파일이 해결이 아니다 · 만료가 아니다",
+  );
+  // 막힌 제출의 버튼 · 첫 점은 그대로다 — 이유 한 줄만 다르다.
+  assert.equal(permission.label, "제출하지 못했어요");
+  assert.equal(permission.firstPoint, "제출 전 · 제출하지 못했어요");
+  assert.notEqual(
+    permission.reason,
+    submitCopy({ phase: "blocked", attempts: 1, lastError: "auth", log }, L).reason,
+  );
+});
+
+test("submitCopy: 한도에 걸린 재시도는 막힘이 아니다 — 도는 중이고 이유만 쉬는 중이라고 말한다", () => {
+  const limit = submitCopy({ phase: "retrying", attempts: 2, lastError: "limit", log }, L);
+  assert.equal(limit.phase, "retrying");
+  assert.equal(limit.busy, "retrying");
+  assert.equal(limit.label, "다시 제출하는 중…");
+  assert.equal(limit.firstPoint, null, "첫 점을 덮지 않는다 — 막힘이 아니다");
+  assert.equal(limit.reason, "요청이 몰려 잠시 쉬는 중이에요 — 곧 도구가 다시 제출해요");
+  assert.doesNotMatch(limit.reason ?? "", /개발자|담당자|초대 파일/);
+});
+
 test("submitCopy: 인터넷 문제로 막힌 제출은 담당자 · 개발자를 말하지 않는다(2026-10-06)", () => {
   const network = submitCopy({ phase: "blocked", attempts: 5, lastError: "network", log }, L);
   assert.equal(network.reason, "인터넷 연결이 끊겨 제출이 막혔어요 — 연결되면 다시 제출해요");

@@ -96,6 +96,44 @@ export interface HandoffStatus {
    * 재료다. 옛 기록에는 없고(`undefined`) 다음 관찰 틱이 채운다 — 없으면 며칠째인지 말하지 않는다.
    */
   since?: string;
+  /**
+   * 개발자의 승인 (2026-10-07 베타 준비 분석) — 리뷰어마다 마지막 판정이 `APPROVED` 이고 변경을 청한 사람이 없다.
+   * 관찰 틱이 새로 읽는 값이라 레지스트리에 남기지 않는다(재시작 뒤 첫 관찰이 다시 채운다). 아니거나 모르면 없다 —
+   * 이름 대신 불리언만 싣는다(로그인명을 선로에 올리지 않는다).
+   */
+  approved?: boolean;
+  /**
+   * 자동 검사(CI)의 요약 (2026-10-07 베타 준비 분석) — 데몬이 검사 결과(체크 런)를 읽을 수 있을 때만 있다. 이름이
+   * `checks` 가 아닌 까닭: 그것은 제출 본문의 「확인한 것」(화면의 자동 확인)이 이미 쓴다. 권한이 없거나
+   * 검사가 없는 레포거나 아직 모르면 없다 — 없다는 말이 「통과」 도 「실패」 도 아니다. 종류와 숫자만 싣는다.
+   */
+  ci?: HandoffCi;
+}
+
+/**
+ * 반영된 일 한 건 (2026-10-08 베타 준비 분석 · A2b) — 제출한 요청이 병합된 순간의 기록. 병합 뒤 사이클이 새로 시작되면 작업
+ * 기록이 비어 성취가 사라지므로, 데몬의 원장이 최근 스무 건을 기억해 `RepoStatus.landed` 로 싣는다. 반려는 쌓지 않는다.
+ * 셋(`title` · `days` · `screens`)은 아는 만큼만 싣는 선택 필드다 — 모르면 그 말을 하지 않는다.
+ */
+export interface LandedWork {
+  /** 병합된 때(ISO 8601) — 모르면 데몬이 처음 본 때. */
+  at: string;
+  /** 요청 번호 — 같은 번호는 한 번만 선다. */
+  pr: number;
+  /** 이 일을 부르는 말 — 요청 제목에서 종류 접두어와 작성자 꼬리를 뗀 것(80자까지). 기본 제목은 싣지 않는다. */
+  title?: string;
+  /** 제출부터 병합까지 달력으로 며칠(0 = 같은 날) — 제출한 때를 모르면 없다. */
+  days?: number;
+  /** 이번 작업이 만진 화면의 수 — 읽지 못했으면 없다. */
+  screens?: number;
+}
+
+/** 제출한 요청의 자동 검사(CI) 요약 — 선로에는 종류와 숫자만 오른다(검사 이름 · 출력은 AI 의 브리프에만 있다). */
+export interface HandoffCi {
+  /** `passing` 전부 통과 · `pending` 도는 중이거나 기다리는 중 · `failing` 통과하지 못한 검사가 있다. */
+  state: "passing" | "pending" | "failing";
+  /** `failing` 일 때 통과하지 못한 검사의 수. */
+  failing?: number;
 }
 
 /**
@@ -221,7 +259,26 @@ export interface RepoStatus {
      * 화면 지도에 적는다. 요청 본문의 `### 확인한 것` 이 이것을 센다. 문제를 찾았거나 확인하지 못한 턴에는 없다.
      */
     checked?: GateChecked;
+    /**
+     * 이 작업(보관)을 끝낸 세션의 AI 공급자 id(`claude` · `codex`) — 데몬이 보관 때 화면 지도에 적는다(2026-10-07 베타 준비
+     * 분석). 요청 본문의 「코드는 AI 가 썼어요」 줄이 종류를 말할 때만 읽는다. 옛 행에는 없다.
+     */
+    provider?: string;
   }>;
+
+  /**
+   * 서비스가 처음 보여 주는 화면 (2026-10-07 베타 준비 분석 · 첫 5분) — 준비가 끝난 미리보기의 첫 주소와 그 문서가
+   * 스스로 단 제목(`<title>`)이다. 데몬이 `ready` 에 닿을 때 한 번 읽는다. 화면 지도(`cycleScreens`)는 고친 화면의
+   * 관찰이라 처음 켠 서비스에는 아는 것이 없다 — 홈의 시작 칩이 이 이름으로 말한다. 제목은 날것이고(다듬는 것은 웹의
+   * 몫), `path` 는 따라간 이동 뒤의 경로다. 아직 못 읽었거나 못 읽은 데몬은 키를 싣지 않는다.
+   */
+  firstScreen?: { path: string; title: string };
+
+  /**
+   * 반영된 일 (2026-10-08 베타 준비 분석 · A2b) — 병합돼 반영된 요청들, 최근 것부터 많아야 스무 건. 새 사이클이 시작돼도
+   * 지워지지 않고 앱을 다시 켜도 산다(원장에서 읽는다). 홈의 `반영된 일` 묶음이 읽는다. 하나도 없으면 키가 없다.
+   */
+  landed?: LandedWork[];
 
   /**
    * 제출의 진행과 막힘 (PLAN-UI U13) — 원장의 `submit` 과 개발자 알림에서
@@ -230,7 +287,7 @@ export interface RepoStatus {
   submit?: {
     phase: "idle" | "running" | "retrying" | "blocked";
     attempts: number;
-    lastError?: "auth" | "network" | "rejected" | "other";
+    lastError?: "auth" | "permission" | "limit" | "network" | "rejected" | "other";
     /**
      * 잠깐의 실패로 도구가 다시 시도할 순간 (N6) — 국면이 retrying 일 때만
      * 싣는다. 웹은 아직 읽지 않는다.
@@ -374,6 +431,11 @@ export interface HandoffChecks {
   checked: number;
   /** 확인이 지나간 작업이 모두 휴대폰 폭까지 봤다. */
   phone: boolean;
+  /**
+   * 그중 그 턴이 바꾼 TypeScript 파일의 타입 검사가 돌았고 오류가 없었던 작업의 수(2026-10-07 베타 준비 분석).
+   * 하나도 없으면 칸이 없다 — 돌리지 않은 검사를 통과라고 말하지 않는다.
+   */
+  types?: number;
 }
 
 /** `repo.handoffDraft` — what the 넘기기 dialog opens filled with. */
@@ -403,6 +465,11 @@ export interface RepoHandoffDraft {
     checksSection?: string | null;
     /** 그 글의 숫자 — 화면 작업 몇 건 중 몇 건의 확인이 문제 없이 지나갔는가. 없으면 null. */
     checks?: HandoffChecks | null;
+    /**
+     * 본문의 `### 범위` 가 ⚠ 를 세우는 같은 판정 — 의존성 · 락파일 · 설정 · CI 파일이 바뀌었다(2026-10-07 베타 준비 분석).
+     * 제출 확인 창이 「설정 파일도 함께 바뀌었어요」 한 줄로 말한다. 아니면 칸이 없다.
+     */
+    scopeRisk?: boolean;
   };
   /** Who wrote it: the machine turn (machine-provider 의 담당), or nothing at all. */
   source: "machine" | "fallback";
@@ -449,6 +516,16 @@ export interface RepoHistory {
 }
 
 /** Local pictures of an actual request, never inferred from repeated wording. */
+/**
+ * `repo.firstLook` — 서비스가 막 떴을 때의 첫 화면 사진 한 장(2026-10-07 베타 준비 분석 · 첫 5분). 미리보기 드라이버가
+ * 숨은 창으로 열어 찍는다 — 드라이버가 없는 개발 경로 · 열지 못한 화면 · 비어 보이는 화면은 `image: null` 이고 부른 쪽은
+ * 사진 없이 그린다. 로컬 데이터라 이 요청에만 실리고 상태 방송에는 싣지 않는다.
+ */
+export interface FirstLook {
+  route: string;
+  image: { at: string; mediaType: string; data: string } | null;
+}
+
 export interface ScreenComparison {
   requestId: string;
   sessionId: string;

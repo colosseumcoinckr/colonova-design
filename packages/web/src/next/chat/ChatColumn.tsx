@@ -534,6 +534,11 @@ export function ChatColumn({
             onEditResend={editResend}
             onRetry={retry}
             onRetryDropped={retryDropped}
+            onLogin={() =>
+              void api
+                .onboardingFix(provider === "codex" ? "login-codex" : "login-claude")
+                .catch(() => nav.toast(L.chat.somethingWrong))
+            }
             onAdditionalEdit={(screen) => {
               fill(
                 L.requestResult.draft(screen.title ?? L.transcript.unknownScreen),

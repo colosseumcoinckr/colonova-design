@@ -246,6 +246,51 @@ test("개발자가 구간 밖에 쓴 글과 제목은 다시 제출해도 그대
   }
 });
 
+test("승인된 채 다시 제출 — 승인이 철회돼도 선로의 approved 가 남지 않고, 레지스트리의 요청에 휘발 신호가 없다(2026-10-08 F9)", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    scene.supervisor.submit("button");
+    await scene.supervisor.settled();
+    const number = scene.core.openHandoff?.number;
+    assert.ok(number);
+
+    // 개발자가 승인 — 다음 관찰이 승인 신호를 얹는다.
+    scene.github.addComment(number, {
+      kind: "review",
+      login: "dev1",
+      body: "LGTM",
+      state: "APPROVED",
+    });
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.core.snapshot().handoff?.approved, true);
+
+    // 승인된 채 다시 제출 — getPullRequest 가 approved 를 단 객체를 돌려주는 자리다.
+    await commit(scene, { "screen2.tsx": "export default () => null;\n" }, "두 번째 화면");
+    scene.supervisor.submit("button");
+    await scene.supervisor.settled();
+    assert.equal(scene.core.openHandoff?.number, number, "같은 요청에 쌓인다");
+    assert.equal(
+      "approved" in (scene.core.openHandoff ?? {}),
+      false,
+      "저장되는 요청에 승인이 없다",
+    );
+    assert.equal("ci" in (scene.core.openHandoff ?? {}), false, "검사 요약도 없다");
+
+    // 승인이 철회된다 — 다음 관찰 뒤 선로에서 승인이 사라진다.
+    scene.github.addComment(number, {
+      kind: "review",
+      login: "dev1",
+      body: "",
+      state: "DISMISSED",
+    });
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.core.snapshot().handoff?.approved, undefined, "철회된 승인이 남지 않는다");
+  } finally {
+    await scene.dispose();
+  }
+});
+
 test("단계 예산 — PR 생성이 계속 실패하면 다섯 번 뒤 submit:pr 알림 한 번", async () => {
   const scene = await makeSupervisedScene();
   try {
@@ -494,6 +539,69 @@ test("확인한 것 — 도구 구간에 화면 작업의 자동 확인 기록�
   }
 });
 
+test("범위 · AI 작성 줄 · 타입 검사 — 도구 구간에 서고, 락파일 · CI 가 든 사이클에는 ⚠, 종류는 지도가 아는 만큼만(2026-10-07)", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    const at = new Date().toISOString();
+    const screen = (route: string, sha: string, extra: Record<string, unknown> = {}) => ({
+      route,
+      title: `이름${route}`,
+      note: "고쳐 줘",
+      at,
+      sha,
+      ...extra,
+    });
+    const blockOf = () => {
+      const body = scene.github.pull(scene.core.openHandoff?.number ?? 0)?.body ?? "";
+      return body.slice(body.indexOf("colonova-design:start"), body.indexOf("colonova-design:end"));
+    };
+
+    // 화면 코드만 바뀐 사이클 — 개발자가 안심하는 한 줄이 선다. 지도가 공급자를 모르니 이름 없이 AI 로만 말한다.
+    scene.supervisor.submit("chat");
+    await scene.supervisor.settled();
+    let block = blockOf();
+    assert.ok(
+      block.includes("코드는 AI 가 썼고, 요청한 사람은 코드가 아니라 화면으로 확인했습니다."),
+    );
+    assert.ok(block.includes("### 범위"));
+    assert.ok(block.includes("- 의존성 · 설정 · CI 파일은 건드리지 않았습니다"));
+    assert.ok(!block.includes("⚠"), "위험 분류가 없으면 ⚠ 도 없다");
+    assert.ok(!block.includes("타입 검사"), "확인 기록이 없으니 타입 검사 줄도 없다");
+    assert.ok(
+      block.indexOf("코드는 AI") < block.indexOf("### 범위") &&
+        block.indexOf("### 범위") < block.indexOf("### 바뀐 파일"),
+      "AI 줄 → 범위 → 바뀐 파일 의 차례",
+    );
+
+    // 락파일과 워크플로가 담긴 사이클 — ⚠ 가 서고 안심의 말은 사라진다. 지도가 공급자와 타입 검사 기록을 안다.
+    await commit(
+      scene,
+      { "pnpm-lock.yaml": "lockfileVersion: '9.0'\n", ".github/workflows/ci.yml": "name: ci\n" },
+      "의존성을 더해 줘",
+    );
+    scene.cycleScreens = [
+      screen("/b", "s2", { provider: "claude", checked: { screens: 1, phone: true, types: true } }),
+      screen("/a", "s1", { provider: "claude", checked: { screens: 1, phone: true } }),
+    ];
+    scene.supervisor.submit("chat");
+    await scene.supervisor.settled();
+    block = blockOf();
+    assert.ok(block.includes("코드는 AI(Claude Code)가 썼고"));
+    assert.ok(block.includes("⚠ 이번 변경의 범위"));
+    assert.ok(block.includes("- ⚠ 락파일 1개 — pnpm-lock.yaml"));
+    assert.ok(block.includes("- ⚠ CI · 배포 1개 — .github/workflows/ci.yml"));
+    assert.ok(!block.includes("건드리지 않았습니다"));
+    assert.ok(
+      block.includes(
+        "타입 검사: 이번 제출에 담긴 화면 작업 2건 중 1건에서 바뀐 TypeScript 파일의 타입 오류가 없었습니다. 나머지 1건은 검사 기록이 없습니다.",
+      ),
+    );
+  } finally {
+    await scene.dispose();
+  }
+});
+
 test("채팅 제출은 한마디 없이 그대로 간다 — 줄도 사건의 note 도 없다", async () => {
   const scene = await makeSupervisedScene();
   try {
@@ -604,6 +712,130 @@ test("제출 상태 — 연결 코드 만료는 auth 막힘, 새 코드가 오�
       ],
     );
     assert.deepEqual(scene.submitBlocked, ["auth"]);
+  } finally {
+    await scene.dispose();
+  }
+});
+
+// ————— 인증 · 권한 · 한도 (2026-10-07 베타 준비 분석) —————
+// 403 을 전부 `연결 코드 만료` 로 읽으면 개발자가 권한을 틀리게 만든 초대장에서 사용자가 새 초대 파일을 받아도 같은
+// 문장을 본다. 권한은 첫 실패에 막히고 개발자에게 바로 알리며, 한도는 막힘이 아니라 느린 재시도다.
+
+test("권한 부족(403) — 첫 실패에 permission 막힘 · 개발자 알림 한 번 · 권한이 고쳐지면 같은 코드로 다시 제출", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    await scene.git(["push", "-u", "origin", BRANCH]);
+    scene.github.failPullCreates(
+      "제출에 실패했습니다 — GitHub 403: Resource not accessible by personal access token",
+    );
+    scene.supervisor.submit("button");
+    await scene.supervisor.settled();
+    let view = scene.supervisor.submitView();
+    assert.equal(view.phase, "blocked", "예산 다섯 번을 기다리지 않는다 — 기다려도 풀리지 않는다");
+    assert.equal(view.attempts, 1);
+    assert.equal(view.lastError, "permission");
+    assert.deepEqual(scene.submitBlocked, ["permission"]);
+    // 개발자 알림 — 첫 실패에 한 번, 모자란 권한을 담은 전용 키로(요청 열기 일반 문장이 아니다).
+    assert.deepEqual(
+      scene.notices.map((notice) => notice.key),
+      ["submit:permission"],
+    );
+    assert.match(scene.notices[0].reason ?? "", /Resource not accessible/);
+
+    // 막힌 채 도는 틱 · 재시작은 다시 울리지 않는다.
+    const advance = async (supervisor = scene.supervisor) => {
+      const intent = ledgerOf(scene).submit;
+      assert.ok(intent?.nextAttemptAt);
+      scene.setNow(Date.parse(intent.nextAttemptAt) + 1000);
+      await supervisor.tick("manual");
+    };
+    await advance();
+    assert.equal(scene.supervisor.submitView().phase, "blocked");
+    assert.deepEqual(scene.submitBlocked, ["permission"], "막힘마다 한 번");
+    assert.equal(
+      scene.notices.filter((notice) => notice.key === "submit:permission").length,
+      1,
+      "알림도 한 번",
+    );
+
+    // 개발자가 코드의 권한을 고쳤다 — 새 초대 파일 없이 도구의 다음 시도가 선다.
+    scene.github.healPullCreates();
+    await advance();
+    view = scene.supervisor.submitView();
+    assert.equal(view.phase, "idle");
+    assert.equal(ledgerOf(scene).submit, null);
+    assert.ok(scene.core.openHandoff);
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("권한 부족 — 새 코드가 와도(retrySubmitNow) 옛 권한 거절 분류는 지워지고 곧바로 다시 시도한다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    await scene.git(["push", "-u", "origin", BRANCH]);
+    scene.github.failPullCreates("GitHub 403: Resource not accessible by personal access token");
+    scene.supervisor.submit("button");
+    await scene.supervisor.settled();
+    assert.equal(scene.supervisor.submitView().lastError, "permission");
+    // 권한이 고쳐진 새 코드가 들어왔다 — 백오프를 기다리지 않는다.
+    scene.github.healPullCreates();
+    scene.supervisor.retrySubmitNow();
+    await scene.supervisor.settled();
+    assert.equal(ledgerOf(scene).submit, null, "제출이 끝났다");
+    assert.equal(scene.supervisor.submitView().phase, "idle");
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("한도(403 · 429) — 막힘이 아니라 느린 재시도 · 개발자 알림 없음 · 한 시간 넘게 이어지면 그때 알린다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    await scene.git(["push", "-u", "origin", BRANCH]);
+    scene.github.failPullCreates(
+      "제출에 실패했습니다 — GitHub 403: You have exceeded a secondary rate limit. Please wait a few minutes",
+    );
+    scene.supervisor.submit("button");
+    await scene.supervisor.settled();
+    let view = scene.supervisor.submitView();
+    assert.equal(view.phase, "retrying");
+    assert.equal(view.lastError, "limit");
+    // 사다리(20초)가 아니라 한 분에서 두 배로 물러난다 — GitHub 가 그렇게 말한다.
+    const attemptAt = () => Date.parse(ledgerOf(scene).budgets["submit:pr"]?.lastAt ?? "");
+    const gaps: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const intent = ledgerOf(scene).submit;
+      assert.ok(intent?.nextAttemptAt);
+      gaps.push(Date.parse(intent.nextAttemptAt) - attemptAt());
+      scene.setNow(Date.parse(intent.nextAttemptAt) + 1_000);
+      await scene.supervisor.tick("manual");
+    }
+    assert.deepEqual(gaps, [60_000, 120_000, 240_000, 480_000, 600_000]);
+    // 예산 다섯 번을 다 써도 한 시간 안에는 막힘도 개발자 알림도 없다.
+    view = scene.supervisor.submitView();
+    assert.equal(view.phase, "retrying");
+    assert.deepEqual(scene.submitBlocked, []);
+    assert.deepEqual(scene.notices, []);
+
+    // 한 시간을 넘기면 그때 개발자에게 알린다(시간이 풀지 못한 한도다).
+    const first = Date.parse(ledgerOf(scene).budgets["submit:pr"]?.firstAt ?? "");
+    scene.setNow(first + 61 * 60_000);
+    await scene.supervisor.tick("manual");
+    assert.deepEqual(
+      scene.notices.map((notice) => notice.key),
+      ["submit:pr"],
+    );
+    // 풀리면 곧 제출된다.
+    scene.github.healPullCreates();
+    const intent = ledgerOf(scene).submit;
+    assert.ok(intent?.nextAttemptAt);
+    scene.setNow(Date.parse(intent.nextAttemptAt) + 1000);
+    await scene.supervisor.tick("manual");
+    assert.equal(ledgerOf(scene).submit, null);
   } finally {
     await scene.dispose();
   }

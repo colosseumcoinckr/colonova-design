@@ -60,6 +60,7 @@ export function HandoffPreviewBox({
       {preview.title !== "" && <p className="nx-sub-pt">{preview.title}</p>}
       {preview.summary !== null && <p className="nx-sub-ps">{preview.summary}</p>}
       {with_ !== "" && <p className="nx-sub-pm">{with_}</p>}
+      {preview.scopeRisk === true && <p className="nx-sub-pm">{L.submitConfirm.previewScope}</p>}
       <p className="nx-sub-pm">
         {preview.by === "ai" ? L.submitConfirm.previewHint : L.submitConfirm.previewHintRequest}
       </p>

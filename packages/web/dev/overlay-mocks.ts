@@ -4,6 +4,7 @@
  */
 
 import type {
+  DiagnosticsSummary,
   InviteRow,
   NormalizedInvite,
   ProjectSummary,
@@ -398,7 +399,49 @@ function restoreByState(): unknown {
   return { stage: "done" };
 }
 
+/** 진단 요약의 견본(2026-10-07 베타 준비 분석) — 설정의 개발자용 쪽 · 준비 실패 카드의 복사가 읽는다. */
+export const DIAGNOSTICS: DiagnosticsSummary = {
+  at: new Date().toISOString(),
+  appVersion: "0.4.0",
+  os: { platform: "win32", release: "10.0.22631", arch: "x64" },
+  protocolVersion: 19,
+  nodeVersion: "24.1.0",
+  tools: {
+    node: { present: true, version: "24.1.0" },
+    git: { present: true, version: "2.45.1" },
+    pnpm: { present: false, version: null },
+    bash: { present: true, version: null },
+  },
+  ai: [
+    { id: "claude", present: true, version: "2.1.292", loggedIn: true },
+    { id: "codex", present: false, version: null, loggedIn: null },
+  ],
+  account: { method: "claude.ai", plan: "max" },
+  turnStats: {
+    days: 7,
+    turns: 37,
+    byKind: { user: 20, comments: 9, brief: 5, gate: 3 },
+    failed: 3,
+    failures: { account: 2, limit: 1 },
+    pinTurns: 9,
+    avgToolCalls: 6.4,
+    firstEditMs: { n: 25, p50: 4200, p90: 12800 },
+    firstDeltaMs: { n: 25, p50: 900, p90: 2100 },
+    durationMs: { n: 25, p50: 31000, p90: 74000 },
+  },
+  errors: [
+    {
+      level: "error",
+      kind: "요청 실패 · repo.sync · Error",
+      count: 3,
+      lastAt: new Date().toISOString(),
+    },
+    { level: "warn", kind: "게이트 실패 · capture", count: 1, lastAt: new Date().toISOString() },
+  ],
+};
+
 const HANDLERS: Record<string, (...args: unknown[]) => unknown> = {
+  diagnosticsSummary: () => DIAGNOSTICS,
   comparison: () => comparisonByState(),
   saveHistory: () => historyByState(),
   restore: () => restoreByState(),
@@ -432,6 +475,7 @@ export function mockDaemon(patch: Record<string, unknown> = {}): Daemon {
     repo: REPO,
     diffStatus: null,
     browserDriving: new Set<string>(),
+    editingScreens: new Map(),
     login: null,
     loginDone: null,
     install: null,
@@ -520,6 +564,7 @@ function settingsDesktop(flags: string[]): void {
  *  · AI 쪽: both-usable · login-needed · login-run · login-fail · login-expired · install-run ·
  *    install-fail · fix-reject · empty-providers · loading · codex-picked(고른 AI 를 못 씀)
  *  · 연결 쪽: offline · github-expired · work(제출하지 않은 작업이 있는 프로젝트) · author-fail · author-slow
+ *  · 계정 쪽(로그인 뒤의 한 줄): acct-none(요금제 모름) · acct-apikey · acct-long(긴 이메일) · acct-free(쓸 수 없는 요금제)
  */
 export function SETTINGS_daemon(flags: string[]): Daemon {
   settingsDesktop(flags);
@@ -560,6 +605,19 @@ export function SETTINGS_daemon(flags: string[]): Daemon {
   if (loginNeeded) providers = [{ ...claude, loggedIn: false }, { ...codex }];
   if (has("empty-providers") || has("loading")) providers = [];
   const status: Record<string, unknown> = { ...STATUS, providers };
+  // 계정 쪽(2026-10-07 베타 준비 분석) — 로그인 뒤의 한 줄과 쓸 수 없는 요금제의 막힘.
+  if (has("acct-none")) status.subscriptionType = null;
+  if (has("acct-apikey")) {
+    status.authMethod = "api_key";
+    status.email = null;
+    status.subscriptionType = null;
+  }
+  if (has("acct-long")) {
+    status.email =
+      "very.long.name.of.a.person@a-company-with-a-very-long-domain-name.example.co.kr";
+    status.subscriptionType = "enterprise";
+  }
+  if (has("acct-free")) status.subscriptionType = "free";
   if (has("login-expired")) {
     status.attention = { kind: "reconnect", what: "agent-login", since: new Date().toISOString() };
   }

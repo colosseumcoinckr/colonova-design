@@ -27,7 +27,7 @@
 
 import type { DeveloperReview } from "./repo.js";
 
-type TurnMarkerKind = "comments" | "brief" | "gate" | "error" | "review" | "notice";
+type TurnMarkerKind = "comments" | "brief" | "gate" | "error" | "review" | "notice" | "ci";
 
 /**
  * How the preview failed: the page threw, or the dev build serving it did.
@@ -37,7 +37,15 @@ type TurnMarkerKind = "comments" | "brief" | "gate" | "error" | "review" | "noti
  */
 type ErrorMarkerKind = "runtime" | "build" | "look";
 
-const KINDS: readonly TurnMarkerKind[] = ["comments", "brief", "gate", "error", "review", "notice"];
+const KINDS: readonly TurnMarkerKind[] = [
+  "comments",
+  "brief",
+  "gate",
+  "error",
+  "review",
+  "notice",
+  "ci",
+];
 
 /** One pinned element, as the card lists it. */
 export interface CommentMarkerItem {
@@ -166,13 +174,25 @@ interface ReviewMarker {
   id?: number;
 }
 
+/**
+ * 자동 검사가 통과하지 못해 AI 가 고치는 턴 (2026-10-07 베타 준비 분석) — `review` 와 같은 결로 카드가 선다.
+ * 표식에는 카드가 말할 것(요청 번호 · 통과하지 못한 검사의 수)만 싣는다 — 검사 이름 · 출력 · 줄 위치는 AI 가 읽는
+ * 본문에만 있다. `failing` 이 0 이면 수를 모른다(옛 표식 · 깨진 값).
+ */
+interface CiMarker {
+  kind: "ci";
+  pr: number;
+  failing: number;
+}
+
 export type TurnMarker =
   | CommentsMarker
   | BriefMarker
   | GateMarker
   | ErrorMarker
   | ReviewMarker
-  | NoticeMarker;
+  | NoticeMarker
+  | CiMarker;
 
 interface MarkedTurn {
   /** Null when this is an ordinary typed message. */
@@ -250,6 +270,15 @@ function hydrate(kind: TurnMarkerKind, data: Record<string, unknown>): TurnMarke
       return { kind, step: str(data.step) };
     case "notice":
       return { kind, text: str(data.text) };
+    case "ci": {
+      const pr = Number(data.pr);
+      const failing = Number(data.failing);
+      return {
+        kind,
+        pr: Number.isFinite(pr) ? pr : 0,
+        failing: Number.isInteger(failing) && failing > 0 ? failing : 0,
+      };
+    }
     case "review": {
       const pr = Number(data.pr);
       const marker: ReviewMarker = {

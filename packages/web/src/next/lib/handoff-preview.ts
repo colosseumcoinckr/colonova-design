@@ -19,6 +19,11 @@ export interface HandoffPreview {
   checks: { total: number; checked: number } | null;
   /** 글의 주인 — `ai` 는 AI 가 쓴 제목 · 설명, `request` 는 AI 가 못 써서 처음 한 말이 제목이 된 것. */
   by: "ai" | "request";
+  /**
+   * 개발자가 받는 본문의 범위가 의존성 · 락파일 · 설정 · CI 파일을 포함한다(2026-10-07 베타 준비 분석) — 사용자는 그 말을
+   * 몰라도 되지만 숨기지는 않는다. 아니면 칸이 없다.
+   */
+  scopeRisk?: boolean;
 }
 
 /** 데몬이 제목에 붙이는 종류 접두어 — `formatHandoffTitle` 이 알아보는 것과 같은 일곱이다. */
@@ -104,5 +109,6 @@ export function handoffPreviewOf(
     photos: draft.extras?.shotCount ?? 0,
     checks: checks ? { total: checks.total, checked: checks.checked } : null,
     by: drafted !== "" || summary !== null ? "ai" : "request",
+    ...(draft.extras?.scopeRisk ? { scopeRisk: true } : {}),
   };
 }

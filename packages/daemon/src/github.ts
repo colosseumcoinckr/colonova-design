@@ -15,9 +15,13 @@
  *   GET   /user                                                — token identity (github gate)
  *   GET   /user/repos                                          — the project picker's list
  *   GET   /repos/{owner}/{repo}/contents/package.json            — dev-family script probe
+ *   GET   /repos/{owner}/{repo}/commits/{sha}/check-runs          — 자동 검사의 결과 (Checks: Read)
+ *   GET   /repos/{owner}/{repo}/check-runs/{id}/annotations       — 실패한 검사의 줄 단위 안내
  */
 import type { GitHubRepo, GitHubRepoInspection } from "@colonova-design/protocol";
+import { markAppComment } from "./app-comment.js";
 import { FixtureTransport, loadFixturePairs, type RestTransport } from "./rest-transport.js";
+import { classifyGitHubFailure } from "./submit-state.js";
 
 export interface PullRequestRef {
   number: number;
@@ -35,6 +39,11 @@ export interface PullRequestRef {
   reviewers: string[];
   /** 요청이 열린 때(GitHub 의 `created_at`) — 읽을 수 없으면 없다. */
   since?: string;
+  /**
+   * 개발자의 승인 (2026-10-07 베타 준비 분석) — 리뷰어마다 마지막 판정이 `APPROVED` 이고 `CHANGES_REQUESTED` 가 하나도
+   * 없다. 열린 요청에서만 읽고, 아니거나 모르면 없다.
+   */
+  approved?: boolean;
 }
 /**
  * getPullRequest 의 관찰 확장 (PLAN L2 · 단계 2b) — 감독자(cycle-observe)가
@@ -76,6 +85,49 @@ const REVIEW_PAGE_SIZE = 100;
 const COMMENT_PAGE_CAP = 10;
 /** Review states that decide the verdict; COMMENTED and PENDING carry none. */
 const VERDICTS = ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"];
+
+/** 자동 검사 목록이 페이지를 따라가는 상한 — per_page 100 기준 300개. 그 너머는 사람의 몫이다. */
+const CHECK_RUN_PAGE_CAP = 3;
+/** 검사 한 줄이 싣는 글의 상한(글자) — 읽는 순간 자른다. 출력이 수 MB 인 검사도 있다. */
+const CHECK_TITLE_MAX = 200;
+const CHECK_SUMMARY_MAX = 2000;
+const CHECK_TEXT_MAX = 4000;
+
+/**
+ * 자동 검사 한 건(GitHub 의 체크 런) — 이름 · 상태 · 결론 · 짧은 출력 · 주소만 읽는다 (2026-10-07 베타 준비 분석).
+ * 상태 판정(통과 · 실패 · 도는 중)은 `ci-checks.ts` 의 순수 함수가 한다.
+ */
+export interface CheckRunRow {
+  id: number;
+  name: string;
+  /** queued · in_progress · completed 외에 waiting · pending · requested 도 그대로 온다. */
+  status: string;
+  /** 끝나지 않았으면 null. success · failure · neutral · cancelled · skipped · timed_out · action_required … */
+  conclusion: string | null;
+  title: string;
+  summary: string;
+  text: string;
+  url: string;
+  /** 줄 단위 안내의 수 — 0 이면 annotations 를 부르지 않는다. */
+  annotations: number;
+}
+
+/**
+ * 검사 목록 읽기의 결과 — 던지지 않는다. `readable: false` 는 「검사가 없다」 가 아니라 「읽지 못했다」 다:
+ * `forbidden` 은 토큰에 `Checks: Read`(클래식은 `repo`)가 없다는 뜻이고 `unavailable` 은 그 밖의 실패다.
+ */
+export type CheckRunsRead =
+  | { readable: true; runs: CheckRunRow[] }
+  | { readable: false; reason: "forbidden" | "unavailable" };
+
+/** 실패한 검사의 줄 단위 안내 한 건 — 경로가 들어 있으니 AI 의 브리프에만 쓰고 로그에는 남기지 않는다. */
+export interface CheckAnnotationRow {
+  path: string;
+  line: number | null;
+  level: string;
+  title: string;
+  message: string;
+}
 
 /**
  * Repo pages fetched for the picker before the list is marked `truncated`.
@@ -503,6 +555,83 @@ export class GitHubClient {
     }
   }
 
+  /**
+   * 한 커밋의 자동 검사(체크 런) — 제출한 요청의 head 가 걸린 검사들이다 (2026-10-07 베타 준비 분석). 던지지
+   * 않는다: 권한이 없으면(`Checks: Read` 가 없는 세밀한 토큰은 403, 클래식 토큰은 `repo` 없이 404) `forbidden`,
+   * 그 밖의 실패(한도의 403 · 429 포함 — 시간이 푼다)는 `unavailable` 이다(제출 · 푸시와 같은 분류기). 호출자는 둘
+   * 다 「검사 상태를 모른다」 로 물러선다. 검사가 하나도 없는 레포는
+   * `readable: true` 에 빈 목록이다. 글은 읽는 순간 자른다.
+   */
+  async listCheckRuns(input: { owner: string; repo: string; sha: string }): Promise<CheckRunsRead> {
+    if (!/^[0-9a-f]{7,64}$/i.test(input.sha)) return { readable: false, reason: "unavailable" };
+    try {
+      const rows = await this.listPages(
+        `/repos/${input.owner}/${input.repo}/commits/${input.sha}/check-runs?per_page=100`,
+        "자동 검사 읽기",
+        "check_runs",
+        CHECK_RUN_PAGE_CAP,
+      );
+      return {
+        readable: true,
+        runs: rows.flatMap((row): CheckRunRow[] => {
+          const id = Number(row.id);
+          if (!Number.isInteger(id)) return [];
+          return [
+            {
+              id,
+              name: String(row.name ?? ""),
+              status: String(row.status ?? ""),
+              conclusion: typeof row.conclusion === "string" ? row.conclusion : null,
+              title: clip(row.output?.title, CHECK_TITLE_MAX),
+              summary: clip(row.output?.summary, CHECK_SUMMARY_MAX),
+              text: clip(row.output?.text, CHECK_TEXT_MAX),
+              url: typeof row.html_url === "string" ? row.html_url : "",
+              annotations: Number.isInteger(row.output?.annotations_count)
+                ? Number(row.output.annotations_count)
+                : 0,
+            },
+          ];
+        }),
+      };
+    } catch (error) {
+      // 권한이 없을 때만 forbidden — 한도의 403 은 시간이 푼다. 제출 · 푸시와 같은 분류기다(2026-10-08 검토 · F13).
+      const kind = error instanceof Error ? classifyGitHubFailure(error.message) : null;
+      return {
+        readable: false,
+        reason: kind === "auth" || kind === "permission" ? "forbidden" : "unavailable",
+      };
+    }
+  }
+
+  /**
+   * 실패한 검사 하나의 줄 단위 안내 — 첫 쪽(50줄)만 읽는다. 던지지 않고, 못 읽으면 빈 목록이다(검사 자체는 이미
+   * 읽혔으니 안내가 없을 뿐이다).
+   */
+  async listCheckAnnotations(input: {
+    owner: string;
+    repo: string;
+    checkRunId: number;
+  }): Promise<CheckAnnotationRow[]> {
+    if (!Number.isInteger(input.checkRunId) || input.checkRunId <= 0) return [];
+    try {
+      const rows = await this.listPages(
+        `/repos/${input.owner}/${input.repo}/check-runs/${input.checkRunId}/annotations?per_page=50`,
+        "자동 검사 안내 읽기",
+        undefined,
+        1,
+      );
+      return rows.map((row) => ({
+        path: String(row.path ?? ""),
+        line: Number.isInteger(row.start_line) ? Number(row.start_line) : null,
+        level: String(row.annotation_level ?? ""),
+        title: clip(row.title, CHECK_TITLE_MAX),
+        message: clip(row.message, CHECK_SUMMARY_MAX),
+      }));
+    } catch {
+      return [];
+    }
+  }
+
   /** D88: 인라인 코멘트의 답글 — GitHub 의 스레드 안으로 들어간다. */
   async replyToPullComment(input: {
     owner: string;
@@ -514,12 +643,16 @@ export class GitHubClient {
     await this.sendJson(
       "POST",
       `/repos/${input.owner}/${input.repo}/pulls/${input.number}/comments/${input.commentId}/replies`,
-      { body: input.body },
+      { body: markAppComment(input.body) },
       "코멘트 답하기",
     );
   }
 
-  /** D88: 리뷰 본문에 대한 답 — an issue comment on the pull request.
+  /**
+   * 앱이 쓰는 모든 코멘트의 문(commentOnIssue · replyToPullComment · updateIssueComment)은 본문 끝에 앱의
+   * 표식(`app-comment.ts`)을 단다 — 같은 토큰으로 개발자가 단 코멘트와 갈라 읽기 위해서다(2026-10-07).
+   *
+   * D88: 리뷰 본문에 대한 답 — an issue comment on the pull request.
    *  단계 4(PLAN L11)부터는 개발자 알림의 PR 코멘트도 이 길로 나가므로,
    *  나중에 고쳐 쓸 수 있게 만들어진 코멘트의 id 를 돌려준다. */
   async commentOnIssue(input: {
@@ -531,7 +664,7 @@ export class GitHubClient {
     const data = await this.sendJson(
       "POST",
       `/repos/${input.owner}/${input.repo}/issues/${input.number}/comments`,
-      { body: input.body },
+      { body: markAppComment(input.body) },
       "코멘트 달기",
     );
     return Number(data.id);
@@ -626,7 +759,7 @@ export class GitHubClient {
     await this.sendJson(
       "PATCH",
       `/repos/${input.owner}/${input.repo}/issues/comments/${input.commentId}`,
-      { body: input.body },
+      { body: markAppComment(input.body) },
       "코멘트 고치기",
     );
   }
@@ -764,10 +897,11 @@ export class GitHubClient {
   ): Promise<PullRequestRef> {
     const state = stateOf(data);
     if (state !== "open") return { ...refOf(data), state };
-    const changesRequested = await this.changesRequested(owner, repo, Number(data.number));
+    const verdict = await this.verdictOf(owner, repo, Number(data.number));
     return {
       ...refOf(data),
-      state: changesRequested ? "changes_requested" : "open",
+      state: verdict.changesRequested ? "changes_requested" : "open",
+      ...(verdict.approved ? { approved: true } : {}),
     };
   }
 
@@ -781,8 +915,16 @@ export class GitHubClient {
    * A refused reviews call leaves the PR 열림 rather than failing the whole
    * status read (the precedent is pageAncestors): the link the planner needs
    * is already in hand, and a wrong badge is recoverable at the next poll.
+   *
+   * 같은 마지막 판정에서 승인(2026-10-07)도 읽는다 — 한 사람이라도 마지막 판정이 `APPROVED` 이고 변경을 청한
+   * 사람이 없으면 승인이다. 철회된 판정(`DISMISSED`)은 앞의 판정을 덮으므로 세지 않는다.
    */
-  private async changesRequested(owner: string, repo: string, number: number): Promise<boolean> {
+  private async verdictOf(
+    owner: string,
+    repo: string,
+    number: number,
+  ): Promise<{ changesRequested: boolean; approved: boolean }> {
+    const none = { changesRequested: false, approved: false };
     let reviews: Array<Record<string, any>>;
     try {
       reviews = await this.getJson(
@@ -790,9 +932,9 @@ export class GitHubClient {
         "리뷰 확인",
       );
     } catch {
-      return false;
+      return none;
     }
-    if (!Array.isArray(reviews)) return false;
+    if (!Array.isArray(reviews)) return none;
 
     const latest: Record<string, string> = {};
     for (const review of reviews) {
@@ -800,7 +942,9 @@ export class GitHubClient {
       if (!VERDICTS.includes(state)) continue;
       latest[String(review.user?.login ?? "")] = state;
     }
-    return Object.values(latest).includes("CHANGES_REQUESTED");
+    const verdicts = Object.values(latest);
+    const changesRequested = verdicts.includes("CHANGES_REQUESTED");
+    return { changesRequested, approved: !changesRequested && verdicts.includes("APPROVED") };
   }
 
   private headers(): Record<string, string> {
@@ -811,11 +955,19 @@ export class GitHubClient {
    * 목록 한 끝까지 (PLAN L9) — 첫 주소에서 시작해 `Link` 헤더의 next 를
    * 상한(COMMENT_PAGE_CAP)까지 따라간다. 페이지 실패는 목록 전체의 실패로
    * 던지고, 호출자(코멘트 셋)의 관례대로 빈 목록으로 흘린다.
+   *
+   * `key` 는 본문이 배열이 아니라 `{ total_count, <key>: [...] }` 인 목록(체크 런)의 것이고,
+   * `pageCap` 은 그 목록만의 더 낮은 상한이다.
    */
-  private async listPages(url: string, label: string): Promise<Array<Record<string, any>>> {
+  private async listPages(
+    url: string,
+    label: string,
+    key?: string,
+    pageCap = COMMENT_PAGE_CAP,
+  ): Promise<Array<Record<string, any>>> {
     const rows: Array<Record<string, any>> = [];
     let next: string | null = url;
-    for (let page = 0; page < COMMENT_PAGE_CAP && next !== null; page += 1) {
+    for (let page = 0; page < pageCap && next !== null; page += 1) {
       const { status, body, headers } = await this.transport.request({
         method: "GET",
         url: next,
@@ -829,7 +981,8 @@ export class GitHubClient {
       } catch {
         data = []; // falls through: pagination decides the rest
       }
-      if (Array.isArray(data)) rows.push(...data);
+      const list = key === undefined ? data : (data as Record<string, unknown> | null)?.[key];
+      if (Array.isArray(list)) rows.push(...list);
       next = nextLink(headers?.link);
     }
     return rows;
@@ -918,6 +1071,11 @@ function nextLink(header: string | undefined): string | null {
 /** The first line of a transport error; fetch writes whole sentences per line. */
 function firstLine(text: string): string {
   return (text.split("\n").find((line) => line.trim() !== "") ?? text).slice(0, 160);
+}
+
+/** 글이 아닌 값은 빈 문자열, 긴 글은 상한에서 자른다 — 검사 출력은 길 수 있다. */
+function clip(value: unknown, max: number): string {
+  return typeof value === "string" ? value.slice(0, max) : "";
 }
 
 /**

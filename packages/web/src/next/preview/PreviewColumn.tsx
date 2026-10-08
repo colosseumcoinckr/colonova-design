@@ -19,14 +19,17 @@ import {
 } from "../../lib/turn-screens";
 import { L } from "../labels";
 import { arriveOnTurnEnd } from "../lib/preview-geometry";
+import { useDiagnosticsText } from "../lib/use-diagnostics";
 import type { PreviewColumnProps } from "../slots";
 import { ComparisonDialog, openComparison } from "./ComparisonDialog";
 import { clockOf, HISTORY_OPEN_EVENT, HistoryDrawer } from "./HistoryDrawer";
 import { ArrowIcon, PinSmallIcon } from "./icons";
+import { LiveLayer } from "./LiveLayer";
 import { PINS_SEND_EVENT, PinBubble } from "./PinBubble";
 import { PrepareCard, StageNotice } from "./PrepareCard";
 import { PreviewBar, type ScreenRow } from "./PreviewBar";
 import { nativePreview, type PreviewDevice, PreviewHost } from "./PreviewHost";
+import { useLiveFollow } from "./use-live-follow";
 import { type MachineTurn, usePreviewErrors } from "./use-preview-errors";
 
 /** 활성 팔레트의 강조색 — 오버레이가 앱과 같은 색을 쓰게 계산해 건넨다. */
@@ -93,6 +96,7 @@ const TITLE_SETTLE_MS = 400;
  */
 export function PreviewColumn({
   daemon,
+  settings,
   sessions,
   pins,
   project,
@@ -114,6 +118,12 @@ export function PreviewColumn({
   navRef.current = nav;
   const toast = useCallback((text: string) => navRef.current.toast(text), []);
   const showTab = useCallback((tab: "chat" | "preview") => navRef.current.showTab(tab), []);
+  // 사용자가 미리보기를 직접 만진 시각 — 라이브 따라가기가 「이번 턴에 방해받지 않았는가」를 가리는 재료다(2026-10-08).
+  // AI 가 하는 이동(턴 끝의 도착 · 따라가기 · 자동 새로 고침)은 남기지 않는다 — 사람의 손만.
+  const touchedAt = useRef<number | null>(null);
+  const noteUser = useCallback(() => {
+    touchedAt.current = Date.now();
+  }, []);
 
   const sectionRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -166,6 +176,7 @@ export function PreviewColumn({
     });
   }, [native, target]);
   const walk = (delta: -1 | 1) => {
+    noteUser();
     if (native) {
       invalidateView();
       void window.colonovaDesignDesktop?.preview?.history?.(delta);
@@ -186,11 +197,12 @@ export function PreviewColumn({
     return registerScreenOpener({
       previewUrl,
       open: (path) => {
+        noteUser();
         go(path);
         if (narrowRef.current) showTab("preview");
       },
     });
-  }, [previewUrl, showTab, go]);
+  }, [previewUrl, showTab, go, noteUser]);
 
   // 지나온 화면 — 주소 목록의 `다른 화면` 이 읽는다.
   const [recent, setRecent] = useState<string[]>([]);
@@ -275,14 +287,17 @@ export function PreviewColumn({
     },
     [repo?.cycleScreens],
   );
-  const nameOf = useCallback(
-    (path: string): string =>
+  // 이름을 아는 화면만 — `nameOf` 의 끝 폴백(이름 없는 화면)을 뺀 것. 라이브 한 줄은 이름을 모르면 말하지 않는다(2026-10-08).
+  const knownNameOf = useCallback(
+    (path: string): string | null =>
       titleOfPath(convScreens, path) ??
       cycleTitle(path) ??
-      (screenKey(path) === "/"
-        ? L.preview.homeScreen
-        : (pageTitleOf(pageTitles, path) ?? L.preview.untitledScreen)),
+      (screenKey(path) === "/" ? L.preview.homeScreen : pageTitleOf(pageTitles, path)),
     [convScreens, cycleTitle, pageTitles],
+  );
+  const nameOf = useCallback(
+    (path: string): string => knownNameOf(path) ?? L.preview.untitledScreen,
+    [knownNameOf],
   );
   const screenName = nameOf(herePath);
   const hasScreen = previewUrl !== null && location?.kind !== "web";
@@ -323,6 +338,7 @@ export function PreviewColumn({
   }, [convScreens, repo?.cycleScreens, recent, nameOf]);
 
   const onAddress = (raw: string): string | null => {
+    noteUser();
     if (!previewUrl) return L.preview.addrOnly;
     const verdict = parseAddress(raw, {
       origin: new URL(previewUrl).origin,
@@ -345,7 +361,9 @@ export function PreviewColumn({
   const slug = daemon.activeSlug ?? "";
   if (phase === "missing" || phase === "cloning") firstPrep.current.set(slug, true);
   if (phase === "ready") firstPrep.current.delete(slug);
-  const first = firstPrep.current.get(slug) === true;
+  // 데몬이 첫 준비 중이라고 알리면(창이 준비 도중에 켜졌어도) 처음이다 — 초대 파일을 AI 설치보다 먼저 놓아 준비가
+  // 미리 시작된 경우(2026-10-07)가 그렇다. 이 칸이 내려받기를 보지 못했다고 `다시 켜는 중` 이라 말하지 않는다.
+  const first = firstPrep.current.get(slug) === true || project?.firstPrep === true;
 
   const previewStopped = phase === "error" && repo?.errorKind === "preview";
   const restarting = previewStopped && repo?.detail?.startsWith(L.preview.restartPrefix) === true;
@@ -432,6 +450,8 @@ export function PreviewColumn({
   }, [invalidateView]);
   // 실패의 다시 시도 — 있는 손만 쓴다: 미리보기를 다시 읽고(막대의 새로 고침과 같은),
   // 준비 파이프를 다시 걷는다(마운트 때와 같은 멱등 부름). 새 진행 표시는 만들지 않는다.
+  // 실패 덮개의 `담당자에게 보낼 내용 복사`(2026-10-07 베타 준비 분석) — 진단 한 덩어리 + 실패의 종류(이름 · 경로 없이).
+  const diagnosticsText = useDiagnosticsText(daemon);
   const retryStage = useCallback(() => {
     reload();
     void api
@@ -439,6 +459,7 @@ export function PreviewColumn({
       .catch((cause: Error) => console.error("[colonova-design] repo sync", cause));
   }, [reload, api]);
   const pickDevice = (next: PreviewDevice) => {
+    noteUser();
     if (next === device) return;
     invalidateView();
     setDevice(next);
@@ -477,6 +498,7 @@ export function PreviewColumn({
   } | null>(null);
   const togglePins = useCallback(
     (on?: boolean) => {
+      noteUser();
       if (pinLocked) {
         toast(pinLocked);
         return;
@@ -487,7 +509,7 @@ export function PreviewColumn({
       if (next) finishPinIntro();
       if (next && narrowRef.current) showTab("preview");
     },
-    [pinLocked, toast, showTab, daemon.activeSlug],
+    [pinLocked, toast, showTab, daemon.activeSlug, noteUser],
   );
 
   const sync = useMemo(() => pinsSync(pins.ghosts, pins.list), [pins.ghosts, pins.list]);
@@ -547,10 +569,11 @@ export function PreviewColumn({
   }, []);
   const onPin = useCallback(
     (pin: ColoNovaDesignPinEnvelope["pin"]) => {
+      noteUser();
       pins.add(pin);
       openBubble(pin.id);
     },
-    [pins, openBubble],
+    [pins, openBubble, noteUser],
   );
   // 어긋날 수 있는 사건에는 닫는다 — 이동 · 배율 · 기기 · 창 크기(U4 · 6 리스크).
   // biome-ignore lint/correctness/useExhaustiveDependencies: 사건만 본다.
@@ -605,6 +628,7 @@ export function PreviewColumn({
   // biome-ignore lint/correctness/useExhaustiveDependencies: 사이클이 움직이면 얼린 얼굴은 거짓말이다.
   useEffect(() => setFrozen(null), [root, handoff?.state, handoff?.number]);
   const openFrozen = async () => {
+    noteUser();
     ++viewEpoch.current;
     const route = herePath.split("?")[0] ?? "/";
     const shot = await api.handoffShot(route).catch(() => null);
@@ -624,6 +648,7 @@ export function PreviewColumn({
     if (!turnLive) lookSent.current = false;
   }, [turnLive]);
   const showAi = async () => {
+    noteUser();
     if (lookBusy) return;
     if (turnLive && lookSent.current) {
       toast(L.preview.showAiAgain);
@@ -772,7 +797,11 @@ export function PreviewColumn({
     ) : restarting ? (
       <StageNotice kind="restarting" />
     ) : stageFailed && !aiFixing ? (
-      <StageNotice kind="failed" onRetry={retryStage} />
+      <StageNotice
+        kind="failed"
+        onRetry={retryStage}
+        help={() => diagnosticsText(repo?.errorKind ?? null)}
+      />
     ) : fixing ? (
       // 2026-10-04 ux-review(2차): 고침의 2분 판정은 턴 발사 시각 기준 — 주의(ai-fixing)가
       // 실은 시작 시각이면 그것을, 아니면 기계 고침 턴의 발사 시각을 근거로 센다.
@@ -785,22 +814,65 @@ export function PreviewColumn({
   // 무대가 150ms 를 넘겨 불러오는 중 — 막대의 새로 고침 그림이 돈다.
   const [stageBusy, setStageBusy] = useState(false);
 
+  // --- 라이브감 (2026-10-08 베타 준비 분석) -------------------------------
+  // AI 가 일하는 동안 미리보기가 같이 움직인다: 화면을 직접 눌러 보는 중 · 지금 고치는 화면 · 첫 편집에서 그 화면으로
+  // 옮기기. 옮기는 길은 칸이 이미 가진 `go` 하나뿐이고, 사람이 이번 턴에 만졌으면 옮기지 않는다(`touchedAt`).
+  // 옮긴 순간은 주소 알약이 잠깐 물든다(도착의 표시 중 막대의 몫만 — 무대를 훑는 빛줄기는 턴이 끝났을 때의 것이다).
+  const [followTick, setFollowTick] = useState(0);
+  const followTo = useCallback(
+    (route: string) => {
+      go(route);
+      setFollowTick((tick) => tick + 1);
+    },
+    [go],
+  );
+  const live = useLiveFollow({
+    sessionId: activeSessionId,
+    turnLive,
+    turnStartedAt: sessions.active?.turnStartedAt ?? null,
+    // 활성 대화의 조작만 — 다른 대화가 같은 칸을 누르는 중이어도 이 대화의 칸에는 말하지 않는다.
+    driving: activeSessionId !== null && daemon.browserDriving.has(activeSessionId),
+    editing: activeSessionId ? (daemon.editingScreens.get(activeSessionId) ?? null) : null,
+    here: hasScreen ? herePath : null,
+    view: {
+      visible: !offstage,
+      covered: overlay !== null,
+      external: location?.kind === "web",
+      crowded: narrow && pinCount > 0,
+    },
+    modes: {
+      follow: settings.followEdits,
+      pin: commentsOn,
+      frozen: frozen !== null,
+      history: historyOpen,
+    },
+    titleOf: knownNameOf,
+    onFollow: followTo,
+    touchedAt,
+  });
+
   return (
     <section ref={sectionRef} className={`nx-preview${historyOpen ? " nx-preview--hist" : ""}`}>
-      <ComparisonDialog daemon={daemon} />
+      <ComparisonDialog daemon={daemon} onToast={toast} />
       <PreviewBar
         canBack={native ? location?.canGoBack === true : trail.at > 0}
         canForward={native ? location?.canGoForward === true : trail.at < trail.list.length - 1}
         onBack={() => walk(-1)}
         onForward={() => walk(1)}
-        onReload={reload}
+        onReload={() => {
+          noteUser();
+          reload();
+        }}
         loading={stageBusy}
         screenName={hasScreen ? screenName : (project?.name ?? L.preview.frameTitle)}
         mine={rows.mine}
         others={rows.others}
         currentPath={hasScreen ? (location?.path ?? "") : ""}
-        arrivePulse={arriveTick}
-        onGo={go}
+        arrivePulse={arriveTick + followTick}
+        onGo={(path) => {
+          noteUser();
+          go(path);
+        }}
         onAddress={onAddress}
         device={device}
         onDevice={pickDevice}
@@ -812,15 +884,22 @@ export function PreviewColumn({
         historyBtn={historyBtn}
         drawerId={drawerId}
         onHistory={() => {
+          noteUser();
           ++viewEpoch.current;
           setHistoryOpen((open) => !open);
         }}
         native={native}
         zoom={zoom}
-        onZoom={(kind) => void window.colonovaDesignDesktop?.preview?.zoom?.(kind)}
+        onZoom={(kind) => {
+          noteUser();
+          void window.colonovaDesignDesktop?.preview?.zoom?.(kind);
+        }}
         frozenReady={frozenReady}
         onFrozen={() => void openFrozen()}
-        onCompare={() => openComparison({ route: herePath, title: screenName, submitted: true })}
+        onCompare={() => {
+          noteUser();
+          openComparison({ route: herePath, title: screenName, submitted: true });
+        }}
         onShowAi={() => void showAi()}
         showAiBusy={lookBusy}
         onShortcuts={() => setSheetOpen(true)}
@@ -851,6 +930,7 @@ export function PreviewColumn({
         onBusy={setStageBusy}
         stageRef={stageRef}
       >
+        <LiveLayer line={live.line} ring={live.ring} />
         {frozen && (
           <div className="nx-frozen">
             <img

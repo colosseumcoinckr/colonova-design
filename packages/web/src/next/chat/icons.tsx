@@ -27,6 +27,7 @@ import {
   RotateCcw,
   Sparkle,
   Square,
+  SquareDashed,
   Undo2,
   X,
   Zap,
@@ -48,6 +49,8 @@ export const BoltIcon = make(Zap, 14);
 export const UpIcon = make(ArrowUp, 16, 2.2);
 export const StopIcon = make(Square, 12, 2.4);
 export const CopyIcon = make(Copy, 13);
+/** 사진 위의 달라진 곳 윤곽을 켜는 단추의 그림(2026-10-08) — 점선 네모가 윤곽을 닮았다. */
+export const DiffIcon = make(SquareDashed, 13);
 export const MoreIcon = make(Ellipsis, 14);
 export const ForkIcon = make(GitFork, 14);
 export const HistoryIcon = make(History, 14);

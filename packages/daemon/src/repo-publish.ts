@@ -14,12 +14,16 @@ import {
   type HandoffStatusReport,
   markTurn,
 } from "@colonova-design/protocol";
+import { isOwnAppComment } from "./app-comment.js";
 import { readComments } from "./comments.js";
 import { replyFooter } from "./developer-replies.js";
 import {
+  aiKindsOf,
+  buildAiLine,
   buildChecksSection,
   buildCommentsSection,
   buildFilesSection,
+  buildScopeSection,
   formatHandoffTitle,
   noteLine,
   summarizeChecks,
@@ -34,13 +38,12 @@ import {
   detailOf,
   GATE_BRIEF,
   GATE_STEP,
-  PUSH_AUTH_FAILURE,
   SAVE_CONFLICT_OPEN_DETAIL,
   SHOTS_COMMIT_MESSAGE,
   SHOTS_DIR,
 } from "./repo-core.js";
 import { saveablePaths } from "./saveable-paths.js";
-import { SUBMIT_LOG_TEXT } from "./submit-state.js";
+import { classifyGitHubFailure, SUBMIT_LOG_TEXT } from "./submit-state.js";
 
 /** The `<img>` needs a media type; the committed file's extension is the
  *  capture's own (see HandoffShot.extension). */
@@ -576,8 +579,9 @@ export class PublishCycle {
   }
 
   /**
-   * PR 본문의 도구 구간 (PLAN L6) — 작성자 줄 · 바뀐 파일 · 수정 요청 · 화면
-   * 미리보기를 `<!-- colonova-design:start/end -->` 로 감싼 한 덩어리로 조립한다.
+   * PR 본문의 도구 구간 (PLAN L6) — 작성자 줄 · AI 작성 줄 · 범위 · 바뀐 파일 ·
+   * 수정 요청 · 확인한 것 · 화면 미리보기를 `<!-- colonova-design:start/end -->` 로
+   * 감싼 한 덩어리로 조립한다.
    * 감독자의 제출 단계(ensurePullRequest)가 mergeToolBlock 으로 구간만 갱신할
    * 때 쓰고, 구간 밖의 개발자 글은 호출자가 지킨다. 빈 문자열은 "조립 불가" —
    * 브랜치가 없을 때뿐이다.
@@ -601,16 +605,28 @@ export class PublishCycle {
       .filter((line): line is string => line !== null)
       .join("\n");
     if (byline) sections.push(byline);
+    // 이번 제출에 담긴 화면 작업(화면 지도) — AI 의 종류와 자동 확인 기록이 모두 여기서 온다. 지도가 안 읽히면 종류 없이
+    // AI 로만 말하고 확인 절은 서지 않는다.
+    let cycleScreens: NonNullable<ReturnType<RepoCore["snapshot"]>["cycleScreens"]> = [];
     try {
-      const filesSection = buildFilesSection(
-        await this.core.git([
-          "-c",
-          "core.quotepath=false",
-          "diff",
-          "--numstat",
-          `origin/${this.core.baseBranch}..${branch}`,
-        ]),
-      );
+      cycleScreens = this.core.snapshot().cycleScreens ?? [];
+    } catch {
+      // 같은 이유.
+    }
+    // 2026-10-07 베타 준비 분석 — 개발자가 리뷰의 강도를 정하는 근거: 코드는 AI 가 썼다. 종류는 지도가 아는 만큼만 말한다.
+    sections.push(buildAiLine(aiKindsOf(cycleScreens)));
+    try {
+      // `### 범위` 와 `### 바뀐 파일` 은 같은 numstat 을 읽는다 — 새 git 호출이 없다.
+      const numstat = await this.core.git([
+        "-c",
+        "core.quotepath=false",
+        "diff",
+        "--numstat",
+        `origin/${this.core.baseBranch}..${branch}`,
+      ]);
+      const scopeSection = buildScopeSection(numstat);
+      if (scopeSection) sections.push(scopeSection);
+      const filesSection = buildFilesSection(numstat);
       if (filesSection) sections.push(filesSection);
     } catch {
       // 제출 자체가 일을 싣는다 — 절 하나가 못 나오는 것은 조용하다.
@@ -624,13 +640,9 @@ export class PublishCycle {
     } catch {
       // 같은 이유.
     }
-    try {
-      // 2026-10-07 UX 점검 3단계 — 이번 제출에 담긴 화면 작업의 자동 확인 기록. 기록이 없으면 절도 없다.
-      const checks = summarizeChecks(this.core.snapshot().cycleScreens ?? []);
-      if (checks) sections.push(buildChecksSection(checks));
-    } catch {
-      // 같은 이유.
-    }
+    // 2026-10-07 UX 점검 3단계 — 이번 제출에 담긴 화면 작업의 자동 확인 기록. 기록이 없으면 절도 없다.
+    const checks = summarizeChecks(cycleScreens);
+    if (checks) sections.push(buildChecksSection(checks));
     const withShots = await this.attachShots(sections.join("\n\n"), options.shots, branch);
     return `${TOOL_BLOCK_START}\n${withShots.replace(/\n+$/, "")}\n${TOOL_BLOCK_END}`;
   }
@@ -817,14 +829,15 @@ export class PublishCycle {
     const reviews: DeveloperReview[] = [];
     if (slug && client) {
       // 앱 자신의 목소리 — 답하기(commentOnIssue · 답글)가 남긴 코멘트까지
-      // 개발자의 말로 다시 브리프하면 되먹임이 된다. 이 토큰의 로그인과 같은
-      // 행은 세 목록에서 모두 건너뛴다 (베타 테스트 #3).
+      // 개발자의 말로 다시 브리프하면 되먹임이 된다. 이 토큰의 로그인이 썼고 앱의 표식이 있는
+      // 행은 세 목록에서 모두 건너뛴다 (베타 테스트 #3). 표식 없는 토큰 주인의 코멘트는 개발자의
+      // 말이다 — 개발자가 자기 토큰을 그대로 쓴 연결에서 말이 사라지지 않는다(2026-10-07 베타 준비 분석).
       const me = await client
         .whoAmI()
         .then((answer) => (answer.ok ? answer.login : ""))
         .catch(() => "");
       const own = (row: Record<string, any>): boolean =>
-        me !== "" && String(row.user?.login ?? "") === me;
+        isOwnAppComment(row, me === "" ? null : me);
       const collect = async (): Promise<void> => {
         for (const row of await client.listPullComments({
           ...slug,
@@ -847,6 +860,10 @@ export class PublishCycle {
           number: handoff.number,
         })) {
           const text = String(row.body ?? "").trim();
+          // 승인 · 철회된 판정 · 초안은 개발자의 말이 아니다 — 감독자의 관찰(collectNewReviews)과 같은 잣대다.
+          // 승인이 코멘트 칸과 여정의 `코멘트 N` 에 코멘트로 서지 않게 한다(2026-10-07).
+          const verdict = String(row.state ?? "").toUpperCase();
+          if (verdict === "APPROVED" || verdict === "DISMISSED" || verdict === "PENDING") continue;
           if (text === "" || own(row)) continue;
           reviews.push({
             id: Number(row.id),
@@ -962,8 +979,13 @@ export class PublishCycle {
     // 넘기기 대화상자의 안내(넘기지 못했습니다 + 설정 열기)로 응답한다.
     // `push` 는 갈라진다: 인증 · 권한 사유면 안내로, 그 외(non-fast-forward
     // 등)는 지금처럼 AI — 모르면 AI 쪽(보수적).
-    const pushAuth = gate === "push" && PUSH_AUTH_FAILURE.test(detail);
-    const skipClaude = gate === "pr" || pushAuth;
+    // 권한 부족(403 `Resource not accessible …`)은 `다시 연결` 이 아니다 — 코드는 맞고 개발자가 코드의
+    // 권한을 고쳐야 한다. 같은 거절을 인증 만료로 말하던 거짓 증상을 갈랐다(2026-10-07 베타 준비 분석).
+    // 인증도 같은 분류기 한 곳이다(2026-10-08 검토 · F12) — 한도의 403 이 `다시 연결` 로 말해지던 옛 정규식을 걷었다.
+    const kind = classifyGitHubFailure(detail);
+    const permission = (gate === "push" || gate === "pr") && kind === "permission";
+    const pushAuth = gate === "push" && kind === "auth";
+    const skipClaude = gate === "pr" || pushAuth || permission;
     if (!skipClaude) {
       // The failure is actionable by the agent, not by the planner: hand it over
       // the same wire a typed message uses, output tail included. The step is
@@ -983,7 +1005,13 @@ export class PublishCycle {
       // 개발자 알림 (PLAN L11): AI 도 기획자도 고칠 수 없는 실패다 — 문제
       // 키와 함께 DeveloperNotice 로 간다. detail 은 PAT 가 이미 걷힌 한국어
       // 문장이고, 본문의 `자세히` 가 된다.
-      const key = pushAuth ? "push:auth" : "submit:pr";
+      const key = pushAuth
+        ? "push:auth"
+        : permission
+          ? gate === "push"
+            ? "push:permission"
+            : "submit:permission"
+          : "submit:pr";
       this.core.lane.outside(() => this.deps.notice?.(key, detail));
     }
     // reason 이 없으면 저장 검토는 "멈췄습니다" 로만 끝났다.
@@ -1016,7 +1044,10 @@ export interface PublishDeps {
    * 개발자 알림 (PLAN L11) — 인증·권한 게이트 실패를 문제 키와 함께
    * DeveloperNotice 로 흘린다. 없으면 조용히 지나간다 — 알림은 언제나 부가물.
    */
-  notice?(key: "push:auth" | "submit:pr", detail: string): void;
+  notice?(
+    key: "push:auth" | "push:permission" | "submit:permission" | "submit:pr",
+    detail: string,
+  ): void;
   /**
    * 넘기기가 성공하면 서 있던 `submit:pr` 알림을 거둔다 — 알림이 영원히
    * 남지 않게 하는 풀림의 한 길(PLAN L11).

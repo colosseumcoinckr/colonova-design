@@ -9,7 +9,8 @@
  */
 
 export type Attention =
-  | { kind: "ai-fixing"; since: string }
+  // key — 무엇을 고치는 중인가. `ci` 는 자동 검사가 통과하지 못해 AI 가 고치는 중이다(2026-10-07).
+  | { kind: "ai-fixing"; since: string; key?: string }
   | { kind: "developer-notified"; since: string; via: "pr" | "issue" | "slack"; key?: string }
   | { kind: "reconnect"; since: string; what: "github" | "agent-login" };
 
@@ -27,6 +28,8 @@ export interface AttentionNotice {
 export interface AttentionParts {
   reconnect?: { what: "github" | "agent-login"; since: string } | null;
   aiFixingSince?: string | null;
+  /** AI 가 무엇을 고치는 중인가(`ci` — 자동 검사). `aiFixingSince` 가 없으면 읽지 않는다. */
+  aiFixingKey?: string | null;
   notices?: Record<string, AttentionNotice>;
 }
 
@@ -46,7 +49,11 @@ export function composeAttention(parts: AttentionParts): Attention | null {
     return { kind: "developer-notified", since: first.raisedAt, via: first.via, key: first.key };
   }
   if (parts.aiFixingSince) {
-    return { kind: "ai-fixing", since: parts.aiFixingSince };
+    return {
+      kind: "ai-fixing",
+      since: parts.aiFixingSince,
+      ...(parts.aiFixingKey ? { key: parts.aiFixingKey } : {}),
+    };
   }
   return null;
 }

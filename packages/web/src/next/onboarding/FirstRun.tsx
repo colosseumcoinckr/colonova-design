@@ -4,6 +4,7 @@ import { useInstallStep } from "../../hooks/use-install-step";
 import type { InviteImportController } from "../../hooks/use-invite-import";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
+import { accountLine, accountText } from "../lib/account-line";
 import { INSTALL_STEPS } from "../lib/install-step";
 import { CheckIcon, Spin } from "../ui/icons";
 import { CopyButton } from "./CopyButton";
@@ -77,7 +78,9 @@ export function FirstRun({
       : null;
   const loginLive = daemon.login !== null;
   const loginFailed = daemon.loginDone && !daemon.loginDone.ok ? daemon.loginDone.detail : null;
-  const agentState: "pass" | "installing" | "login" | "blocked" | "idle" = agentPass
+  // 로그인은 됐는데 이 요금제로는 쓸 수 없다고 알려졌다(2026-10-07 베타 준비 분석) — 데몬이 막았다.
+  const planBlocked = claudeStep?.reason === "plan" && claudeStep.status !== "pass";
+  const agentState: "pass" | "installing" | "login" | "blocked" | "plan" | "idle" = agentPass
     ? "pass"
     : installing
       ? "installing"
@@ -85,7 +88,23 @@ export function FirstRun({
         ? "login"
         : installFailed
           ? "blocked"
-          : "idle";
+          : planBlocked
+            ? "plan"
+            : "idle";
+  // 로그인 뒤의 한 줄 — Claude 의 계정만 읽는다(Codex 의 계정은 상태에 없다). 모르면 예전 문구로 둔다.
+  const status = daemon.status;
+  const account =
+    provider === "claude" && status
+      ? accountText(
+          accountLine({
+            loggedIn: status.loggedIn,
+            authMethod: status.authMethod,
+            email: status.email,
+            subscriptionType: status.subscriptionType,
+          }),
+          L,
+        )
+      : null;
   const failureParts = installFailed ? splitInstallDetail(installFailed.detail) : null;
 
   // 설치가 끝나면 로그인이 저절로 이어진다(목업의 흐름) — 단, 한 번만. 사용자가
@@ -98,6 +117,8 @@ export function FirstRun({
   useEffect(() => {
     if (loginStarted || loginLive || installing) return;
     if (claudeStep?.fix?.kind !== "login-claude") return;
+    // 요금제가 막은 계정은 브라우저를 저절로 열지 않는다 — 같은 계정으로 다시 돌아오는 헛걸음이 된다.
+    if (claudeStep.reason === "plan") return;
     setLoginStarted(true);
     setLoginLaunching(true);
     void daemon.api
@@ -165,20 +186,22 @@ export function FirstRun({
 
   const agentRight =
     agentState === "pass"
-      ? L.onboarding.agentOk
-      : agentState === "installing"
-        ? L.onboarding.agentInstalling
-        : agentState === "login"
-          ? L.onboarding.agentLogin
-          : agentState === "blocked"
-            ? failureParts?.itLine
-              ? L.onboarding.agentBlocked
-              : L.onboarding.agentFailed
-            : agentFix?.kind === "install-claude"
-              ? L.onboarding.agentNeedInstall
-              : agentFix?.kind === "login-claude"
-                ? L.onboarding.agentNeedLogin
-                : L.onboarding.agentIdle;
+      ? (account ?? L.onboarding.agentOk)
+      : agentState === "plan"
+        ? L.account.planBlockedPill
+        : agentState === "installing"
+          ? L.onboarding.agentInstalling
+          : agentState === "login"
+            ? L.onboarding.agentLogin
+            : agentState === "blocked"
+              ? failureParts?.itLine
+                ? L.onboarding.agentBlocked
+                : L.onboarding.agentFailed
+              : agentFix?.kind === "install-claude"
+                ? L.onboarding.agentNeedInstall
+                : agentFix?.kind === "login-claude"
+                  ? L.onboarding.agentNeedLogin
+                  : L.onboarding.agentIdle;
 
   // 카드의 모양 — 지금 손이 갈 곳은 하나다. 눌러 볼 것이 없는 칸(검사 답을 기다리는 AI)은 건너뛴다.
   const agentWaiting = agentState === "idle" && !agentFix;
@@ -186,7 +209,7 @@ export function FirstRun({
   const agentCard: CardState =
     agentState === "pass"
       ? "ok"
-      : agentState === "blocked"
+      : agentState === "blocked" || agentState === "plan"
         ? "fail"
         : agentState === "installing" || agentState === "login"
           ? "run"
@@ -268,6 +291,25 @@ export function FirstRun({
             {/* 무엇을 설치하는지 먼저 말한다 — 설치가 도는 동안에도 같은 말이 남는다. */}
             <Fold open={(agentState === "idle" && !loginFailed) || agentState === "installing"}>
               <p className="nx-ob-d">{L.onboarding.agentWhat}</p>
+              <p className="nx-ob-d">{L.account.planNeed}</p>
+            </Fold>
+
+            {/* 요금제가 막은 계정 — 이유와 요금제가 필요하다는 말, 다른 계정으로 다시 로그인하는 단추 하나. */}
+            <Fold open={agentState === "plan"}>
+              <p className="nx-ob-d nx-ob-d--red" role="alert">
+                {L.account.planBlocked}
+              </p>
+              <p className="nx-ob-d">{L.account.planNeed}</p>
+              <div className="nx-ob-acts">
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--pri"
+                  disabled={agentBusy || loginLaunching}
+                  onClick={() => claudeStep && runFix(claudeStep)}
+                >
+                  {agentFix?.label ?? L.account.switchAccount}
+                </button>
+              </div>
             </Fold>
 
             {/* 아직 시작 전 — 설치 · 로그인의 첫 걸음. */}
@@ -416,7 +458,13 @@ export function FirstRun({
                 </div>
               </>
             ) : (
-              <InviteDrop invite={invite} importing={inviteImporting} />
+              <>
+                {/* 도구가 준비됐는데 AI 가 아직이면 — 파일을 먼저 놓아도 되고, 그러면 서비스 준비가 AI 설치와 겹쳐 돈다. */}
+                {toolsPass && !agentPass && !inviteImporting && (
+                  <p className="nx-ob-early">{L.onboarding.inviteEarly}</p>
+                )}
+                <InviteDrop invite={invite} importing={inviteImporting} />
+              </>
             )}
           </Step>
         </ol>
@@ -532,7 +580,7 @@ function Step({
           )}
         </span>
         <span className="nx-ob-name">{title}</span>
-        <span className="nx-ob-r" aria-live="polite">
+        <span className="nx-ob-r" aria-live="polite" title={status}>
           {status}
         </span>
       </div>

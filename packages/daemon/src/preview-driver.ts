@@ -36,6 +36,9 @@ export interface PreviewOpenOptions {
  *
  * `a11y` 는 `options.a11y` 로 부탁한 열기가 다 로드됐을 때만 온다 — 접근성의 재료다
  * (PreviewA11y). 브라우저가 답하지 못했으면 없다.
+ *
+ * `arrival` 은 다 로드된 열기가 **어디에 닿았는지**다(PreviewArrival) — 로그인 벽 판정의 재료
+ * (login-wall.ts). 브라우저가 답하지 못했으면 없고, 없으면 벽이라고 말하지 않는다.
  */
 export type PreviewOpenResult =
   | {
@@ -44,8 +47,23 @@ export type PreviewOpenResult =
       blank?: boolean;
       overflow?: PreviewOverflow;
       a11y?: PreviewA11y;
+      arrival?: PreviewArrival;
     }
   | { ok: false; reason: string };
+
+/**
+ * 열기가 닿은 자리의 재료(2026-10-07 베타 준비 분석). 요청한 화면이 로그인 화면으로 튕기면 문서는 멀쩡히 로드되고
+ * 콘솔도 조용해서 「확인했다」 로 샜다 — 그 판정(login-wall.ts `loginWallOf`)은 데몬의 것이고, 드라이버는 페이지가
+ * 아는 것만 말한다. 값은 페이지 안에서 돈 코드가 만든 것이라 데몬이 그대로 믿지 않는다.
+ */
+export interface PreviewArrival {
+  /** 문서가 다 로드된 뒤의 전체 주소 — 리다이렉트를 따라간 자리(해시 포함). */
+  url: string;
+  /** 눈에 보이는 `type=password` 입력칸의 수. */
+  passwordFields: number;
+  /** 눈에 보이는 상호작용 요소(링크 · 단추 · 입력칸 …)의 수 — 상한이 있다. */
+  interactive: number;
+}
 
 /**
  * 접근성의 재료 — 브라우저가 계산한 것만 담는다: 접근성 트리의 이름, 그리고 브라우저가

@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
 // 순수 모듈 — src 에서 곧장 읽는다(next-motion.test.ts 와 같은 모양).
+import { readFileSync } from "node:fs";
+import { test } from "node:test";
 import { L } from "../src/next/labels.ts";
 import {
+  firstScreenName,
+  looksLikeDevTrace,
   recentScreenName,
   STARTER_KEYS,
   startersOf,
@@ -126,4 +129,108 @@ test("startersOf: 이름이 초안에 없으면 선택하지 않는다", () => {
     ) as Parameters<typeof startersOf>[1],
   );
   assert.equal(first?.pick, null);
+});
+
+/**
+ * 첫 화면의 이름(2026-10-07 베타 준비 분석 · 첫 5분) — 처음 켠 서비스에는 이번 작업이 만진 화면이 없다. 준비가 끝나면
+ * 데몬이 읽어 온 첫 화면의 제목이 칩의 이름이 된다. 모르거나 개발 흔적이면 지금의 일반 문장 그대로(퇴보 없음).
+ */
+test("firstScreenName: 화면명 · 앱 이름 꼴의 제목은 첫 조각이 이름이다", () => {
+  assert.equal(firstScreenName({ path: "/", title: "회원 목록 · 콜로노바 OMS" }), "회원 목록");
+  assert.equal(firstScreenName({ path: "/", title: "대시보드 | 우리 서비스" }), "대시보드");
+  assert.equal(firstScreenName({ path: "/members", title: "  회원 관리  " }), "회원 관리");
+  assert.equal(firstScreenName({ path: "/", title: "Orders" }), "Orders");
+  assert.equal(
+    firstScreenName({ path: "/", title: "‘주문’ 현황" }),
+    "주문 현황",
+    "따옴표는 걷는다",
+  );
+});
+
+test("firstScreenName: 모르거나 쓸 수 없으면 null — 칩은 일반 문장 그대로", () => {
+  assert.equal(firstScreenName(null), null);
+  assert.equal(firstScreenName(undefined), null);
+  assert.equal(firstScreenName({ path: "/", title: "" }), null);
+  assert.equal(firstScreenName({ path: "/", title: "   " }), null);
+  // 사용 규칙(`usableScreen`)을 그대로 지킨다 — 24자를 넘으면 쓰지 않는다.
+  assert.equal(firstScreenName({ path: "/", title: "가".repeat(25) }), null);
+  assert.equal(firstScreenName({ path: "/", title: "가".repeat(24) }), "가".repeat(24));
+});
+
+test("looksLikeDevTrace: 스캐폴드의 기본 제목 · 파일 이름 · 주소 · 패키지 이름은 개발 흔적이다", () => {
+  for (const trace of [
+    "Vite + React + TS",
+    "Vite App",
+    "React App",
+    "Create Next App",
+    "Vue App",
+    "Next.js",
+    "SvelteKit",
+    "index",
+    "Index",
+    "page",
+    "app",
+    "index.html",
+    "App.tsx",
+    "/login",
+    "src\\pages",
+    "localhost:3000",
+    "localhost",
+    "127.0.0.1:5173",
+    "Document",
+    "Untitled",
+    "Untitled Document",
+    "Loading...",
+    "Loading…",
+    "404",
+    "Not Found",
+    "my-vite-app",
+    "colonova_cdp",
+    "myApp",
+    "제목 없음",
+    "제목없음",
+    "회원 &unknown; 목록",
+    "Orders &#xZZ; list",
+  ]) {
+    assert.equal(looksLikeDevTrace(trace), true, trace);
+    assert.equal(
+      firstScreenName({ path: "/", title: trace }),
+      null,
+      `${trace}: 이름으로 쓰지 않는다`,
+    );
+  }
+});
+
+test("looksLikeDevTrace: 사람이 부르는 화면 이름은 흔적이 아니다 — 한글은 늘 사람의 말이다", () => {
+  for (const name of [
+    "회원 목록",
+    "대시보드",
+    "홈",
+    "주문 관리",
+    "React 학습 노트",
+    "Orders",
+    "Dashboard",
+    "Acme Admin",
+    "Billing",
+    "ColoNova OMS",
+  ]) {
+    assert.equal(looksLikeDevTrace(name), false, name);
+  }
+});
+
+test("firstScreenName: 흔적 제목의 첫 조각만 보고 판정한다 — `Vite + React` 뒤에 앱 이름이 붙어도 이름이 아니다", () => {
+  assert.equal(firstScreenName({ path: "/", title: "Vite + React + TS · 회원 관리" }), null);
+  // 첫 조각이 이름이면 뒤가 사이트 이름이어도 이름이다.
+  assert.equal(firstScreenName({ path: "/", title: "회원 목록 · Vite App" }), "회원 목록");
+});
+
+test("홈 입력창: 이번 작업이 만진 화면이 먼저이고, 없으면 서비스의 첫 화면 이름이다(2026-10-07)", () => {
+  const composer = readFileSync(
+    new URL("../src/next/home/HomeComposer.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(composer, /firstScreenName\(daemon\.repo\?\.firstScreen\)/);
+  assert.match(composer, /recentScreenName\(cycleScreens\) \?\? firstName/);
+  // 첫 준비가 도는 동안의 안내 — 데몬이 첫 준비라고 알릴 때만(앱을 다시 켤 때의 준비에는 말하지 않는다).
+  assert.match(composer, /active\?\.firstPrep \? L\.home\.hintPreparing : L\.home\.hint/);
 });

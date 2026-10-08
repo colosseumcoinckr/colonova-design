@@ -10,6 +10,10 @@
  *   failNames         이 이름의 프로젝트는 만들기가 거절된다
  *   delay             선로 한 번의 지연(ms)
  *   log               선로 호출의 기록
+ *   desk              (`?opened=1` 일 때만) 데스크톱 다리의 가짜 — 파일을 더블클릭해 연 길(2026-10-08):
+ *                     `desk.entry(name, project, slug)` 로 한 건을 만들고 `desk.push(entry)` 로 메인의 줄에 세워
+ *                     신호를 보낸다(앱이 떠 있는 동안의 더블클릭). `?early=1` 이면 마운트 전에 한 장이 이미 줄에 서 있다
+ *                     (앱이 뜨기 전의 더블클릭). `desk.takes` 는 `takeOpened` 가 불린 횟수다.
  *
  * 이 파일은 견본이다 — `vite build` 의 입력(index.html)에 없고 tsconfig 도 보지 않는다.
  */
@@ -71,6 +75,63 @@ const flow: Flow = {
   takeFile: () => undefined,
 };
 Object.assign(window, { __inviteFlow: flow });
+
+/**
+ * 데스크톱 다리의 가짜(`?opened=1`) — `useInviteImport` 가 마운트 때 줄을 가져가고(`takeOpened`) 신호(`onOpenFile`)마다
+ * 다시 가져가는 길을 진짜 컨트롤러로 탄다. 기본 장면에는 다리를 심지 않는다(다른 장면이 달라지지 않게).
+ */
+const search = new URLSearchParams(window.location.search);
+if (search.has("opened")) {
+  const queue: Array<{ name: string; path: string; bytes: Uint8Array | null }> = [];
+  let signal: (() => void) | null = null;
+  const desk = {
+    takes: 0,
+    entry: (name: string, projectName: string, slug: string) => ({
+      name,
+      path: `/Users/me/Downloads/${name}`,
+      bytes: new TextEncoder().encode(
+        JSON.stringify({
+          v: 4,
+          token: "ghp_견본",
+          authorName: "정인권",
+          projects: [
+            {
+              repoUrl: `https://github.com/colosseum/${slug}`,
+              name: projectName,
+              baseBranch: "main",
+              approveCommands: false,
+            },
+          ],
+        }),
+      ),
+    }),
+    push: (entry: { name: string; path: string; bytes: Uint8Array | null }) => {
+      queue.push(entry);
+      signal?.();
+    },
+  };
+  Object.assign(window, {
+    __inviteFlow: Object.assign(flow, { desk }),
+    colonovaDesignDesktop: {
+      platform: "darwin",
+      invite: {
+        takeOpened: async () => {
+          desk.takes += 1;
+          return queue.splice(0);
+        },
+        onOpenFile: (callback: () => void) => {
+          signal = callback;
+          return () => {
+            signal = null;
+          };
+        },
+        discard: async () => undefined,
+      },
+    },
+  });
+  if (search.has("early"))
+    queue.push(desk.entry("먼저 온 초대.colonova-invite", "고객 센터", "support"));
+}
 
 const wait = () => new Promise<void>((resolve) => window.setTimeout(resolve, flow.delay));
 

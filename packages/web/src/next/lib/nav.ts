@@ -20,9 +20,20 @@ export interface NavState {
   discardableInvitePath: string | null;
 }
 
+/** 토스트에 달리는 한 단추 — 눌러 일을 하고 토스트는 닫힌다(2026-10-07 베타 준비 분석 · 첫 5분). */
+export interface ToastAction {
+  label: string;
+  run: () => void;
+}
+
 export type NavAction =
   | { type: "home" }
   | { type: "thread" }
+  /**
+   * 작업 화면의 미리보기 쪽으로(2026-10-07 베타 준비 분석 · 첫 5분) — 준비 진행 · 서비스가 떴다는 소식이 닿는 자리다.
+   * 넓은 창은 두 칸이 함께 서고, 좁은 창은 화면 탭이 앞에 선다.
+   */
+  | { type: "screen" }
   | { type: "tab"; tab: NavState["tab"] }
   | { type: "drawer"; open: boolean }
   | { type: "collapse"; collapsed: boolean }
@@ -45,6 +56,8 @@ export function navReducer(state: NavState, action: NavAction): NavState {
     case "thread":
       // 대화를 여는 손은 서랍을 닫는다 — 좁은 창에서 고른 행이 스크림 뒤에 숨지 않게.
       return { ...state, view: "thread", drawer: false };
+    case "screen":
+      return { ...state, view: "thread", tab: "preview", drawer: false };
     case "tab":
       return state.tab === action.tab ? state : { ...state, tab: action.tab };
     case "drawer":

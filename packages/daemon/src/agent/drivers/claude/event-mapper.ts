@@ -53,6 +53,14 @@ export class MessageTranslator {
    * 것으로 센다.
    */
   private usageTotals: UsageTotals | null = null;
+  /**
+   * 이 턴의 본 에이전트 마지막 API 오류 코드(2026-10-07) — CLI 는 API 가 끝내 실패하면 합성
+   * assistant 메시지(`is_api_error_message`)에 `error: "authentication_failed" | "billing_error" …`
+   * 를 달아 보낸다(SDKAssistantMessageError). result 는 그 문장만 `result` 에 싣고 코드는 싣지
+   * 않으므로, 턴이 끝날 때 `turn.end.errorCode` 로 이어 주려고 여기 들고 있는다. 실패한 턴의
+   * 끝에서만 싣고, 어떤 result 든 읽으면 비운다 — 다음 턴의 실패가 옛 코드를 입지 않게.
+   */
+  private turnErrorCode: string | null = null;
 
   private nextSeq(agentId: string | null): number {
     const next = (this.seqByAgent.get(agentId) ?? 0) + 1;
@@ -366,6 +374,10 @@ export class MessageTranslator {
 
   private assistant(m: Record<string, any>): ChatEvent[] {
     const agentId: string | null = m.parent_tool_use_id ?? null;
+    // 하위 에이전트의 API 오류는 이 턴의 실패가 아니다 — 본 에이전트의 것만 새긴다.
+    if (agentId === null && typeof m.error === "string" && m.error !== "") {
+      this.turnErrorCode = m.error;
+    }
     const content = m.message?.content;
     if (!Array.isArray(content)) return [];
     const messageId = typeof m.message?.id === "string" ? (m.message.id as string) : null;
@@ -431,6 +443,8 @@ export class MessageTranslator {
     // 표식은 턴 수명이다 — 턴이 끝나면 메시지 id 도 다시 시작된다.
     this.streamedThinkingByAgent.clear();
     const usage = this.turnUsage(m);
+    const errorCode = m.is_error ? this.turnErrorCode : null;
+    this.turnErrorCode = null;
     return [
       {
         kind: "turn.end",
@@ -442,6 +456,7 @@ export class MessageTranslator {
         durationMs: typeof m.duration_ms === "number" ? m.duration_ms : null,
         resultText: typeof m.result === "string" ? m.result : null,
         ...(usage !== undefined ? { usage } : {}),
+        ...(errorCode !== null ? { errorCode } : {}),
       },
     ];
   }

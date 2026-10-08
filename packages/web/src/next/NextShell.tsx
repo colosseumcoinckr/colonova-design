@@ -1,5 +1,6 @@
 import { sameRepo } from "@colonova-design/protocol";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useInviteImport } from "../hooks/use-invite-import";
 import type { Daemon } from "../lib/daemon-client";
 import { onProjectEmptyModeChange } from "../lib/project-empty-bus";
@@ -19,6 +20,8 @@ import {
   type ShellPane,
   shouldHoldFirstRunDone,
 } from "./lib/shell-pane";
+import { useReportCopy } from "./lib/use-report-copy";
+import { Toast } from "./ui/Toast";
 import { Workspace } from "./Workspace";
 
 /** App 이 셸에 건네는 계약 — 연결 하나와 설정 상태의 저장 손들. */
@@ -49,6 +52,8 @@ export function NextShell(props: NextShellProps) {
   const { daemon, settings, onChatChange } = props;
   const { connection, api } = daemon;
   const invite = useInviteImport(daemon);
+  // 도움말 메뉴의 `진단 복사` — 첫 실행의 체크리스트에서도 닿아야 해서 작업 틀이 아니라 셸이 받는다(use-report-copy).
+  const report = useReportCopy(daemon);
   const hadProjects = useRef(false);
   const [emptyAfterUse, setEmptyAfterUse] = useState(() => {
     try {
@@ -317,6 +322,12 @@ export function NextShell(props: NextShellProps) {
             setDiscardableInvitePath(null);
           }}
         />
+      )}
+      {/* 토스트의 색 · 층은 `.nx` 가 정한다 — 첫 실행의 체크리스트 · 작업 틀 어느 뿌리에도 닿도록 앱 뿌리로 옮겨 그린다
+          (SubmitPopover 와 같은 길). 글이 없으면 아무것도 그리지 않는다. */}
+      {createPortal(
+        <Toast toast={report.toast} onDone={report.dismiss} />,
+        document.querySelector<HTMLElement>(".nx") ?? document.body,
       )}
     </>
   );

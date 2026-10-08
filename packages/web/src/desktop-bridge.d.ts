@@ -69,7 +69,20 @@ declare global {
       invite?: {
         pathOf?(file: File): string | null;
         discard(path: string): Promise<void>;
+        /**
+         * 파일을 더블클릭해 OS 가 열라고 한 초대 파일(2026-10-08) — 줄 선 것을 가져가고 비운다. 메인이 판정을
+         * 통과시킨 파일의 이름 · 경로 · 바이트만 온다(`bytes` 는 읽지 못했으면 null). 가져오기 컨트롤러가
+         * 마운트될 때 한 번, 그리고 `onOpenFile` 신호마다 부른다.
+         */
+        takeOpened?(): Promise<Array<{ name: string; path: string; bytes: Uint8Array | null }>>;
+        /** 앱이 떠 있는 동안 새 초대 파일이 줄에 섰다 — 신호일 뿐이다(내용은 `takeOpened`). */
+        onOpenFile?: (callback: () => void) => Unsubscribe;
       };
+      /**
+       * 도움말 메뉴의 `문제가 생겼어요 — 진단 복사`(2026-10-08) — 메뉴가 알리면 진단 글을 모아 복사하고 한 줄로 알린다
+       * (설정의 개발자용 쪽 복사와 같은 글).
+       */
+      onCopyReport?: (callback: () => void) => Unsubscribe;
       preview?: {
         /** The desktop hosts the preview — PreviewFrame's <webview>, not the iframe. */
         native?: boolean;

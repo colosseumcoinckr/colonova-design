@@ -4,6 +4,7 @@ import type { Sessions } from "../hooks/useSessions";
 import type { Daemon } from "../lib/daemon-client";
 import type { ChatSettings, Settings } from "../lib/settings";
 import type { Journey } from "./lib/journey";
+import type { ToastAction } from "./lib/nav";
 
 /**
  * 셸이 칸들에 건네는 이동의 손 — 모든 칸이 같은 길로 움직인다. 다른 프로젝트의
@@ -20,6 +21,19 @@ export interface ShellNav {
   /** 대화 보기로 — 지금 열린 대화(또는 새 대화의 빈 자리) 그대로. */
   showThread: () => void;
   /**
+   * 작업 화면의 미리보기 쪽으로 — 홈의 `처음 켜는 준비` 줄이 부른다(2026-10-07 베타 준비 분석 · 첫 5분). `switchProject`
+   * 는 이미 활성인 프로젝트로는 아무 데도 가지 않아, 첫 프로젝트(늘 활성)의 준비 진행에 닿는 길이 없었다. 좁은 창은 화면
+   * 탭이 앞에 선다.
+   */
+  showScreen: () => void;
+  /**
+   * 프로젝트의 서비스 화면으로 — 활성이 아니면 옮긴 뒤 그 작업 화면을 연다. 첫 준비가 끝났다는 소식(토스트 · 홈 줄 · OS
+   * 알림)이 부른다. 그 프로젝트의 `떴어요` 줄은 이때 거둔다.
+   */
+  openProjectScreen: (slug: string) => void;
+  /** 서비스가 떴다는 홈 줄을 닫는다. */
+  dismissReady: (slug: string) => void;
+  /**
    * 활성 프로젝트를 옮긴다(`project.activate`). 옮겨 앉으면 셸은 홈부터 선다. 끝나면 옮겼는지(true)
    * 못 옮겼는지(false)를 알려 준다 — 못 옮기면 알림이 한 문장 뜬다(`quiet` 면 부르는 쪽이 제 자리에서
    * 말한다 — 찾기 창은 열린 채 남는다).
@@ -29,8 +43,8 @@ export interface ShellNav {
   showTab: (tab: "chat" | "preview") => void;
   /** 설정 대화상자. */
   openSettings: () => void;
-  /** 셸 위에 잠깐 뜨는 한 줄. */
-  toast: (text: string) => void;
+  /** 셸 위에 잠깐 뜨는 한 줄 — `action` 이 있으면 단추가 달리고 더 오래 머문다. */
+  toast: (text: string, action?: ToastAction) => void;
   /**
    * 방금 가져온 초대 파일의 자리를 세운다(단계 5 의 가져오기) · 거둔다(null) —
    * 대화 칸의 `초대 파일을 가져왔어요` 줄이 그 값을 읽는다(U11).

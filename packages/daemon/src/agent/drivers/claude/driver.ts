@@ -1,4 +1,4 @@
-import { realpath, rm } from "node:fs/promises";
+import { readdir, realpath, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -8,7 +8,7 @@ import {
   listSessions,
 } from "@anthropic-ai/claude-agent-sdk";
 import type { PlanUsage, SessionModelInfo } from "@colonova-design/protocol";
-import { readAuthStatus, readClaudeVersion } from "../../../environment.js";
+import { claudeProjectKey, readAuthStatus, readClaudeVersion } from "../../../environment.js";
 import type {
   AgentDriver,
   AgentSession,
@@ -34,7 +34,10 @@ function presentableTitle(summary: string | undefined | null): string {
   const human = summary
     .split("\n")
     .map((line) => line.trim())
-    .find((line) => line.length > 0 && !line.startsWith("<!--"));
+    // 첨부 섹션의 여는 줄(`<attachment …>`)도 기계가 싼 글자다 — 그림만 보낸 첫 턴이 그 줄로 불리지 않게.
+    .find(
+      (line) => line.length > 0 && !line.startsWith("<!--") && !line.startsWith("<attachment "),
+    );
   return (human ?? "").replace(/\s+/g, " ").trim();
 }
 const CLAUDE_CAPABILITIES = {
@@ -197,9 +200,14 @@ export class ClaudeDriver implements AgentDriver {
     },
 
     /**
-     * A removed project's sweep: `~/.claude/projects` keys each clone's
-     * transcripts under one directory named after the cwd — dropping it is
-     * O(1) where list+delete walks the whole store.
+     * 프로젝트를 뺄 때의 대화 청소. `~/.claude/projects` 는 클론마다 폴더 하나에 대화를 두는데
+     * 폴더 이름이 손실 접기라(`claudeProjectKey`) 영숫자 자리가 같은 두 클론이 한 폴더를 나눠 쓸
+     * 수 있다. 폴더째 `rm -rf` 하던 옛 판은 그때 이웃 클론의 대화까지 지웠다(베타 준비 분석
+     * 2026-10-07). 이제는 SDK 가 이 클론의 것으로 가려 주는 대화(대화에 기록된 cwd 로 가른다)만
+     * id 로 지우고, 폴더에 대화가 하나도 남지 않았을 때만 폴더를 — 곁에 놓인 메모리 따위와 함께 —
+     * 거둔다. 새 프로젝트는 slug 접미로 폴더를 나눠 쓰지 않으니(`slugify`) 이 길은 접미 이전에
+     * 만든 프로젝트와 이웃일 때의 겹안전장치다. 값은 대화 수만큼의 읽기와 지우기 — 부르는 쪽이
+     * 이미 같은 목록을 한 번 읽으므로 O(1) 폴더 삭제를 내줄 만하다.
      */
     deleteAll: async (cwd) => {
       const configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
@@ -207,11 +215,17 @@ export class ClaudeDriver implements AgentDriver {
       try {
         real = await realpath(cwd);
       } catch {
-        // The clone may already be gone — encode the spelling we were given.
+        // 클론이 이미 없을 수 있다 — 받은 철자 그대로 저장소를 찾는다.
       }
-      // The CLI's own naming: every non-alphanumeric in the cwd becomes `-`.
-      const encoded = resolve(real).replace(/[^a-zA-Z0-9]/g, "-");
-      await rm(join(configDir, "projects", encoded), { recursive: true, force: true });
+      const owned = await listSessions({ dir: real, includeWorktrees: false }).catch(() => []);
+      for (const info of owned) {
+        await deleteSession(info.sessionId, { dir: real }).catch(() => undefined);
+      }
+      const folder = join(configDir, "projects", claudeProjectKey(resolve(real)));
+      const left = await readdir(folder).catch(() => [] as string[]);
+      // 대화가 남은 폴더는 이웃 클론의 것이다 — 건드리지 않는다.
+      if (left.some((name) => name.endsWith(".jsonl"))) return;
+      await rm(folder, { recursive: true, force: true });
     },
   };
 }

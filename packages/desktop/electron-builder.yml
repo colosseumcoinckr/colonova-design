@@ -55,6 +55,13 @@ mac:
   # 깨질 수 있다(공증 없이는 runtime 보호가 필수가 아니다) — 끈다.
   hardenedRuntime: false
   category: public.app-category.productivity
+  # 초대 파일(.colonova-invite)을 더블클릭하면 이 앱이 열린다(2026-10-08 베타 준비 분석) — Info.plist 의
+  # CFBundleDocumentTypes 가 된다(아이콘은 앱 아이콘). 열 때의 이벤트는 main.ts 의 `open-file`, 상세는
+  # docs/DEVELOPERS.md 「초대 파일 더블클릭으로 열기」. 처음 설치한 뒤 앱을 한 번 열어야 macOS 가 연결을 안다.
+  fileAssociations:
+    - ext: colonova-invite
+      name: ColoNova Design 초대 파일
+      role: Viewer
   # artifactName 은 mac 플랫폼 설정이 dmg·zip 모두에 적용된다(${ext} 로
   # 구분). 릴리스 URL(latest.json)이 이 이름을 그대로 쓰므로 명시적으로
   # 고정한다 — 빌더 기본값 변경과 무관하게 URL 이 깨지지 않는다.
@@ -69,6 +76,14 @@ win:
   target:
     - target: nsis
       arch: [x64]
+  # 초대 파일(.colonova-invite) 더블클릭 → 이 앱(2026-10-08 베타 준비 분석). NSIS 가 설치 때 연결을 등록하고(사용자별
+  # 설치라 HKCU\Software\Classes — SHELL_CONTEXT) 제거 때 지운다. `name` 은 레지스트리의 ProgID 라 한글 · 공백 없이 ASCII
+  # 로 두고, 탐색기의 `종류` 열은 `description` 이 말한다. 열 때의 인자는 main.ts 의 `process.argv` · `second-instance`.
+  # 아이콘은 앱의 exe 아이콘이 그대로 쓰인다. 실기 확인은 베타 세션 대본(beta-windows-session.md).
+  fileAssociations:
+    - ext: colonova-invite
+      name: ColoNovaDesign.Invite
+      description: ColoNova Design 초대 파일
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

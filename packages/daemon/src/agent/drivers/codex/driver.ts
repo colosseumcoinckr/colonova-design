@@ -1,10 +1,9 @@
-import { execFile } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { realpath, stat, unlink } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { promisify } from "node:util";
 import type { PlanUsage, SessionModelInfo } from "@colonova-design/protocol";
+import { run } from "../../../child.js";
 import { meaningfulFirstLine } from "../../../common-instructions.js";
 import { COLONOVA_DESIGN_DATA_DIR } from "../../../environment.js";
 import type {
@@ -29,7 +28,6 @@ import {
   replayRollout,
 } from "./store.js";
 
-const run = promisify(execFile);
 const CODEX_CAPABILITIES = {
   branch: true,
   usage: true,

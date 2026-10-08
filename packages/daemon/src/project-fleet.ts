@@ -36,6 +36,7 @@ import { cycleLedgerFile } from "./cycle-ledger.js";
 import { CycleScreens, screensOfTurn } from "./cycle-screens.js";
 import { CycleSupervisor } from "./cycle-supervisor.js";
 import { type DeveloperNotice, describeProblem } from "./developer-notice.js";
+import { type FirstScreen, readFirstScreen } from "./first-screen.js";
 import type { GitHubClient } from "./github.js";
 import type { DaemonLogger } from "./log.js";
 import type { MachineTurn } from "./machine-provider.js";
@@ -57,6 +58,8 @@ import { appendTape } from "./session-tape.js";
  * (hundreds of MB): the cap bounds what clicking through the sidebar costs.
  */
 const WARM_PREVIEWS = 2;
+/** 자동 검사가 통과하지 못해 AI 에게 맡기는 대화의 제목(2026-10-07) — 웹의 SYSTEM_THREAD_TITLES 와 같은 글자. */
+const CI_THREAD_TITLE = "자동 검사 반영";
 
 /** PLAN-UI U8: 첫 준비에서 말이 기다리는 단계 — 내려받기 · 설치하기 · 미리보기 켜기. */
 const PREPARING_PHASES = new Set<RepoStatus["phase"]>([
@@ -113,6 +116,8 @@ export interface FleetDeps {
   /** GitHubBridge.authExpired — 토큰 만료는 관찰의 reconnect 판정이 읽는다. */
   githubAuthExpired(): boolean;
   queueDiskFor(sessionId: string): QueueDisk;
+  /** 서비스의 첫 화면 읽기 — 시험이 갈아 끼운다. 비우면 미리보기 서버를 직접 읽는다(first-screen.ts). */
+  readFirstScreen?: (previewUrl: string) => Promise<FirstScreen | null>;
 }
 
 /**
@@ -144,6 +149,15 @@ export class ProjectFleet {
   private readonly firstPrep = new Set<string>();
   /** PLAN-UI U8: 그중 지금 일하는 단계(오류가 아닌)에 있는 프로젝트 — 말이 기다린다. */
   private readonly preparing = new Set<string>();
+  /**
+   * 2026-10-07(베타 준비 분석 · 첫 5분): 프로젝트별 서비스의 첫 화면 — 준비가 `ready` 에 닿을 때 읽어 스냅샷의
+   * `firstScreen` 이 싣는다. 이 실행 동안만 산다(홈의 시작 칩 재료일 뿐, 디스크에 남기지 않는다).
+   */
+  private readonly firstScreens = new Map<string, FirstScreen>();
+  /** 첫 화면을 읽는 중인 프로젝트 — 같은 프로젝트를 겹쳐 읽지 않는다. */
+  private readonly readingFirst = new Set<string>();
+  /** 프로젝트마다 마지막으로 본 준비 단계 — `ready` 로 막 들어선 순간을 알아본다. */
+  private readonly lastPhase = new Map<string, RepoStatus["phase"]>();
 
   private readonly lastHandoffEvent = new Map<
     string,
@@ -266,10 +280,17 @@ export class ProjectFleet {
         // 주의 (PLAN L8): 감독자 · 게이트 · 준비 복구의 재료를 한 곳에서 모은다.
         attention: () => this.attentionFor(workspaces),
         // 이번 작업 (PLAN-UI U2 · U13): 바뀐 화면은 캐시에서, 제출 상태는 감독자에서.
-        cycleView: () => ({
-          cycleScreens: this.cycleScreens.get(slug)?.current() ?? [],
-          ...(workspaces.supervisor ? { submit: workspaces.supervisor.submitView() } : {}),
-        }),
+        cycleView: () => {
+          const first = this.firstScreens.get(slug);
+          const landed = workspaces.supervisor?.landedView();
+          return {
+            cycleScreens: this.cycleScreens.get(slug)?.current() ?? [],
+            ...(workspaces.supervisor ? { submit: workspaces.supervisor.submitView() } : {}),
+            ...(first ? { firstScreen: first } : {}),
+            // 반영된 일 — 병합 뒤 새 사이클이 시작돼도 원장이 기억한다(2026-10-08 · A2b).
+            ...(landed ? { landed } : {}),
+          };
+        },
         // 한마디 더(U20 · PLAN-UI §10) — 흔적이 제출 기록에 남는 길. 감독자가
         // 워크스페이스보다 늦게 태어나므로 부르는 순간에 묻는다(cycleView 와 같은 모양).
         appendSubmitLog: (text) => workspaces.supervisor?.appendSubmitLog(text),
@@ -321,7 +342,7 @@ export class ProjectFleet {
       // PLAN L2 흡수표 — 폴러가 하던 사람에게 보이는 일은 감독자가 이
       // 콜백으로 옮겨 부른다. PR 상태 변화는 사이드바의 마지막 사건과
       // 알림으로, 새 리뷰는 자동 반영 턴으로.
-      onPrTransition: (kind, at, count) => {
+      onPrTransition: (kind, at, count, title) => {
         this.lastHandoffEvent.set(slug, { kind, at });
         this.deps.notice({
           kind: "handoff",
@@ -329,9 +350,12 @@ export class ProjectFleet {
           projectName,
           event: kind,
           ...(count === undefined ? {} : { count }),
+          // 병합이면 반영된 일의 이름이 OS 알림에 실린다(2026-10-08 · A2b) — 기록 · 로그에는 남기지 않는다.
+          ...(title === undefined ? {} : { title }),
         });
       },
       onNewReviews: (pr, reviews) => this.briefReviewsFor(workspaces, pr, reviews),
+      onCiFailure: (pr, brief, failing) => this.briefCiFor(workspaces, pr, brief, failing),
       onRetargetBase: (to) => {
         this.deps.registry.update(slug, { baseBranch: to });
         workspaces.repo.repoCore().baseBranch = to;
@@ -339,6 +363,8 @@ export class ProjectFleet {
       // 대화록 사건 — 옛 폴러의 emitCycleEvent 와 같은 길(세션 채널 + 테이프).
       // 제출 완료 사건은 누른 대화에 귀속된다(PLAN L6).
       cycleEvent: (event, sessionId) => this.emitCycleEvent(workspaces, event, sessionId),
+      // 병합을 처음 본 틱의 화면 수 — 캐시가 아니라 지금 읽는다(2026-10-08 · A2b).
+      cycleScreens: async () => (await this.cycleScreens.get(slug)?.read()) ?? [],
       // 수명 설정 — 병합된 원격 브랜치를 지울지(기본 true) · 코멘트 자동
       // 답장을 할지(기본 true, PLAN L9 · O5). 답장의 대리 표기가 읽을 작성자
       // 이름은 machine.json 이 기억한다(P1-3).
@@ -519,6 +545,8 @@ export class ProjectFleet {
         // No workspace means the daemon never touched this project since its
         // last restart: disk state is all a summary may claim.
         phase: repo ? repo.syncState().phase : "missing",
+        // 첫 준비가 도는 중이면 웹이 `ready` 로 바뀌는 순간을 알아본다(2026-10-07 · ready-notice.ts 의 같은 판정).
+        ...(this.firstPrep.has(project.slug) ? { firstPrep: true } : {}),
         pendingChanges: repo?.pendingChangeCount ?? 0,
         working: repo
           ? this.deps.manager.anyRunning(realpathBestEffort(workspaces.paths.repoRoot))
@@ -631,15 +659,40 @@ export class ProjectFleet {
   }
 
   /**
-   * PLAN-UI U8 · P5: 처음 여는 프로젝트의 준비가 사용자가 다른 곳에 있는 동안
-   * 끝났으면 `ready` 알림을 한 번 낸다 — 판정은 nextReadyWatch 에 있다.
+   * 조정 표 14c행의 실행 (2026-10-07 베타 준비 분석 · W6): 자동 검사가 통과하지 못했다. 코멘트 반영과 같은 길이다 —
+   * 살아 있는 대화가 있으면 거기에, 없으면 `자동 검사 반영` 대화를 열어 브리프를 내려놓는다. 답이 끝나면 일반 자동
+   * 보관(autoSaveTurn)이 커밋하고 푸시하므로 PR 이 갱신되어 검사가 다시 돈다(기계 턴이라 커밋 제목은 폴백 말이다).
+   * 코멘트 반영과 달리 답장할 코멘트가 없어 settleAutoSave 의 정산은 걸지 않는다. 대화를 못 열었거나 보내기가
+   * 던지면 false — 감독자가 장부의 head 를 되감아 다음 틱이 다시 시도한다. 로그에는 수만 남긴다(검사 이름 · 경로 없음).
+   */
+  private async briefCiFor(
+    workspaces: ProjectWorkspaces,
+    pr: number,
+    brief: string,
+    failing: number,
+  ): Promise<boolean> {
+    const target = await this.autoFixThreadFor(workspaces, CI_THREAD_TITLE);
+    if (!target) return false;
+    try {
+      target.send(brief);
+      this.deps.logger.warn("[cycle] 자동 검사 브리프 발송", {
+        slug: workspaces.slug,
+        pr,
+        failing,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * PLAN-UI U8 · P5: 처음 여는 프로젝트의 준비가 끝났으면 `ready` 알림을 한 번 낸다 — 판정은 nextReadyWatch 에 있다.
+   * 지금 보고 있는 프로젝트도 낸다(2026-10-07): 사용자가 그 프로젝트 앞에 있는가는 받는 쪽(데스크톱의 창 포커스 ·
+   * 웹의 보는 화면)이 안다.
    */
   private watchFirstPrep(slug: string, status: RepoStatus): void {
-    const { watching, notify } = nextReadyWatch(
-      this.firstPrep.has(slug),
-      status.phase,
-      slug === this.deps.registry.activeSlug(),
-    );
+    const { watching, notify } = nextReadyWatch(this.firstPrep.has(slug), status.phase);
     if (watching) this.firstPrep.add(slug);
     else this.firstPrep.delete(slug);
     // 준비가 끝났거나 멈췄으면 기다리던 말을 놓아 준다 — 멈춘 준비는 AI 가
@@ -653,6 +706,35 @@ export class ProjectFleet {
         title: this.deps.registry.get(slug)?.name ?? slug,
       });
     }
+    // 서비스가 막 떴다 — 첫 화면의 이름을 한 번 읽는다(재시작 · 최신화 뒤의 ready 도 같다: 제목이 바뀌었을 수 있다).
+    const before = this.lastPhase.get(slug);
+    this.lastPhase.set(slug, status.phase);
+    if (status.phase === "ready" && before !== "ready" && status.previewUrl) {
+      this.readFirstScreenOf(slug, status.previewUrl);
+    }
+  }
+
+  /** 이 프로젝트의 서비스가 처음 보여 준 화면 — 아직 못 읽었으면 null(`repo.firstLook` 이 첫 사진의 주소를 정한다). */
+  firstScreenOf(slug: string): FirstScreen | null {
+    return this.firstScreens.get(slug) ?? null;
+  }
+
+  /**
+   * 서비스의 첫 화면을 배경에서 읽어 스냅샷에 싣는다(2026-10-07 · first-screen.ts). 못 읽으면 아무 일도 없다 —
+   * 읽은 것이 지난번과 같아도 방송하지 않는다.
+   */
+  private readFirstScreenOf(slug: string, previewUrl: string): void {
+    if (this.readingFirst.has(slug)) return;
+    this.readingFirst.add(slug);
+    void (this.deps.readFirstScreen ?? readFirstScreen)(previewUrl)
+      .then((found) => {
+        const known = this.firstScreens.get(slug);
+        if (found === null || (known?.path === found.path && known.title === found.title)) return;
+        this.firstScreens.set(slug, found);
+        this.workspaces.get(slug)?.repo.repoCore().emit();
+      })
+      .catch(() => undefined)
+      .finally(() => this.readingFirst.delete(slug));
   }
 
   /**
@@ -771,6 +853,8 @@ export class ProjectFleet {
           ? { what: "github" as const, since: workspaces.diffAt ?? new Date().toISOString() }
           : null),
       aiFixingSince: parts.aiFixingSince ?? workspaces.bringUpFixing,
+      // 무엇을 고치는지는 감독자의 것일 때만 말한다 — 준비 복구(bringUpFixing)의 고침은 이름이 없다.
+      aiFixingKey: parts.aiFixingSince ? (parts.aiFixingKey ?? null) : null,
       notices: parts.notices,
     });
   }
@@ -917,6 +1001,8 @@ export class ProjectFleet {
             screens: screensOfTurn(screenRoutes, answer, origin),
             // 이 턴의 자동 확인이 문제 없이 지났다는 기록 — 제출의 `### 확인한 것` 이 센다(2026-10-07).
             ...(checked ? { checked } : {}),
+            // 이 턴을 쓴 AI 의 종류 — 제출의 「코드는 AI 가 썼어요」 줄이 읽는다(2026-10-07 베타 준비 분석).
+            ...(session.provider ? { provider: session.provider } : {}),
           }).catch(() => undefined);
         }
       }

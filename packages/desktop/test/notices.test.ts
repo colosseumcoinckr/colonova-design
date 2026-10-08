@@ -98,8 +98,11 @@ const NOTICES: DaemonNotice[] = [
       count: 3,
     }),
   ),
+  // 병합이 제목을 알 때(2026-10-08 · A2b) — 그 일의 이름으로 말한다.
+  { kind: "handoff", slug: "members", projectName: NAME, event: "merged", title: "이름으로 찾기" },
   { kind: "ready", slug: "members", title: NAME },
   { kind: "submit-blocked", slug: "members", title: NAME, reason: "auth" },
+  { kind: "submit-blocked", slug: "members", title: NAME, reason: "permission" },
   { kind: "submit-blocked", slug: "members", title: NAME, reason: "developer-notified" },
   { kind: "submit-blocked", slug: "members", title: NAME, reason: "network" },
   { kind: "update-done", agent: "claude", version: "2.2.0" },
@@ -154,10 +157,36 @@ test("noticeCopy: 개발자 쪽 사건 — 반영됨 · 요청 닫힘 · 코멘�
   assert.match(bare.body, /1건/, "개수를 모르면 한 건");
 });
 
+test("noticeCopy: 병합이 제목을 알면 그 일의 이름으로, 모르면 지금까지의 말로 알린다", () => {
+  const merged = (title?: string) =>
+    noticeCopy({
+      kind: "handoff",
+      slug: "members",
+      projectName: NAME,
+      event: "merged",
+      ...(title === undefined ? {} : { title }),
+    });
+  const named = merged("이름으로 찾기");
+  assert.equal(named.title, `${NAME} · 반영됨`, "제목 줄은 그대로 — 이름은 몸글에만 실린다");
+  assert.match(named.body, /^‘이름으로 찾기’ 일이 반영됐어요/);
+  assert.match(named.body, /새 작업이에요/);
+  assert.deepEqual(merged(), merged(""), "빈 제목은 모르는 것과 같다");
+  assert.match(merged().body, /^개발자가 이번 작업을 반영했어요/);
+  // 병합이 아닌 사건은 제목이 와도 그 사건의 말 그대로다.
+  const closed = noticeCopy({
+    kind: "handoff",
+    slug: "members",
+    projectName: NAME,
+    event: "closed",
+    title: "이름으로 찾기",
+  });
+  assert.doesNotMatch(closed.body, /이름으로 찾기/);
+});
+
 test("noticeCopy: 제출이 막힌 알림 — 제목은 짧고, 개발자에게 알린 것은 몸글이 말하며, 연결 코드 만료 · 인터넷 문제는 알렸다고 하지 않는다", () => {
-  const blocked = (reason: "auth" | "developer-notified" | "network") =>
+  const blocked = (reason: "auth" | "permission" | "developer-notified" | "network") =>
     noticeCopy({ kind: "submit-blocked", slug: "members", title: NAME, reason });
-  for (const reason of ["auth", "developer-notified", "network"] as const) {
+  for (const reason of ["auth", "permission", "developer-notified", "network"] as const) {
     assert.equal(blocked(reason).title, `${NAME} · 제출하지 못했어요`);
   }
   assert.match(blocked("developer-notified").body, /^개발자에게 알렸어요/);
@@ -165,6 +194,10 @@ test("noticeCopy: 제출이 막힌 알림 — 제목은 짧고, 개발자에게 
   // 연결 코드가 끝난 막힘은 사용자의 손이 필요한 일이다 — 개발자에게 알린 것이 아니다.
   assert.doesNotMatch(blocked("auth").body, /알렸어요/);
   assert.match(blocked("auth").body, /새 초대 파일을 열어 주세요/);
+  // 연결 코드의 권한 부족(2026-10-07) — 새 초대 파일이 풀지 않는다: 그 말을 하지 않고, 개발자가 권한을 고치면 풀린다고 말한다.
+  assert.doesNotMatch(blocked("permission").body, /새 초대 파일|알렸어요/);
+  assert.match(blocked("permission").body, /연결 코드의 권한이 모자라요/);
+  assert.match(blocked("permission").body, /개발자가 코드의 권한을 고치면 도구가 다시 제출해요/);
   // 이 기계의 인터넷 문제(2026-10-06) — 개발자를 기다릴 일이 아니라 연결이 돌아오면 풀린다.
   assert.doesNotMatch(blocked("network").body, /알렸어요/);
   assert.match(blocked("network").body, /인터넷 연결/);
@@ -207,6 +240,7 @@ test("웹과 같은 말: 반영됨 · 요청 닫힘 · 연결 코드 만료 · �
   assertMirrors("changedEmptyMerged", NOTICE.handoff.merged.body);
   assertMirrors("closed", NOTICE.handoff.closed.body);
   assertMirrors("reconnectInvite", NOTICE.submitBlocked.auth.body);
+  assertMirrors("blockedPermission", NOTICE.submitBlocked.permission.body);
   assertMirrors("blockedNetwork", NOTICE.submitBlocked.network.body);
   assertMirrors("testNotify", BRIDGE.testNotice.title);
   assertMirrors("testNotifyBody", BRIDGE.testNotice.body);
@@ -293,7 +327,7 @@ test("copy.ts: 모든 한글 리터럴이 해요체 · 사용자의 어휘다", 
   for (const text of sentences) assertVoice("copy.ts", text);
 });
 
-test("문장은 copy.ts 한 곳에 — 알림 · 대화상자 · 다리 파일에는 한글 리터럴이 없다", () => {
+test("문장은 copy.ts 한 곳에 — 알림 · 대화상자 · 다리 · 메뉴 파일에는 한글 리터럴이 없다", () => {
   for (const file of [
     "notices.ts",
     "app-updates.ts",
@@ -301,6 +335,11 @@ test("문장은 copy.ts 한 곳에 — 알림 · 대화상자 · 다리 파일�
     "main.ts",
     "bridge.ts",
     "app-notify.ts",
+    // 도움말 메뉴 · 초대 파일 열기(2026-10-08) — 메뉴의 말은 copy.ts 의 MENU 이고 새 파일은 말이 없다.
+    // (invite-discard.ts 는 예외 — 데몬의 시험이 src 로 곧장 읽는 잎 파일이라 copy.ts 를 가져올 수 없다.)
+    "menu.ts",
+    "invite-open.ts",
+    "links.ts",
   ]) {
     assert.deepEqual(
       hangulLiterals(file),

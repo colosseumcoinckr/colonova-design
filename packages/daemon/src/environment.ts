@@ -1,14 +1,11 @@
-import { execFile } from "node:child_process";
 import { type Dirent, existsSync, readFileSync, realpathSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
 import type { DaemonStatus } from "@colonova-design/protocol";
 import { PROTOCOL_VERSION } from "@colonova-design/protocol";
+import { run, shellPlan } from "./child.js";
 import { COMMON_INSTRUCTIONS } from "./common-instructions.js";
-
-const run = promisify(execFile);
 
 /**
  * Everything ColoNova Design writes lives under one hidden folder in the user's
@@ -59,6 +56,16 @@ export function claudeCandidates(
     "/usr/local/bin/claude",
     "/usr/bin/claude",
   ];
+}
+
+/**
+ * Claude 가 한 cwd 의 대화를 두는 폴더 이름(`~/.claude/projects/<키>`) — 경로에서 ASCII 영숫자가 아닌
+ * 글자를 한 글자씩 모두 `-` 로 바꾼 것이다. 손실 접기라 영숫자 자리가 같은 두 경로는 같은 폴더를
+ * 가리킨다: 글자 수가 같은 한글 이름 `결제` · `회원` 이 그랬다(프로젝트 slug 에 해시 접미가 붙기
+ * 전 — 베타 준비 분석 2026-10-07). `deleteAll` 과 `slugify` 가 이 한 규칙을 읽는다.
+ */
+export function claudeProjectKey(absolutePath: string): string {
+  return absolutePath.replace(/[^a-zA-Z0-9]/g, "-");
 }
 
 /** The shell-free way to ask the OS where a command lives. */
@@ -428,9 +435,12 @@ export async function readRegistryAuth(
 
 async function probeRegistry(pnpm: string, cwd: string, target: string): Promise<RegistryAuth> {
   try {
-    const { stdout } = await run(pnpm, ["view", target, "version"], {
+    // Windows 의 pnpm 은 `pnpm.cmd` 셔임이라 셸을 거치고, 그 경로(`C:\Users\홍 길동\…`)는
+    // 따옴표 없이는 공백에서 갈라진다 — 한 곳(shellPlan)에서 감싼다(2026-10-07).
+    const plan = shellPlan(currentPlatform(), pnpm, ["view", target, "version"]);
+    const { stdout } = await run(plan.command, plan.args, {
       cwd,
-      shell: currentPlatform() === "win32",
+      shell: plan.shell,
       timeout: 20_000,
     });
     return /\d+\.\d+\.\d+/.test(stdout) ? "ok" : "unknown";

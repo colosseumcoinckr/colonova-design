@@ -5,6 +5,7 @@ import { openLink } from "../../lib/open-link";
 import { canOpenScreen } from "../../lib/screen-link";
 import { clockOf } from "../chat/cards";
 import { L } from "../labels";
+import { ciLine } from "../lib/ci-line";
 import type { Journey } from "../lib/journey";
 import { ledgerLine } from "../lib/submit-copy";
 import { handoffOpen } from "../lib/thread";
@@ -102,6 +103,8 @@ export function WorkPopover({
   // 한마디 더(U20) — 열린 요청이 있을 때만. 상태 줄이 daemon.api 에 닿는 길을
   // 준다(props 로 받는다).
   const noteOk = handoffOpen(handoff);
+  // 자동 검사의 한 줄(2026-10-07) — 읽힌 만큼만. 검사를 못 읽는 연결에서는 줄이 없다.
+  const checks = ciLine(handoff, repo?.attention, L);
   // 쓰던 글이 있으면 상자는 열린 채 선다 — 팝을 다시 열어도 이어 쓴다.
   const [noteOpen, setNoteOpen] = useState(() => noteDraft !== "");
   const [noteSentAt, setNoteSentAt] = useState<string | null>(null);
@@ -217,6 +220,24 @@ export function WorkPopover({
                   {L.work.receivedBy(reviewers.join(" · "))}
                 </div>
               )}
+              {checks && (
+                <div
+                  className={`nx-wp-empty nx-wp-gap nx-wp-icon nx-wp-ci nx-wp-ci--${checks.tone}`}
+                >
+                  <span className="nx-wp-ci-i">
+                    {checks.tone === "passing" ? (
+                      <SentIcon />
+                    ) : checks.tone === "notified" ? (
+                      <MailIcon />
+                    ) : checks.tone === "failing" ? (
+                      <FailIcon />
+                    ) : (
+                      <Spin />
+                    )}
+                  </span>
+                  {checks.text}
+                </div>
+              )}
             </>
           )}
           {submitLine ? (
@@ -236,7 +257,13 @@ export function WorkPopover({
                 className="nx-btn nx-btn--sm"
                 onClick={() =>
                   copy(
-                    blockedHelpText(project?.name, L.problem.blockedBody, repo?.submit?.lastError),
+                    blockedHelpText(
+                      project?.name,
+                      repo?.submit?.lastError === "permission"
+                        ? L.problem.blockedPermission
+                        : L.problem.blockedBody,
+                      repo?.submit?.lastError,
+                    ),
                   )
                 }
               >

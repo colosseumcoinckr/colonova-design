@@ -664,6 +664,66 @@
   outline-offset: -2px;
 }
 
+/* 사진 위의 두 알약(2026-10-08 베타 준비 분석) — `달라진 곳 표시`(눌림 단추)와 `사진 복사` 가 오른쪽 아래에 나란히 선다.
+   위쪽은 찍힌 화면의 머리띠 · 단추가 서는 자리라 가리지 않는다. 전/후 알약처럼 카드를 덮는 제목 단추의 ::after 보다
+   위(z-index)에 서야 눌린다. 윤곽 SVG(.nx-diff-svg)는 이 아래다. */
+.nx .nx-diff-tools {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 1;
+  display: flex;
+  gap: 6px;
+}
+
+.nx .nx-diff-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  /* 고정 — 사진 위의 알약 테두리는 팔레트를 따르지 않는 얇은 그림자다. */
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
+  color: var(--ink2);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.nx .nx-diff-pill:hover {
+  background: var(--card);
+  color: var(--ink);
+}
+
+/* 켠 윤곽 — 전/후 알약의 고른 쪽과 같이 잉크로 차 오른다. */
+.nx .nx-diff-pill[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.nx .nx-diff-pill:focus-visible {
+  outline-offset: -2px;
+}
+
+/* 복사하는 동안은 한 번 더 눌러도 아무 일도 없다 — 흐려져 바쁨을 말한다. */
+.nx .nx-diff-pill[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* 윤곽은 사진과 같이 움직인다 — 사진은 카드에 올리면 살짝 커지는데(`.nx-result-img` 의 호버) 윤곽만 그대로면 가장자리가 어긋난다. */
+.nx-diff-svg--card {
+  transition: transform 400ms var(--drift);
+}
+
+.nx-result-screen:hover .nx-diff-svg--card {
+  transform: scale(1.025);
+}
+
 /* 사진을 기다리는 동안 — 사진이 설 자리의 비율을 그대로 잡아 두고(사진이 와도 카드가
    밀리지 않는다) 연한 빛이 지나간다. */
 .nx-result-photo--loading {
@@ -1054,6 +1114,121 @@
   background: var(--red-soft);
 }
 
+/* 반영된 일 — 병합된 순간의 성취 카드(2026-10-08 · A2b). 얇은 한 줄(`nx-mile`)보다 한 칸 크게 서되 색은 같은 초록이고
+   차분하다: 체크 하나가 한 번 그려질 뿐이다(이번 창에서 막 도착한 카드에만 · 색종이 · 큰 움직임은 없다). */
+.nx-landed {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 4px 0 20px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--green) 26%, transparent);
+  border-radius: var(--r-lg);
+  background: var(--green-soft);
+}
+
+/* 동그라미는 채운 초록 · 체크는 카드색 — 어느 팔레트에서도 같은 대비다. 선은 끝까지 그려진 채로 서고(길이 30 안),
+   막 도착한 카드만 처음부터 그려 나간다. */
+.nx-landed-mark {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--green);
+  color: var(--card);
+  display: grid;
+  place-items: center;
+}
+
+.nx-landed-mark .nx-i path {
+  stroke-dasharray: 30;
+}
+
+.nx-landed-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nx-landed-head {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--ink);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+/* 사실 줄 — 며칠 · 화면 수는 왼쪽, 시각은 오른쪽 끝. 좁으면 시각이 아래 줄 오른쪽으로 내려간다. */
+.nx-landed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 10px;
+  margin-top: 2px;
+}
+
+.nx-landed-facts {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink2);
+  word-break: keep-all;
+}
+
+.nx-landed-time {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink3);
+  white-space: nowrap;
+}
+
+/* 사실 줄이 있으면 시각은 오른쪽 끝으로, 시각만 있으면 제목 아래 왼쪽에 선다. */
+.nx-landed-facts + .nx-landed-time {
+  margin-left: auto;
+}
+
+/* 이제부터의 말이라 한 칸 옅게 — 영수증의 「이제부터」 와 같은 자리다. */
+.nx-landed-next {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink3);
+  word-break: keep-all;
+}
+
+.nx-landed--new {
+  animation: nx-chat-rise 220ms ease-out backwards;
+}
+
+.nx-landed--new .nx-landed-mark {
+  animation: nx-landed-pop 320ms 60ms ease-out backwards;
+}
+
+.nx-landed--new .nx-landed-mark .nx-i path {
+  animation: nx-landed-draw 360ms 180ms ease-out backwards;
+}
+
+@keyframes nx-landed-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+
+@keyframes nx-landed-draw {
+  from {
+    stroke-dashoffset: 30;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-landed--new,
+  .nx-landed--new .nx-landed-mark,
+  .nx-landed--new .nx-landed-mark .nx-i path {
+    animation: none;
+  }
+}
+
 .nx .nx-jump {
   position: absolute;
   left: 50%;
@@ -1351,6 +1526,241 @@
 /* 질문 카드의 바닥 — 잠긴 보내기의 이유가 단추 곁에 한 줄로 선다(위 덧말의 위 여백은 이 줄에서 뺀다). */
 .nx-cfoot .nx-snote {
   margin: 0;
+}
+
+/* ---------- 그림으로 고르는 질문(2026-10-08 베타 준비 분석 C1) ----------
+   AI 가 선택지마다 단 작은 화면 그림을 카드로 그린다. 카드 한 장 = 그림(4:3) · 라벨 · 설명 · `크게 보기`.
+   그림은 고정 논리 폭(480px)으로 그린 문서를 카드 폭에 맞춰 줄여 보인다 — 어느 폭에서든 시안의 모양이
+   같다. 폭이 되는 만큼 열을 이룬다(좁은 대화 한 열 · 보통 두 열 · 넓으면 세 열). */
+.nx-askp {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
+  gap: 8px;
+  margin-top: 10px;
+  /* 격자의 폭을 재어 한 열로 좁아지면 카드를 눕힌다(아래 @container) */
+  container-type: inline-size;
+}
+
+.nx-askp-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  transition:
+    border-color var(--nx-t-touch),
+    box-shadow var(--nx-t-touch);
+}
+
+/* 그림의 창 — 카드가 둥글어 위 두 모서리만 곡면을 따라 자른다. */
+.nx-askp-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  container-type: inline-size;
+  border-radius: calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px) 0 0;
+  /* 고정 — 시안은 앱의 테마와 무관하게 밝은 서비스 화면의 스케치로 읽힌다 */
+  background: #fff;
+}
+
+/* 시안 문서의 창 — 480×360 으로 그려 창 폭에 맞춰 줄인다(`cqw` 는 창의 폭). 포인터는 그림에 닿지 않는다:
+   눌림은 카드 위의 단추가 받고, 그림 안의 링크 · 초점이 손에 닿지 않는다. */
+.nx-askp-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 480px;
+  height: 360px;
+  border: 0;
+  /* 고정 — 문서가 다 읽히기 전에도 창은 흰 종이다 */
+  background: #fff;
+  transform-origin: 0 0;
+  transform: scale(0.33);
+  pointer-events: none;
+}
+
+/* 길이끼리 나눈 값을 숫자로 읽는 엔진(Chromium 140+ — Electron 44 는 닿는다)은 창 폭에 정확히 맞춘다. */
+@supports (transform: scale(calc(1cqw / 1px))) {
+  .nx-askp-frame {
+    transform: scale(calc(100cqw / 480px));
+  }
+}
+
+.nx-askp-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 9px 11px 6px;
+}
+
+/* 그림 없는 카드는 글이 카드 전부라 오른쪽 위의 체크 자리를 비워 둔다. 그림 밑의 글은 가는 선으로 가른다. */
+.nx-askp-card--text .nx-askp-body {
+  padding: 12px 38px 12px 12px;
+}
+
+.nx-askp-card:not(.nx-askp-card--text) .nx-askp-body {
+  border-top: 1px solid var(--line);
+}
+
+/* 이름이 붙은 단추는 라벨 하나다 — ::after 가 카드 전체를 덮어 그림 · 글 어디를 눌러도 고른다.
+   덮개의 기준은 카드(position: relative)라 이 단추는 자리를 잡지 않는다. */
+.nx .nx-askp-pick {
+  justify-self: start;
+  max-width: 100%;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.nx .nx-askp-pick::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-lg);
+}
+
+/* 눌림의 줄어듦(.nx button:active)은 덮개의 기준을 단추로 옮겨 놓는다 — 카드 전체가 한 단추라 줄이지 않는다. */
+.nx .nx-askp-pick:active:not(:disabled) {
+  transform: none;
+}
+
+.nx-askp-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink3);
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+/* 크게 보기 — 덮개 위에 따로 선다(항상 보이는 글 단추: 손이 닿지 않는 화면에서도 쓴다). 같은 줄의 카드가
+   글 길이로 키가 달라도 단추는 카드 바닥에 나란히 선다. */
+.nx .nx-askp-zoom {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 5px;
+  height: 26px;
+  margin: auto 6px 6px;
+  padding: 0 7px;
+  border-radius: var(--r-sm);
+  color: var(--ink2);
+  font-size: 12px;
+}
+
+/* 한 열로 좁아진 격자(열 둘이 못 드는 폭 — 위 `minmax(…140px…)` 의 두 배 + 틈) — 카드가 눕는다: 작은 그림이 왼쪽,
+   글과 `크게 보기` 가 오른쪽. 세로로 쌓인 큰 그림 셋이 대화를 한 화면 넘게 밀지 않게 한다. */
+@container (max-width: 287px) {
+  .nx .nx-askp-card {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+  }
+
+  .nx .nx-askp-card--text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .nx .nx-askp-thumb {
+    grid-row: 1 / span 2;
+    align-self: start;
+    border-radius: calc(var(--r-lg) - 1px) 0 0 calc(var(--r-lg) - 1px);
+  }
+
+  .nx .nx-askp-card:not(.nx-askp-card--text) .nx-askp-body {
+    padding: 9px 34px 2px 11px;
+    border-top: 0;
+  }
+
+  .nx .nx-askp-zoom {
+    grid-column: 2;
+    margin: 0 4px 6px;
+  }
+}
+
+.nx .nx-askp-zoom:hover {
+  background: var(--nx-hover);
+  color: var(--ink);
+}
+
+/* 고른 카드 — 테두리 · 겉 띠(`aria-pressed` 와 같은 사실)에 오른쪽 위의 체크가 더해진다: 색만으로 말하지 않는다. */
+.nx .nx-askp-card--on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.nx-askp-card--off {
+  opacity: 0.55;
+}
+
+@media (hover: hover) {
+  .nx .nx-askp-card:not(.nx-askp-card--on):hover {
+    border-color: var(--line-hover);
+  }
+}
+
+.nx-askp-ck {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  box-shadow: 0 0 0 2px var(--card);
+  pointer-events: none;
+}
+
+/* 초점 고리 — 카드 전체가 하나의 단추처럼 고리를 두르고(:has 를 아는 엔진), 모르는 엔진은 라벨에 둔다. */
+.nx .nx-askp-pick:focus-visible {
+  outline-offset: 2px;
+}
+
+@supports selector(:has(*)) {
+  .nx .nx-askp-pick:focus-visible {
+    outline: none;
+  }
+
+  .nx-askp-card:has(.nx-askp-pick:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+/* 크게 보기 판 — 같은 480px 문서를 판의 폭에 맞춰 키운다. 위아래로 길면 몸이 굴러간다. */
+.nx-modal.nx-askp-big {
+  width: min(640px, calc(100% - 40px));
+  max-height: min(800px, calc(100% - 60px));
+}
+
+.nx-askp-stage {
+  position: relative;
+  display: block;
+  width: min(100%, 560px);
+  aspect-ratio: 480 / 540;
+  margin: 4px auto 0;
+  overflow: hidden;
+  container-type: inline-size;
+  border-radius: var(--r-md);
+  box-shadow: 0 0 0 1px var(--line);
+  /* 고정 — 위 그림의 창과 같은 흰 종이 */
+  background: #fff;
+}
+
+.nx-askp-stage .nx-askp-frame {
+  height: 540px;
 }
 
 .nx-card--fail {
@@ -2404,6 +2814,28 @@ html[data-theme="github"] .nx .nx-model-pop .nx-mseg {
   }
 }
 
+/* 좁은 묶음에서는 알약이 글자를 접고 그림만 남는다 — 왼쪽 아래의 전/후 알약과 겹치지 않게. 먼저 `달라진 곳 표시` 가
+   접히고, 더 좁아지면 `사진 복사` 도 접힌다(단추의 이름은 aria-label 이 그대로 말한다). */
+@container (max-width: 340px) {
+  .nx-diff-pill:not(:last-child) .nx-diff-pill-label {
+    display: none;
+  }
+
+  .nx .nx-diff-pill:not(:last-child) {
+    padding: 0 9px;
+  }
+}
+
+@container (max-width: 275px) {
+  .nx-diff-pill .nx-diff-pill-label {
+    display: none;
+  }
+
+  .nx .nx-diff-pill {
+    padding: 0 9px;
+  }
+}
+
 /* 고친 화면 묶음의 폭을 잰 질의 — 카드가 좁으면 이어 하기 둘이 위아래로 선다. */
 @container (max-width: 270px) {
   .nx-result-acts {
@@ -2420,11 +2852,13 @@ html[data-theme="github"] .nx .nx-model-pop .nx-mseg {
   .nx-result-screen,
   .nx-result-go > :last-child,
   .nx-result-img,
+  .nx-diff-svg--card,
   .nx .nx-bub-editbtn,
   .nx .nx-settle-btn {
     transition: none;
   }
-  .nx-result-screen:hover .nx-result-img {
+  .nx-result-screen:hover .nx-result-img,
+  .nx-result-screen:hover .nx-diff-svg--card {
     transform: none;
   }
   .nx-m-ai--live .nx-av,

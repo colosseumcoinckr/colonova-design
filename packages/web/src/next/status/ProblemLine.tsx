@@ -90,7 +90,8 @@ export function ProblemLine({
     const wasFixing =
       heldRef.current !== null &&
       heldRef.current.kind === "problem" &&
-      heldRef.current.problem.kind === "fixing";
+      heldRef.current.problem.kind === "fixing" &&
+      heldRef.current.problem.settles !== false;
     if (wasFixing && !window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
       setFixed(true);
       later(600, () => {

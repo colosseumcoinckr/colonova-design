@@ -27,6 +27,7 @@ import {
   reviewToTurn,
   type SubmitSent,
 } from "@colonova-design/protocol";
+import { isOwnAppComment } from "./app-comment.js";
 import {
   BUDGETS,
   backoffDelay,
@@ -35,6 +36,7 @@ import {
   SUBMIT_RETRY_MS,
   spend,
 } from "./budgets.js";
+import { ciToTurn, handoffCiOf } from "./ci-checks.js";
 import {
   commitCorruptionSignal,
   restoreSalvage,
@@ -64,7 +66,9 @@ import {
   foldReviewLedger,
   readLedger,
   recordPushResult,
+  type SubmitErrorKind,
   unmarkBriefed,
+  unmarkCiBriefed,
   writeLedger,
 } from "./cycle-ledger.js";
 import { type ObserveDeps, observeCycle } from "./cycle-observe.js";
@@ -79,7 +83,12 @@ import { isScreenQuietKey } from "./developer-notice.js";
 import { extractDeveloperReplies, replyFooter } from "./developer-replies.js";
 import { COLONOVA_DESIGN_DATA_DIR } from "./environment.js";
 import type { GitHubClient, PullRequestRef } from "./github.js";
-import { mergeToolBlock, pickHandoffTitle, readToolNote } from "./handoff-body.js";
+import {
+  mergeToolBlock,
+  pickHandoffTitle,
+  plainHandoffTitle,
+  readToolNote,
+} from "./handoff-body.js";
 import { type DaemonLogger, sanitizeText } from "./log.js";
 import type { RepoWorkspace } from "./repo.js";
 import type { RepoCore } from "./repo-core.js";
@@ -93,6 +102,7 @@ import {
 import { alignCycleBranch, pickCycleBranchName } from "./repo-publish.js";
 import {
   advanceSubmitTrail,
+  classifyGitHubFailure,
   classifySubmitError,
   deriveSubmitPhase,
   SUBMIT_LOG_MAX,
@@ -127,10 +137,15 @@ const REJECTION_REASON_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
  */
 const CLONE_RESTORE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** 푸시가 성공하면 거두는 알림 — 밀림 · 인증 · 권한(2026-10-07). */
+const PUSH_NOTICE_KEYS = ["push:behind", "push:auth", "push:permission"] as const;
+
 /** 알림 키 → 사용자가 읽는 한국어 한 문장. */
 const NOTICE_TEXT: Record<string, string> = {
   "push:behind": "보관한 작업을 1시간 넘게 올리지 못하고 있습니다",
   "push:auth": "연결 코드(GitHub 로그인)가 만료돼 보관한 작업을 올리지 못하고 있습니다",
+  "push:permission": "연결 코드의 권한이 모자라 보관한 작업을 올리지 못하고 있습니다",
+  "submit:permission": "연결 코드의 권한이 모자라 제출이 막혀 있습니다",
   "conflict:stuck": "충돌 정리가 두 번 안내해도 끝나지 않았습니다",
   "submit:commit": "제출이 보관 단계에서 멈춰 있습니다",
   "submit:pr": "제출이 요청 열기 단계에서 멈춰 있습니다",
@@ -141,6 +156,8 @@ const NOTICE_TEXT: Record<string, string> = {
 };
 /** 알림 키의 문장 — 표에 없는 review:<pr>:rounds · review:<pr>:rejection 은 이 두 줄로 읽힌다. */
 function noticeText(key: string): string {
+  if (/^ci:\d+:rounds$/.test(key))
+    return "자동 검사가 계속 통과하지 못했습니다 — 개발자가 확인할 차례입니다";
   if (/^review:\d+:rejection$/.test(key))
     return "반려 이유를 AI 에게 맡기지 못했습니다 — 개발자가 확인할 차례입니다";
   if (key.startsWith("review:"))
@@ -184,6 +201,8 @@ export interface SupervisorDeps {
     kind: "merged" | "closed" | "changes_requested" | "comments",
     at: string,
     count?: number,
+    /** `merged` 만: 반영된 일을 부르는 말(2026-10-08 · A2b) — OS 알림이 싣는다. 로그에는 남기지 않는다. */
+    title?: string,
   ) => void;
   /** 알림 해소 — DeveloperNotice.resolve 로 간다(원격 갱신 + 원장 정리). */
   resolveNotice?: (key: string) => void;
@@ -202,6 +221,12 @@ export interface SupervisorDeps {
   /** L6 제출 — 이번 사이클의 화면 캡처. 실패는 빈 목록으로 조용히. */
   captureShots: () => Promise<HandoffShot[]>;
   /**
+   * 이번 사이클이 만진 화면을 지금 읽는다(2026-10-08 베타 준비 분석 · A2b) — 병합을 처음 본 틱이 `화면 N곳` 을 세는 재료다.
+   * 상태 방송의 캐시(`cycleScreens`)는 앱을 막 켠 틱에서 아직 비어 있을 수 있어 감독자가 따로 읽는다. 없거나 던지면 화면 수를
+   * 말하지 않는다.
+   */
+  cycleScreens?: () => Promise<ReadonlyArray<{ route: string; kind?: string }>>;
+  /**
    * 대화록 사건 (PLAN L2 흡수표 — 옛 폴러의 emitCycleEvent). 감독자가
    * 판정의 tapeEvents 와 랜딩의 cycle.carried 를 싣는다. lane.outside 안에서
    * 부른다.
@@ -214,6 +239,13 @@ export interface SupervisorDeps {
    * lane.outside 안에서 부르고 기다린다 — 대화 열기가 비동기다.
    */
   onNewReviews?: (pr: number, reviews: DeveloperReview[]) => Promise<boolean>;
+  /**
+   * 14c행의 실행 (2026-10-07 베타 준비 분석 · W6) — 자동 검사가 통과하지 못해 AI 에게 고침 턴을 내려놓는다. brief 는
+   * `ciToTurn` 이 쓴 표식 달린 본문이고 failing 은 통과하지 못한 검사의 수(로그에는 이 수만 남긴다). false 를
+   * 돌리면(대화를 못 열었거나 보내기가 거절됨) 감독자가 장부의 head 를 되감아 다음 틱이 다시 시도한다. lane.outside
+   * 안에서 부르고 기다린다.
+   */
+  onCiFailure?: (pr: number, brief: string, failing: number) => Promise<boolean>;
   /** 7행 — 레지스트리의 baseBranch 를 옮긴다(fleet 이 registry.update 를 부른다). */
   onRetargetBase?: (to: string) => void;
   /** 수명 설정 — 개발자 코멘트에 AI 가 스스로 답할까 (PLAN L9 · O5, 기본 true). */
@@ -255,6 +287,10 @@ export class CycleSupervisor {
   /** reconnect · ai-fixing 이 처음 선 시각 — 주의의 since. */
   private reconnectSince: string | null = null;
   private aiFixingSince: string | null = null;
+  /** AI 가 무엇을 고치는 중인가 — `ci` 는 자동 검사(2026-10-07). aiFixingSince 와 함께 서고 함께 진다. */
+  private aiFixingKey: "ci" | null = null;
+  /** 마지막으로 로그에 남긴 읽기 실패의 종류 — 같은 종류를 틱마다 되풀이하지 않는다. */
+  private lastReadNote: string | null = null;
   private reviewLedgerFolded = false;
   /** 제출 완료 사건의 귀속 대화 — submit() 이 던져두는 줄. */
   private submitSessionId: string | null = null;
@@ -285,6 +321,7 @@ export class CycleSupervisor {
       reconnect:
         this.reconnectSince === null ? null : { what: "github", since: this.reconnectSince },
       aiFixingSince: this.aiFixingSince,
+      aiFixingKey: this.aiFixingKey,
       // 화면에 서지 않는 조용한 알림(U17)은 재료에서 뺀다 — 원장에는 남아
       // 개발자 알림의 장부로 살되, 문제 문장은 늘어나지 않는다.
       notices: Object.fromEntries(
@@ -439,10 +476,15 @@ export class CycleSupervisor {
     const nowIso = new Date(this.now()).toISOString();
     const nextIntent = { ...intent };
     delete nextIntent.nextAttemptAt;
-    if (nextIntent.lastError === "auth") delete nextIntent.lastError;
+    // 새 코드가 왔다 — 옛 코드가 받은 인증 · 권한 거절은 새 코드의 증거가 아니다(권한이 고쳐진 새 코드일 수 있다).
+    if (nextIntent.lastError === "auth" || nextIntent.lastError === "permission") {
+      delete nextIntent.lastError;
+    }
     const push = this.ledger.push;
     const nextPush = push === null ? null : { ...push, nextAttemptAt: nowIso };
-    if (nextPush?.lastError === "auth") delete nextPush.lastError;
+    if (nextPush?.lastError === "auth" || nextPush?.lastError === "permission") {
+      delete nextPush.lastError;
+    }
     this.ledger = { ...this.ledger, submit: nextIntent, push: nextPush };
     writeLedger(this.ledgerPath, this.ledger);
     this.syncSubmitTrail();
@@ -608,6 +650,10 @@ export class CycleSupervisor {
         now: this.now(),
       });
       if (fetch) this.lastFetchAt = this.now();
+      // 선로로 나가는 휘발 신호 — 승인과 자동 검사의 요약(2026-10-07). 레지스트리에는 남기지 않는다.
+      this.syncHandoffSignals(snapshot);
+      // 병합을 처음 본 틱이면 성취 카드의 재료(제목 · 화면 수)를 얹는다 — 판정은 순수하게 남는다(2026-10-08 · A2b).
+      await this.noteMergedWork(snapshot);
 
       // 열린 요청의 상태 변화는 레지스트리에도 적는다 — 칩이 읽는 곳이고,
       // 판정의 변화 감지(handoffState)가 다음 관찰의 기준선이다. 끝난 상태는
@@ -631,6 +677,7 @@ export class CycleSupervisor {
       }
       for (let round = 0; round < MAX_TICK_ROUNDS; round++) {
         const decision = nextCycleAction(snapshot, this.ledger);
+        const landedBefore = this.ledger.landed;
         this.ledger = decision.ledger;
         // 주의의 since — 처음 선 시각이 서고, 목록에서 빠지면 지운다.
         const nowIso = new Date(this.now()).toISOString();
@@ -639,14 +686,18 @@ export class CycleSupervisor {
           ? (this.reconnectSince ?? nowIso)
           : null;
         this.aiFixingSince = decision.aiFixing ? (this.aiFixingSince ?? nowIso) : null;
+        const wasKey = this.aiFixingKey;
+        this.aiFixingKey = decision.aiFixing ? decision.aiFixingKey : null;
         const changed =
           JSON.stringify(decision.attentions) !== JSON.stringify(this.lastAttentions) ||
-          decision.aiFixing !== wasAiFixing;
+          decision.aiFixing !== wasAiFixing ||
+          this.aiFixingKey !== wasKey;
         this.lastAttentions = decision.attentions;
         writeLedger(this.ledgerPath, this.ledger);
         this.applyNotices(decision);
         this.emitEvents(decision);
-        if (changed) this.deps.onChange?.();
+        // 반영된 일이 늘었다 — 상태 방송이 홈의 `반영된 일` 을 채운다.
+        if (changed || this.ledger.landed !== landedBefore) this.deps.onChange?.();
         if (decision.action.kind === "none") return;
         const acted = await this.runAction(decision.action, snapshot);
         if (!acted) return;
@@ -689,7 +740,33 @@ export class CycleSupervisor {
       github: this.deps.github,
       githubAuthExpired: this.deps.githubAuthExpired,
       slug: this.deps.slug,
+      // 읽지 못한 것은 종류 한 단어만 로그에 남긴다 — 같은 종류는 바뀔 때 한 번(토큰 · 경로 · 레포 이름은 싣지 않는다).
+      note: (what) => {
+        if (what === this.lastReadNote) return;
+        this.lastReadNote = what;
+        this.log(`읽지 못했습니다 — ${what}`);
+      },
     };
+  }
+
+  /**
+   * 관찰이 읽은 승인 · 자동 검사의 요약을 RepoStatus.handoff 에 얹는다(HandoffStatus.approved · ci). 열린 요청이
+   * 아니면 비운다. 검사를 읽지 못한 세계는 ci 가 없는 채로 간다 — 읽기 실패의 종류가 다시 읽히면 로그의 기억도 푼다.
+   */
+  private syncHandoffSignals(snapshot: CycleSnapshot): void {
+    const pr = snapshot.pr;
+    const open = pr !== null && (pr.state === "open" || pr.state === "changes_requested");
+    if (pr !== null && pr.checks !== undefined) this.lastReadNote = null;
+    const ci = open ? handoffCiOf(pr.checks) : undefined;
+    this.deps.core.setHandoffSignals(
+      open
+        ? {
+            pr: pr.number,
+            ...(pr.approved ? { approved: true as const } : {}),
+            ...(ci === undefined ? {} : { ci }),
+          }
+        : null,
+    );
   }
 
   /**
@@ -720,6 +797,41 @@ export class CycleSupervisor {
   }
 
   /**
+   * 반영된 일 (2026-10-08 베타 준비 분석 · A2b) — RepoStatus.landed 의 값. 원장의 기억 그대로(최근 것부터 스무 건)이고,
+   * 하나도 없으면 undefined 라 선로에 키가 서지 않는다.
+   */
+  landedView(): NonNullable<RepoStatus["landed"]> | undefined {
+    const landed = this.ledger.landed;
+    return landed !== undefined && landed.length > 0 ? landed : undefined;
+  }
+
+  /**
+   * 병합을 처음 본 틱의 재료 읽기 (2026-10-08 베타 준비 분석 · A2b) — 열린 요청이 병합됐고 아직 그 끝을 적지 않았을 때만
+   * 요청 제목(종류 접두어 · 작성자 꼬리를 뗀 말)과 이번 사이클이 만진 화면의 수를 스냅샷에 얹는다. 판정은 이 값을 읽어
+   * 사건과 원장에 싣는다. 도구가 지은 기본 제목은 그 일을 부르는 말이 아니라 싣지 않는다. 사용자의 말(제목)은 로그에 남기지 않는다.
+   */
+  private async noteMergedWork(snapshot: CycleSnapshot): Promise<void> {
+    const pr = snapshot.pr;
+    // 판정이 병합을 새로 볼 때만이다(`seen !== merged` · 아직 끝을 적지 않음) — 이미 본 병합을 틱마다 다시 읽지 않는다.
+    if (pr === null || pr.state !== "merged") return;
+    if (snapshot.handoffState === "merged" || this.ledger.ended?.pr === pr.number) return;
+    const work: NonNullable<CycleSnapshot["work"]> = {};
+    const open = this.deps.core.openHandoff;
+    const title = plainHandoffTitle(open?.number === pr.number ? open.title : null);
+    if (title !== null && title !== plainHandoffTitle(DEFAULT_HANDOFF_TITLE)) work.title = title;
+    try {
+      const read = this.deps.cycleScreens;
+      const rows = read ? await read() : [];
+      // 합쳐 들인 기록(`merge`)은 화면을 고친 일이 아니다 — 웹의 보낼 화면 세기와 같은 잣대로 경로마다 하나다.
+      const routes = new Set(rows.filter((row) => row.kind !== "merge").map((row) => row.route));
+      if (routes.size > 0) work.screens = routes.size;
+    } catch {
+      // 읽지 못한 화면 수는 말하지 않는다 — 병합의 소식이 이 읽기에 걸리지 않게 한다.
+    }
+    snapshot.work = work;
+  }
+
+  /**
    * 판정이 적은 사건을 세상에 낸다 — 대화록(tapeEvents)은 cycleEvent 로,
    * 사이드바 · OS 알림(handoffEvents)은 handoffEvent 로. 둘 다 세션을
    * 만질 수 있으므로 반드시 차선 밖에서 부른다(PLAN L1).
@@ -728,14 +840,26 @@ export class CycleSupervisor {
     const core = this.deps.core;
     for (const event of decision.handoffEvents) {
       core.lane.outside(() =>
-        this.deps.onPrTransition(event.state, new Date(this.now()).toISOString(), event.count),
+        this.deps.onPrTransition(
+          event.state,
+          new Date(this.now()).toISOString(),
+          event.count,
+          event.title,
+        ),
       );
     }
     for (const event of decision.tapeEvents) {
       const at = new Date(this.now()).toISOString();
       const chat: ChatEvent =
         event.kind === "cycle.merged"
-          ? { kind: "cycle.merged", at, pr: event.pr }
+          ? {
+              kind: "cycle.merged",
+              at,
+              pr: event.pr,
+              ...(event.title === undefined ? {} : { title: event.title }),
+              ...(event.days === undefined ? {} : { days: event.days }),
+              ...(event.screens === undefined ? {} : { screens: event.screens }),
+            }
           : event.kind === "cycle.closed"
             ? { kind: "cycle.closed", at, pr: event.pr }
             : event.kind === "cycle.carried"
@@ -946,6 +1070,23 @@ export class CycleSupervisor {
             reviews.map((r) => r.id),
           );
           writeLedger(this.ledgerPath, this.ledger);
+        }
+        return false;
+      }
+      case "briefCiFailure": {
+        // 14c행 — 자동 검사 반영 턴 (2026-10-07 베타 준비 분석 · W6). 브리프는 세션을 연다 — 반드시 차선 밖에서.
+        // 판정이 장부의 ci(head)와 예산 ci:<pr> 를 이미 적었다. 보내기가 거절되면 head 를 되감아 다음 틱이 다시
+        // 시도한다. 나간 뒤 틱은 멈춘다 — 같은 틱에서 다시 판정하면 같은 head 의 브리프가 두 번 나간다.
+        const failing = Math.max(action.checks.failingCount, action.checks.failing.length);
+        const brief = ciToTurn({ pr: action.pr, checks: action.checks });
+        const sent = await core.lane.outside(async () =>
+          this.deps.onCiFailure?.(action.pr, brief, failing),
+        );
+        if (sent === false) {
+          this.ledger = unmarkCiBriefed(this.ledger, action.pr, action.headSha);
+          writeLedger(this.ledgerPath, this.ledger);
+        } else {
+          this.log(`자동 검사 반영 브리프 — 통과하지 못한 검사 ${failing}개`);
         }
         return false;
       }
@@ -1396,7 +1537,8 @@ export class CycleSupervisor {
       const body = String(row.body ?? "").trim();
       const when = Date.parse(at);
       if (body === "" || !Number.isFinite(when) || when < since) return;
-      if (mine !== "" && String(row.user?.login ?? "") === mine) return;
+      // 건너뛰는 것은 토큰 주인이 쓴 앱의 글뿐이다(2026-10-07) — 개발자가 자기 토큰으로 쓴 이유는 이유다.
+      if (isOwnAppComment(row, mine === "" ? null : mine)) return;
       reasons.push({
         id: Number(row.id),
         kind: "review",
@@ -1585,14 +1727,13 @@ export class CycleSupervisor {
       // 성공은 판정을 다시 돌지 않고도 밀림 알림을 거둔다 — push 가 null 이
       // 되면 조정이 resolve 를 내지 않으므로 여기서 푼다. DeveloperNotice 가
       // 있으면 원격 갱신(코멘트 해결 표식 · 이슈 닫기)까지 간다.
-      if (this.ledger.notices["push:behind"] || this.ledger.notices["push:auth"]) {
+      const standing = PUSH_NOTICE_KEYS.filter((key) => this.ledger.notices[key] !== undefined);
+      if (standing.length > 0) {
         if (this.deps.resolveNotice) {
-          if (this.ledger.notices["push:behind"]) this.deps.resolveNotice("push:behind");
-          if (this.ledger.notices["push:auth"]) this.deps.resolveNotice("push:auth");
+          for (const key of standing) this.deps.resolveNotice(key);
         } else {
           const notices = { ...this.ledger.notices };
-          delete notices["push:behind"];
-          delete notices["push:auth"];
+          for (const key of standing) delete notices[key];
           this.ledger = { ...this.ledger, notices };
           writeLedger(this.ledgerPath, this.ledger);
         }
@@ -1786,6 +1927,7 @@ export class CycleSupervisor {
       core.setDiff({ stage: "handed-off", handoff });
       this.deps.resolveNotice?.("submit:pr");
       this.deps.resolveNotice?.("submit:commit");
+      this.deps.resolveNotice?.("submit:permission");
       // 제출이 한 번 성공했다는 것은 작업이 정상으로 흐르고 있다는 뜻이다 —
       // 되살리기 실패의 알림(clone:restore)도 여기서 푼다(7일 기한보다 앞선다).
       this.resolveNoticeKey("clone:restore");
@@ -1847,6 +1989,9 @@ export class CycleSupervisor {
    */
   private failSubmitStep(step: "commit" | "pr", reason: string): boolean {
     const key = `submit:${step}`;
+    // 실패의 갈래가 사람이 하는 일을 정한다(2026-10-07 베타 준비 분석) — 인증은 새 초대 파일이, 권한은
+    // 개발자가 코드의 권한을 고치는 것이, 한도는 시간이 푼다.
+    const kind = classifySubmitError(reason);
     const spent = spend(this.ledger.budgets, key, BUDGETS.submitStep, this.now());
     this.ledger = { ...this.ledger, budgets: spent.ledger };
     const spentCount = this.ledger.budgets[key]?.spent ?? 1;
@@ -1858,17 +2003,33 @@ export class CycleSupervisor {
           ...intent,
           step,
           attempts: spentCount,
-          lastError: classifySubmitError(reason),
+          lastError: kind,
           nextAttemptAt: new Date(
             this.now() +
-              // N6 사다리 — 다섯 시도 사이의 간격. 사다리 밖(막힌 뒤)은 백오프.
-              (SUBMIT_RETRY_MS[spentCount - 1] ??
-                backoffDelay(spentCount, BUDGETS.push.baseMs, BUDGETS.push.capMs)),
+              (kind === "limit"
+                ? // 한도 — GitHub 가 한 분 이상 기다리고 지수로 물러나라고 한다. 사다리(20초)로 두드리면 더 막힌다.
+                  backoffDelay(spentCount, BUDGETS.limitRetry.baseMs, BUDGETS.limitRetry.capMs)
+                : // N6 사다리 — 다섯 시도 사이의 간격. 사다리 밖(막힌 뒤)은 백오프.
+                  (SUBMIT_RETRY_MS[spentCount - 1] ??
+                  backoffDelay(spentCount, BUDGETS.push.baseMs, BUDGETS.push.capMs))),
           ).toISOString(),
         },
       };
     }
-    if (spent.exhausted && this.ledger.budgets[key]?.escalated !== true) {
+    const entry = this.ledger.budgets[key];
+    // 한도는 막힘이 아니다 — 한 시간을 넘기기 전에는 예산이 다해도 개발자에게 알리지 않는다(시간이 푼다).
+    const limitYoung =
+      kind === "limit" &&
+      entry !== undefined &&
+      this.now() - Date.parse(entry.firstAt) < BUDGETS.limitRetry.escalateAfterMs;
+    if (kind === "permission") {
+      // 권한 부족은 기다려도 풀리지 않는다 — 첫 실패에 바로 개발자에게 알린다(어느 권한이 모자랄지 함께).
+      // 알림은 한 번만: 예산의 표식이 그 약속을 센다.
+      if (entry?.escalated !== true) {
+        this.ledger = { ...this.ledger, budgets: markEscalated(this.ledger.budgets, key) };
+        this.deps.raiseNotice("submit:permission", noticeText("submit:permission"), reason);
+      }
+    } else if (spent.exhausted && entry?.escalated !== true && !limitYoung) {
       this.ledger = { ...this.ledger, budgets: markEscalated(this.ledger.budgets, key) };
       this.deps.raiseNotice(key, noticeText(key), reason);
     }
@@ -2281,12 +2442,14 @@ export class CycleSupervisor {
   }
 }
 
-/** push 실패의 분류 — 원장의 백오프와 알림 키가 이 값을 읽는다. */
-function classifyPushError(error: unknown): "auth" | "network" | "rejected" | "other" {
+/**
+ * push 실패의 분류 — 원장의 백오프와 알림 키가 이 값을 읽는다. 인증 · 권한 · 한도는 제출 단계와
+ * 같은 잣대(classifyGitHubFailure)로 가른다 — 403 을 전부 `연결 코드 만료` 로 말하던 거짓 증상을 막는다.
+ */
+function classifyPushError(error: unknown): SubmitErrorKind {
   const text = error instanceof Error ? error.message : String(error);
-  if (/Authentication failed|could not read Username|Permission denied|403|401/.test(text)) {
-    return "auth";
-  }
+  const github = classifyGitHubFailure(text);
+  if (github !== null) return github;
   if (/could not resolve host|connection|timed out|unable to access|network/i.test(text)) {
     return "network";
   }

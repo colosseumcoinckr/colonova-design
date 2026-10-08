@@ -1,4 +1,5 @@
 import type { GateResult, HandoffShot, ScreenCheckReport } from "@colonova-design/protocol";
+import { loginWallOf } from "./login-wall.js";
 import { type DaemonNotice, noticeForState } from "./notices.js";
 import type { PreviewDriverFactory } from "./preview-driver.js";
 import type { RepoWorkspace } from "./repo.js";
@@ -19,6 +20,12 @@ import { NEW_SESSION_TITLE, type Session } from "./session.js";
  * 예산과 무관하므로 화면을 알아볼 만한 긴 변을 준다.
  */
 const HANDOFF_SHOT_LONG_EDGE = 1200;
+/** 첫 화면 사진의 긴 변 — 홈 줄에 서는 한 장이라 알아볼 만하되 가볍게(2026-10-07). */
+const FIRST_LOOK_LONG_EDGE = 960;
+/** 첫 화면 사진 하나의 한도(base64 글자) — 웹이 데이터 주소로 그릴 수 있는 한도보다 낮게 둔다. */
+const FIRST_LOOK_MAX_CHARS = 1024 * 1024;
+/** 열고 찍는 데 쓰는 시간 — 처음 켠 서버가 첫 주소를 컴파일하는 동안은 기다리되 오래 붙들지 않는다. */
+const FIRST_LOOK_BUDGET_MS = 8_000;
 /** 캡처가 스스로 말한 형식 → 커밋될 파일의 확장자. */
 const SHOT_EXTENSIONS: Record<string, string> = {
   "image/webp": ".webp",
@@ -33,6 +40,14 @@ export interface GateTypeCheck {
   typeErrors?: number;
   /** 타입 검사에 걸린 밀리초. */
   typeMs?: number;
+}
+
+/**
+ * 열었더니 로그인 화면이었던 화면의 수(2026-10-07 베타 준비 분석) — 확인한 화면(`opened`)에도 문제에도 들지
+ * 않는다. 있을 때만 칸이 선다. 통계는 이 횟수만 남긴다(주소 · 경로는 남기지 않는다).
+ */
+export interface GateLoginWall {
+  loginWall?: number;
 }
 
 /** 게이트 한 바퀴의 결과(2026-09-22) — 서버가 통계 행으로 내려앉히는 것. */
@@ -52,7 +67,8 @@ export type GateOutcome = (
       reason: "no-driver" | "no-session" | "no-screens" | "no-preview" | "busy";
     }
 ) &
-  GateTypeCheck;
+  GateTypeCheck &
+  GateLoginWall;
 
 /** 게이트 한 바퀴를 통계 행의 칸으로 — kept 는 dedupe·origin 필터를 통과한
  *  화면 수다. 못 돈 이유와 판정 상세가 같은 모양으로 흘러 noteGateCheck 에
@@ -67,6 +83,7 @@ export function gateOutcomeStats(outcome: GateOutcome): {
   consoleLines?: number;
   netLines?: number;
   rescued?: number;
+  loginWall?: number;
   typeErrors?: number;
   typeMs?: number;
 } {
@@ -74,6 +91,7 @@ export function gateOutcomeStats(outcome: GateOutcome): {
     outcome.typeErrors === undefined
       ? {}
       : { typeErrors: outcome.typeErrors, typeMs: outcome.typeMs };
+  const wall = outcome.loginWall === undefined ? {} : { loginWall: outcome.loginWall };
   if (outcome.status === "trouble") {
     return {
       screens: outcome.kept,
@@ -84,10 +102,11 @@ export function gateOutcomeStats(outcome: GateOutcome): {
       consoleLines: outcome.troubles.reduce((sum, trouble) => sum + trouble.consoleCount, 0),
       netLines: outcome.troubles.reduce((sum, trouble) => sum + trouble.netCount, 0),
       rescued: outcome.troubles.filter((trouble) => trouble.rescued).length,
+      ...wall,
       ...typeCheck,
     };
   }
-  if (outcome.status === "ok") return { screens: outcome.kept, ...typeCheck };
+  if (outcome.status === "ok") return { screens: outcome.kept, ...wall, ...typeCheck };
   return {
     screens: 0,
     skipped: outcome.status === "broken" ? "broken" : outcome.reason,
@@ -273,6 +292,8 @@ export class PreviewDrivers {
     // 통과한 확인이 사용자에게 「무엇을 열어 봤는지」 말할 재료(2026-10-06) — 실제로 열린 화면과 휴대폰 폭까지 본 화면.
     const opened = new Set<string>();
     const phone = new Set<string>();
+    // 열었더니 로그인 화면이었던 화면(2026-10-07 베타 준비 분석) — 확인한 화면으로도 문제로도 세지 않는다.
+    const walled = new Set<string>();
     if (previewUrl) {
       // preview origin 밖의 주소는 게이트가 재검증할 대상이 아니다 — 허용된
       // 추가 origin 은 레포의 다른 서버이지, 게이트가 다시 열 화면이 아니다.
@@ -301,6 +322,7 @@ export class PreviewDrivers {
             a11y: this.a11yBaselineOf(repo?.root ?? ""),
             opened,
             phone,
+            loginWall: walled,
           });
         } catch {
           // 게이트가 깨지는 것은 턴의 실패가 아니다 — 확인을 못 했을 뿐이다. 그러나
@@ -327,6 +349,7 @@ export class PreviewDrivers {
           kept: kept.length,
           opened: opened.size,
           phone: opened.size > 0 && phone.size === opened.size,
+          ...(walled.size > 0 ? { loginWall: walled.size } : {}),
           ...typeFields,
         }
       );
@@ -337,7 +360,9 @@ export class PreviewDrivers {
     }
     this.gatedSessions.add(sessionId);
     this.pendingGates.set(sessionId, {
-      screens: kept,
+      // 벽 화면은 고친 뒤에 다시 열어도 확인되지 않는다 — 넣어 두면 다른 화면의 고침이 끝나도 재검증이 영원히 「확인 못 함」
+      // 이 된다(2026-10-07 베타 준비 분석).
+      screens: kept.filter((screen) => !walled.has(screen.route)),
       typeCheck: typeLines.length > 0,
       baseline: beforeA11y,
     });
@@ -366,7 +391,13 @@ export class PreviewDrivers {
       // 질의가 방금 죽었다 — 완료로 닫는 편이 아무 말도 없는 것보다 낫다.
       done();
     }
-    return { status: "trouble", kept: kept.length, troubles, ...typeFields };
+    return {
+      status: "trouble",
+      kept: kept.length,
+      troubles,
+      ...(walled.size > 0 ? { loginWall: walled.size } : {}),
+      ...typeFields,
+    };
   }
 
   /** A stopped repair is not a successful repair; only a fresh check can confirm resolution. */
@@ -443,6 +474,13 @@ export class PreviewDrivers {
       // 열지 못한 것은 판정이 아니다 — 미리보기 서버가 방금 죽었거나 주소가
       // 사라진 것이고, 그 사실은 다른 자리(중단 카드·레포 상태)가 말한다.
       if (opened === null || opened.ok !== true) return null;
+      // 로그인 화면으로 튕겼다면 조용한 콘솔은 이 화면의 것이 아니다 — 「오류가 사라졌다」 가 아니라 확인 불능이다
+      // (패인이 깨끗한 판정에 오류 띠를 거두므로, 벽 앞에서 거짓 「깨끗함」 을 내지 않는다).
+      if (
+        opened.settled &&
+        loginWallOf(target.pathname + target.search + target.hash, opened.arrival) !== null
+      )
+        return null;
       const errors = (await driver.consoleLines().catch(() => []))
         .filter((line) => TROUBLE_LEVELS[line.level.toLowerCase()] === true)
         .slice(0, MAX_LINES_PER_SCREEN)
@@ -506,5 +544,72 @@ export class PreviewDrivers {
       await driver.destroy().catch(() => undefined);
     }
     return shots;
+  }
+
+  /** 지금 찍는 중인 첫 화면 사진 — 같은 서버의 같은 주소를 겹쳐 부르면 한 장을 나눠 갖는다. */
+  private firstLook: {
+    key: string;
+    job: Promise<{ at: string; mediaType: string; data: string } | null>;
+  } | null = null;
+
+  /**
+   * 서비스의 첫 화면 사진 한 장 (2026-10-07 베타 준비 분석 · 첫 5분) — 준비가 끝난 순간이 이 도구의 첫 `와` 라서 홈의
+   * `서비스가 떴어요` 줄이 부른다. 사용자가 보는 칸(pane)이 아니라 격리된 숨은 창으로 열어 찍으므로 미리보기가 숨어
+   * 있는 홈에서도 되고 사용자의 화면을 훔치지 않는다. 데스크톱만 — 드라이버가 없는 개발 경로는 null 이다. 실패는 모두
+   * 조용하다: 열지 못했거나, 다 로드되지 않았거나, 글자도 그림도 없는 화면이거나, 시간(`FIRST_LOOK_BUDGET_MS`)을
+   * 넘었거나, 사진이 너무 크면 null — 부른 쪽은 사진 없이 그린다(깨진 그림을 세우지 않는다). 사진은 어디에도 남기지 않는다.
+   */
+  async captureFirstLook(
+    route: string,
+  ): Promise<{ at: string; mediaType: string; data: string } | null> {
+    const factory = this.deps.factory();
+    const repo = this.deps.activeRepo();
+    if (!factory || !repo?.isCloned()) return null;
+    const status = await repo.status().catch(() => null);
+    if (!status?.previewUrl) return null;
+    const key = `${status.previewUrl}\n${route}`;
+    if (this.firstLook?.key === key) return this.firstLook.job;
+    const job = this.lookOnce(factory, status.previewUrl, route).finally(() => {
+      if (this.firstLook?.job === job) this.firstLook = null;
+    });
+    this.firstLook = { key, job };
+    return job;
+  }
+
+  private async lookOnce(
+    factory: PreviewDriverFactory,
+    previewUrl: string,
+    route: string,
+  ): Promise<{ at: string; mediaType: string; data: string } | null> {
+    const driver = factory.forIsolated(previewUrl);
+    let cancelled = false;
+    let timer: NodeJS.Timeout | undefined;
+    const job = (async () => {
+      const opened = await driver.open(route, { viewport: "desktop", colorScheme: "light" });
+      // 반쯤 그려진 화면이나 빈 화면은 첫인상이 아니다 — 사진 없이 간다.
+      if (cancelled || !opened.ok || !opened.settled || opened.blank) return null;
+      const shot = await driver.screenshot({ longEdge: FIRST_LOOK_LONG_EDGE });
+      if (
+        cancelled ||
+        !/^image\/(png|jpeg|webp)$/.test(shot.mediaType) ||
+        shot.data.length === 0 ||
+        shot.data.length > FIRST_LOOK_MAX_CHARS
+      ) {
+        return null;
+      }
+      return { at: new Date().toISOString(), mediaType: shot.mediaType, data: shot.data };
+    })().catch(() => null);
+    try {
+      return await Promise.race([
+        job,
+        new Promise<null>((resolve) => {
+          timer = setTimeout(() => resolve(null), FIRST_LOOK_BUDGET_MS);
+        }),
+      ]);
+    } finally {
+      cancelled = true;
+      clearTimeout(timer);
+      void driver.destroy().catch(() => undefined);
+    }
   }
 }

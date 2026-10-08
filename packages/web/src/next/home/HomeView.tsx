@@ -8,6 +8,8 @@ import type { ShellNav } from "../slots";
 import { SparkIcon } from "../ui/icons";
 import { HomeComposer } from "./HomeComposer";
 import { HomeInbox } from "./HomeInbox";
+import { HomeReady } from "./HomeReady";
+import { useFirstLook } from "./use-first-look";
 
 /** 끌고 온 것에 파일이 들었는가 — 글이나 링크를 끄는 손에는 덮개를 펴지 않는다. */
 function carriesFiles(event: React.DragEvent): boolean {
@@ -26,15 +28,21 @@ export function HomeView({
   sessions,
   nav,
   titleFor,
+  ready = [],
 }: {
   daemon: Daemon;
   sessions: Sessions;
   nav: ShellNav;
   /** 대화의 표시 이름 — 사용자가 바꾼 이름을 따른다(사이드바와 같은 이름). */
   titleFor?: (thread: ThreadSummary) => string;
+  /** 첫 준비가 끝났는데 아직 그 화면을 보지 않은 프로젝트 — `서비스가 떴어요` 줄이 선다(2026-10-07). */
+  ready?: readonly string[];
 }) {
   const active = daemon.projects.find((project) => project.slug === daemon.activeSlug) ?? null;
   const author = daemon.status?.authorName?.trim();
+  // 서비스가 떴어요 줄의 사진 — 지금 프로젝트의 줄이 서 있을 때만 숨은 창에 한 장을 부탁한다(2026-10-07).
+  const lookSlug = active !== null && ready.includes(active.slug) ? active.slug : null;
+  const lookUrl = useFirstLook(daemon, lookSlug);
 
   const composer = useRef<ComposerHandle | null>(null);
   const registerHandle = useCallback((handle: ComposerHandle | null) => {
@@ -83,12 +91,20 @@ export function HomeView({
           onOpened={nav.showThread}
           onToast={nav.toast}
         />
+        <HomeReady
+          projects={daemon.projects}
+          ready={ready}
+          photo={lookSlug !== null && lookUrl !== null ? { slug: lookSlug, url: lookUrl } : null}
+          onSee={nav.openProjectScreen}
+          onDismiss={nav.dismissReady}
+        />
         <HomeInbox
           daemon={daemon}
           titleFor={titleFor}
           onOpenThread={nav.openThread}
           onSwitch={nav.switchProject}
           onOpenWork={nav.showThread}
+          onShowScreen={nav.showScreen}
         />
       </div>
     </div>

@@ -4,12 +4,22 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  aiKindsOf,
+  buildAiLine,
   buildChecksSection,
+  buildFilesSection,
+  buildScopeSection,
+  classifyScopePath,
   formatHandoffTitle,
   mergeToolBlock,
+  NUMSTAT_TRUST_CHARS,
   noteLine,
+  PLAIN_TITLE_MAX_CHARS,
   pickHandoffTitle,
+  plainHandoffTitle,
   readToolNote,
+  SCOPE_RULES,
+  scopeOfNumstat,
   summarizeChecks,
   TOOL_BLOCK_END,
   TOOL_BLOCK_START,
@@ -206,4 +216,444 @@ test("buildChecksSection — 일부만 지났으면 나머지는 확인 기록�
 test("buildChecksSection — 숫자뿐이다: 화면 이름 · 요소 · 경로가 들어갈 자리가 없다(D38)", () => {
   const section = buildChecksSection({ total: 2, checked: 1, phone: true });
   assert.ok(!/[\w-]+\/[\w-]+|\.tsx?\b|"/.test(section.replace("check", "")), section);
+  // 타입 검사 줄이 든 글도 같다.
+  const typed = buildChecksSection({ total: 2, checked: 1, phone: true, types: 1 });
+  assert.ok(!/[\w-]+\/[\w-]+|\.tsx?\b|"/.test(typed.replace("check", "")), typed);
+});
+
+// ————— 2026-10-07 베타 준비 분석 — 개발자가 믿을 근거: `### 범위` · AI 작성 줄 · 타입 검사 한 줄 —————
+
+/** numstat 한 줄 — 추가 · 삭제 · 경로. */
+const stat = (path: string, added = 1, removed = 0) => `${added}\t${removed}\t${path}`;
+const numstatOf = (...paths: string[]) => paths.map((path) => stat(path)).join("\n");
+
+test("범위 분류 표 — 순서가 곧 우선순위이자 본문에 서는 차례다: 락파일 · 의존성 정의 · CI · 설정", () => {
+  assert.deepEqual(
+    SCOPE_RULES.map((rule) => [rule.kind, rule.label]),
+    [
+      ["lockfile", "락파일"],
+      ["package", "의존성 정의"],
+      ["ci", "CI · 배포"],
+      ["config", "설정"],
+    ],
+  );
+});
+
+test("범위 분류 — 분류마다 대표 파일이 제 분류로 든다(어느 깊이에서든)", () => {
+  const samples: Record<string, string[]> = {
+    lockfile: [
+      "pnpm-lock.yaml",
+      "packages/web/package-lock.json",
+      "npm-shrinkwrap.json",
+      "yarn.lock",
+      "bun.lock",
+      "bun.lockb",
+      "Cargo.lock",
+      "poetry.lock",
+      "uv.lock",
+      "composer.lock",
+      "Gemfile.lock",
+      "go.sum",
+    ],
+    package: [
+      "package.json",
+      "packages/web/package.json",
+      "requirements.txt",
+      "pyproject.toml",
+      "Cargo.toml",
+      "go.mod",
+      "Gemfile",
+      "composer.json",
+    ],
+    ci: [
+      ".github/workflows/ci.yml",
+      ".github/workflows/deploy/prod.yaml",
+      ".github/actions/setup/action.yml",
+      ".gitlab-ci.yml",
+      "Jenkinsfile",
+      ".circleci/config.yml",
+      "azure-pipelines.yml",
+      "bitbucket-pipelines.yml",
+      ".travis.yml",
+    ],
+    config: [
+      "vite.config.ts",
+      "packages/web/next.config.mjs",
+      "tailwind.config.js",
+      "eslint.config.js",
+      "tsconfig.json",
+      "packages/web/tsconfig.app.json",
+      "jsconfig.json",
+      ".eslintrc",
+      ".eslintrc.cjs",
+      ".prettierrc.json",
+      "biome.json",
+      "biome.jsonc",
+      ".npmrc",
+      ".nvmrc",
+      ".env",
+      ".env.local",
+      "src/.env.production",
+      ".envrc",
+      "Dockerfile",
+      "docker/Dockerfile.dev",
+      "docker-compose.yml",
+      "compose.yaml",
+      "vercel.json",
+      "netlify.toml",
+    ],
+  };
+  for (const [kind, paths] of Object.entries(samples)) {
+    for (const path of paths) {
+      assert.equal(classifyScopePath(path)?.kind, kind, `${path} 은 ${kind}`);
+    }
+  }
+});
+
+test("범위 분류 — 표에 없는 파일은 그 밖이다: 모르는 것을 위험으로 몰지 않는다(과분류 금지)", () => {
+  for (const path of [
+    "src/App.tsx",
+    "src/styles/app.css",
+    "public/logo.png",
+    "README.md",
+    "docs/package.json.md",
+    "src/config.tsx",
+    "src/lib/env.ts",
+    "src/environment.ts",
+    ".github/CODEOWNERS",
+    ".github/dependabot.yml",
+    "packages/web/src/lockfile.ts",
+    "notes/pnpm-lock.yaml.bak",
+  ]) {
+    assert.equal(classifyScopePath(path), null, `${path} 은 그 밖`);
+  }
+});
+
+test("범위 분류 — 한 파일이 둘에 맞으면 앞의 분류 · 이름 바꿈은 두 쪽을 모두 · 따옴표로 싼 경로와 대문자도 읽는다", () => {
+  assert.equal(classifyScopePath(".github/workflows/build.config.js")?.kind, "ci");
+  // git 이 적는 이름 바꿈 — 위험한 파일로 바뀌어 들어오거나 위험한 파일이 이름을 잃어도 신호다.
+  assert.equal(classifyScopePath("package.json => package.json.bak")?.kind, "package");
+  assert.equal(classifyScopePath("docs/old.md => package.json")?.kind, "package");
+  assert.equal(classifyScopePath("src/{old => new}/package.json")?.kind, "package");
+  assert.equal(classifyScopePath("{ => packages}/web/pnpm-lock.yaml")?.kind, "lockfile");
+  assert.equal(classifyScopePath("src/{a => b}/App.tsx"), null);
+  // git 은 특수 문자가 든 경로를 따옴표로 싼다.
+  assert.equal(classifyScopePath('".github/workflows/배포.yml"')?.kind, "ci");
+  assert.equal(classifyScopePath("DOCKERFILE")?.kind, "config");
+});
+
+test("scopeOfNumstat — 위험 분류는 표의 차례로, 그 밖은 수로 · 빈 입력과 못 읽는 입력은 null", () => {
+  const scope = scopeOfNumstat(
+    numstatOf(
+      "src/App.tsx",
+      "pnpm-lock.yaml",
+      "package.json",
+      ".github/workflows/ci.yml",
+      "vite.config.ts",
+      "src/b.css",
+    ),
+  );
+  assert.equal(scope?.total, 6);
+  assert.equal(scope?.other, 2);
+  assert.equal(scope?.complete, true);
+  assert.deepEqual(
+    scope?.risky.map((group) => [group.rule.kind, group.paths]),
+    [
+      ["lockfile", ["pnpm-lock.yaml"]],
+      ["package", ["package.json"]],
+      ["ci", [".github/workflows/ci.yml"]],
+      ["config", ["vite.config.ts"]],
+    ],
+  );
+  assert.equal(scopeOfNumstat(""), null);
+  assert.equal(scopeOfNumstat("\n  \n"), null);
+  assert.equal(scopeOfNumstat("읽을 수 없는 줄"), null);
+  assert.equal(buildScopeSection(""), null, "빈 목록이면 절이 없다");
+});
+
+test("scopeOfNumstat — 바이너리 · 이름 바꿈 줄도 한 파일로 센다", () => {
+  const scope = scopeOfNumstat(
+    [
+      "-\t-\tpublic/logo.png",
+      "2\t2\tsrc/{old => new}/Card.tsx",
+      "0\t0\tpackage.json => package.json.bak",
+    ].join("\n"),
+  );
+  assert.equal(scope?.total, 3);
+  assert.equal(scope?.other, 2);
+  assert.equal(scope?.risky.length, 1);
+});
+
+test("buildFilesSection — 범위와 같은 읽기를 나눠 써도 바뀐 파일 절은 그대로다", () => {
+  assert.equal(
+    buildFilesSection("3\t1\tsrc/a.tsx\n-\t-\tpublic/logo.png\n\n뜻 모를 줄\n"),
+    [
+      "### 바뀐 파일",
+      "",
+      "바뀐 파일 2개 · +3 −1",
+      "",
+      "- src/a.tsx (+3 −1)",
+      "- public/logo.png",
+      "",
+    ].join("\n"),
+  );
+  assert.equal(buildFilesSection(""), null);
+});
+
+test("buildScopeSection — 화면 코드만 바뀌었으면 「건드리지 않았습니다」 한 줄이 선다", () => {
+  assert.equal(
+    buildScopeSection(
+      numstatOf("src/pages/Members.tsx", "src/pages/Members.css", "public/empty.png"),
+    ),
+    [
+      "### 범위",
+      "",
+      "이번 변경의 범위 — 파일 3개",
+      "",
+      "- 의존성 · 설정 · CI 파일은 건드리지 않았습니다",
+      "",
+    ].join("\n"),
+  );
+});
+
+test("buildScopeSection — 락파일 · package.json · CI · 설정이 든 입력은 머리줄에 ⚠ 를 세우고 그 파일 이름만 늘어놓는다", () => {
+  const section = buildScopeSection(
+    numstatOf(
+      "src/pages/Members.tsx",
+      "src/pages/Members.css",
+      "pnpm-lock.yaml",
+      "package.json",
+      ".github/workflows/ci.yml",
+      "vite.config.ts",
+      "tsconfig.json",
+    ),
+  );
+  assert.equal(
+    section,
+    [
+      "### 범위",
+      "",
+      "⚠ 이번 변경의 범위 — 의존성 · 설정 · CI 파일이 바뀌었습니다 (파일 7개 중 5개)",
+      "",
+      "- ⚠ 락파일 1개 — pnpm-lock.yaml",
+      "- ⚠ 의존성 정의 1개 — package.json (어느 항목이 바뀌었는지는 확인하지 않았습니다)",
+      "- ⚠ CI · 배포 1개 — .github/workflows/ci.yml",
+      "- ⚠ 설정 2개 — vite.config.ts, tsconfig.json",
+      "- 그 밖의 파일 2개",
+      "",
+    ].join("\n"),
+  );
+  assert.ok(!section?.includes("건드리지 않았습니다"), "위험이 있으면 안심의 말은 나오지 않는다");
+});
+
+test("buildScopeSection — package.json 만 · 락파일만 · 둘 다: 갈라 말한다", () => {
+  const pkg = buildScopeSection(numstatOf("package.json", "src/a.tsx")) ?? "";
+  assert.ok(
+    pkg.includes(
+      "- ⚠ 의존성 정의 1개 — package.json (어느 항목이 바뀌었는지는 확인하지 않았습니다)",
+    ),
+  );
+  assert.ok(!pkg.includes("락파일"));
+  const lock = buildScopeSection(numstatOf("pnpm-lock.yaml", "src/a.tsx")) ?? "";
+  assert.ok(lock.includes("- ⚠ 락파일 1개 — pnpm-lock.yaml"));
+  assert.ok(!lock.includes("의존성 정의"));
+  const both = buildScopeSection(numstatOf("package.json", "pnpm-lock.yaml")) ?? "";
+  assert.ok(both.includes("- ⚠ 락파일 1개 — pnpm-lock.yaml"));
+  assert.ok(both.includes("- ⚠ 의존성 정의 1개 — package.json"));
+  assert.ok(!both.includes("그 밖의 파일"), "그 밖이 없으면 그 줄도 없다");
+  for (const section of [pkg, lock, both]) {
+    assert.ok(section.includes("⚠ 이번 변경의 범위"));
+    assert.ok(!section.includes("건드리지 않았습니다"));
+  }
+});
+
+test("buildScopeSection — .env 는 내용이 아니라 파일이 건드려졌다는 사실만 말한다(어느 깊이에서든)", () => {
+  const section = buildScopeSection(numstatOf("src/.env.local", "src/a.tsx")) ?? "";
+  assert.ok(section.includes("- ⚠ 설정 1개 — src/.env.local"));
+  assert.ok(section.includes("(파일 2개 중 1개)"));
+});
+
+test("buildScopeSection — 위험 분류의 이름은 다섯까지만 늘어놓고 나머지는 수로 말한다 · ⚠ 는 그대로다", () => {
+  const files = Array.from({ length: 8 }, (_, index) => `.github/workflows/w${index}.yml`);
+  const section = buildScopeSection(numstatOf(...files)) ?? "";
+  const names = files.slice(0, 5).join(", ");
+  assert.ok(section.includes(`- ⚠ CI · 배포 8개 — ${names} 외 3개`), section);
+  assert.ok(section.includes("⚠ 이번 변경의 범위"));
+  assert.ok(section.includes("(파일 8개 중 8개)"));
+});
+
+test("buildScopeSection — 잘렸거나 못 읽은 줄이 있으면 「건드리지 않았습니다」 를 말하지 않는다", () => {
+  // 데몬이 쥔 git 출력의 상한에 닿은 목록 — 앞이 잘렸을 수 있다.
+  const line = "1\t0\tsrc/a.tsx\n";
+  const long = line.repeat(Math.ceil(NUMSTAT_TRUST_CHARS / line.length));
+  assert.equal(scopeOfNumstat(long)?.complete, false);
+  const cut = buildScopeSection(long) ?? "";
+  assert.ok(cut.includes("- 의존성 · 설정 · CI 파일은 잘려서 확인하지 못했습니다"));
+  assert.ok(!cut.includes("건드리지 않았습니다"));
+  assert.ok(!cut.includes("⚠"), "위험을 찾지 못한 채 ⚠ 를 세우지 않는다");
+  // 상한 아래의 목록은 믿는다.
+  assert.equal(scopeOfNumstat(numstatOf("src/a.tsx"))?.complete, true);
+  // 못 읽은 줄이 섞인 목록.
+  const garbled = buildScopeSection(`${numstatOf("src/a.tsx")}\n뜻 모를 줄\n`) ?? "";
+  assert.ok(garbled.includes("- 의존성 · 설정 · CI 파일은 잘려서 확인하지 못했습니다"));
+  assert.ok(!garbled.includes("건드리지 않았습니다"));
+  // 잘린 목록에서도 찾은 위험은 말한다 — 더 있을 수 있다는 말과 함께.
+  const risky = buildScopeSection(`${numstatOf("pnpm-lock.yaml")}\n뜻 모를 줄\n`) ?? "";
+  assert.ok(risky.includes("⚠ 이번 변경의 범위"));
+  assert.ok(risky.includes("- 파일 목록을 끝까지 읽지 못해 이보다 더 있을 수 있습니다"));
+  assert.ok(!risky.includes("건드리지 않았습니다"));
+});
+
+test("buildAiLine — 종류를 알 때와 모를 때: 사실만, 과장도 축소도 없이", () => {
+  assert.equal(
+    buildAiLine(),
+    "코드는 AI 가 썼고, 요청한 사람은 코드가 아니라 화면으로 확인했습니다.",
+  );
+  assert.equal(buildAiLine([]), buildAiLine());
+  assert.equal(
+    buildAiLine(["Claude Code"]),
+    "코드는 AI(Claude Code)가 썼고, 요청한 사람은 코드가 아니라 화면으로 확인했습니다.",
+  );
+  assert.equal(
+    buildAiLine(["Claude Code", "Codex"]),
+    "코드는 AI(Claude Code · Codex)가 썼고, 요청한 사람은 코드가 아니라 화면으로 확인했습니다.",
+  );
+});
+
+test("aiKindsOf — 작업마다 공급자를 알 때만 종류를 말한다", () => {
+  const work = (sha: string, provider?: string, extra: Record<string, unknown> = {}) => ({
+    sha,
+    ...(provider ? { provider } : {}),
+    ...extra,
+  });
+  assert.deepEqual(aiKindsOf([work("c2", "claude"), work("c2", "claude"), work("c1", "claude")]), [
+    "Claude Code",
+  ]);
+  // 이름은 알파벳순이라 어느 커밋이 먼저여도 같은 글이다.
+  assert.deepEqual(aiKindsOf([work("c2", "codex"), work("c1", "claude")]), [
+    "Claude Code",
+    "Codex",
+  ]);
+  // 하나라도 모르면 말하지 않는다 — 일부만 알고 「Claude Code 가 썼다」 고 하지 않는다.
+  assert.deepEqual(aiKindsOf([work("c2", "claude"), work("c1")]), []);
+  assert.deepEqual(aiKindsOf([work("c2", "claude"), work("c1", "gemini")]), []);
+  // 손으로 고친 값이 이름이 되지 못한다.
+  assert.deepEqual(aiKindsOf([work("c1", "__proto__")]), []);
+  assert.deepEqual(aiKindsOf([work("c1", "constructor")]), []);
+  assert.deepEqual(aiKindsOf([{ sha: "c1", provider: 5 as never }]), []);
+  // 되돌리기 · 병합은 도구가 한 일이고 보관 표식이 없는 줄은 작업이 아니다 — 공급자를 몰라도 말을 막지 않는다.
+  assert.deepEqual(
+    aiKindsOf([
+      work("c4", "claude"),
+      work("c3", undefined, { kind: "restore" }),
+      work("c2", undefined, { kind: "merge" }),
+      { provider: "codex" },
+    ]),
+    ["Claude Code"],
+  );
+  // 코멘트 반영은 개발자의 말을 받아 AI 가 쓴 코드다 — 다른 공급자가 썼다면 그 이름도 싣고, 모르면 말하지 않는다.
+  assert.deepEqual(aiKindsOf([work("c2", "codex", { kind: "comment" }), work("c1", "claude")]), [
+    "Claude Code",
+    "Codex",
+  ]);
+  assert.deepEqual(
+    aiKindsOf([work("c2", undefined, { kind: "comment" }), work("c1", "claude")]),
+    [],
+  );
+  assert.deepEqual(aiKindsOf([]), []);
+});
+
+test("AI 작성 줄은 한마디의 인용 밖에 선다 — 지난 한마디를 되읽을 때 섞이지 않는다", () => {
+  const block = `> 작성: 기획자\n${noteLine("검색은 이름만 돼요")}\n\n${buildAiLine(["Claude Code"])}\n\n### 범위\n\n이번 변경의 범위 — 파일 1개`;
+  assert.equal(readToolNote(`개발자 글.\n\n${wrap(block)}`), "검색은 이름만 돼요");
+});
+
+test("summarizeChecks — 타입 검사가 돌고 오류가 없었던 작업의 수를 센다: 하나도 없으면 칸이 없다", () => {
+  const typed = { screens: 1, phone: true, types: true };
+  assert.deepEqual(
+    summarizeChecks([
+      { sha: "c3", checked: typed },
+      { sha: "c2", checked: pass(true) },
+      { sha: "c1", checked: { ...typed, screens: 2 } },
+    ]),
+    { total: 3, checked: 3, phone: true, types: 2 },
+  );
+  const none = summarizeChecks([{ sha: "c1", checked: pass(true) }]);
+  assert.deepEqual(none, { total: 1, checked: 1, phone: true });
+  assert.equal("types" in (none ?? {}), false, "돌리지 않은 검사는 칸이 없다");
+  // 확인이 지나지 않은 작업은 기록이 없다 — 타입 검사도 세지 않는다.
+  assert.equal(summarizeChecks([{ sha: "c2", checked: typed }, { sha: "c1" }])?.types, 1);
+  // 되돌리기는 작업이 아니다.
+  assert.equal(
+    summarizeChecks([
+      { sha: "c2", kind: "restore", checked: typed },
+      { sha: "c1", checked: pass(false) },
+    ])?.types,
+    undefined,
+  );
+  // 참이 아닌 값은 돌았다고 세지 않는다.
+  assert.equal(
+    summarizeChecks([{ sha: "c1", checked: { ...pass(true), types: false } }])?.types,
+    undefined,
+  );
+});
+
+test("buildChecksSection — 타입 검사 한 줄: 화면 확인 문단과 레포 검사 문장 사이에 선다", () => {
+  assert.equal(
+    buildChecksSection({ total: 3, checked: 3, phone: true, types: 2 }),
+    [
+      "### 확인한 것",
+      "",
+      "AI 가 작업을 끝낼 때마다 도구가 바뀐 화면을 다시 열어 봅니다. 이번 제출에 담긴 화면 작업 3건 모두에서 확인이 문제 없이 지나갔습니다 — 화면이 끝까지 열렸고, 콘솔 오류 · 실패한 요청 · 이름 없는 컨트롤 · 너무 흐린 글자 · 휴대폰 폭의 가로 넘침에서 새로 찾은 문제가 없었습니다.",
+      "",
+      "타입 검사: 이번 제출에 담긴 화면 작업 3건 중 2건에서 바뀐 TypeScript 파일의 타입 오류가 없었습니다. 나머지 1건은 검사 기록이 없습니다.",
+      "",
+      "레포의 검사(check)와 빌드는 이 확인에 들어 있지 않습니다.",
+      "",
+    ].join("\n"),
+  );
+  const all = buildChecksSection({ total: 3, checked: 3, phone: true, types: 3 });
+  assert.ok(
+    all.includes(
+      "\n타입 검사: 이번 제출에 담긴 화면 작업 3건 모두에서 바뀐 TypeScript 파일의 타입 오류가 없었습니다.\n",
+    ),
+  );
+  assert.ok(!all.includes("검사 기록이 없습니다"), "모두 돌았으면 기록이 없다는 말도 없다");
+  // 돌리지 않은 검사를 통과라고 말하지 않는다 — 칸이 없거나 0 이면 줄이 없다. 개수가 작업 수를 넘어도 부풀리지 않는다.
+  for (const checks of [
+    { total: 3, checked: 3, phone: true },
+    { total: 3, checked: 3, phone: true, types: 0 },
+  ]) {
+    assert.ok(!buildChecksSection(checks).includes("타입"), JSON.stringify(checks));
+  }
+  assert.ok(
+    buildChecksSection({ total: 2, checked: 2, phone: true, types: 9 }).includes(
+      "작업 2건 모두에서",
+    ),
+  );
+});
+
+test("plainHandoffTitle — 도구가 붙인 종류 접두어와 작성자 꼬리를 뗀 사용자의 말(2026-10-08 · 반영된 일)", () => {
+  // formatHandoffTitle 의 거울 — 만든 제목이 그대로 되돌아온다.
+  const made = formatHandoffTitle("회원 목록에 이름 검색을 넣었어요", "김기획");
+  assert.equal(made, "chore: 회원 목록에 이름 검색을 넣었어요 (작성: 김기획)");
+  assert.equal(plainHandoffTitle(made), "회원 목록에 이름 검색을 넣었어요");
+  assert.equal(plainHandoffTitle("fix(submit)!: 중복 제출 방지"), "중복 제출 방지");
+  assert.equal(plainHandoffTitle("feat(members): 검색  창\n본문은 읽지 않는다"), "검색 창");
+  // 개발자가 고친 제목도 같은 규칙으로 읽는다 — 접두어가 없으면 그대로다.
+  assert.equal(plainHandoffTitle("회원 목록 정렬"), "회원 목록 정렬");
+  // 종류 접두어가 아닌 콜론은 건드리지 않는다.
+  assert.equal(plainHandoffTitle("안내: 문구 정리"), "안내: 문구 정리");
+});
+
+test("plainHandoffTitle — 읽을 말이 없으면 null, 긴 말은 80자에서 말줄임으로 닫는다", () => {
+  assert.equal(plainHandoffTitle(null), null);
+  assert.equal(plainHandoffTitle(undefined), null);
+  assert.equal(plainHandoffTitle("   \n  "), null);
+  assert.equal(plainHandoffTitle("chore: (작성: 김기획)"), null, "말이 없는 제목은 없다");
+  const long = plainHandoffTitle(`chore: ${"가".repeat(120)}`) ?? "";
+  assert.equal(Array.from(long).length, PLAIN_TITLE_MAX_CHARS);
+  assert.ok(long.endsWith("…"));
+  const exact = "나".repeat(PLAIN_TITLE_MAX_CHARS);
+  assert.equal(plainHandoffTitle(exact), exact, "상한과 같으면 자르지 않는다");
 });

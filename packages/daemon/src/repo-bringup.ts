@@ -279,7 +279,7 @@ export class BringUp {
     // The dev server picks its own free port and the verdict below reads
     // where it landed — first the address the server printed, then the
     // process tree's LISTEN sockets.
-    const child = spawn(command, this.spawnOptions());
+    const child = spawn(command, { windowsHide: true, ...this.spawnOptions() });
     this.core.preview = child;
     this.core.previewEpoch += 1;
     // 다음 생의 bring-up 이 이 트리를 거둘 수 있게 — .git 아래는 워크트리를

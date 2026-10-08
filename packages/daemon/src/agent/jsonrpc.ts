@@ -40,6 +40,7 @@ export class JsonRpcTransport {
     this.proc = spawn(command, args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
+      windowsHide: true,
       env,
     });
     // The agent's own log stream — useful in the daemon log, never parsed.

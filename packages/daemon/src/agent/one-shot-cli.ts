@@ -23,6 +23,7 @@ export async function runCliOneShot(
   const child = spawn(executable, args, {
     cwd: opts.cwd,
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
   let stdout = "";
   const timer = setTimeout(() => {

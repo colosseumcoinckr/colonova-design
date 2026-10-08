@@ -60,7 +60,21 @@ contextBridge.exposeInMainWorld("colonovaDesignDesktop", {
     },
     discard: (path: string): Promise<void> =>
       ipcRenderer.invoke("desktop:invite-discard", { path }),
+    /**
+     * 더블클릭으로 OS 가 열라고 한 초대 파일(2026-10-08 베타 준비 분석) — 줄 선 것을 가져가고 비운다. 메인이 판정을
+     * 통과시킨 파일의 이름 · 경로 · 바이트만 온다(렌더러가 경로를 건네지 않는다 — 임의의 파일을 읽는 문이 없다).
+     * 가져오기 컨트롤러가 마운트될 때 한 번, 그리고 아래 신호마다 부른다.
+     */
+    takeOpened: (): Promise<Array<{ name: string; path: string; bytes: Uint8Array | null }>> =>
+      ipcRenderer.invoke("desktop:invite-take"),
+    /** 앱이 떠 있는 동안 새 초대 파일이 줄에 섰다 — 신호일 뿐이다(내용은 `takeOpened` 로 가져간다). */
+    onOpenFile: subscribe<void>("colonovadesign:invite-open"),
   },
+  /**
+   * 도움말 메뉴의 `문제가 생겼어요 — 진단 복사`(2026-10-08) — 메뉴가 알리면 웹이 진단 글을 모아 복사하고 한 줄로
+   * 알려 준다(설정의 개발자용 쪽과 같은 글). 신호일 뿐이다.
+   */
+  onCopyReport: subscribe<void>("colonovadesign:copy-report"),
   preview: {
     native: true as const,
     mount: (url: string, epoch: number | null, origins?: string[]) =>

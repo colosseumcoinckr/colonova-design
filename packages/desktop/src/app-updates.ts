@@ -418,9 +418,11 @@ export class SelfUpdates {
         // 실패 이유는 그대로 사용자 알림에 실린다.
         await writeFile(scriptPath, `\uFEFF${buildWinSwapScript(script)}`);
 
+        // windowsHide — 교체 스크립트가 도는 동안 검은 PowerShell 창이 떠 있지 않게(2026-10-07).
         spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptPath], {
           detached: true,
           stdio: "ignore",
+          windowsHide: true,
         }).unref();
       } else {
         const scriptPath = join(app.getPath("temp"), `colonova-design-update-${version}.sh`);

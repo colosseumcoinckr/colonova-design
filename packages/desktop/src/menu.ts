@@ -1,5 +1,6 @@
 import { APP_SHORTCUTS } from "@colonova-design/protocol";
 import type { MenuItemConstructorOptions } from "electron";
+import { MENU } from "./copy.js";
 
 /**
  * 애플리케이션 메뉴 (PLAN D85 ⓒ · U19). Electron 기본 메뉴의 reload · zoom ·
@@ -44,6 +45,13 @@ export interface MenuTargets {
   packaged: boolean;
   /** 도움말의 `기록 폴더 열기` — 메인이 직접 여는 bridge 의 open-home("logs") 판본. */
   openLogs(): void;
+  /** 도움말의 `사용 설명서 열기` — 기본 브라우저로 설명서 주소(links.ts)를 연다. */
+  openGuide(): void;
+  /**
+   * 도움말의 `문제가 생겼어요 — 진단 복사` — 웹에 알린다. 진단 글은 웹이 모으고(설정의 개발자용 쪽과 같은 글)
+   * 복사한 뒤 한 줄로 알려 준다. 창이 없으면 창을 다시 연다(그때 한 번 더 누른다).
+   */
+  copyReport(): void;
   /**
    * 메뉴를 그릴 플랫폼 — mac 전용 역할(hide · windowMenu)은 다른 OS 에서
    * 죽은 항목으로 렌더되므로 여기서 갈라진다. 생략하면 지금 플랫폼.
@@ -91,7 +99,7 @@ export function buildMenuTemplate(targets: MenuTargets): MenuItemConstructorOpti
     viewMenu.push(
       { type: "separator" },
       {
-        label: "개발자 도구",
+        label: MENU.devTools,
         accelerator: "Alt+CmdOrCtrl+I",
         role: "toggleDevTools",
       },
@@ -119,7 +127,7 @@ export function buildMenuTemplate(targets: MenuTargets): MenuItemConstructorOpti
     ],
   };
   const editMenu: MenuItemConstructorOptions = {
-    label: "편집",
+    label: MENU.edit,
     submenu: [
       // 컴포저의 undo · copy · paste 가 그것이다 — 기본 역할 그대로.
       { role: "undo" },
@@ -132,19 +140,24 @@ export function buildMenuTemplate(targets: MenuTargets): MenuItemConstructorOpti
     ],
   };
   const viewItem: MenuItemConstructorOptions = {
-    label: "보기",
+    label: MENU.view,
     submenu: viewMenu,
   };
   // windowMenu 역할도 mac 전용 — 다른 플랫폼은 최소화·닫기 역할로 채운다.
   const windowMenu: MenuItemConstructorOptions =
     platform === "darwin"
-      ? { label: "창", role: "windowMenu" }
-      : { label: "창", submenu: [{ role: "minimize" }, { role: "close" }] };
-  // 문제 해결의 입구 — 기록 폴더는 창이 없어도 열 수 있어야 한다(메인이 연다).
+      ? { label: MENU.window, role: "windowMenu" }
+      : { label: MENU.window, submenu: [{ role: "minimize" }, { role: "close" }] };
+  // 막혔을 때 앱 안에서 도움을 찾는 입구(2026-10-08 베타 준비 분석): 설명서를 읽고 · 진단을 복사해 담당자에게 붙이고 ·
+  // 기록 폴더를 연다. 설명서와 기록 폴더는 창이 없어도 열 수 있어야 한다(메인이 직접 연다).
   const helpMenu: MenuItemConstructorOptions = {
-    label: "도움말",
+    label: MENU.help,
     role: "help",
-    submenu: [{ label: "기록 폴더 열기", click: () => targets.openLogs() }],
+    submenu: [
+      { label: MENU.helpGuide, click: () => targets.openGuide() },
+      { label: MENU.helpReport, click: () => targets.copyReport() },
+      { label: MENU.helpLogs, click: () => targets.openLogs() },
+    ],
   };
   return [appMenu, editMenu, viewItem, windowMenu, helpMenu];
 }

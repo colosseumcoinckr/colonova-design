@@ -1,5 +1,6 @@
 import type {
   DeveloperReview,
+  LandedWork,
   PermissionSuggestion,
   ProjectSummary,
   ThreadSummary,
@@ -12,7 +13,9 @@ import {
   visibleThreads,
 } from "../../lib/thread-visibility";
 import type { L } from "../labels";
+import { previewDoc } from "./ask-preview";
 import { type ResumeItem, resumeItems } from "./home-resume";
+import { type ActiveNews, activeNewsOf, type LandedLine, landedLines } from "./landed";
 
 type Pending = PendingPermission | PendingQuestion;
 
@@ -93,12 +96,28 @@ export interface OtherProjectItem {
   lastEventAt?: string;
 }
 
+/** 지금 보는 프로젝트의 개발자 소식 한 줄 — 다른 프로젝트의 소식과 한 목록에 선다(2026-10-08 · A2b). */
+export interface ActiveNewsItem extends ActiveNews {
+  slug: string;
+  name: string;
+}
+
 export interface HomeFeed {
   asking: AskingItem[];
   running: RunningItem[];
   done: DoneItem[];
   /** 이어서 하기 — 다른 묶음에 서지 않은 가장 최근의 사람 대화(2026-10-06 홈 개선). */
   resume: ResumeItem[];
+  /**
+   * 반영된 일 — 지금 보는 프로젝트에서 병합된 요청, 최신순 최근 여덟(2026-10-08 · A2b). 비면 묶음이 서지 않는다.
+   * 다른 프로젝트는 살아 있는 상태가 없어 기억을 모른다.
+   */
+  landed: LandedLine[];
+  /**
+   * 지금 보는 프로젝트의 개발자 소식(병합 · 반려 · 코멘트 · 다시 제출됨) — 같은 말을 홈의 다른 자리(`반영된 일` ·
+   * 개발자 코멘트 카드)가 이미 하고 있거나 이틀이 지났으면 없다(`activeNewsOf`).
+   */
+  news: ActiveNewsItem | null;
   /** 활성 프로젝트를 뺀 나머지 — pending 도 마지막 사건도 없는 프로젝트는
       0건 숨김 규칙을 따라 걸러진다. */
   otherProjects: OtherProjectItem[];
@@ -142,6 +161,10 @@ export function buildHomeFeed(
     hidden?: HiddenThreads;
     /** 대화의 표시 이름 — 사용자가 바꾼 이름을 따른다(사이드바와 같은 이름). */
     titleOf?: (thread: ThreadSummary) => string;
+    /** 활성 프로젝트의 반영된 일(`RepoStatus.landed`) — 없으면 묶음이 서지 않는다. */
+    landed?: ReadonlyArray<LandedWork>;
+    /** 소식의 나이를 재는 지금(ms) — 시험이 고정한다. */
+    now?: number;
   } = {},
 ): HomeFeed {
   const activeProject = projects.find((project) => project.slug === activeSlug) ?? null;
@@ -164,13 +187,20 @@ export function buildHomeFeed(
     if (item.kind === "question") {
       const [first] = item.questions;
       const multi = item.questions.length > 1 || Boolean(first?.multiSelect);
+      // 그림 시안이 달린 질문은 그림을 보고 골라야 한다(2026-10-08 베타 준비) — 홈의 즉답 칩은 라벨만 보여
+      // 눈 감고 답하게 되므로, 그 질문은 인용 없이 열어서 답하게 한다(다중 질문과 같은 길).
+      const visual =
+        first?.options.some(
+          (option) => option.preview !== undefined && previewDoc(option.preview) !== null,
+        ) ?? false;
+      const quick = !multi && !visual;
       askingFromPending.push({
         kind: "question",
         requestId: item.requestId,
         sessionId: item.sessionId,
         title: titleFor(item.sessionId),
-        quote: multi ? null : (first?.question ?? null),
-        options: multi ? [] : (first?.options.map((option) => option.label) ?? []),
+        quote: quick ? (first?.question ?? null) : null,
+        options: quick ? (first?.options.map((option) => option.label) ?? []) : [],
         questionCount: item.questions.length,
         requestedAt: item.requestedAt,
       });
@@ -263,6 +293,22 @@ export function buildHomeFeed(
     });
 
   const asking = [...askingFromPending, ...askingFromReviews];
+  // 반영된 일과 활성 프로젝트의 소식(2026-10-08 · A2b) — `otherProjects` 의 활성 제외는 결정 카드 · 진행 줄(살아 있는 세션이
+  // 있다)의 까닭이었고, 소식 줄만 활성에도 연다. 같은 말을 다른 자리가 하고 있으면 세우지 않는다(`activeNewsOf`).
+  const landed = landedLines(options.landed);
+  const newsKind = activeProject
+    ? activeNewsOf({
+        kind: activeProject.lastEventKind,
+        at: activeProject.lastEventAt,
+        landed: landed.length,
+        reviewCard: askingFromReviews.length > 0,
+        now: options.now ?? Date.now(),
+      })
+    : null;
+  const news =
+    activeProject && newsKind
+      ? { ...newsKind, slug: activeProject.slug, name: activeProject.name }
+      : null;
   // 이어서 하기 — 이미 다른 묶음에 선 대화는 뺀다. 이틀이 지나 「방금」에서 거둔 끝난 대화는 여기로 온다.
   const taken = new Set([
     ...asking.map((item) => item.sessionId),
@@ -276,6 +322,8 @@ export function buildHomeFeed(
     running,
     done: recentDone,
     resume,
+    landed,
+    news,
     otherProjects,
   };
 }

@@ -121,6 +121,22 @@ test("handoffPreviewOf: 초안의 제목과 설명과 사진 수를 한 모습�
   });
 });
 
+test("handoffPreviewOf: 범위가 위험 분류를 포함할 때만 그 한 줄의 재료가 선다 — 아니면 칸이 없다(2026-10-07)", () => {
+  const base = { title: "feat: 검색 추가", body: "검색을 넣었다." };
+  const extras = { commentsSection: null, filesSection: null, shotCount: 0 };
+  assert.equal(
+    handoffPreviewOf({ ...base, extras: { ...extras, scopeRisk: true } }, null)?.scopeRisk,
+    true,
+  );
+  for (const draft of [
+    { ...base, extras: { ...extras, scopeRisk: false } },
+    { ...base, extras },
+    base,
+  ]) {
+    assert.equal("scopeRisk" in (handoffPreviewOf(draft, null) ?? {}), false);
+  }
+});
+
 test("handoffPreviewOf: AI 가 제목을 못 낸 초안은 첫 보관의 제목을 대신 쓴다 — 데몬이 같은 대신을 쓴다", () => {
   const preview = handoffPreviewOf({ title: "", body: "" }, "회원 목록 맨 위에 검색창을 넣어 줘");
   assert.deepEqual(preview, {

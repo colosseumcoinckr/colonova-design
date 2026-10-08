@@ -14,12 +14,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { DeveloperReview } from "@colonova-design/protocol";
+import { isOwnAppComment } from "./app-comment.js";
+import { CI_LIMITS, type CiChecks, classifyCheckRuns, summarizeCheckRuns } from "./ci-checks.js";
 import { probeCorruption } from "./clone-salvage.js";
 import { conflictMarkers } from "./conflict-markers.js";
 import { hygieneDue } from "./cycle-hygiene.js";
 import type { CycleLedger } from "./cycle-ledger.js";
 import type { CycleSnapshot } from "./cycle-reconcile.js";
-import type { GitHubClient } from "./github.js";
+import type { CheckAnnotationRow, GitHubClient } from "./github.js";
 import type { RepoCore } from "./repo-core.js";
 
 /**
@@ -37,6 +39,11 @@ export interface ObserveDeps {
   githubAuthExpired: () => boolean;
   /** GitHub 의 owner/repo — RepoCore.repoSlug() 를 넣는다. */
   slug: () => { owner: string; repo: string } | null;
+  /**
+   * 관찰이 읽지 못한 것의 종류 한 단어(`checks:forbidden` · `checks:unavailable`)를 감독자에게 알린다 — 로그에
+   * 종류만 남기려는 것이다(토큰 · 경로 · 레포 이름은 싣지 않는다). 없으면 조용히 물러난다.
+   */
+  note?: (what: string) => void;
 }
 
 /** 관찰 안에서만 쓰는 git 읽기 — 실패는 빈 문자열로 흘린다. */
@@ -125,9 +132,9 @@ async function countAfterPrHead(
 }
 
 /**
- * 새 개발자 코멘트(L9) — 세 목록(인라인 · 리뷰 본문 · 요청 코멘트)에서 내
- * 로그인과 원장이 아는 id 를 뺀다. 페이지네이션 · 봇 거르기 · whoAmI 캐시는
- * 읽는 쪽(github.ts)이 이미 하고 있다(PLAN 단계 7).
+ * 새 개발자 코멘트(L9) — 세 목록(인라인 · 리뷰 본문 · 요청 코멘트)에서 앱이 쓴 글(토큰 주인이
+ * 쓴 앱의 표식 글)과 원장이 아는 id 를 뺀다. 승인 · 철회된 판정 · 초안은 말이 아니다(2026-10-07).
+ * 페이지네이션 · 봇 거르기 · whoAmI 캐시는 읽는 쪽(github.ts)이 이미 하고 있다(PLAN 단계 7).
  */
 async function collectNewReviews(
   client: GitHubClient,
@@ -141,8 +148,9 @@ async function collectNewReviews(
   let mine: string | null = null;
   const who = await client.whoAmI().catch(() => null);
   if (who?.ok) mine = who.login;
-  const own = (row: Record<string, any>): boolean =>
-    mine !== null && String(row.user?.login ?? "") === mine;
+  // 건너뛰는 것은 「토큰 주인이 썼고 앱이 쓴 글」 뿐이다(2026-10-07 베타 준비 분석) — 개발자가 자기 토큰으로 단 코멘트
+  // (표식 없음)는 개발자의 말이다. 앱의 글은 표식이 달려 있고(`app-comment.ts`) 되먹임은 그 표식이 끊는다.
+  const own = (row: Record<string, any>): boolean => isOwnAppComment(row, mine);
   // 세 목록을 repo-publish 의 withReviews 와 같은 모양(DeveloperReview)으로
   // 읽는다 — 14행의 브리프(reviewToTurn)와 review.arrived 사건이 이 객체를
   // 그대로 실어 나른다. 필터 규칙도 같다: 본문 없는 리뷰 · 빈 요청 코멘트는
@@ -163,6 +171,10 @@ async function collectNewReviews(
   }
   for (const row of await client.listReviews({ owner: slug.owner, repo: slug.repo, number })) {
     const text = String(row.body ?? "").trim();
+    // 승인은 피드백이 아니다 — `LGTM` 같은 본문이 있어도 AI 반영 턴을 열지 않고 라운드를 쓰지 않는다. 승인의 신호는
+    // getPullRequest 의 판정(pr.approved)이 나른다. 철회된 판정 · 아직 제출하지 않은 초안도 말이 아니다.
+    const verdict = String(row.state ?? "").toUpperCase();
+    if (verdict === "APPROVED" || verdict === "DISMISSED" || verdict === "PENDING") continue;
     if (text === "" || own(row)) continue;
     reviews.push({
       id: Number(row.id),
@@ -196,6 +208,42 @@ async function collectNewReviews(
   const arrived = reviews.filter((r) => fresh(r) && !known.has(r.id)).sort((a, b) => a.id - b.id);
   const pending = reviews.filter((r) => fresh(r) && !briefed.has(r.id)).sort((a, b) => a.id - b.id);
   return { arrived, pending, total: reviews.length };
+}
+
+/**
+ * 자동 검사 읽기 (2026-10-07 베타 준비 분석 · W6) — 제출한 요청의 head 가 걸린 검사들. 읽지 못하면 undefined(상태를
+ * 모른다)다: 권한이 없거나(`Checks: Read` 가 없는 토큰) GitHub 에 닿지 못하면 아무것도 하지 않는 것이 이 읽기의
+ * 약속이다 — 거짓 실패로 AI 를 깨우지 않는다. 줄 단위 안내는 실패가 확정됐고 이 head 를 아직 브리프하지 않았을 때만
+ * 읽는다(같은 head 의 틱마다 같은 읽기를 되풀이하지 않는다).
+ */
+async function readCiChecks(
+  client: GitHubClient,
+  slug: { owner: string; repo: string },
+  headSha: string,
+  withDetails: boolean,
+  note: ObserveDeps["note"],
+): Promise<CiChecks | undefined> {
+  const read = await client.listCheckRuns({ ...slug, sha: headSha });
+  if (!read.readable) {
+    note?.(`checks:${read.reason}`);
+    return undefined;
+  }
+  const { state, failing } = classifyCheckRuns(read.runs);
+  const annotationsOf = new Map<number, CheckAnnotationRow[]>();
+  if (state === "failing" && withDetails) {
+    let room: number = CI_LIMITS.annotations;
+    for (const run of failing.slice(0, CI_LIMITS.failing)) {
+      if (room <= 0) break;
+      if (run.annotations <= 0) continue;
+      const rows = (await client.listCheckAnnotations({ ...slug, checkRunId: run.id })).slice(
+        0,
+        room,
+      );
+      annotationsOf.set(run.id, rows);
+      room -= rows.length;
+    }
+  }
+  return summarizeCheckRuns(read.runs, annotationsOf);
 }
 
 /**
@@ -298,13 +346,15 @@ export async function observeCycle(
   // 사이클 브랜치의 원격 대비 — 원격 브랜치가 없으면 올라갈 커밋의 잣대는
   // origin/base 다(L3 12행).
   let remoteBranchExists = false;
+  let remoteBranchSha: string | null = null;
   let localAheadOfRemote = 0;
   let remoteAheadOfLocal = 0;
   if (core.branch !== null) {
-    remoteBranchExists =
-      (
-        await gitText(core, ["rev-parse", "--verify", "-q", `refs/remotes/origin/${core.branch}`])
-      ).trim() !== "";
+    const remoteSha = (
+      await gitText(core, ["rev-parse", "--verify", "-q", `refs/remotes/origin/${core.branch}`])
+    ).trim();
+    remoteBranchExists = remoteSha !== "";
+    remoteBranchSha = remoteBranchExists ? remoteSha : null;
     if (remoteBranchExists) {
       const pair = await gitCountPair(core, [
         "rev-list",
@@ -341,6 +391,10 @@ export async function observeCycle(
         headSha: detail.headSha ?? "",
         mergeableState: detail.mergeableState,
         ...(detail.since === undefined ? {} : { since: detail.since }),
+        // 닫힌 시각 — 병합이면 병합 시각이다(반영된 일의 며칠 만이 읽는다). 닫히지 않았거나 모르면 없다.
+        ...(detail.closedAt ? { closedAt: detail.closedAt } : {}),
+        // 개발자의 승인 — 이름 대신 불리언만. 아니거나 모르면 없다.
+        ...(detail.approved ? { approved: true } : {}),
       };
     } catch {
       pr = null;
@@ -386,6 +440,14 @@ export async function observeCycle(
       pendingReviews = collected.pending;
       reviewCount = collected.total;
     }
+    // 자동 검사 — 읽지 못하면 pr.checks 가 없는 채로 간다(상태를 모른다).
+    if (pr.headSha !== "") {
+      const briefed = ledger.ci?.[String(pr.number)]?.briefed.includes(pr.headSha) === true;
+      const checks = await readCiChecks(client, slug, pr.headSha, !briefed, deps.note).catch(
+        () => undefined,
+      );
+      if (checks !== undefined) pr = { ...pr, checks };
+    }
   }
 
   return {
@@ -404,6 +466,7 @@ export async function observeCycle(
     aheadOfBase,
     behindBase,
     remoteBranchExists,
+    remoteBranchSha,
     localAheadOfRemote,
     remoteAheadOfLocal,
     pr,

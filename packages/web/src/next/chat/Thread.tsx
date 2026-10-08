@@ -18,11 +18,12 @@ import { turnAnswerText, turnBlockNumbers } from "../../lib/turn-numbering";
 import { type TurnScreen, withoutTrailingScreenLinks } from "../../lib/turn-screens";
 import { L } from "../labels";
 import { assistantDisplay } from "../lib/assistant-display";
+import { hasLandedFacts, landedIsFresh } from "../lib/landed";
 import { shownPinLabel } from "../lib/pin-name";
 import { requestResults } from "../lib/request-results";
 import {
   failureCards,
-  LIMIT_RESULT,
+  failWhy,
   noticeKind,
   plainExcerpt,
   promptNumbers,
@@ -34,6 +35,7 @@ import {
 import { openComparison } from "../preview/ComparisonDialog";
 import {
   BriefCard,
+  CiCard,
   FailCard,
   GateCard,
   NoticeCard,
@@ -51,6 +53,7 @@ import {
   SparkIcon,
   UndoIcon,
 } from "./icons";
+import { LandedCard } from "./LandedCard";
 import { type LoadComparison, ResultScreen } from "./ResultScreens";
 import { SettleLine } from "./SettleLine";
 
@@ -110,6 +113,8 @@ export interface ThreadProps {
   onRetry: (send: Extract<Block, { type: "user" }>) => void;
   /** 잃은 말의 `다시 시도` — 되살려 다시 보낸다(입력창이 쓰던 길). */
   onRetryDropped: (itemId: string) => void;
+  /** 계정류 실패 카드의 `다른 계정으로 로그인` — 이미 있는 AI 로그인 길(`onboarding.fix`)을 연다. 없으면 단추도 없다. */
+  onLogin?: () => void;
   onOpenScreen: (screen: TurnScreen) => void;
   onAdditionalEdit: (screen: TurnScreen) => void;
   loadComparison: LoadComparison;
@@ -192,6 +197,13 @@ export function Thread(props: ThreadProps) {
     );
   }
   answerSeen.current = roles.answers;
+  // 이번 창에서 막 도착한 반영 — 성취 카드의 체크는 이때 한 번 그려진다(첫 그림에 있던 카드는 이미 끝난 일이다).
+  const historyMiles = useRef<ReadonlySet<string> | null>(null);
+  if (historyMiles.current === null) {
+    historyMiles.current = new Set(
+      blocks.filter((block) => block.type === "milestone").map((block) => block.id),
+    );
+  }
 
   const prompts = promptNumbers(blocks);
   const turnNumbers = turnBlockNumbers(blocks);
@@ -297,6 +309,7 @@ export function Thread(props: ThreadProps) {
         }
         if (marker?.kind === "brief") return <BriefCard marker={marker} body={body} />;
         if (marker?.kind === "notice") return <NoticeCard marker={marker} body={body} />;
+        if (marker?.kind === "ci") return <CiCard marker={marker} body={body} fixing={running} />;
         if (marker?.kind === "review") {
           return (
             <ReviewCard
@@ -497,12 +510,7 @@ export function Thread(props: ThreadProps) {
       case "turn": {
         if (failed(block)) {
           if (block.subtype === "interrupted") return <Note>{L.transcript.stopped}</Note>;
-          const limit = block.resultText !== null && LIMIT_RESULT.test(block.resultText);
-          const why = limit
-            ? L.chat.failLimit
-            : block.escalated
-              ? L.cards.failWhy
-              : L.chat.failWhyShort;
+          const why = failWhy(block, L);
           const retrySend = block.id === lastFailedId ? ownSend : null;
           return (
             <FailCard
@@ -510,6 +518,8 @@ export function Thread(props: ThreadProps) {
               notified={block.escalated === true}
               live={live}
               retry={retrySend ? () => props.onRetry(retrySend) : null}
+              // 계정류 실패(2026-10-07)만 다시 로그인하는 길을 든다 — 계정을 바꾸고 다시 시도한다.
+              onLogin={block.failure === "account" ? (props.onLogin ?? null) : null}
             />
           );
         }
@@ -560,6 +570,7 @@ export function Thread(props: ThreadProps) {
                       route={screenPath(screen.path)}
                       requestId={requestByTurn.get(block.id)}
                       loadComparison={props.loadComparison}
+                      onToast={props.onToast}
                       title={screenTitle(screen, props.cycleScreens, {
                         homeScreen: L.preview.homeScreen,
                         unknownScreen: L.transcript.unknownScreen,
@@ -673,6 +684,15 @@ export function Thread(props: ThreadProps) {
               handoff={props.handoff}
               onNote={props.onNote}
               onToast={props.onToast}
+            />
+          );
+        }
+        // 반영이 제목 · 며칠 · 화면 수를 알면 성취 카드로 선다 — 필드 없는 옛 사건은 얇은 한 줄 그대로다.
+        if (block.subtype === "merged" && hasLandedFacts(block)) {
+          return (
+            <LandedCard
+              block={block}
+              fresh={!historyMiles.current?.has(block.id) && landedIsFresh(block.at, Date.now())}
             />
           );
         }

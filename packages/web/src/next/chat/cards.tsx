@@ -4,16 +4,18 @@ import type {
   RepoStatus,
   TurnMarker,
 } from "@colonova-design/protocol";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import type { Block, PendingPermission, PendingQuestion } from "../../lib/daemon-client";
 import { composing } from "../../lib/ime";
 import { bashHeadline, toolLabel } from "../../lib/labels";
 import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
+import { previewDoc } from "../lib/ask-preview";
 import { receiptFacts } from "../lib/receipt";
 import { noteAllowed } from "../lib/thread";
 import { useCopied } from "../lib/use-copied";
 import { whenText } from "../status/parts";
+import { PreviewBig, PreviewGrid } from "./AskPreview";
 import { AlertIcon, CheckIcon, ClockIcon, ExtIcon, EyeIcon, SparkIcon } from "./icons";
 
 /** `오후 3:12` 가 아니라 `15:12` — 목업의 시각 표기. */
@@ -138,6 +140,40 @@ export function NoticeCard({
       <div className="nx-ch">
         <ClockIcon />
         <b>{marker.text}</b>
+      </div>
+      <Received body={body} />
+    </div>
+  );
+}
+
+/**
+ * 자동 검사 카드(2026-10-07 베타 준비 분석) — 제출한 요청의 자동 검사가 통과하지 못해 AI 에게 맡긴 차례. 개발자 코멘트
+ * 카드와 같은 결(호박색 카드 · 한 문장 · 상태 알약)로 서고, 받은 글(검사 이름 · 출력 · 줄 위치)은 접혀 있다.
+ * 알약은 AI 가 도는 동안만 `AI가 고치는 중` 이고 끝나면 `확인을 마쳤어요` 다 — 고쳤다는 말은 하지 않는다: 검사가 다시
+ * 돌아 통과해야 고친 것이고, 그 소식은 이번 작업 팝오버의 자동 검사 줄이 말한다.
+ */
+export function CiCard({
+  marker,
+  body,
+  fixing,
+}: {
+  marker: Extract<TurnMarker, { kind: "ci" }>;
+  body: string;
+  /** 이 차례가 아직 도는 중인가 — 알약이 `AI가 고치는 중` 이 된다. */
+  fixing: boolean;
+}) {
+  return (
+    <div className="nx-card nx-card--review nx-card--ci">
+      <div className="nx-ch">
+        <EyeIcon />
+        <b>{L.afterSubmit.cardTitle}</b>
+        {marker.failing > 0 && (
+          <span className="nx-muted">{L.afterSubmit.cardCount(marker.failing)}</span>
+        )}
+      </div>
+      <div className="nx-ctext">{L.afterSubmit.cardText}</div>
+      <div className="nx-cfoot">
+        <Stat done={!fixing} doneText={L.afterSubmit.cardDone} runText={L.cards.gateFixing} />
       </div>
       <Received body={body} />
     </div>
@@ -449,6 +485,10 @@ function Announce({ text }: { text: string }) {
  * 확인 카드 — AI 가 물어보거나(질문) 무엇을 해도 되는지 묻는다(허용). 질문이 하나
  * · 고르기 하나면 누르는 순간 답이 간다(목업 `card.ask`); 여럿이면 다 고른 뒤
  * 보낸다. 어느 질문이든 `직접 답하기` 로 자기 말을 쓸 수 있다.
+ *
+ * 선택지에 AI 가 단 시안(`preview`)이 하나라도 쓸 만하면 그 질문은 그림 카드로 선다(`AskPreview`
+ * · 2026-10-08 C1): 눈으로 비교하다 잘못 눌러 보내지 않게 하나여도 누르는 즉시 보내지 않고, 고른 뒤
+ * `이걸로 할게요` 로 보낸다. 시안이 없으면 위 글 선택지와 똑같이 움직인다.
  */
 export function AskCard({
   request,
@@ -473,6 +513,18 @@ export function AskCard({
   const [pressed, setPressed] = useState<string | null>(null);
   const titleId = useId();
   const needId = useId();
+  // 시안 문서 — 요청이 바뀔 때만 걸러 짓는다(고를 때마다 다시 짓지 않게). 시안이 없거나 못 쓰는 선택지는 null.
+  const docs = useMemo(
+    () =>
+      request.kind === "question"
+        ? request.questions.map((q) =>
+            q.options.map((option) => (option.preview ? previewDoc(option.preview) : null)),
+          )
+        : [],
+    [request],
+  );
+  /** 크게 보기가 열린 선택지(질문 순서 · 선택지 순서) — 없으면 닫힘. */
+  const [zoomed, setZoomed] = useState<{ question: number; option: number } | null>(null);
   const dispatch = (mark: string, call: () => unknown) => {
     if (sent) return;
     setSent(true);
@@ -539,6 +591,11 @@ export function AskCard({
 
   const questions = request.questions;
   const single = questions.length === 1 && !questions[0]?.multiSelect;
+  // 시안이 하나라도 있는 질문은 그림 카드로 선다(`PreviewGrid`) — 못 쓰는 시안만 있으면 글 선택지 그대로다.
+  const visual = (index: number) => docs[index]?.some((doc) => doc !== null) === true;
+  // 글 선택지 하나면 누르는 순간 간다. 그림 카드는 눈으로 비교하다 잘못 눌러 보내지 않게 고르기만 하고,
+  // 보내기는 바닥의 `이걸로 할게요` 가 맡는다(2026-10-08 C1).
+  const instant = single && !visual(0);
   const picked = (q: AskQuestion, label: string) => {
     const value = answers[q.question];
     return Array.isArray(value) ? value.includes(label) : value === label;
@@ -557,7 +614,7 @@ export function AskCard({
     dispatch(mark, () => onQuestion(out));
   };
   const pick = (q: AskQuestion, label: string) => {
-    if (single) {
+    if (instant) {
       // 눌림은 먼저 선다 — 고른 것이 곧 보이고, 전하지 못했으면 조용히 풀린다.
       setAnswers((prev) => ({ ...prev, [q.question]: label }));
       send({ [q.question]: label }, label);
@@ -583,6 +640,22 @@ export function AskCard({
       ? value.length
       : 0;
   };
+  // 직접 답하기 — 글 선택지 줄에도 그림 카드 격자 밑에도 같은 단추가 선다.
+  const freeButton = (q: AskQuestion) => (
+    <button
+      type="button"
+      className="nx-btn nx-btn--ghost"
+      aria-expanded={freeOpen[q.question] === true}
+      disabled={sent}
+      onClick={() => setFreeOpen((prev) => ({ ...prev, [q.question]: true }))}
+    >
+      {L.cards.askFree}
+    </button>
+  );
+  // 크게 보기가 열린 선택지 — 질문 · 선택지 · 문서가 모두 있을 때만 판이 선다.
+  const bigQuestion = zoomed ? questions[zoomed.question] : undefined;
+  const bigOption = zoomed ? bigQuestion?.options[zoomed.option] : undefined;
+  const bigDoc = zoomed ? (docs[zoomed.question]?.[zoomed.option] ?? null) : null;
 
   return (
     // biome-ignore lint/a11y/useSemanticElements: 카드는 제목으로 이름 붙은 묶음이다 — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다.
@@ -600,54 +673,68 @@ export function AskCard({
             <div id={asked} className="nx-ctext">
               {q.question}
             </div>
-            {/* biome-ignore lint/a11y/useSemanticElements: 질문 한 줄과 그 선택지의 묶음 — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다. */}
-            <div
-              role="group"
-              aria-labelledby={asked}
-              className={`nx-opts${described(q) ? " nx-opts--described" : ""}`}
-            >
-              {q.options.map((option) => {
-                const on = picked(q, option.label);
-                return (
-                  <button
-                    key={option.label}
-                    type="button"
-                    className={`nx-btn${described(q) ? " nx-btn--opt" : ""}`}
-                    // 고른 상태는 색만으로 말하지 않는다 — 눌림 상태(낭독)와 체크(눈)가 함께 선다.
-                    aria-pressed={on}
-                    disabled={sent}
-                    onClick={() => pick(q, option.label)}
-                  >
-                    {described(q) ? (
-                      <span className="nx-opt-t">
-                        <b>{option.label}</b>
-                        {option.description && <small>{option.description}</small>}
-                      </span>
-                    ) : (
-                      option.label
-                    )}
-                    {pressed === option.label ? (
-                      <i className="nx-spin" aria-hidden="true" />
-                    ) : (
-                      on && (
-                        <span className="nx-opt-ck">
-                          <CheckIcon />
-                        </span>
-                      )
-                    )}
-                  </button>
-                );
-              })}
-              <button
-                type="button"
-                className="nx-btn nx-btn--ghost"
-                aria-expanded={freeOpen[q.question] === true}
-                disabled={sent}
-                onClick={() => setFreeOpen((prev) => ({ ...prev, [q.question]: true }))}
+            {visual(index) ? (
+              <>
+                <PreviewGrid
+                  labelledBy={asked}
+                  idBase={asked}
+                  choices={q.options.map((option, at) => ({
+                    label: option.label,
+                    description: option.description,
+                    doc: docs[index]?.[at] ?? null,
+                    on: picked(q, option.label),
+                  }))}
+                  disabled={sent}
+                  onPick={(at) => {
+                    const option = q.options[at];
+                    if (option) pick(q, option.label);
+                  }}
+                  onZoom={(at) => setZoomed({ question: index, option: at })}
+                />
+                <div className="nx-opts">{freeButton(q)}</div>
+              </>
+            ) : (
+              // biome-ignore lint/a11y/useSemanticElements: 질문 한 줄과 그 선택지의 묶음 — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다.
+              <div
+                role="group"
+                aria-labelledby={asked}
+                className={`nx-opts${described(q) ? " nx-opts--described" : ""}`}
               >
-                {L.cards.askFree}
-              </button>
-            </div>
+                {q.options.map((option) => {
+                  const on = picked(q, option.label);
+                  return (
+                    <button
+                      key={option.label}
+                      type="button"
+                      className={`nx-btn${described(q) ? " nx-btn--opt" : ""}`}
+                      // 고른 상태는 색만으로 말하지 않는다 — 눌림 상태(낭독)와 체크(눈)가 함께 선다.
+                      aria-pressed={on}
+                      disabled={sent}
+                      onClick={() => pick(q, option.label)}
+                    >
+                      {described(q) ? (
+                        <span className="nx-opt-t">
+                          <b>{option.label}</b>
+                          {option.description && <small>{option.description}</small>}
+                        </span>
+                      ) : (
+                        option.label
+                      )}
+                      {pressed === option.label ? (
+                        <i className="nx-spin" aria-hidden="true" />
+                      ) : (
+                        on && (
+                          <span className="nx-opt-ck">
+                            <CheckIcon />
+                          </span>
+                        )
+                      )}
+                    </button>
+                  );
+                })}
+                {freeButton(q)}
+              </div>
+            )}
             {count > 0 && <p className="nx-snote nx-ask-count">{L.cards.pickedCount(count)}</p>}
             {freeOpen[q.question] && (
               <div className="nx-reply">
@@ -691,7 +778,7 @@ export function AskCard({
           </div>
         );
       })}
-      {!single && (
+      {!instant && (
         <div className="nx-cfoot">
           {/* 잠긴 이유는 눈에도 한 줄로 서고 `aria-describedby` 로 묶인다. */}
           <button
@@ -701,12 +788,16 @@ export function AskCard({
             aria-describedby={complete ? undefined : needId}
             onClick={() => send(merged(), "send")}
           >
-            {L.inbox.send}
+            {single ? L.askPreview.pickThis : L.inbox.send}
             {pressed === "send" && <i className="nx-spin" aria-hidden="true" />}
           </button>
           {!complete && (
             <span id={needId} className="nx-snote">
-              {questions.length === 1 ? L.cards.needOne : L.cards.needAll}
+              {single
+                ? L.askPreview.needPick
+                : questions.length === 1
+                  ? L.cards.needOne
+                  : L.cards.needAll}
             </span>
           )}
         </div>
@@ -715,6 +806,17 @@ export function AskCard({
         <div className="nx-cs nx-tone--red" role="alert">
           {L.chat.sendFailed}
         </div>
+      )}
+      {zoomed && bigQuestion && bigOption && bigDoc && (
+        <PreviewBig
+          title={bigOption.label}
+          sub={bigQuestion.question}
+          doc={bigDoc}
+          on={picked(bigQuestion, bigOption.label)}
+          busy={sent}
+          onChoose={() => pick(bigQuestion, bigOption.label)}
+          onClose={() => setZoomed(null)}
+        />
       )}
     </div>
   );
@@ -730,13 +832,17 @@ export function FailCard({
   notified,
   retry,
   live,
+  onLogin = null,
 }: {
   why: string;
   notified: boolean;
   retry: (() => void) | null;
   live: boolean;
+  /** 계정류 실패의 `다른 계정으로 로그인` — 있을 때만 단추가 선다(마지막 실패 카드의 `다시 시도` 곁). */
+  onLogin?: (() => void) | null;
 }) {
   const whyId = useId();
+  const [loginStarted, setLoginStarted] = useState(false);
   return (
     <div className="nx-card nx-card--fail">
       <div className="nx-ch">
@@ -756,6 +862,18 @@ export function FailCard({
               {L.chat.retryLive}
             </span>
           )}
+          {onLogin && (
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm"
+              onClick={() => {
+                setLoginStarted(true);
+                onLogin();
+              }}
+            >
+              {L.account.switchAccount}
+            </button>
+          )}
           <button
             type="button"
             className="nx-btn nx-btn--sm nx-btn--pri"
@@ -766,6 +884,11 @@ export function FailCard({
           >
             {L.vocab.retry}
           </button>
+        </div>
+      )}
+      {onLogin && loginStarted && (
+        <div className="nx-cs" role="status">
+          {L.account.failLoginNote}
         </div>
       )}
     </div>

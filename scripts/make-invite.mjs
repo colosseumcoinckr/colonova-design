@@ -21,10 +21,19 @@
  * --base 가 없으면 토큰으로 GitHub 의 기본 가지를 묻는다. --author · --reviewer 는
  * 모든 프로젝트 공통이다(v2 필드 — 작성 줄과 리뷰어).
  * 개발 실행도 이 파일로 시작한다 — GitHub 주소나 로컬 경로 둘 다 --repo 로 받는다.
+ *
+ * 파일을 쓰기 전에 사전 점검을 돈다(site/invite-check.mjs — 소개 페이지의 점검 칸과 같은 모듈,
+ * 베타 준비 분석 2026-10-07): 연결 코드가 유효한지 · 레포에 닿는지 · 제출을 열고 작업을 올리고
+ * 알림을 남길 수 있는지 · 리뷰어가 코드의 주인이 아닌지 · 레포 루트(락파일 · 미리보기 스크립트 ·
+ * engines · .npmrc · 환경 변수 견본)를 본다. 부작용은 없다 — GET 과 일부러 실패하게 만든 예행
+ * 요청뿐이라 PR · 브랜치 · 이슈 · 코멘트는 만들어지지 않는다. 확정 실패가 하나라도 있으면 파일을
+ * 만들지 않고 0 이 아닌 코드로 끝난다(--skip-check 로 건너뛴다).
+ * 테스트가 GitHub 대신 로컬 서버를 겨눌 수 있게 COLONOVA_DESIGN_GITHUB_API 를 읽는다(데몬과 같은 변수).
  */
 
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { formatReport, runInviteCheck } from "../site/invite-check.mjs";
 import { buildInvite, inviteSlug, sealInvite } from "../site/invite-format.mjs";
 
 const args = process.argv.slice(2);
@@ -57,6 +66,12 @@ const noDeleteMerged = args.includes("--no-delete-merged");
 const noAutoReply = args.includes("--no-auto-reply");
 const noSubmitFromChat = args.includes("--no-submit-from-chat");
 const instructions = flag("instructions");
+const skipCheck = args.includes("--skip-check");
+/** GitHub REST 의 주소 — 데몬과 같은 환경 변수로 로컬 서버를 겨눈다(시험). */
+const apiBase = (process.env.COLONOVA_DESIGN_GITHUB_API ?? "https://api.github.com").replace(
+  /\/+$/,
+  "",
+);
 
 if (repoUrls.length === 0 || !token) {
   console.error(
@@ -82,6 +97,9 @@ if (repoUrls.length === 0 || !token) {
       "  --no-auto-reply         개발자 코멘트에 AI 가 자동으로 답하지 않는다 (기본은 답한다)",
       "  --no-submit-from-chat   채팅으로 제출하는 도구를 싣지 않는다 (기본은 싣는다)",
       "  --instructions <text>   이 프로젝트에서 AI 가 늘 따를 규칙 — 레포가 하나일 때만",
+      "",
+      "  --skip-check            사전 점검(연결 코드 · 레포 권한 · 리뷰어 · 레포 루트)을 건너뛴다 —",
+      "                          기본은 점검하고, 확정 실패가 있으면 파일을 만들지 않는다",
     ].join("\n"),
   );
   process.exit(1);
@@ -111,7 +129,7 @@ async function defaultBranch(url) {
   const slug = repoSlug(url);
   if (!isGitHubUrl(url) || !slug.owner) return "main";
   try {
-    const reply = await fetch(`https://api.github.com/repos/${slug.owner}/${slug.repo}`, {
+    const reply = await fetch(`${apiBase}/repos/${slug.owner}/${slug.repo}`, {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: "application/vnd.github+json",
@@ -132,44 +150,54 @@ async function defaultBranch(url) {
 }
 
 /**
- * 연결 코드의 만료일(U17) — /user 를 한 번 쳐서 토큰 확인을 겸하고, 응답의
- * github-authentication-token-expiration 머리글을 읽어 stderr 로 한 줄 낸다.
- * 30일 안이면 더 긴 만료일의 코드를 권한다 — 진행은 막지 않는다. 네트워크
- * 실패는 조용히 넘어간다(확인에 실패했다고 초대장 만들기를 멈추지 않는다).
+ * invite-check 의 전송 — GitHub REST 에 묻는다. 연결 코드는 머리글로만 나가고 어디에도 출력하지
+ * 않는다. 15초 안에 답이 없으면 시간 초과로 던져 점검이 `확인할 수 없어요` 로 받는다.
  */
-async function warnTokenExpiry() {
-  try {
-    const reply = await fetch("https://api.github.com/user", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "User-Agent": "colonova-design-invite",
-      },
-    });
-    const raw = reply.headers.get("github-authentication-token-expiration");
-    if (!raw) return;
-    const end = new Date(raw).getTime();
-    if (Number.isNaN(end)) return;
-    const days = Math.ceil((end - Date.now()) / 86_400_000);
-    if (days <= 0) return;
-    const date = new Date(end);
-    const when = `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일`;
-    if (days <= 30) {
-      console.error(
-        `경고: 이 연결 코드는 ${when}에 만료됩니다(${days}일 남음) — 더 긴 만료일의 코드를 권합니다.`,
-      );
-    } else {
-      console.error(`경고: 이 연결 코드는 ${when}에 만료됩니다(${days}일 남음)`);
-    }
-  } catch {
-    // 조용히 — 확인은 최선의 노력이다.
-  }
+async function githubRequest(method, path, body) {
+  const reply = await fetch(`${apiBase}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "User-Agent": "colonova-design-invite",
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const headers = {};
+  reply.headers.forEach((value, key) => {
+    headers[key.toLowerCase()] = value;
+  });
+  return { status: reply.status, headers, json: await reply.json().catch(() => null) };
 }
 
-await warnTokenExpiry();
+/**
+ * 사전 점검(2026-10-07) — 확정 실패(연결 코드 거절 · 레포가 안 보임 · 제출을 열 수 없음 · 올릴 수
+ * 없음)가 있으면 파일을 만들지 않고 끝난다. 경고(리뷰어에 코드의 주인이 든 것 포함 — 2026-10-08
+ * 검토 FIX1 에서 낮춤)와 확인하지 못한 것은 알리기만 하고 종료 코드는 0 이다.
+ * --skip-check 는 이 점검 전체를 건너뛴다(기본 가지는 아래에서 따로 묻는다).
+ */
+let report = null;
+if (skipCheck) {
+  console.error("사전 점검을 건너뛰었어요(--skip-check).");
+} else {
+  report = await runInviteCheck({
+    request: githubRequest,
+    projects: repoUrls.map((url) => ({ repoUrl: url, ...(baseBranch ? { baseBranch } : {}) })),
+    reviewers,
+  });
+  for (const line of formatReport(report)) console.error(line);
+  if (report.blocking) {
+    console.error(
+      "확정 실패가 있어 초대 파일을 만들지 않았어요 — 고친 뒤 다시 하거나, 알고 넘어가려면 --skip-check 를 붙여 주세요.",
+    );
+    process.exit(1);
+  }
+}
 const projects = [];
-for (const url of repoUrls) {
+for (const [index, url] of repoUrls.entries()) {
   const slug = repoSlug(url);
   // 초대 v4(PLAN 단계 5): 처음 값과 수명은 프로젝트마다 같은 값을 실는다 —
   // --name · --instructions 와 달리 레포가 여럿이어도 개발자의 한 뜻이다.
@@ -187,7 +215,10 @@ for (const url of repoUrls) {
   projects.push({
     repoUrl: url,
     name: (repoUrls.length === 1 && name ? name : slug.repo) || url,
-    ...(baseBranch ? { baseBranch } : { baseBranch: await defaultBranch(url) }),
+    // 점검이 이미 레포를 읽었다면 그 기본 가지를 쓰고, 아니면(건너뜀 · 읽지 못함) 따로 묻는다.
+    ...(baseBranch
+      ? { baseBranch }
+      : { baseBranch: report?.projects[index]?.info?.defaultBranch ?? (await defaultBranch(url)) }),
     ...(reviewers.length > 0 ? { reviewers } : {}),
     ...(repoUrls.length === 1 && instructions ? { instructions } : {}),
     ...(Object.keys(defaults).length > 0 ? { defaults } : {}),

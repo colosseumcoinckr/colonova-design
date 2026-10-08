@@ -226,7 +226,19 @@ export interface GitGuardHookOutput {
 }
 
 /**
- * PreToolUse 훅의 판정 — Bash 의 git 쓰기만 deny 하고 나머지는 빈 객체로
+ * 명령을 돌리는 Claude 도구 — `Bash` 와 Windows 의 `PowerShell`. 번들 CLI 0.3.263 에서 도구 이름(`PowerShell`)과
+ * 입력 칸(`command`, 두 도구가 같다)을 확인했다(2026-10-08 검토 FIX1) — Git Bash 가 없는 Windows 에서는 이쪽이
+ * 명령의 길이고, 있어도 CLI 가 PowerShell 을 첫째로 내세울 수 있다. 두 도구의 훅이 같은 `command` 글을 읽는다.
+ */
+export const SHELL_TOOLS = ["Bash", "PowerShell"] as const;
+
+/** 이 도구가 명령 글(`command`)을 돌리는 도구인가. */
+export function isShellTool(toolName: string): boolean {
+  return (SHELL_TOOLS as readonly string[]).includes(toolName);
+}
+
+/**
+ * PreToolUse 훅의 판정 — 셸 도구(`Bash` · `PowerShell`)의 git 쓰기만 deny 하고 나머지는 빈 객체로
  * 통과시킨다. bypassPermissions 에서 canUseTool 이 불리지 않으므로 이 훅이
  * Claude 의 git 게이트다 (단계 3).
  */
@@ -234,7 +246,7 @@ export function gitGuardHookDecision(
   toolName: string,
   input: Record<string, unknown>,
 ): GitGuardHookOutput {
-  if (toolName !== "Bash") return {};
+  if (!isShellTool(toolName)) return {};
   const command = typeof input.command === "string" ? input.command : "";
   if (!gitWriteDenied(command)) return {};
   return {

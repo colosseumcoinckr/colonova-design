@@ -13,9 +13,14 @@
  * 죽일 수는 없다 — 무엇을 써도 조용히 삼킨다.
  */
 
-import { appendFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { ChatEvent } from "@colonova-design/protocol";
+import type {
+  ChatEvent,
+  DiagnosticsPercentiles,
+  DiagnosticsTurnStats,
+  TurnFailureStage,
+} from "@colonova-design/protocol";
 import { type BrowserFailKind, isBrowserToolName } from "./browser-tools.js";
 import { daemonLogDir } from "./log.js";
 import { STATS_EDIT_TOOLS, STATS_EXEC_TOOLS, STATS_READ_TOOLS } from "./tool-names.js";
@@ -79,6 +84,8 @@ interface InFlight {
   browserMs: number | null;
   /** 브라우저 op 실패 종류의 수 — 실패가 없던 턴은 null. */
   browserFail: Partial<Record<BrowserFailKind, number>> | null;
+  /** screen_check 가 로그인 화면으로 튕긴 화면의 수(2026-10-07) — 횟수만, 주소 · 경로는 아니다. */
+  loginWall: number;
 }
 
 /** The turn row as it lands in the file — numbers and kinds only. */
@@ -106,8 +113,8 @@ interface TurnStatsRow {
   firstDeltaMs: number | null;
   /** 핀 턴이 에이전트에게 실어 보낸 말의 바이트 — 핀 페이로드의 크기. 핀 턴만. */
   pinBytes: number | null;
-  /** 실패한 턴의 단계 — 실패 문장의 최선 분류. 성공 턴은 null. */
-  failure: "length" | "auth" | "limit" | "stream" | "other" | null;
+  /** 실패한 턴의 단계 — 실패 문장의 최선 분류(계정류 `account` 는 2026-10-07 에 더했다). 성공 턴은 null. */
+  failure: TurnFailureStage | null;
   /** 카드 대기(waiting_*)의 누적 — durationMs 에 섞인 사람 시간. */
   waitMs: number;
   /** 보내기 문에서 핀 강화(파일 후보)가 걸린 시간 — 핀 턴만 값이 있다. */
@@ -121,6 +128,8 @@ interface TurnStatsRow {
   browserMs: number | null;
   /** 브라우저 op 실패 종류의 수 — 0인 종류는 칸에서 뺀다(비면 생략). */
   browserFail?: Partial<Record<BrowserFailKind, number>>;
+  /** 이 턴의 screen_check 가 로그인 화면으로 튕긴 화면의 수(2026-10-07 베타 준비 분석) — 없으면 칸이 없다. */
+  loginWall?: number;
   /**
    * 이 턴이 쓴 토큰(2026-10-02, claude.dev 「What a task costs」의 네 변수 가운데 셋 —
    * 턴 수는 numTurns 가 이미 센다). `input` 은 캐시를 뺀 새 입력, `cacheRead` 는 캐시에서
@@ -158,6 +167,8 @@ interface TurnGateRow {
   netLines?: number;
   /** D3 재시도로 구제된 화면 수. */
   rescued?: number;
+  /** 열었더니 로그인 화면이었던 화면 수(2026-10-07) — 확인한 화면으로도 문제로도 세지 않은 것. 횟수만. */
+  loginWall?: number;
   /** 바뀐 파일에서 되짚은 화면 수(PLAN-HARNESS §3.B B-4) — 0 이면 싣지 않는다. */
   fallback?: number;
   /** 게이트의 타입 검사(PLAN-HARNESS §3.D D-5) — 이번에 바뀐 TypeScript 파일의
@@ -216,6 +227,7 @@ function freshTurn(text: string): InFlight {
     pinHit: null,
     browserMs: null,
     browserFail: null,
+    loginWall: 0,
   };
 }
 
@@ -262,6 +274,163 @@ function prune(dir: string, today: Date): void {
       // 다음 쓰기가 다시 후보로 올린다.
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// 최근 7일 요약 (2026-10-07 베타 준비 분석) — 진단 복사의 재료
+// ---------------------------------------------------------------------------
+
+/** 요약의 창(일) — 보존 일수와 같다. */
+const SUMMARY_DAYS = RETENTION_DAYS;
+/** 턴 행의 종류 — 이 밖(`gateset` 등)은 턴이 아니다. */
+const TURN_KINDS: ReadonlySet<string> = new Set(["user", "comments", "brief", "gate"]);
+/** 실패 단계의 사전 — 프로토콜의 `TurnFailureStage` 와 같다. */
+const FAILURE_STAGES: ReadonlySet<string> = new Set([
+  "length",
+  "auth",
+  "account",
+  "limit",
+  "stream",
+  "other",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** 0 이상의 유한한 수만 숫자로 읽는다 — 손상된 줄의 문자열 · 음수 · NaN 은 값이 아니다. */
+function count(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/** 가까운 순위(nearest-rank) 분위수 — 정렬된 값에서 `ceil(p/100 · n)` 번째. 값이 없으면 null. */
+function nearestRank(sorted: readonly number[], p: number): number | null {
+  if (sorted.length === 0) return null;
+  const rank = Math.min(sorted.length, Math.max(1, Math.ceil((p / 100) * sorted.length)));
+  return sorted[rank - 1] ?? null;
+}
+
+function percentiles(values: readonly number[]): DiagnosticsPercentiles {
+  const sorted = [...values].sort((a, b) => a - b);
+  return { n: sorted.length, p50: nearestRank(sorted, 50), p90: nearestRank(sorted, 90) };
+}
+
+/**
+ * 턴 통계 줄들을 최근 7일의 요약 하나로 접는다 — 순수 함수(입력은 파일의 줄들). 게이트 행(`gateset`) ·
+ * 읽을 수 없는 줄 · 창 밖의 행은 건너뛴다. 프로젝트 · 세션 · 경로는 행에 있어도 요약에 옮기지 않는다
+ * (읽는 칸이 정해져 있다 — 진단은 종류와 숫자뿐이다).
+ *
+ * 분위수는 **사람이 보낸 턴(`user` · `comments`) 가운데 끝까지 답한 것**만 센다 — 중지한 턴 · 실패한
+ * 턴 · 도구가 연 턴(`brief` · `gate`)은 `첫 요청에서 화면이 바뀌기까지` 와 뜻이 다르다. 턴 · 실패 ·
+ * 도구 호출 · 핀의 셈은 모든 턴 행이다.
+ */
+export function summarizeTurnStats(lines: readonly string[], now: Date): DiagnosticsTurnStats {
+  const horizon = now.getTime() - SUMMARY_DAYS * 24 * 60 * 60 * 1000;
+  const byKind = { user: 0, comments: 0, brief: 0, gate: 0 };
+  const failures: Partial<Record<TurnFailureStage, number>> = {};
+  let turns = 0;
+  let failed = 0;
+  let pinTurns = 0;
+  let toolSum = 0;
+  let toolTurns = 0;
+  const firstEdit: number[] = [];
+  const firstDelta: number[] = [];
+  const duration: number[] = [];
+  for (const line of lines) {
+    let row: unknown;
+    try {
+      row = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!isRecord(row)) continue;
+    const kind = row.kind;
+    if (typeof kind !== "string" || !TURN_KINDS.has(kind)) continue;
+    const at = typeof row.at === "string" ? Date.parse(row.at) : Number.NaN;
+    if (!Number.isFinite(at) || at < horizon) continue;
+    turns += 1;
+    byKind[kind as keyof typeof byKind] += 1;
+    const isError = row.isError === true;
+    if (isError) {
+      failed += 1;
+      // 단계가 없는(옛 행 · 모르는 값) 실패는 `other` 로 센다 — 실패는 어느 칸에든 든다.
+      const stage =
+        typeof row.failure === "string" && FAILURE_STAGES.has(row.failure)
+          ? (row.failure as TurnFailureStage)
+          : "other";
+      failures[stage] = (failures[stage] ?? 0) + 1;
+    }
+    if ((count(row.pins) ?? 0) > 0) pinTurns += 1;
+    if (isRecord(row.tools)) {
+      toolSum += (["read", "edit", "exec", "browser", "other"] as const).reduce(
+        (sum, key) => sum + (count((row.tools as Record<string, unknown>)[key]) ?? 0),
+        0,
+      );
+      toolTurns += 1;
+    }
+    if ((kind === "user" || kind === "comments") && !isError && row.subtype !== "interrupted") {
+      const edit = count(row.firstEditMs);
+      if (edit !== null) firstEdit.push(edit);
+      const delta = count(row.firstDeltaMs);
+      if (delta !== null) firstDelta.push(delta);
+      const total = count(row.durationMs);
+      if (total !== null) duration.push(total);
+    }
+  }
+  return {
+    days: SUMMARY_DAYS,
+    turns,
+    byKind,
+    failed,
+    failures,
+    pinTurns,
+    avgToolCalls: toolTurns === 0 ? null : Math.round((toolSum / toolTurns) * 10) / 10,
+    firstEditMs: percentiles(firstEdit),
+    firstDeltaMs: percentiles(firstDelta),
+    durationMs: percentiles(duration),
+  };
+}
+
+/**
+ * 요약이 읽을 파일 이름들 — `turn-stats-YYYY-MM-DD.jsonl` 가운데 창 안의 날짜(경계의 하루는 포함: 행은
+ * 제 시각으로 다시 걸러진다). 보존 정리가 아직 못 지운 7일 밖의 파일은 읽지 않는다. 순수 함수.
+ */
+export function turnStatsFilesWithin(names: readonly string[], now: Date): string[] {
+  const horizonDay = new Date(now.getTime() - SUMMARY_DAYS * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  return names
+    .filter((name) => {
+      if (!name.startsWith(FILE_PREFIX)) return false;
+      const day = name.slice(FILE_PREFIX.length);
+      return DAY_FILE.test(day) && day.slice(0, 10) >= horizonDay;
+    })
+    .sort();
+}
+
+/**
+ * 로그 폴더의 턴 통계를 읽어 최근 7일 요약을 만든다 — 폴더가 없거나 파일이 하나도 없으면 턴 0 의
+ * 요약이다(`아직 턴이 없다` 도 답이다). 한 파일을 못 읽어도 나머지로 만든다. 읽는 일만 하고
+ * 쓰지 않는다.
+ */
+export function readTurnStatsSummary(options?: { dir?: string; now?: Date }): DiagnosticsTurnStats {
+  const dir = options?.dir ?? daemonLogDir();
+  const now = options?.now ?? new Date();
+  let names: string[] = [];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    // 폴더가 없으면 읽을 것도 없다.
+  }
+  const lines: string[] = [];
+  for (const name of turnStatsFilesWithin(names, now)) {
+    try {
+      lines.push(...readFileSync(join(dir, name), "utf8").split("\n"));
+    } catch {
+      // 한 파일을 못 읽어도 나머지로 요약한다.
+    }
+  }
+  return summarizeTurnStats(lines, now);
 }
 
 /** 측정의 임자 — 서버가 세션 사건을 흘려 보내는 창구. */
@@ -413,6 +582,13 @@ export class TurnStats {
     }
   }
 
+  /** screen_check 가 로그인 화면으로 튕긴 화면(2026-10-07 베타 준비 분석) — 도는 턴에 횟수만 더한다.
+   *  세션에 도는 턴이 없으면 조용히 흘린다. */
+  noteLoginWall(sessionId: string, count: number): void {
+    const turn = this.flying.get(sessionId);
+    if (turn !== undefined && count > 0) turn.loginWall += count;
+  }
+
   /** 게이트의 한 바퀴 — 턴 행과는 따로 한 줄로 내려앉는다. 판정 상세와
    *  못 돈 이유(skipped)까지: 못 센 침묵과 통과가 같은 소리를 내지 않게. */
   noteGateCheck(
@@ -429,6 +605,7 @@ export class TurnStats {
       consoleLines?: number;
       netLines?: number;
       rescued?: number;
+      loginWall?: number;
       fallback?: number;
       typeErrors?: number;
       typeMs?: number;
@@ -450,6 +627,9 @@ export class TurnStats {
       ...(outcome.consoleLines !== undefined ? { consoleLines: outcome.consoleLines } : {}),
       ...(outcome.netLines !== undefined ? { netLines: outcome.netLines } : {}),
       ...(outcome.rescued !== undefined ? { rescued: outcome.rescued } : {}),
+      ...(outcome.loginWall !== undefined && outcome.loginWall > 0
+        ? { loginWall: outcome.loginWall }
+        : {}),
       ...(outcome.fallback !== undefined && outcome.fallback > 0
         ? { fallback: outcome.fallback }
         : {}),
@@ -501,13 +681,14 @@ export class TurnStats {
       firstDeltaMs:
         turn.firstDeltaAt === null ? null : Math.max(0, turn.firstDeltaAt - turn.startedAt),
       pinBytes: turn.pinBytes,
-      failure: event.isError ? classifyFailure(event.resultText) : null,
+      failure: event.isError ? classifyFailure(event.resultText, event.errorCode) : null,
       waitMs: turn.waitMs,
       scanMs: turn.scanMs,
       sincePrevTurnMs: turn.sincePrevTurnMs,
       pinHit: turn.pinHit,
       browserMs: turn.browserMs,
       ...(turn.browserFail !== null ? { browserFail: turn.browserFail } : {}),
+      ...(turn.loginWall > 0 ? { loginWall: turn.loginWall } : {}),
       ...usageColumns(event.usage),
     };
     this.lastEndAt.set(sessionId, Date.now());

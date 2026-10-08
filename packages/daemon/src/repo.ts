@@ -20,7 +20,7 @@ export {
 } from "./claude-trust.js";
 export { buildCommentsSection } from "./handoff-body.js";
 // 상수와 URL 게이트는 repo-core.ts 로 옮겼다 — 표면은 여기서 다시보낸다.
-export { assertClonableRepoUrl, PUSH_AUTH_FAILURE, REPO_URL_MISSING_DETAIL } from "./repo-core.js";
+export { assertClonableRepoUrl, REPO_URL_MISSING_DETAIL } from "./repo-core.js";
 export { parseUnifiedDiff } from "./repo-diff.js";
 export { safeRepoPath } from "./repo-paths.js";
 

@@ -7,6 +7,7 @@ import { bashHeadline, toolLabel } from "../../lib/labels";
 import { L } from "../labels";
 import { connectionLock } from "../lib/connection-copy";
 import { type AskingItem, buildHomeFeed } from "../lib/home-feed";
+import { landedFacts } from "../lib/landed";
 import { isPreparing } from "../lib/project-note";
 import { agentUpdateEvents } from "../lib/update-row";
 import { useFreshKeys } from "../lib/use-fresh-keys";
@@ -32,7 +33,7 @@ type Commands = NonNullable<NonNullable<Daemon["repo"]>["commands"]>;
  * 생긴다. 모듈 자리가 그 기억이라 돌아와도 접힌 모습이 남는다(스크롤 자리는
  * 이번 범위 밖 — 2026-10-04 ux-review).
  */
-const foldMemo = { running: true, resume: true, recent: true };
+const foldMemo = { running: true, resume: true, recent: true, landed: true };
 
 /**
  * 권한 카드의 한 줄 — 레포가 정한 명령이면 그 이름(`레포 검사`), 아니면 도구의
@@ -135,6 +136,7 @@ export function HomeInbox({
   onOpenThread,
   onSwitch,
   onOpenWork,
+  onShowScreen,
 }: {
   daemon: Daemon;
   /** 대화의 표시 이름 — 사용자가 바꾼 이름을 따른다(사이드바와 같은 이름). */
@@ -143,12 +145,19 @@ export function HomeInbox({
   onSwitch: (slug: string) => void;
   /** 이미 열려 있는 프로젝트의 작업 보기로 간다 — `onSwitch` 는 같은 프로젝트면 아무 데도 가지 않는다. */
   onOpenWork: () => void;
+  /**
+   * 이미 열려 있는 프로젝트의 서비스 화면(미리보기 · 준비 진행)으로 간다 — `처음 켜는 준비` 줄이 부른다(2026-10-07 베타
+   * 준비 분석 · 첫 5분). 첫 프로젝트는 늘 활성이라 `onSwitch` 만으로는 이 줄을 눌러도 아무 일도 없었다.
+   */
+  onShowScreen: () => void;
 }) {
+  const landed = daemon.repo?.landed;
   const feed = useMemo(
     () =>
       buildHomeFeed(daemon.pending, daemon.sessions, daemon.projects, daemon.activeSlug, L, {
         hidden: daemon.hiddenThreads,
         titleOf: titleFor,
+        landed,
       }),
     [
       daemon.pending,
@@ -157,6 +166,7 @@ export function HomeInbox({
       daemon.activeSlug,
       daemon.hiddenThreads,
       titleFor,
+      landed,
     ],
   );
   const active = daemon.projects.find((project) => project.slug === daemon.activeSlug) ?? null;
@@ -164,15 +174,42 @@ export function HomeInbox({
   const otherWaiting = others.filter((project) => project.pendingCount > 0);
   const preparing = daemon.projects.filter(isPreparing);
   const otherWorking = others.filter((project) => project.working && !isPreparing(project));
-  const otherEvents = others
-    .filter((project) => project.lastEventKind !== undefined)
-    .sort(
-      (a, b) => (Date.parse(b.lastEventAt ?? "") || 0) - (Date.parse(a.lastEventAt ?? "") || 0),
-    );
+  // 개발자 소식 — 다른 프로젝트의 마지막 사건과, 지금 보는 프로젝트의 소식(같은 말을 다른 자리가 하고 있지 않을 때만, 2026-10-08).
+  // 한 목록에서 최근 것이 위다. 활성 프로젝트의 줄은 이미 열린 프로젝트라 눌러도 옮기지 않고 작업 보기로 간다.
+  const eventRows = [
+    ...(feed.news
+      ? [{ slug: feed.news.slug, name: feed.news.name, kind: feed.news.kind, at: feed.news.at }]
+      : []),
+    ...others.flatMap((project) =>
+      project.lastEventKind !== undefined
+        ? [
+            {
+              slug: project.slug,
+              name: project.name,
+              kind: project.lastEventKind,
+              at: project.lastEventAt ?? "",
+            },
+          ]
+        : [],
+    ),
+  ].sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0));
   const waitCount = feed.asking.length + otherWaiting.length;
   // 자정이 지나면 갈아 끼워 며칠째가 저절로 는다.
   const today = useToday();
-  const waitingDev = useMemo(() => waitingRows(daemon.projects, today), [daemon.projects, today]);
+  // 개발자가 확인했거나 자동 검사가 통과하지 못한 요청은 그 말이 부제로 선다(2026-10-08 · A2b) — 신호는 활성 프로젝트의 상태에만 있다.
+  const activeHandoff = daemon.repo?.handoff ?? null;
+  const activeAttention = daemon.repo?.attention;
+  const waitingDev = useMemo(
+    () =>
+      waitingRows(daemon.projects, today, {
+        active:
+          daemon.activeSlug && activeHandoff
+            ? { slug: daemon.activeSlug, handoff: activeHandoff, attention: activeAttention }
+            : null,
+        words: L,
+      }),
+    [daemon.projects, today, daemon.activeSlug, activeHandoff, activeAttention],
+  );
   const runCount = feed.running.length + preparing.length + otherWorking.length + waitingDev.length;
   // 도구가 스스로 한 일(J6) — AI 프로그램 업데이트는 할 일이 아니라 한 줄 소식이다.
   const updateEvents = agentUpdateEvents(
@@ -180,7 +217,7 @@ export function HomeInbox({
     daemon.status?.providers,
     L.update.doneEvent,
   );
-  const recentCount = feed.done.length + otherEvents.length + updateEvents.length;
+  const recentCount = feed.done.length + eventRows.length + updateEvents.length;
   const lock = connectionLock(daemon.connection, L);
 
   // 새로 들어온 줄만 내려앉는다 — 카드는 자리를 열며, 단추 줄은 내려앉기만. 열쇠에 목록
@@ -196,8 +233,9 @@ export function HomeInbox({
     ...waitingDev.map((row) => `dev-${row.slug}`),
     ...feed.resume.map((item) => `resume-${item.sessionId}`),
     ...feed.done.map((item) => `done-${item.sessionId}`),
-    ...otherEvents.map((project) => `event-${project.slug}`),
+    ...eventRows.map((row) => `event-${row.slug}`),
     ...updateEvents.map((event) => `update-${event.id}`),
+    ...feed.landed.map((item) => `landed-${item.pr}`),
   ];
   const fresh = useFreshKeys(rowKeys, daemon.activeSlug ?? "");
   const rowClass = (key: string) => (fresh.has(key) ? "nx-irow nx-row--new" : "nx-irow");
@@ -407,7 +445,9 @@ export function HomeInbox({
                   {prepareStep(project)}
                 </>
               }
-              onClick={() => onSwitch(project.slug)}
+              onClick={() =>
+                project.slug === active?.slug ? onShowScreen() : onSwitch(project.slug)
+              }
             />
           ))}
           {otherWorking.map((project) => (
@@ -431,7 +471,7 @@ export function HomeInbox({
               className={rowClass(`dev-${row.slug}`)}
               lead={<ProjectMark slug={row.slug} name={row.name} size="sm" />}
               title={row.name}
-              sub={L.cycle.review}
+              sub={row.note ?? L.cycle.review}
               meta={row.days !== null && L.home.waitingFor(row.days)}
               onClick={() => (row.slug === active?.slug ? onOpenWork() : onSwitch(row.slug))}
             />
@@ -489,15 +529,15 @@ export function HomeInbox({
                 onClick={() => openHere(item.sessionId)}
               />
             ))}
-          {otherEvents.map((project) => (
+          {eventRows.map((row) => (
             <Row
-              key={`event-${project.slug}`}
-              className={rowClass(`event-${project.slug}`)}
-              lead={<ProjectMark slug={project.slug} name={project.name} size="sm" />}
-              title={project.name}
-              sub={project.lastEventKind && eventLine(project.lastEventKind)}
-              meta={project.lastEventAt ? timeAgo(Date.parse(project.lastEventAt)) : ""}
-              onClick={() => onSwitch(project.slug)}
+              key={`event-${row.slug}`}
+              className={rowClass(`event-${row.slug}`)}
+              lead={<ProjectMark slug={row.slug} name={row.name} size="sm" />}
+              title={row.name}
+              sub={eventLine(row.kind)}
+              meta={row.at ? timeAgo(Date.parse(row.at)) : ""}
+              onClick={() => (row.slug === active?.slug ? onOpenWork() : onSwitch(row.slug))}
             />
           ))}
           {updateEvents.map((event) => (
@@ -508,6 +548,36 @@ export function HomeInbox({
               tone="green"
               title={event.text}
               meta={event.at ? timeAgo(event.at) : ""}
+            />
+          ))}
+        </details>
+      )}
+
+      {/* 반영된 일(2026-10-08 · A2b) — 병합돼 서비스가 된 요청들. 새 작업이 시작돼도 지워지지 않는 성취의 기록이다. 없으면 묶음도 없다. */}
+      {feed.landed.length > 0 && (
+        <details
+          className="nx-fold"
+          open={foldMemo.landed}
+          onToggle={(event) => {
+            foldMemo.landed = event.currentTarget.open;
+          }}
+        >
+          <summary>
+            <ChevronRightIcon />
+            {L.landed.fold} <Count n={feed.landed.length} className="nx-cnt--g" />
+          </summary>
+          {feed.landed.map((item) => (
+            <Row
+              key={`landed-${item.pr}`}
+              className={rowClass(`landed-${item.pr}`)}
+              lead={<CheckIcon />}
+              tone="green"
+              title={item.title ?? L.landed.untitled}
+              sub={landedFacts(item.days, item.screens, {
+                took: L.landed.took,
+                screens: L.landed.screens,
+              })}
+              meta={timeAgo(item.at)}
             />
           ))}
         </details>

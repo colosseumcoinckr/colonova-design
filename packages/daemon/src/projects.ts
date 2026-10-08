@@ -10,6 +10,7 @@
  *   ~/.colonova-design/projects/<slug>/repo/   the clone
  */
 
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
@@ -26,7 +27,7 @@ import {
   parseProjectDefaults,
   parseProjectLifecycle,
 } from "@colonova-design/protocol";
-import { COLONOVA_DESIGN_DATA_DIR, CONFIG_DIR } from "./environment.js";
+import { COLONOVA_DESIGN_DATA_DIR, CONFIG_DIR, claudeProjectKey } from "./environment.js";
 
 export interface ProjectRepo {
   url: string | null;
@@ -117,34 +118,93 @@ function projectsRoot(env: NodeJS.ProcessEnv = process.env): string {
 // Pure helpers
 // ---------------------------------------------------------------------------
 
+/** 읽기 쉬운 폴더 이름으로 그대로 두는 글자 — 이것만으로 된 이름은 접미 없이 쓴다. */
+const PLAIN_SLUG = /^[a-z0-9._-]*$/;
+
+/**
+ * Windows 가 폴더 이름으로 못 쓰게 막아 둔 장치 이름 — `con` 이라는 프로젝트의 폴더는 만들어지지
+ * 않는다. 첫 점 앞이 이 이름이면 뒤에 무엇이 붙어도(`nul.txt`) 같은 장치다 — 그래서 접미는 이름
+ * 끝이 아니라 점 앞에 와야 하고, 점 뒤는 떼어 낸다(`con.txt` → `con-3f9a1c`).
+ */
+const WINDOWS_DEVICE_NAME = /^(?:con|prn|aux|nul|com\d|lpt\d)$/;
+
+/** 접미 `-<해시 6자리>` 의 해시 길이. 접미를 이름에 이을 때는 32자 상한이 `-` 까지 포함해 센다. */
+const SLUG_HASH_LENGTH = 6;
+const SLUG_MAX_LENGTH = 32;
+
+/**
+ * 한 폴더 이름이 Claude 의 대화 폴더로 접히는 모양 — 같은 키는 같은 폴더다. slug 의 유일함은 이 키로
+ * 판정한다(`my_app` 과 `my-app` 도 한 폴더). 대소문자를 구분하지 않는 파일 시스템(mac · Windows)에서
+ * 글자만 다른 두 이름이 한 폴더인 것도 같은 비교로 막힌다.
+ */
+function folderKey(slug: string): string {
+  return claudeProjectKey(slug).toLowerCase();
+}
+
+/**
+ * 같은 이름이 늘 같은 접미를 갖게 하는 해시 — 정리하기 전의 이름(trim 한 것)에서 뽑는다. 유니코드는
+ * NFC 로 맞춘다: mac 에서 온 NFD 한글과 NFC 한글이 보기에는 같은 이름인데 다른 접미를 갖지 않게.
+ */
+function slugSuffix(original: string): string {
+  const hex = createHash("sha256").update(original.normalize("NFC")).digest("hex");
+  return `-${hex.slice(0, SLUG_HASH_LENGTH)}`;
+}
+
+/** 코드 포인트 단위로 자른다 — 이모지의 대리쌍 한가운데서 잘려 깨진 글자가 폴더 이름에 남지 않게. */
+function truncate(text: string, max: number): string {
+  return Array.from(text).slice(0, max).join("");
+}
+
 /**
  * A folder- and item-safe id derived from the name.
  *
  * Only path-hostile characters are removed — the same set page filenames
  * drop — because the slug becomes a directory a human will one day stare at,
- * and `~/.colonova-design/projects/결제/` is findable where `project-2` is not.
+ * and `~/.colonova-design/projects/결제-3f9a1c/` is findable where `project-2` is not.
  * Every filesystem this ships on stores UTF-8 names.
  *
- * Uniqueness is the caller's set of taken slugs.
+ * **ASCII 접미(2026-10-07, 베타 준비 분석)**: 영숫자와 `-` `_` `.` 만으로 된 이름은 그대로 쓰고,
+ * 그 밖의 글자(한글 포함)가 하나라도 있으면 이름 뒤에 `-` 와 원래 이름의 해시 6자리를 붙인다.
+ * Claude 는 대화 기록 폴더를 클론 경로에서 계산하며 영숫자가 아닌 글자를 모두 `-` 로 바꾸므로
+ * (`claudeProjectKey`), 글자 수가 같은 한글 이름 `결제` · `회원` 은 같은 폴더를 가리켰고 `대화 모두
+ * 지우기` 가 그 폴더를 통째로 지웠다. 접미는 디스크 폴더 이름에만 붙는다 — 화면의 프로젝트 이름은
+ * 그대로다. 이미 있는 프로젝트의 slug 는 건드리지 않는다(새로 등록하는 것부터).
+ * 32자 상한은 접미를 포함한다. 끝의 점은 떼고(Windows 가 폴더 이름에서 떼어 버린다), Windows 장치
+ * 이름(`con` · `nul` …)도 접미로 푼다.
+ *
+ * 유일함은 호출자가 넘긴 taken 으로 가린다. 같은 slug 만이 아니라 같은 대화 폴더(`folderKey`)도 겹침으로
+ * 보므로, 어떤 글자로 지었든 새로 등록하는 프로젝트가 기존 프로젝트와 한 폴더를 나눠 쓰지 않는다.
  */
-function slugify(name: string, taken: ReadonlySet<string>): string {
-  const base =
-    name
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: 제어 문자가 경로에 못 쓰이게 strip 하는 게 이 정규식의 목적이다.
-      .replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, "")
-      .trim()
-      // 점 벗기기는 trim 뒤여야 한다 — " .. " 같은 이름을 trim 전에 벗기면
-      // 문자열이 공백으로 시작해 strip 이 비고, slug 가 "." 또는 ".." 로 남아
-      // join 이 projects 부모(=~/.colonova-design)를 가리키고, 삭제가 전체를
-      // 지우는 자리가 된다.
-      .replace(/^\.+/, "")
-      .replace(/\s+/g, "-")
-      .toLowerCase()
-      .slice(0, 32) || "project";
-  if (!taken.has(base)) return base;
+export function slugify(name: string, taken: ReadonlySet<string>): string {
+  const original = name.normalize("NFC").trim();
+  const cleaned = original
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: 제어 문자가 경로에 못 쓰이게 strip 하는 게 이 정규식의 목적이다.
+    .replace(/[\u0000-\u001f\u007f/\\:*?"<>|]/g, "")
+    .trim()
+    // 점 벗기기는 trim 뒤여야 한다 — " .. " 같은 이름을 trim 전에 벗기면
+    // 문자열이 공백으로 시작해 strip 이 비고, slug 가 "." 또는 ".." 로 남아
+    // join 이 projects 부모(=~/.colonova-design)를 가리키고, 삭제가 전체를
+    // 지우는 자리가 된다.
+    .replace(/^\.+/, "")
+    .replace(/\s+/g, "-")
+    .toLowerCase();
+  const firstSegment = cleaned.split(".")[0] ?? "";
+  const device = WINDOWS_DEVICE_NAME.test(firstSegment);
+  const plain = !device && PLAIN_SLUG.test(cleaned);
+  const suffix = plain ? "" : slugSuffix(original);
+  // 장치 이름은 점 뒤를 떼고, 끝의 점은 Windows 가 폴더 이름에서 떼어 버리니 미리 뗀다.
+  const cut = truncate(device ? firstSegment : cleaned, SLUG_MAX_LENGTH - suffix.length);
+  const head = cut.replace(/\.+$/, "");
+  // 접미 앞의 `-` 가 겹치지 않게 이름 끝의 `-` 를 뗀다. 이름이 통째로 비면 `project` — 점 · 하이픈 · 밑줄뿐인
+  // 이름(`. .` · `-` · `_`)도 글자가 없는 이름이라 `-` 같은 폴더가 되지 않게 `project` 로 떨어진다(2026-10-08 검토 · F15).
+  const named = plain ? head : head.replace(/-+$/, "");
+  const stem = (/^[._-]*$/.test(named) ? "" : named) || "project";
+  const base = `${stem}${suffix}`;
+  const takenKeys = new Set([...taken].map(folderKey));
+  if (!takenKeys.has(folderKey(base))) return base;
   for (let n = 2; ; n += 1) {
     const candidate = `${base}-${n}`;
-    if (!taken.has(candidate)) return candidate;
+    if (!takenKeys.has(folderKey(candidate))) return candidate;
   }
 }
 

@@ -2,14 +2,24 @@
  * 소개 페이지의 초대장 만들기 — 연결 코드로 레포 목록을 불러와 고른 레포 전부를
  * 초대 파일 하나(v3 봉투)에 실는다. 형식은 ./invite-format.mjs(형식의 한 곳 —
  * 터미널 생성기 scripts/make-invite.mjs 도 같이 읽는다)이 정하고, 이 파일은
- * 입력 → 목록 → 미리 보기 → 내려받기·보내기만 담당한다.
+ * 입력 → 목록 → 점검 → 미리 보기 → 내려받기·보내기만 담당한다.
+ *
+ * 점검(2026-10-07 베타 준비 분석)은 ./invite-check.mjs 의 조각을 캐시하며 부른다 — 연결 코드와
+ * 고른 레포마다 GitHub 에 미리 물어, 확정 실패(⛔)는 만들기를 막고 경고(⚠️) · 확인할 수 없음(❔)은
+ * 알리기만 한다. 부작용은 없다(읽기 요청과 일부러 실패하게 만든 예행 요청뿐).
  *
  * 연결 코드는 이 페이지를 떠나지 않는다 — 요청은 GitHub 에만 가고(localStorage ·
  * 주소창에 절대 쓰지 않는다), 미리 보기에는 가린 값만 그린다. 보내기 길(메일
  * 초안 · OS 공유 시트)도 파일을 브라우저 밖 서버가 아니라 로컬 앱에 건넨다.
  */
-// ?v=7 — Pages 캐시가 옛 invite-format.mjs를 주지 않게 한다.
-import { buildInvite, inviteFileName, sealInvite } from "./invite-format.mjs?v=7";
+// ?v=8 — Pages 캐시가 옛 invite-format.mjs를 주지 않게 한다.
+import {
+  buildInvite,
+  inviteFileName,
+  maskInviteForPreview,
+  sealInvite,
+} from "./invite-format.mjs?v=8";
+import * as inviteCheck from "./invite-check.mjs?v=2";
 
 const form = document.getElementById("invite-form");
 const download = document.getElementById("invite-download");
@@ -32,17 +42,22 @@ const authorStatus = document.getElementById("author-status");
 const notifyStatus = document.getElementById("notify-status");
 const nameStatus = document.getElementById("name-status");
 const limitStatus = document.getElementById("limit-status");
+const checkPanel = document.getElementById("check-panel");
+const checkBody = document.getElementById("check-body");
+const checkSummary = document.getElementById("check-summary");
+const checkRun = document.getElementById("check-run");
+const checkGate = document.getElementById("check-gate");
 const guideLines = document.getElementById("guide-lines");
 const guideCopy = document.getElementById("guide-copy");
 const guideOsButtons = [...document.querySelectorAll(".iguide__osbtn")];
 
 /**
  * GitHub API 의 주소 — 기본은 진짜. 127.0.0.1 · localhost 에서 열린 페이지만
- * ?api= 로 바꿀 수 있다(가짜 GitHub 로 검증하는 길). 그 밖의 출처는 무시한다.
+ * ?api= 로 바꿀 수 있고(가짜 GitHub 로 검증하는 길) 그 값도 루프백 출처
+ * (http://127.0.0.1:<포트> · http://localhost:<포트>)여야 한다 — 그 밖은 무시한다.
+ * 연결 코드가 이 주소로 가므로 판정은 순수 함수 apiBaseFor(invite-check.mjs)가 한다.
  */
-const API_BASE = /^(127\.0\.0\.1|localhost)$/.test(location.hostname)
-  ? new URLSearchParams(location.search).get("api") ?? "https://api.github.com"
-  : "https://api.github.com";
+const API_BASE = inviteCheck.apiBaseFor(location.hostname, new URLSearchParams(location.search).get("api"));
 
 /**
  * 한 초대 파일이 실을 프로젝트 상한 — packages/protocol 의 LIMITS.projects 와
@@ -72,17 +87,12 @@ const state = {
   reviewers: "",
   manualUrl: "",
   /**
-   * /user/repos 응답의 x-oauth-scopes — 고전 토큰의 범위 목록. undefined 는
-   * "아직 불러오지 않았다", null 은 "헤더가 없었다"(세밀 토큰)다(PLAN L11
-   * 권한 확인).
+   * 연결 코드 점검(invite-check 의 checkToken) — undefined 아직 · { status: "running" } ·
+   * { status: "done", login, scopes, items }. 코드가 바뀌면 비운다. 만료일 · 범위(클래식)는
+   * 이 점검이 읽는다 — 브라우저는 CORS 로 노출된 머리글만 읽으므로 못 읽으면 조용히 지나간다(U17).
+   * 프로젝트마다의 점검은 project.check 에 산다.
    */
-  scopes: undefined,
-  /**
-   * /user/repos 첫 응답의 github-authentication-token-expiration — 만료일이
-   * 있는 코드만 실어 온다(undefined 아직, null 없음). 브라우저는 CORS 로
-   * 노출된 머리글만 읽으므로 못 읽으면 조용히 지나간다(U17).
-   */
-  tokenExpires: undefined,
+  tokenCheck: undefined,
   /** 개발자 알림(Slack) — 웹훅 주소 또는 봇 토큰+채널. */
   slackWebhook: "",
   slackBotToken: "",
@@ -185,15 +195,6 @@ function slackValue() {
   return null;
 }
 
-/**
- * 이 연결 코드가 저장소에 알림(이슈·코멘트)을 남길 수 있는가 — 고전 토큰의
- * `repo` 범위가 보이면 된다(PLAN L11 권한). 세밀 토큰은 헤더가 없어 확인할
- * 수 없다.
- */
-function canNotifyRepo() {
-  return typeof state.scopes === "string" && state.scopes.split(",").map((s) => s.trim()).includes("repo");
-}
-
 /** 봉투(v3) → 내려받기·보내기가 건네는 File 한 장 — 이름은 render 가 정한다. */
 function inviteFile(envelope, name) {
   return new File([`${JSON.stringify(envelope, null, 2)}\n`], name, {
@@ -227,9 +228,12 @@ function mailtoHref(values) {
 // 붙여 넣는 문장이라 비밀은 하나도 없다: 앱 내려받기 링크와 절차만 실린다.
 // ---------------------------------------------------------------------------
 
+// 2026-10-07 베타 준비 분석: macOS 의 시스템 단추는 `그래도 열기` 이고(14 이하는 우클릭 → 열기), Intel
+// Mac 은 지원하지 않아 칩 확인법을 곁들이며, /Applications 가 관리자 암호를 물으면 사용자 폴더의
+// Applications 도 된다. 스마트 앱 컨트롤이 켜진 Windows PC 는 서명 없는 설치 파일을 막을 수 있다.
 const GUIDE_INSTALL_LINE = {
-  mac: "설치: https://github.com/colosseumcoinckr/colonova-design/releases/latest 에서 colonova-design-…-mac-arm64.dmg 를 내려받아 설치하세요. 처음 열 때 막히면 시스템 설정 → 개인정보 보호 및 보안에서 확인 없이 열기를 눌러 주세요.",
-  win: '설치: https://github.com/colosseumcoinckr/colonova-design/releases/latest 에서 colonova-design-Setup-…-win-x64.exe 를 내려받아 설치하세요. 처음 실행할 때 한 번만 "추가 정보" → "실행" 을 눌러 주세요.',
+  mac: "설치: https://github.com/colosseumcoinckr/colonova-design/releases/latest 에서 colonova-design-…-mac-arm64.dmg 를 내려받아 설치하세요(칩이 Apple M 으로 시작하는 Mac 만 돼요 — Apple 메뉴 → 이 Mac에 관하여에서 확인). 처음 열 때 막히면 시스템 설정 → 개인정보 보호 및 보안에서 그래도 열기를 눌러 주세요(macOS 14 이하는 앱을 우클릭 → 열기). 응용 프로그램 폴더로 옮길 때 관리자 암호를 물으면 사용자 폴더의 Applications 에 넣어도 돼요.",
+  win: '설치: https://github.com/colosseumcoinckr/colonova-design/releases/latest 에서 colonova-design-Setup-…-win-x64.exe 를 내려받아 설치하세요. 처음 실행할 때 한 번만 "추가 정보" → "실행" 을 눌러 주세요. 그래도 막히면 Windows 보안 → 앱 및 브라우저 컨트롤 → 스마트 앱 컨트롤을 확인하고, 켜져 있으면 개발자에게 알려 주세요.',
 };
 const GUIDE_COMMON_LINES = [
   '앱이 필요한 도구는 스스로 준비합니다. 첫 화면에서 "Claude Code 설치" 를 누르고, 브라우저가 열리면 본인 Claude 계정으로 로그인만 하면 됩니다.',
@@ -316,12 +320,7 @@ function repoRow(repo) {
     badge.textContent = "비공개";
     label.append(badge);
   }
-  // 개발 서버 확인(B-3)의 자리 — 늦게 도착하면 여기에 달린다.
-  const dev = document.createElement("span");
-  dev.className = "irepos__badge irepos__badge--warn";
-  dev.hidden = true;
-  row.append(label, dev);
-  repo.devBadge = dev;
+  row.append(label);
   return row;
 }
 
@@ -339,25 +338,15 @@ async function loadRepos() {
   if (!token || state.listBusy) return;
   state.listBusy = true;
   state.repos = [];
-  state.tokenExpires = undefined;
   state.listStatus = "레포 목록을 불러오는 중…";
   renderStatus();
+  // 코드 점검은 목록과 함께 시작한다 — 계정과 만료일이 먼저 보인다.
+  void runChecks();
   let url = `${API_BASE}/user/repos?visibility=all&affiliation=owner,collaborator,organization_member&sort=pushed&per_page=100`;
   const all = [];
   try {
     for (let page = 0; page < 10; page += 1) {
       const reply = await fetch(url, { headers: apiHeaders() });
-      // 만료일(U17) — 첫 응답의 머리글에서 한 번만 읽는다. 만료일이 없는
-      // 코드는 머리글이 오지 않고, CORS 로 노출되지 않으면 null — 조용히 지나간다.
-      if (state.tokenExpires === undefined) {
-        state.tokenExpires = reply.headers.get("github-authentication-token-expiration");
-      }
-      // 권한 확인(PLAN L11): 고전 토큰은 x-oauth-scopes 에 범위를 실어
-      // 보낸다 — `repo` 가 있으면 저장소에 알림을 남길 수 있다고 본다.
-      // 세밀 토큰은 헤더가 없어 확인할 수 없다(null).
-      if (state.scopes === undefined) {
-        state.scopes = reply.headers.get("x-oauth-scopes");
-      }
       if (reply.status === 401) {
         state.listStatus = "연결 코드가 거절됐어요 — 코드를 다시 확인해 주세요.";
         break;
@@ -413,32 +402,9 @@ async function loadRepos() {
   }
 }
 
-/** 만료일 머리글의 한 줄 — 못 읽었거나 없으면 null(조용히 지나간다, U17). */
-function tokenExpiryNote() {
-  if (!state.tokenExpires) return null;
-  const end = new Date(state.tokenExpires).getTime();
-  if (Number.isNaN(end)) return null;
-  const days = Math.ceil((end - Date.now()) / 86_400_000);
-  if (days <= 0) return null;
-  const date = new Date(end);
-  return days <= 30
-    ? `이 코드는 ${days}일 뒤 만료돼요 — 더 긴 만료일의 코드를 권해요`
-    : `이 코드는 ${date.getMonth() + 1}월 ${date.getDate()}일까지예요`;
-}
-
 function renderStatus() {
-  const note = tokenExpiryNote();
-  reposStatus.hidden = state.listStatus === "" && note === null;
-  reposStatus.textContent =
-    note === null || state.listStatus === "" ? state.listStatus : `${state.listStatus} · ${note}`;
-}
-
-/** github.com 의 owner/repo 두 조각 — 아니면 null(확인하지 않는다). */
-function githubSlugOf(url) {
-  const match = /(?:^|@|\/\/)github\.com[/:]([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i.exec(
-    url.trim(),
-  );
-  return match ? { owner: match[1], name: match[2] } : null;
+  reposStatus.hidden = state.listStatus === "";
+  reposStatus.textContent = state.listStatus;
 }
 
 function checkRepo(repo) {
@@ -457,12 +423,13 @@ function checkRepo(repo) {
     autoReply: true,
     submitFromChat: true,
     key: repo.cloneUrl,
-    devChecked: false,
-    devWarning: null,
+    // 사전 점검 — undefined 아직 · { status: "done", info, items }. 코드가 바뀌거나 기본 가지를
+    // 고치면 비운다(runChecks 가 차례로 채운다).
+    check: undefined,
   };
   state.projects.push(project);
-  void checkDevServer(project);
   render();
+  void runChecks();
 }
 
 function uncheckRepo(cloneUrl) {
@@ -501,13 +468,14 @@ function addManual(url, baseBranch = "main") {
     autoReply: true,
     submitFromChat: true,
     key: trimmed,
-    devChecked: false,
-    devWarning: null,
+    // 사전 점검 — undefined 아직 · { status: "done", info, items }. 코드가 바뀌거나 기본 가지를
+    // 고치면 비운다(runChecks 가 차례로 채운다).
+    check: undefined,
   };
   state.projects.push(project);
-  // github.com 의 owner/repo 라면 직접 넣은 주소도 같은 확인을 돌린다.
-  void checkDevServer(project);
+  // github.com 의 owner/repo 라면 직접 넣은 주소도 같은 점검을 돈다.
   render();
+  void runChecks();
 }
 
 /** ?repos= — 목록에 있으면 체크, 없으면 직접 추가. 목록을 부른 뒤에만 될 수 있다. */
@@ -523,49 +491,6 @@ function prefillRepos() {
     }
   }
 }
-
-/**
- * 개발 서버 확인(고를 때 한 번) — package.json 의 scripts 를 본다. 결과는 고른
- * 프로젝트 행에 달고, 불러온 목록의 같은 행에도 복제한다 — 개발자가 실제로 보는
- * 쪽은 고른 프로젝트 목록이다.
- */
-async function checkDevServer(project) {
-  if (project.devChecked) return;
-  project.devChecked = true;
-  const slug = githubSlugOf(project.repoUrl);
-  if (!slug) return; // github.com 의 owner/repo 가 아니면 확인하지 않는다.
-  try {
-    const reply = await fetch(`${API_BASE}/repos/${slug.owner}/${slug.name}/contents/package.json`, {
-      headers: apiHeaders(),
-    });
-    if (reply.status === 404) {
-      showDevWarning(project, "package.json 없음");
-      return;
-    }
-    if (!reply.ok) return; // 실패는 조용히 — 배지 없음.
-    const file = await reply.json();
-    const text = atob((file.content ?? "").replace(/\n/g, ""));
-    const scripts = JSON.parse(text)?.scripts ?? {};
-    const hasServer = ["dev", "start", "serve", "preview"].some((key) => key in scripts);
-    if (!hasServer) {
-      showDevWarning(project, "개발 서버 스크립트 없음 — 사용자 화면에서 AI 가 먼저 고치려 들 수 있어요");
-    }
-  } catch {
-    // 조용히 — 확인은 덤이다.
-  }
-}
-
-/** 확인 결과를 프로젝트와 목록 행에 같이 달고 다시 그린다. */
-function showDevWarning(project, text) {
-  project.devWarning = text;
-  const repo = state.repos.find((entry) => entry.cloneUrl === project.repoUrl);
-  if (repo?.devBadge) {
-    repo.devBadge.textContent = text;
-    repo.devBadge.hidden = false;
-  }
-  render();
-}
-
 
 // ---------------------------------------------------------------------------
 // 고른 프로젝트 — 행마다 이름 · 기본 가지 · 접힌 지침과 리뷰어.
@@ -588,7 +513,7 @@ function chosenRow(project, index) {
   name.setAttribute("aria-label", `${index + 1}번 프로젝트 이름`);
   name.addEventListener("input", () => {
     project.name = name.value;
-    render();
+    render({ keepRows: true });
   });
   const branch = document.createElement("input");
   branch.value = project.baseBranch;
@@ -596,7 +521,13 @@ function chosenRow(project, index) {
   branch.setAttribute("aria-label", `${index + 1}번 프로젝트 기본 가지`);
   branch.addEventListener("input", () => {
     project.baseBranch = branch.value;
-    render();
+    render({ keepRows: true });
+  });
+  // 기본 가지를 고치고 칸을 떠나면 그 가지로 점검을 다시 한다 — 타이핑 중에는 묻지 않는다.
+  branch.addEventListener("change", () => {
+    project.check = undefined;
+    render({ keepRows: true });
+    void runChecks();
   });
   const remove = document.createElement("button");
   remove.type = "button";
@@ -608,17 +539,9 @@ function chosenRow(project, index) {
       const repo = state.repos.find((entry) => entry.cloneUrl === project.key);
       if (repo) repo.row.querySelector("input").checked = false;
     }
-    render();
+    render({ keepRows: true });
   });
   head.append(num, name, branch, remove);
-
-  // 개발 서버 확인의 경고 — 개발자가 실제로 보는 이 행에 달린다(조립은 아래
-  // row.append 에서: 이 시점의 head 는 아직 부모가 없어 after() 가 묵살된다).
-  const warning = document.createElement("span");
-  warning.className = "irepos__badge irepos__badge--warn ichosen__devbadge";
-  warning.textContent = project.devWarning ?? "";
-  warning.hidden = !project.devWarning;
-
 
   const fold = document.createElement("details");
   fold.className = "ichosen__fold";
@@ -637,7 +560,7 @@ function chosenRow(project, index) {
   guide.value = project.instructions;
   guide.addEventListener("input", () => {
     project.instructions = guide.value;
-    render();
+    render({ keepRows: true });
   });
   guideLabel.append(guideText, guide);
 
@@ -651,7 +574,7 @@ function chosenRow(project, index) {
   reviewers.value = project.reviewers;
   reviewers.addEventListener("input", () => {
     project.reviewers = reviewers.value;
-    render();
+    render({ keepRows: true });
   });
   reviewerLabel.append(reviewerText, reviewers);
 
@@ -678,7 +601,7 @@ function chosenRow(project, index) {
   providerSel.value = project.provider;
   providerSel.addEventListener("change", () => {
     project.provider = providerSel.value;
-    render();
+    render({ keepRows: true });
   });
   const modelInput = document.createElement("input");
   modelInput.placeholder = "모델 — 예: sonnet";
@@ -686,7 +609,7 @@ function chosenRow(project, index) {
   modelInput.setAttribute("aria-label", `${index + 1}번 프로젝트 기본 모델`);
   modelInput.addEventListener("input", () => {
     project.model = modelInput.value;
-    render();
+    render({ keepRows: true });
   });
   const effortSel = document.createElement("select");
   effortSel.setAttribute("aria-label", `${index + 1}번 프로젝트 기본 생각 시간`);
@@ -706,7 +629,7 @@ function chosenRow(project, index) {
   effortSel.value = project.effort;
   effortSel.addEventListener("change", () => {
     project.effort = effortSel.value;
-    render();
+    render({ keepRows: true });
   });
   defaultsRow.append(providerSel, modelInput, effortSel);
   defaultsLabel.append(defaultsText, defaultsRow);
@@ -727,7 +650,7 @@ function chosenRow(project, index) {
     box.checked = project[key];
     box.addEventListener("change", () => {
       project[key] = box.checked;
-      render();
+      render({ keepRows: true });
     });
     const text = document.createElement("span");
     text.textContent = label;
@@ -748,7 +671,7 @@ function chosenRow(project, index) {
     const parsed = Number.parseInt(days.value, 10);
     if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 365) {
       project.keepRejectedDays = parsed;
-      render();
+      render({ keepRows: true });
     }
   });
   const daysTail = document.createElement("span");
@@ -763,9 +686,236 @@ function chosenRow(project, index) {
   lifeLabel.append(lifeText, lifeRow);
 
   fold.append(guideLabel, reviewerLabel, defaultsLabel, lifeLabel);
-  // head → (경고가 있으면 보이는) 배지 → fold 순서로.
-  row.append(head, warning, fold);
+  row.append(head, fold);
   return row;
+}
+
+// ---------------------------------------------------------------------------
+// 초대 전 점검(2026-10-07 베타 준비 분석) — invite-check.mjs 의 조각을 캐시하며 차례로 부른다.
+// 연결 코드 한 번, 그다음 고른 GitHub 레포마다 한 번 — 한 줄로 이어서(동시에 쏘지 않는다: 예행 POST 가
+// 한꺼번에 몰리면 GitHub 의 2차 한도에 걸릴 수 있다). 리뷰어 점검은 요청이 없어 render 가 매번 센다.
+// ---------------------------------------------------------------------------
+
+/** invite-check 의 전송 — GitHub REST 에 묻는다. 15초 안에 답이 없으면 던져 `확인할 수 없어요` 가 된다. */
+async function githubRequest(method, path, body) {
+  const reply = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: {
+      ...apiHeaders(),
+      ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    signal: typeof AbortSignal.timeout === "function" ? AbortSignal.timeout(15000) : undefined,
+  });
+  const headers = {};
+  reply.headers.forEach((value, key) => {
+    headers[key.toLowerCase()] = value;
+  });
+  return { status: reply.status, headers, json: await reply.json().catch(() => null) };
+}
+
+/** 점검의 세대 — 연결 코드가 바뀌면 올라가, 옛 코드로 시작한 요청의 답을 버린다. */
+let checkEpoch = 0;
+let checkRunning = false;
+
+const isGitHubProject = (project) => inviteCheck.githubRepoOf(project.repoUrl) !== null;
+
+/** 점검을 비운다 — 연결 코드가 바뀌었거나 `다시 점검` 을 눌렀다. */
+function resetChecks() {
+  checkEpoch += 1;
+  state.tokenCheck = undefined;
+  for (const project of state.projects) project.check = undefined;
+}
+
+/** 다음에 할 점검 — 코드가 있어야 하고, 코드 점검이 먼저다. 없으면 null. */
+function nextCheckJob() {
+  if (!state.token.trim()) return null;
+  const targets = state.projects.filter(isGitHubProject);
+  const wantsToken = targets.length > 0 || state.listBusy || state.repos.length > 0;
+  if (wantsToken && state.tokenCheck === undefined) return { kind: "token" };
+  if (state.tokenCheck?.status !== "done") return null;
+  const project = targets.find((entry) => entry.check === undefined);
+  return project ? { kind: "project", project } : null;
+}
+
+/** 밀린 점검을 차례로 한다 — 이미 도는 중이면 그 고리가 새 일도 집어 가므로 그대로 돌아온다. */
+async function runChecks() {
+  if (checkRunning) return;
+  checkRunning = true;
+  try {
+    for (let job = nextCheckJob(); job !== null; job = nextCheckJob()) {
+      const epoch = checkEpoch;
+      if (job.kind === "token") {
+        state.tokenCheck = { status: "running" };
+        render({ keepRows: true });
+        const result = await inviteCheck.checkToken(githubRequest);
+        if (epoch !== checkEpoch) continue; // 코드가 바뀌었다 — 처음부터 다시 본다
+        state.tokenCheck = { status: "done", ...result };
+      } else {
+        const { project } = job;
+        project.check = { status: "running" };
+        render({ keepRows: true });
+        const result = await inviteCheck.checkProject(githubRequest, {
+          token: state.tokenCheck,
+          repoUrl: project.repoUrl,
+          baseBranch: project.baseBranch,
+        });
+        // 코드가 바뀌었거나 그 프로젝트를 뺐다면 답을 버린다.
+        if (epoch !== checkEpoch || !state.projects.includes(project)) continue;
+        project.check = { status: "done", info: result.info, items: result.items };
+      }
+      render({ keepRows: true });
+    }
+  } finally {
+    checkRunning = false;
+  }
+}
+
+/** 프로젝트의 리뷰어 — 그 프로젝트의 칸이 있으면 그것이, 없으면 공통이다(buildValues 와 같은 규칙). */
+function reviewersOf(project) {
+  return project.reviewers.trim() ? parseLogins(project.reviewers) : parseLogins(state.reviewers);
+}
+
+/**
+ * 점검 칸이 그릴 모든 것 — 연결 코드 줄과 프로젝트마다의 줄, 그리고 만들기를 막는 두 가지:
+ * pending(아직 안 끝났다)과 failed(⛔ 가 있다). 코드가 없거나 점검할 GitHub 레포가 없으면 말이 없다.
+ */
+function checkView() {
+  const token = state.token.trim();
+  const targets = state.projects.filter(isGitHubProject);
+  const tokenDone = state.tokenCheck?.status === "done";
+  const visible = Boolean(token) && (targets.length > 0 || state.tokenCheck !== undefined);
+  const tokenItems = tokenDone ? state.tokenCheck.items : [];
+  const rows = targets.map((project) => {
+    const done = project.check?.status === "done";
+    const reviewerItems = tokenDone
+      ? inviteCheck.checkReviewers({ login: state.tokenCheck.login, reviewers: reviewersOf(project) })
+      : [];
+    return {
+      project,
+      label: done && project.check.info ? project.check.info.fullName : repoLabelOf(project),
+      done,
+      items: done ? [...project.check.items, ...reviewerItems] : [],
+    };
+  });
+  const counts = inviteCheck.tally([tokenItems, ...rows.map((row) => row.items)]);
+  const pending = Boolean(token) && targets.length > 0 && (!tokenDone || rows.some((row) => !row.done));
+  return { visible, pending, failed: counts.fail > 0, counts, tokenItems, tokenDone, rows };
+}
+
+/** 점검 칸의 제목 줄 — owner/repo, 못 읽으면 주소의 마지막 조각. */
+function repoLabelOf(project) {
+  const slug = inviteCheck.githubRepoOf(project.repoUrl);
+  return slug ? `${slug.owner}/${slug.repo}` : repoNameOf(project.repoUrl);
+}
+
+const STATUS_RANK = { fail: 0, warn: 1, unknown: 2, pass: 3 };
+
+/** 점검 한 줄의 목록 — 막힘 · 경고 · 확인 못 함 · 통과 순(같은 등급은 점검 순서 그대로). */
+function checkList(items) {
+  const list = document.createElement("ul");
+  list.className = "ichk__list";
+  const ordered = items
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => STATUS_RANK[a.entry.status] - STATUS_RANK[b.entry.status] || a.index - b.index);
+  for (const { entry } of ordered) {
+    const row = document.createElement("li");
+    row.className = `ichk__item ichk__item--${entry.status}`;
+    const mark = document.createElement("span");
+    mark.className = "ichk__mark";
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = inviteCheck.MARK[entry.status];
+    const label = document.createElement("span");
+    label.className = "ichk__sr";
+    label.textContent = `${inviteCheck.STATUS_LABEL[entry.status]}: `;
+    const text = document.createElement("span");
+    text.className = "ichk__text";
+    text.textContent = entry.text;
+    row.append(mark, label, text);
+    list.append(row);
+  }
+  return list;
+}
+
+/** 제목 줄 + 목록(또는 `점검하는 중…`) — 연결 코드와 프로젝트가 같은 상자를 쓴다. */
+function checkSection(title, content) {
+  const section = document.createElement("div");
+  section.className = "ichk__sec";
+  const name = document.createElement("h4");
+  name.className = "ichk__name";
+  name.textContent = title;
+  section.append(name, content);
+  return section;
+}
+
+function checkWaiting() {
+  const waiting = document.createElement("p");
+  waiting.className = "ichk__wait";
+  waiting.textContent = "점검하는 중…";
+  return waiting;
+}
+
+/** 연결 코드가 거절돼 레포를 묻지 않았다 — 연결 코드 줄이 이유를 이미 말했다. */
+function checkSkipped() {
+  const skipped = document.createElement("p");
+  skipped.className = "ichk__wait";
+  skipped.textContent = "연결 코드를 먼저 고치면 점검해요";
+  return skipped;
+}
+
+/** 수 → 요약 한 줄 — 0 인 칸은 말하지 않는다. */
+function checkSummaryText(counts) {
+  const parts = [
+    counts.fail > 0 ? `${inviteCheck.MARK.fail} 막힘 ${counts.fail}` : "",
+    counts.warn > 0 ? `${inviteCheck.MARK.warn} 경고 ${counts.warn}` : "",
+    counts.unknown > 0 ? `${inviteCheck.MARK.unknown} 확인 못 함 ${counts.unknown}` : "",
+    counts.pass > 0 ? `${inviteCheck.MARK.pass} 통과 ${counts.pass}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" · ") : "";
+}
+
+function renderCheck(view) {
+  checkPanel.hidden = !view.visible;
+  if (!view.visible) return;
+  checkSummary.textContent = view.pending ? "점검하는 중…" : checkSummaryText(view.counts);
+  checkRun.disabled = view.pending;
+  const sections = [
+    checkSection(
+      "연결 코드",
+      view.tokenDone ? checkList(view.tokenItems) : checkWaiting(),
+    ),
+    ...view.rows.map((row) =>
+      checkSection(
+        row.label,
+        !row.done ? checkWaiting() : row.items.length > 0 ? checkList(row.items) : checkSkipped(),
+      ),
+    ),
+  ];
+  checkBody.replaceChildren(...sections);
+}
+
+/** 만들기를 막는 이유 한 줄 — 점검이 끝나지 않았거나 ⛔ 가 있을 때만(초대 파일에 쓸 값이 갖춰졌을 때). */
+function checkGateText(view, hasProjects) {
+  if (!view.visible || !hasProjects) return "";
+  if (view.pending) return "점검이 끝나면 초대 파일을 만들 수 있어요.";
+  if (view.failed) {
+    return `${inviteCheck.MARK.fail} 막히는 점검이 있어 초대 파일을 만들 수 없어요 — 위 점검의 ${inviteCheck.MARK.fail} 를 고친 뒤 다시 점검해 주세요. 권한은 같은 코드에서 고쳐도 바로 풀려요.`;
+  }
+  return "";
+}
+
+/**
+ * 문제가 생겼을 때 도구가 개발자를 부를 길 — Slack 은 선택이다. 점검이 레포마다 알림(이슈)을 남길 수
+ * 있다고 확인하면 말이 없고, 못 남긴다거나 확인하지 못했다면 경고만 한다(만들기는 막지 않는다).
+ */
+function notifyWarning(view) {
+  if (!view.visible || view.pending || slackValue() !== null) return "";
+  const loose = view.rows.filter((row) =>
+    row.items.some((entry) => entry.id === "notify" && entry.status !== "pass"),
+  );
+  if (loose.length === 0) return "";
+  const names = loose.map((row) => row.label).join(", ");
+  return `이 연결 코드로는 ${names} 에 문제 알림(이슈)을 남길 수 없거나 확인하지 못했어요 — 개발자에게 알림이 닿지 않을 수 있으니 슬랙 주소를 넣어 두면 안전해요(필수는 아니에요).`;
 }
 
 // ---------------------------------------------------------------------------
@@ -776,20 +926,28 @@ let sealedFile = null;
 let sealedName = "";
 let sealTicket = 0;
 
-async function render() {
+/** 고른 프로젝트 행을 마지막으로 그린 때의 구성 — 구성이 같으면 행을 다시 짓지 않는다(입력 중 초점을 지킨다). */
+let rowsSignature = null;
+
+/**
+ * 한 번에 다시 그린다. keepRows 는 행의 글자만 바뀌었거나(이름 · 기본 가지 · 리뷰어) 점검이
+ * 움직였을 때 — 구성이 그대로면 행을 다시 짓지 않아 입력 중인 칸의 초점이 남는다.
+ */
+async function render({ keepRows = false } = {}) {
   const values = buildValues();
-  // 권한 확인(PLAN L11): 저장소에 알림을 남길 수 있는지 확인하지 못하는
-  // 연결 코드(세밀 토큰)는 Slack 길이 필수다 — 둘 다 없으면 만들 수 없다.
-  const notifyOk = canNotifyRepo() || slackValue() !== null;
+  const view = checkView();
   // 초대 파일 한 장의 상한 — 읽는 쪽이 거절하기 전에 여기서 막는다.
   const tooMany = values.projects.length > PROJECT_LIMIT;
   // 작업 이름은 필수다 — 비면 봉인·내려받기·보내기 어느 것도 켜지지 않고,
   // 이유가 actions 바로 위 한 줄로 선다.
+  // 점검(2026-10-07): 끝나지 않았거나 ⛔ 가 있으면 만들 수 없다. Slack 은 더 이상 문턱이 아니다 —
+  // 알림 길은 점검이 확인하고, 확인되지 않으면 경고만 한다.
   const ready = Boolean(
     state.token.trim() &&
       state.author.trim() &&
       values.projects.length > 0 &&
-      notifyOk &&
+      !view.pending &&
+      !view.failed &&
       duplicateNames().size === 0 &&
       !tooMany,
   );
@@ -800,7 +958,11 @@ async function render() {
   download.disabled = true;
   share.hidden = true;
   chosenCount.textContent = state.projects.length > 0 ? `${state.projects.length}개` : "";
-  chosenRows.replaceChildren(...state.projects.map((project, index) => chosenRow(project, index)));
+  const signature = state.projects.map((project) => project.key).join("\n");
+  if (!keepRows || signature !== rowsSignature) {
+    rowsSignature = signature;
+    chosenRows.replaceChildren(...state.projects.map((project, index) => chosenRow(project, index)));
+  }
   // 불러온 목록의 체크박스를 고른 프로젝트와 맞춘다 — 미리 채움(?repos=)이 체크를
   // 놓치지 않게, 행을 다시 만들지 않고 checked 만 동기화한다.
   for (const repo of state.repos) {
@@ -816,14 +978,15 @@ async function render() {
   if (authorMissing) {
     authorStatus.textContent = "작업 이름을 적어 주세요 — 넘긴 요청에 작성자로 적힙니다.";
   }
-  // Slack 칸이 필수가 된 이유 — 확인할 수 없는 연결 코드에는 이 한 줄이 선다.
-  const notifyMissing =
-    !notifyOk && Boolean(state.token.trim()) && values.projects.length > 0;
-  notifyStatus.hidden = !notifyMissing;
-  if (notifyMissing) {
-    notifyStatus.textContent =
-      "이 연결 코드로는 문제가 생겼을 때 저장소에 알림을 남길 수 있는지 확인하지 못했어요 — 슬랙 주소를 넣어 주세요.";
-  }
+  // Slack 은 선택이다 — 알림 길이 확인되지 않은 레포가 있으면 경고 한 줄만 선다(만들기는 막지 않는다).
+  const notifyText = notifyWarning(view);
+  notifyStatus.hidden = notifyText === "";
+  notifyStatus.textContent = notifyText;
+  // 점검 칸과, 점검이 만들기를 잠근 이유.
+  renderCheck(view);
+  const gateText = checkGateText(view, values.projects.length > 0);
+  checkGate.hidden = gateText === "";
+  checkGate.textContent = gateText;
   // 같은 이름의 프로젝트 — 실사용 화면은 이름만으로 구별한다(저장소 칩은 개발
   // 실행 전용, 단계 10). 봉인을 막고 고칠 길을 함께 낸다.
   const nameDuplicated = duplicateNames();
@@ -842,7 +1005,7 @@ async function render() {
     fix.textContent = "뒤의 이름에 저장소 붙이기";
     fix.addEventListener("click", () => {
       fixDuplicateNames();
-      render();
+      render(); // 이름이 바뀌었다 — 행도 다시 짓는다.
     });
     nameStatus.append(fix);
   }
@@ -854,8 +1017,9 @@ async function render() {
   filename.textContent = ready
     ? inviteFileName({ author: state.author, name: values.projects[0].name })
     : "";
-  // 미리 보기는 비밀을 가린 채 형식만 보여 준다 — 실제 파일에는 진짜 코드가 간다.
-  preview.textContent = JSON.stringify({ ...values, token: state.token.trim() ? "••••••••" : "" }, null, 2);
+  // 미리 보기는 비밀을 가린 채 형식만 보여 준다 — 실제 파일에는 진짜 값이 간다. 가릴 것은 연결 코드와
+  // Slack 길(웹훅 주소 · 봇 토큰)이다(maskInviteForPreview — invite-format.mjs).
+  preview.textContent = JSON.stringify(maskInviteForPreview(values), null, 2);
   mailto.hidden = !ready;
   if (ready) mailto.href = mailtoHref(values);
   if (!ready) return;
@@ -874,13 +1038,14 @@ async function render() {
 form.addEventListener("input", (event) => {
   const field = event.target;
   if (field === tokenInput) {
-    // 코드가 바뀌면 목록의 열쇠가 달라졌다 — 불러온 목록과 권한 확인을 비운다.
+    // 코드가 바뀌면 목록의 열쇠가 달라졌다 — 불러온 목록과 점검을 비운다.
     state.token = tokenInput.value;
     state.repos = [];
     state.listStatus = "";
-    state.scopes = undefined;
+    resetChecks();
     renderRepos();
     renderStatus();
+    render({ keepRows: true });
   }
   if (field.name === "author") {
     state.author = field.value;
@@ -907,6 +1072,12 @@ form.addEventListener("input", (event) => {
 searchInput.addEventListener("input", () => {
   state.search = searchInput.value;
   renderRepos();
+});
+
+checkRun.addEventListener("click", () => {
+  resetChecks();
+  render({ keepRows: true });
+  void runChecks();
 });
 
 reposLoad.addEventListener("click", () => {

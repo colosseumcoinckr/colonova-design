@@ -44,15 +44,23 @@ export interface ScreenMapRow {
    * `### 확인한 것` 이 센다. 문제를 찾았거나 확인하지 못한 턴 · 옛 행에는 없다.
    */
   checked?: GateChecked;
+  /**
+   * 그 턴을 돈 세션의 AI 공급자 id(`claude` · `codex`) — 제출 본문의 「코드는 AI 가 썼어요」 줄이 종류를 말할 때만 읽는다
+   * (2026-10-07 베타 준비 분석). 옛 행에는 없다. 읽는 쪽이 아는 id 만 이름으로 바꾸므로 손으로 고친 값은 이름이 되지 못한다.
+   */
+  provider?: string;
 }
 
-/** 확인 기록의 판독 — 열어 본 화면 수(1 이상)와 휴대폰 여부가 맞는 모양일 때만 기록이다. */
+/**
+ * 확인 기록의 판독 — 열어 본 화면 수(1 이상)와 휴대폰 여부가 맞는 모양일 때만 기록이다. 타입 검사(`types`)는 참일 때만
+ * 남는다 — 거짓이나 낯선 값은 「돌지 않았다」 와 같은 말이다.
+ */
 function cleanChecked(raw: unknown): GateChecked | undefined {
   if (raw === null || typeof raw !== "object") return undefined;
-  const { screens, phone } = raw as { screens?: unknown; phone?: unknown };
+  const { screens, phone, types } = raw as { screens?: unknown; phone?: unknown; types?: unknown };
   if (typeof screens !== "number" || !Number.isInteger(screens) || screens < 1) return undefined;
   if (typeof phone !== "boolean") return undefined;
-  return { screens, phone };
+  return { screens, phone, ...(types === true ? { types: true } : {}) };
 }
 
 /** 지도 전부 — 오래된 행부터. 없거나 깨진 파일은 빈 목록이다. */

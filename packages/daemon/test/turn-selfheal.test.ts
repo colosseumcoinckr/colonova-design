@@ -13,7 +13,12 @@ import { Session } from "../dist/session.js";
 /** 세션이 방송한 사건 중 시험 한 켤레가 보는 것들. */
 type Seen = {
   notices: string[];
-  turnEnds: Array<{ isError: boolean; escalated: boolean; subtype: string }>;
+  turnEnds: Array<{
+    isError: boolean;
+    escalated: boolean;
+    subtype: string;
+    failure: string | null;
+  }>;
   authStalls: number;
   turnFailures: Array<string | null>;
 };
@@ -36,6 +41,7 @@ function harness(opts: { canCompact?: boolean; retryDelays?: number[] } = {}) {
             isError: event.isError,
             escalated: event.escalated === true,
             subtype: event.subtype,
+            failure: event.failure ?? null,
           });
         }
       },
@@ -57,7 +63,7 @@ function harness(opts: { canCompact?: boolean; retryDelays?: number[] } = {}) {
       return Promise.resolve();
     },
   } as never);
-  const fail = (resultText: string) =>
+  const fail = (resultText: string, errorCode?: string) =>
     session.driverHooks.onEvent({
       kind: "turn.end",
       subtype: "error",
@@ -66,6 +72,7 @@ function harness(opts: { canCompact?: boolean; retryDelays?: number[] } = {}) {
       numTurns: null,
       durationMs: 1,
       resultText,
+      ...(errorCode !== undefined ? { errorCode } : {}),
     } satisfies ChatEvent & { kind: "turn.end" });
   const succeed = () =>
     session.driverHooks.onEvent({
@@ -102,7 +109,7 @@ test("로그인 만료로 멈춘 말은 로그인이 돌아오면 한 번 다시
   assert.equal(sends.length, 1, "재시도 사다리를 타지 않는다");
   session.resumeAfterLogin();
   assert.deepEqual(sends, ["회원 목록 화면을 만들어 줘", "회원 목록 화면을 만들어 줘"]);
-  assert.ok(seen.notices.some((text) => text.includes("로그인이 돌아왔습니다")));
+  assert.ok(seen.notices.some((text) => text.includes("로그인이 돌아왔어요")));
 });
 
 test("두 번째 로그인 만료는 다시 보내지 않는다 — 사람의 손이 정답이다", () => {
@@ -216,4 +223,53 @@ test("마지막 답변 문장은 세션이 모아 둔다 — 턴이 바뀌면 �
   assert.equal(session.lastAssistantText, null, "새 턴이 시작되면 비워진다");
   answer("둘째 답변입니다.");
   assert.equal(session.lastAssistantText, "둘째 답변입니다.");
+});
+
+test("계정류 실패는 사다리도 로그인 대기도 개발자 알림도 없이 account 로 곧바로 끝난다 (2026-10-07)", async () => {
+  const { session, seen, sends, fail } = harness();
+  session.send("회원 목록 화면을 만들어 줘");
+  fail("Credit balance is too low");
+  // 사다리의 한 계단(1ms)이 지나고도 아무것도 나가지 않는다 — 진짜 시계로 기다린다.
+  await new Promise((resolve) => setTimeout(resolve, 25));
+  assert.equal(sends.length, 1, "같은 말을 스스로 다시 보내지 않는다");
+  assert.equal(
+    seen.notices.some((text) => text.includes("스스로 다시 시도합니다")),
+    false,
+    "`일시적인 문제입니다` 알림이 서지 않는다",
+  );
+  assert.equal(seen.authStalls, 0, "로그인 만료로 읽지 않는다");
+  assert.deepEqual(seen.turnFailures, [], "개발자 알림이 아니다 — 사용자 자신의 계정이다");
+  const end = seen.turnEnds[seen.turnEnds.length - 1];
+  assert.equal(end?.isError, true);
+  assert.equal(end?.failure, "account", "카드가 계정의 말로 서도록 갈래가 실린다");
+  assert.equal(end?.escalated, false, "`개발자에게도 알렸어요` 를 싣지 않는다");
+  assert.equal(session.state, "idle", "세션은 멀쩡히 내려앉아 다음 말을 받는다");
+});
+
+test("오류 코드만으로도 계정류다 — 문장이 낯선 CLI 판에서도 사다리를 타지 않는다", () => {
+  const { session, seen, sends, fail } = harness();
+  session.send("요청");
+  fail("some wording this build has never printed", "account_on_hold");
+  assert.equal(sends.length, 1);
+  assert.equal(seen.turnEnds[seen.turnEnds.length - 1]?.failure, "account");
+});
+
+test("계정류 뒤에 사람이 같은 말을 다시 보내면 새 사건이다 — 사다리 셈이 쌓이지 않는다", () => {
+  const { session, seen, sends, fail, succeed } = harness();
+  session.send("요청");
+  fail("Credit balance is too low");
+  // 사용자가 계정을 고치고 다시 시도를 눌렀다 — 새 보내기.
+  session.send("요청");
+  succeed();
+  assert.equal(sends.length, 2);
+  assert.equal(seen.turnEnds[seen.turnEnds.length - 1]?.isError, false);
+});
+
+test("일시 오류는 여전히 사다리를 탄다 — 계정류 판정이 일시 오류를 막지 않는다", () => {
+  const { session, seen, sends, fail } = harness();
+  session.send("요청");
+  fail("API Error: 529 Overloaded");
+  assert.ok(seen.notices.some((text) => text.includes("일시적인 문제입니다")));
+  assert.equal(seen.turnEnds[seen.turnEnds.length - 1]?.failure, null);
+  assert.equal(sends.length, 1, "첫 재전송은 타이머 뒤에 나간다");
 });

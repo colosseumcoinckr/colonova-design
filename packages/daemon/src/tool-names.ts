@@ -22,7 +22,8 @@ const CLAUDE_EDIT_TOOLS: Record<string, true> = {
   MultiEdit: true,
   NotebookEdit: true,
 };
-const CLAUDE_EXEC_TOOLS: Record<string, true> = { Bash: true };
+// Windows 의 PowerShell 도구도 명령 실행이다(2026-10-08 — 훅 matcher 와 같은 이름, `write-guard.ts` 의 SHELL_MATCHER).
+const CLAUDE_EXEC_TOOLS: Record<string, true> = { Bash: true, PowerShell: true };
 
 /**
  * Codex — app-server 의 item 종류가 곧 이름이다(`drivers/codex/store.ts` ·

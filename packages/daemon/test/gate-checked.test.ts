@@ -134,6 +134,40 @@ test("startGate: 통과한 판정은 보관이 서기 전에 기록이 되어 ru
   assert.deepEqual(seen, { screens: 2, phone: true });
 });
 
+test("startGate: 타입 검사가 돌고 오류가 없었다면 기록에 그 사실이 실리고, 돌지 않았으면 칸이 없다(2026-10-07)", async () => {
+  const cases: Array<[Record<string, unknown>, unknown]> = [
+    // 돌았고 오류가 없었다 — 게이트는 0 도 싣는다.
+    [
+      { typeErrors: 0, typeMs: 900 },
+      { screens: 2, phone: true, types: true },
+    ],
+    // 바꾼 TypeScript 파일이 없었거나 시간 안에 끝나지 않아 돌지 않았다 — 통과라고 하지 않는다.
+    [{}, { screens: 2, phone: true }],
+    // 오류가 있으면 게이트가 선다(ok 가 아니다) — 그래도 이 칸이 참이 되지는 않는다.
+    [
+      { typeErrors: 3, typeMs: 900 },
+      { screens: 2, phone: true },
+    ],
+  ];
+  for (const [typeFields, expected] of cases) {
+    const { server } = stub("/tmp/unused");
+    let seen: unknown;
+    server.drivers.runGate = async () => ({
+      status: "ok",
+      kept: 2,
+      opened: 2,
+      phone: true,
+      ...typeFields,
+    });
+    server.runAutoSave = () => {
+      seen = server.gateChecked.get("s");
+    };
+    server.startGate("s", 1000);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.deepEqual(seen, expected, JSON.stringify(typeFields));
+  }
+});
+
 test("startGate: 문제를 찾았거나 하나도 못 연 판정은 기록을 남기지 않는다", async () => {
   for (const outcome of [
     { status: "trouble", kept: 1, troubles: [] },

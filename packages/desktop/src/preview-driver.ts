@@ -14,6 +14,7 @@ import type {
   BrowserDriver,
   BrowserDriverFactory,
   PreviewA11y,
+  PreviewArrival,
   PreviewAxNode,
   PreviewCapture,
   PreviewConsoleLine,
@@ -34,6 +35,7 @@ import {
   unnamedControlsOf,
   withDeadline,
 } from "./a11y-probe.js";
+import { probeArrivalInPage } from "./arrival-probe.js";
 import { describeElementInPage, ownersOfElement } from "./element-identity.js";
 import { VIEWPORT_METRICS } from "./emulation.js";
 import { measureOverflowInPage } from "./overflow-probe.js";
@@ -463,13 +465,41 @@ class ElectronPreviewDriver extends CdpPreviewDriver {
     const overflow = settled && options?.viewport === "mobile" ? await this.overflowProbe() : null;
     // 접근성의 재료는 부탁한 열기에서만 모은다 — 브라우저에 여러 번 묻는 값이다.
     const a11y = settled && options?.a11y === true ? await this.a11yProbe() : null;
+    // 어디에 닿았는지(2026-10-07 베타 준비 분석) — 로그인 화면으로 튕겼는가의 재료. 검증 창은 사용자의 로그인
+    // 세션을 쓰지 않아 로그인이 필요한 화면은 멀쩡히 로드되고 조용한 로그인 화면이 된다. 판정은 데몬의 것이다.
+    const arrival = settled ? await this.arrivalProbe() : null;
     return {
       ok: true,
       settled,
       ...(blank ? { blank: true } : {}),
       ...(overflow !== null ? { overflow } : {}),
       ...(a11y !== null ? { a11y } : {}),
+      ...(arrival !== null ? { arrival } : {}),
     };
+  }
+
+  /**
+   * 열기가 닿은 자리의 재료(arrival-probe.ts). 재지 못했으면 null — 재료가 없는 것은 판정에 영향 없다(없으면 벽이라고
+   * 말하지 않는다). 값은 페이지가 내놓은 것이라 모양만 확인하고, 숫자의 뜻은 데몬의 `loginWallOf` 가 다시 조인다.
+   */
+  private async arrivalProbe(): Promise<PreviewArrival | null> {
+    const result = (await this.debugger()
+      .sendCommand("Runtime.evaluate", {
+        expression: `(${probeArrivalInPage.toString()})()`,
+        returnByValue: true,
+      })
+      .catch(() => null)) as { result?: { value?: unknown } } | null;
+    const value = result?.result?.value as Partial<PreviewArrival> | null | undefined;
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      typeof value.url !== "string" ||
+      typeof value.passwordFields !== "number" ||
+      typeof value.interactive !== "number"
+    ) {
+      return null;
+    }
+    return { url: value.url, passwordFields: value.passwordFields, interactive: value.interactive };
   }
 
   /**

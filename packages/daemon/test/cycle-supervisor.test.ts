@@ -5,6 +5,7 @@ import { test } from "node:test";
 import { composeAttention } from "@colonova-design/protocol";
 // `../dist` 임포트인 이유: 형제를 `.js` 지정자로 부르는 모듈은 src 직접 로드가
 // 그 지정을 못 고친다(cycle-observe.test.ts 와 같은 길).
+import { markAppComment } from "../dist/app-comment.js";
 import { readLedger } from "../dist/cycle-ledger.js";
 import { CycleSupervisor } from "../dist/cycle-supervisor.js";
 import { GitHubClient } from "../dist/github.js";
@@ -498,6 +499,82 @@ test("병합 · 남은 것 없음 — 베이스로 돌아오고 handoff 는 merg
       "남은 것 없는 병합은 handoff 가 merged 로 남아 칩이 반영됨을 말한다",
     );
     assert.equal(ledgerOf(scene).ended?.pr, pr);
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("병합 — 반영된 일이 제목 · 며칠 · 화면 수와 함께 사건 · OS 알림 · 원장에 남고, 새 사이클이 시작돼도 산다(2026-10-08)", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await scene.git(["checkout", "-b", BRANCH]);
+    await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
+    await scene.git(["push", "-u", "origin", BRANCH]);
+    const pr = await openCycle(scene, BRANCH);
+    // 같은 화면을 두 차례 만지고 하나를 더 만졌다 — 화면은 경로마다 하나로 센다. 합쳐 들인 기록은 화면 작업이 아니다.
+    const row = (route: string, kind?: "merge") => ({
+      route,
+      title: route,
+      note: "작업",
+      at: "2026-09-24T10:00:00+09:00",
+      ...(kind ? { kind } : {}),
+    });
+    scene.cycleScreens = [row("/a"), row("/b"), row("/a"), row("/c", "merge")];
+
+    await scene.github.merge(pr, "merge");
+    await scene.supervisor.tick("manual");
+
+    const merged = scene.chatEvents.find((e) => e.kind === "cycle.merged");
+    assert.ok(merged, "cycle.merged 사건이 나가야 한다");
+    assert.equal(merged.title, "하네스 요청", "제목은 요청 제목에서 온다");
+    assert.equal(merged.screens, 2, "화면 수는 경로마다 하나");
+    assert.ok(
+      Number.isInteger(merged.days) && (merged.days as number) >= 0,
+      "제출한 날부터의 달력 차이",
+    );
+    assert.equal(
+      scene.transitions.find((t) => t.kind === "merged")?.title,
+      "하네스 요청",
+      "OS 알림이 제목을 싣는다",
+    );
+    const landed = ledgerOf(scene).landed;
+    assert.equal(landed?.length, 1);
+    assert.deepEqual(
+      { pr: landed?.[0]?.pr, title: landed?.[0]?.title, screens: landed?.[0]?.screens },
+      { pr, title: "하네스 요청", screens: 2 },
+    );
+    assert.equal(landed?.[0]?.days, merged.days, "사건과 원장이 같은 며칠을 말한다");
+    // 선로 — 앱 상태가 원장의 기억을 그대로 싣는다.
+    assert.equal(scene.supervisor.landedView()?.[0]?.pr, pr);
+
+    // 새 사이클이 시작돼도 지워지지 않고, 데몬을 다시 켜도 같은 사건을 다시 내지 않는다.
+    scene.chatEvents.length = 0;
+    await scene.supervisor.tick("manual");
+    assert.equal(
+      scene.chatEvents.filter((e) => e.kind === "cycle.merged").length,
+      0,
+      "같은 병합은 한 번만 말한다",
+    );
+    assert.equal(ledgerOf(scene).landed?.length, 1, "같은 병합이 두 줄이 되지 않는다");
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("반려 — 성취가 아니라 반영된 일에 쌓지 않는다(2026-10-08)", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await scene.git(["checkout", "-b", BRANCH]);
+    await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
+    await scene.git(["push", "-u", "origin", BRANCH]);
+    const pr = await openCycle(scene, BRANCH);
+
+    scene.github.close(pr);
+    await scene.supervisor.tick("manual");
+
+    assert.ok(scene.chatEvents.some((e) => e.kind === "cycle.closed"));
+    assert.equal(ledgerOf(scene).landed, undefined, "반려는 쌓지 않는다");
+    assert.equal(scene.supervisor.landedView(), undefined);
   } finally {
     await scene.dispose();
   }
@@ -1309,6 +1386,229 @@ test("U17 조용한 알림 — github:expiring 은 원장에 남아도 주의 �
     assert.deepEqual(Object.keys(parts.notices ?? {}), ["push:auth"]);
     scene.supervisor.setNotice("push:auth", null);
     assert.equal(composeAttention(scene.supervisor.attentionParts()), null);
+  } finally {
+    await scene.dispose();
+  }
+});
+
+// ————— 자동 검사 반영 (2026-10-07 베타 준비 분석 · W6) —————
+
+/** 사이클 브랜치에 커밋을 올리고 PR 을 연 장면 — head sha 와 함께. */
+async function openPrWithCommit(scene: SupervisedScene): Promise<{ pr: number; head: string }> {
+  await scene.git(["checkout", "-b", BRANCH]);
+  await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
+  await scene.git(["push", "-u", "origin", BRANCH]);
+  const pr = await openCycle(scene, BRANCH);
+  return { pr, head: scene.github.headShaOf(pr) };
+}
+
+const BUILD_FAILS = {
+  id: 501,
+  name: "build",
+  status: "completed",
+  conclusion: "failure",
+  summary: "컴파일 오류 1개",
+  annotations: [{ path: "src/a.ts", line: 4, message: "Cannot find name 'nope'" }],
+};
+
+test("CI 반영 — 검사가 실패하면 AI 에게 브리프가 한 번 나가고 head · 라운드가 원장에 적힌다, 같은 head 는 다시 나가지 않는다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    const { pr, head } = await openPrWithCommit(scene);
+    scene.github.setCheckRuns(head, [
+      BUILD_FAILS,
+      { id: 502, name: "lint", status: "completed", conclusion: "success" },
+    ]);
+
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.ciBriefs.length, 1, "고침 브리프가 한 번 나간다");
+    const sent = scene.ciBriefs[0];
+    assert.equal(sent?.pr, pr);
+    assert.equal(sent?.failing, 1);
+    assert.ok(sent?.brief.startsWith(`<!-- colonova-design:ci {"pr":${pr},"failing":1} -->\n`));
+    assert.ok(sent?.brief.includes("1. build"));
+    assert.ok(sent?.brief.includes("src/a.ts:4 — Cannot find name 'nope'"));
+    assert.ok(sent?.brief.trimEnd().endsWith("검사와 무관한 변경은 하지 마세요."));
+    assert.equal(scene.reviewBriefs.length, 0, "코멘트 반영 턴이 아니다");
+    const ledger = ledgerOf(scene);
+    assert.deepEqual(ledger.ci?.[String(pr)]?.briefed, [head]);
+    assert.equal(ledger.budgets[`ci:${pr}`]?.spent, 1);
+    // 화면의 주의는 `AI 가 고치는 중` 이고 무엇을 고치는지(ci)를 말한다.
+    const parts = scene.supervisor.attentionParts();
+    assert.equal(parts.aiFixingKey, "ci");
+    assert.equal(composeAttention(parts)?.kind, "ai-fixing");
+    assert.equal((composeAttention(parts) as { key?: string } | null)?.key, "ci");
+    // 선로의 handoff 에는 검사 요약이 실린다(종류와 숫자만).
+    assert.deepEqual(scene.core.snapshot().handoff?.ci, { state: "failing", failing: 1 });
+
+    // AI 가 하나도 고치지 못한 채 끝났다 — 같은 head 에는 다시 브리프하지 않는다.
+    await scene.supervisor.tick("manual");
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.ciBriefs.length, 1);
+    assert.equal(ledgerOf(scene).budgets[`ci:${pr}`]?.spent, 1);
+    assert.equal(scene.notices.length, 0, "말미 안에서는 알리지 않는다");
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("CI 반영 — AI 가 끝났는데 head 가 그대로면 말미 뒤 개발자 알림이 한 번 서고, 통과하면 풀린다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    const { pr, head } = await openPrWithCommit(scene);
+    scene.github.setCheckRuns(head, [BUILD_FAILS]);
+    const t0 = Date.now();
+    scene.setNow(t0);
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.ciBriefs.length, 1);
+
+    scene.setNow(t0 + 16 * 60_000);
+    await scene.supervisor.tick("manual");
+    await scene.supervisor.tick("manual");
+    const raised = scene.notices.filter((n) => n.key === `ci:${pr}:rounds`);
+    assert.equal(raised.length, 1, "알림은 한 번뿐이다");
+    assert.ok(raised[0]?.text.includes("자동 검사가 계속 통과하지 못했습니다"));
+    assert.ok(raised[0]?.reason?.includes("통과하지 못한 검사: build"), raised[0]?.reason);
+    assert.equal(scene.ciBriefs.length, 1, "알려도 같은 head 를 다시 맡기지 않는다");
+
+    // 개발자가 고쳐 새 head 가 서고 검사가 통과한다 — 서 있던 알림이 풀린다.
+    scene.supervisor.setNotice(`ci:${pr}:rounds`, {
+      via: "pr",
+      ref: 9,
+      raisedAt: new Date(t0).toISOString(),
+      count: 1,
+    });
+    const fixed = "c".repeat(40);
+    scene.github.setHeadSha(pr, fixed);
+    scene.github.setCheckRuns(fixed, [
+      { id: 601, name: "build", status: "completed", conclusion: "success" },
+    ]);
+    await scene.supervisor.tick("manual");
+    assert.equal(
+      scene.supervisor.notices()[`ci:${pr}:rounds`],
+      undefined,
+      "통과하면 알림을 거둔다",
+    );
+    assert.equal(
+      ledgerOf(scene).budgets[`ci:${pr}`],
+      undefined,
+      "같은 PR 의 다음 실패는 새 사건이다",
+    );
+    assert.deepEqual(scene.core.snapshot().handoff?.ci, { state: "passing" });
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("CI 반영 — 보내기가 거절되면 head 를 되감아 다음 틱이 다시 시도한다(라운드는 돌려주지 않는다)", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    const { pr, head } = await openPrWithCommit(scene);
+    scene.github.setCheckRuns(head, [BUILD_FAILS]);
+    scene.refuseCiSend = true;
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.ciBriefs.length, 0);
+    assert.equal(ledgerOf(scene).ci?.[String(pr)], undefined, "되감겨 다시 대상이 된다");
+    assert.equal(ledgerOf(scene).budgets[`ci:${pr}`]?.spent, 1);
+
+    scene.refuseCiSend = false;
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.ciBriefs.length, 1);
+    assert.deepEqual(ledgerOf(scene).ci?.[String(pr)]?.briefed, [head]);
+    assert.equal(ledgerOf(scene).budgets[`ci:${pr}`]?.spent, 2);
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("CI 반영 — 사람의 코멘트가 먼저다: 코멘트 반영 턴이 나간 뒤에야 검사 고침이 나간다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    const { pr, head } = await openPrWithCommit(scene);
+    scene.github.setCheckRuns(head, [BUILD_FAILS]);
+    await scene.supervisor.tick("manual"); // 기준선(첫 관찰) — 이 틱에 CI 브리프가 나간다
+    scene.github.setHeadSha(pr, "d".repeat(40));
+    scene.github.setCheckRuns("d".repeat(40), [BUILD_FAILS]);
+    scene.github.addComment(pr, { kind: "issue", login: "dev1", body: "여기부터 봐 주세요" });
+    const before = scene.ciBriefs.length;
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.reviewBriefs.length, 1, "코멘트 반영 턴이 먼저 나간다");
+    assert.equal(scene.ciBriefs.length, before, "같은 틱에 검사 고침은 나가지 않는다");
+    await scene.supervisor.tick("manual");
+    assert.equal(
+      scene.ciBriefs.length,
+      before + 1,
+      "코멘트를 브리프한 다음 틱에 검사 고침이 나간다",
+    );
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("CI 반영 — 권한 없음 · 닿지 못함 · 검사 없음에서는 아무 행동도 하지 않는다(거짓 실패로 AI 를 깨우지 않는다)", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    const { pr, head } = await openPrWithCommit(scene);
+    scene.github.setMergeableState(pr, "unstable");
+    scene.github.setCheckRuns(head, [BUILD_FAILS]);
+    for (const mode of ["forbidden", "error"] as const) {
+      scene.github.setChecksAccess(mode);
+      await scene.supervisor.tick("manual");
+    }
+    scene.github.setChecksAccess("ok");
+    scene.github.setCheckRuns(head, []);
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.ciBriefs.length, 0);
+    assert.equal(scene.notices.length, 0);
+    assert.equal(ledgerOf(scene).ci, undefined);
+    assert.equal(scene.supervisor.attentionParts().aiFixingKey, null);
+    // 검사를 읽지 못한 동안 선로에도 검사 요약은 없다.
+    assert.equal(scene.core.snapshot().handoff?.ci, undefined);
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("승인 — 본문 있는 승인은 AI 턴이 아니고, 선로의 handoff.approved 로 나간다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    const { pr } = await openPrWithCommit(scene);
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.core.snapshot().handoff?.approved, undefined);
+    scene.github.addComment(pr, { kind: "review", login: "dev1", body: "LGTM", state: "APPROVED" });
+    await scene.supervisor.tick("manual");
+    assert.equal(scene.reviewBriefs.length, 0, "승인은 반영 턴을 열지 않는다");
+    assert.equal(scene.briefs.length, 0);
+    assert.equal(ledgerOf(scene).budgets[`review:${pr}`], undefined, "라운드도 쓰지 않는다");
+    assert.equal(scene.core.snapshot().handoff?.approved, true);
+    assert.ok(!scene.transitions.some((t) => t.kind === "comments"), "코멘트 도착 알림도 없다");
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("상태 확인 — 코멘트 목록에 승인은 서지 않고, 토큰 주인의 표식 없는 글은 서고 앱의 글은 서지 않는다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    const { pr } = await openPrWithCommit(scene);
+    scene.github.addComment(pr, { kind: "review", login: "dev1", body: "LGTM", state: "APPROVED" });
+    const mine = scene.github.addComment(pr, {
+      kind: "issue",
+      login: "colonova-planner",
+      body: "개발자가 자기 토큰으로 쓴 말",
+    });
+    scene.github.addComment(pr, {
+      kind: "issue",
+      login: "colonova-planner",
+      body: markAppComment("앱이 쓴 글"),
+    });
+    const report = await scene.workspace.peekHandoff();
+    assert.deepEqual(
+      report?.reviews?.map((row) => row.id),
+      [mine],
+      "승인(LGTM)은 코멘트 칸에 서지 않는다",
+    );
+    assert.equal(report?.approved, true, "승인은 상태로 나른다");
   } finally {
     await scene.dispose();
   }

@@ -98,7 +98,14 @@ const myOs = detectOs();
 if (myOs) {
   $(`file-${myOs}`)?.classList.add("mine");
   const badge = $(`file-${myOs}-badge`);
-  if (badge) badge.hidden = false;
+  if (badge) {
+    badge.hidden = false;
+    // 브라우저는 Intel 과 Apple 실리콘 Mac 을 가르지 못한다(둘 다 MacIntel) — 배지가 모든 Mac 에 붙는 이유다.
+    // 이 앱은 Apple 실리콘만 지원하므로 칩 확인법을 곁들인다(2026-10-07 베타 준비 분석).
+    if (myOs === "mac") {
+      badge.title = "Apple 실리콘 Mac 만 돼요 — Apple 메뉴 → 이 Mac에 관하여 → 칩이 Apple M 으로 시작해야 해요";
+    }
+  }
 }
 
 /* ---------- 작은 화면의 메뉴 ---------- */

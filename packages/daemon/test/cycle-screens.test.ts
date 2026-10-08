@@ -136,6 +136,43 @@ test("deriveCycleScreens — 지도 행의 확인 기록이 그 보관의 모든
   );
 });
 
+test("deriveCycleScreens — 지도 행의 AI 공급자가 그 보관의 모든 화면 줄에 실린다 · 없는 행은 칸이 없다(2026-10-07)", () => {
+  const commits = [
+    { sha: "c2", subject: "쿠폰 화면도", at: "T2" },
+    { sha: "c1", subject: "회원 목록에 검색창", at: "T1" },
+  ];
+  const rows = [
+    {
+      at: "T1",
+      sha: "c1",
+      routes: [],
+      files: ["a.tsx"],
+      screens: [{ route: "/member/list", title: "회원 목록" }],
+    },
+    {
+      at: "T2",
+      sha: "c2",
+      routes: [],
+      files: ["b.tsx"],
+      screens: [
+        { route: "/coupon", title: "쿠폰" },
+        { route: "/coupon/new", title: "쿠폰 만들기" },
+      ],
+      provider: "claude",
+    },
+  ];
+  const out = deriveCycleScreens(commits, rows);
+  assert.deepEqual(
+    out.map((screen) => [screen.route, screen.provider]),
+    [
+      ["/coupon", "claude"],
+      ["/coupon/new", "claude"],
+      ["/member/list", undefined],
+    ],
+  );
+  assert.equal("provider" in (out[2] ?? {}), false, "공급자를 모르는 옛 행은 칸이 없다");
+});
+
 test("deriveCycleScreens — screens 가 없는 옛 행은 routes 를 읽고 제목을 빌린다", () => {
   const rows = [
     {

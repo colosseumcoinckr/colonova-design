@@ -135,9 +135,10 @@ export interface Turn {
   text: string;
   /**
    * Everything the planner attached. `mediaType` decides the delivery:
-   * `image/*` becomes a vision block, decodable text is inlined into the
-   * turn's words, and anything else is staged on disk for the agent to
-   * read — no SDK accepts arbitrary binary content blocks.
+   * `image/*` becomes a vision block (and is staged on disk too, so the
+   * agent can copy it into the repo — 2026-10-07), decodable text is
+   * inlined into the turn's words, and anything else is staged on disk
+   * for the agent to read — no SDK accepts arbitrary binary content blocks.
    */
   attachments?: Array<{ name: string; mediaType: string; data: string }>;
 }

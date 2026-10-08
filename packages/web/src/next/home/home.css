@@ -505,6 +505,113 @@ html[data-theme="codex"] .nx-home {
   background: transparent;
 }
 
+/* ---------- 서비스가 떴어요(2026-10-07 베타 준비 분석 · 첫 5분) ---------- */
+
+/* 입력창과 받은 편지함 사이 — 첫 준비가 끝난 프로젝트의 줄. 기다린 일이 끝났다는 소식이라 답을 기다리는 카드
+   (`.nx-dcard`, 포인트 색 띠)와 갈리게 초록 기운으로 선다. */
+.nx-ready-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 28px;
+}
+
+.nx-ready-list + .nx-inbox {
+  margin-top: 28px;
+}
+
+.nx-ready {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--green) 34%, var(--line));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--green) 7%, var(--cmp));
+  box-shadow: var(--shadow-card);
+}
+
+.nx-ready-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px 12px 14px;
+}
+
+/* 서비스의 첫 화면 사진 — 줄 위에 얹힌 한 장. 위쪽을 보여 주고(머리글과 첫 내용이 알아보기 쉽다) 아래는 잘린다.
+   사진은 늦게 오므로 도착하면 위에서 내려앉는다(채움은 backwards 만). */
+.nx-ready-shot {
+  height: 168px;
+  overflow: hidden;
+  border-bottom: 1px solid color-mix(in srgb, var(--green) 24%, var(--line));
+  background: var(--bg);
+  animation: nx-ready-shot-in 0.42s var(--drift) backwards;
+}
+
+.nx-ready-shot img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+@keyframes nx-ready-shot-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+.nx-ready-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.nx-ready-tx {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+/* 이 줄의 말이 핵심이라 말줄임 대신 줄바꿈 — 긴 프로젝트 이름도 끝까지 읽힌다. */
+.nx-ready-t {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.nx-ready-s {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink3);
+}
+
+.nx .nx-ready-go {
+  flex: none;
+  white-space: nowrap;
+}
+
+.nx .nx-ready-x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  color: var(--ink3);
+}
+
+.nx .nx-ready-x:hover,
+.nx .nx-ready-x:focus-visible {
+  background: var(--nx-hover);
+  color: var(--ink2);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nx-dfold {
     transition: none;
@@ -515,7 +622,8 @@ html[data-theme="codex"] .nx-home {
   }
 
   /* 지연이 남으면 첫 모양(흐림)으로 기다리게 된다 — 움직임을 줄인 창은 곧바로 선다. */
-  .nx-home-inner > * {
+  .nx-home-inner > *,
+  .nx-ready-shot {
     animation: none;
   }
 }

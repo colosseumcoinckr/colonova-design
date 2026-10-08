@@ -347,6 +347,7 @@ export function SettingsDialog({
               daemon={daemon}
               settings={settings}
               onChatChange={onChatChange}
+              onSettingsChange={onSettingsChange}
               loginExpired={reconnect.login}
               onScroll={scrollOf("ai")}
             />

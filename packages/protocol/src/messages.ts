@@ -42,6 +42,13 @@ export type SessionPinHint = z.infer<typeof sessionPinHintSchema>;
 
 const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({ ...withId, type: z.literal("daemon.status") }),
+  /**
+   * 진단 한 덩어리(2026-10-07 베타 준비 분석) — 앱 버전 · OS · 도구 · AI 종류와 요금제 종류 · 최근 7일
+   * 턴 통계 요약 · 최근 오류의 종류를 `DiagnosticsSummary` 로 답한다. 읽기뿐이고 부작용이 없으며,
+   * 종류 · 숫자 · 버전만 싣는다(사용자의 말 · 경로 · 이메일 · 프로젝트 이름은 없다). 설정의
+   * `개발자용` 쪽 복사와 준비 실패 카드의 `담당자에게 보낼 내용 복사` 가 부른다.
+   */
+  z.object({ ...withId, type: z.literal("diagnostics.summary") }),
   z.object({
     ...withId,
     type: z.literal("session.list"),
@@ -93,9 +100,10 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     text: z.string(),
     /**
      * Optional base64 attachments — pasted or dropped files. `mediaType`
-     * decides the delivery: `image/*` rides as a vision block, decodable
-     * text is inlined into the turn, and anything else is staged on disk
-     * for the agent to read.
+     * decides the delivery: `image/*` rides as a vision block (and is staged
+     * on disk too, so the agent can copy it into the repo — 2026-10-07),
+     * decodable text is inlined into the turn, and anything else is staged
+     * on disk for the agent to read.
      */
     attachments: z
       .array(z.object({ name: z.string().min(1), mediaType: z.string(), data: z.string().min(1) }))
@@ -618,6 +626,11 @@ const clientMessageSchema = z.discriminatedUnion("type", [
       .optional(),
   }),
   /**
+   * 서비스의 첫 화면 사진 한 장 (2026-10-07 베타 준비 분석 · 첫 5분) — 홈의 `서비스가 떴어요` 줄이 부른다. 데몬이 준비가
+   * 끝나며 읽은 첫 주소(`RepoStatus.firstScreen`, 모르면 `/`)를 숨은 창으로 열어 한 장 찍는다. 실패는 `image: null`.
+   */
+  z.object({ ...withId, type: z.literal("repo.firstLook") }),
+  /**
    * 되돌리기 (PLAN D53): bring the worktree back to a saved point as a NEW
    * commit on the cycle branch — never reset · revert · force-push, because
    * a developer may be reading that branch right now. Progress rides the
@@ -862,6 +875,18 @@ export type ServerMessage =
        * 동안에도 살아 있다 — 사람이 기다린 시간도 그 요청의 시간이다.
        */
       startedAt?: number;
+    }
+  /**
+   * AI 가 지금 고치는 화면(2026-10-08 라이브감 · 베타 준비 분석) — 편집 도구가 끝난 파일이 알려진 화면 하나에만
+   * 이어질 때 턴당 화면당 한 번 온다. 여러 화면에 쓰이는 파일 · 어느 화면에도 안 걸리는 파일 · 처음 보는 화면은
+   * 오지 않는다(추측하지 않는다). `route` 는 쿼리 없는 `/경로`, `title` 은 화면 지도의 제목(모르면 없다).
+   * 선로 전용이다 — 로그 · 턴 통계에는 남기지 않는다. 옛 웹은 모르는 메시지로 읽고 흘린다.
+   */
+  | {
+      type: "session.editing";
+      sessionId: string;
+      route: string;
+      title?: string;
     }
   | {
       type: "permission.request";

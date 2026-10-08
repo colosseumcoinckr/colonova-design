@@ -184,6 +184,9 @@
   margin: 0;
   padding: 0;
   display: grid;
+  /* 한 칸이 카드 폭을 못 넘긴다 — 알약의 긴 이메일(`kim@…` 한 낱말)이 칸을 밀어 카드 전체가 옆으로 넘치지 않게
+     한다(2026-10-07 계정 줄). 자동 칸은 내용의 최소 폭까지 늘어난다. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
 }
 
@@ -733,6 +736,14 @@
   color: var(--green);
   font-size: 13px;
   line-height: 1.55;
+}
+
+/* AI 를 기다리는 동안 초대 파일 칸 위의 한 줄 — 카드의 위계를 해치지 않게 낮은 목소리로. */
+.nx-ob-early {
+  margin: 6px 0 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink3);
 }
 
 .nx-ob-warn {

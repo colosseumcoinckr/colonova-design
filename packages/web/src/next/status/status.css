@@ -966,6 +966,29 @@
   flex: none;
 }
 
+/* 자동 검사의 한 줄(2026-10-07) — 통과는 초록, 통과하지 못한 것은 호박색. 도는 중 · 고치는 중은 도는 점(`nx-spin`)이다.
+   그림은 자기 이름의 감싸개 안에 둔다 — `.nx-i` 를 곧장 칠하면 앞선 `.nx-wp-state--fixing .nx-i` 등과 특이도가 엇갈린다. */
+.nx-wp-ci-i {
+  display: inline-flex;
+  flex: none;
+}
+
+/* 도는 점은 `.nx-i` 가 아니라 위 간격(`.nx-wp-icon .nx-i`)을 받지 못한다 — 첫 줄의 가운데에 맞춘다. */
+.nx-wp-ci--pending .nx-wp-ci-i,
+.nx-wp-ci--fixing .nx-wp-ci-i {
+  margin-top: 4px;
+}
+
+.nx-wp-ci--passing .nx-wp-ci-i {
+  color: var(--green);
+}
+
+.nx-wp-ci--fixing .nx-wp-ci-i,
+.nx-wp-ci--notified .nx-wp-ci-i,
+.nx-wp-ci--failing .nx-wp-ci-i {
+  color: var(--amber);
+}
+
 .nx-wp-receipt {
   display: flex;
   align-items: center;

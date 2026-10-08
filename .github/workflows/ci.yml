@@ -125,6 +125,42 @@ jobs:
           packages/daemon/test/submit-preview.test.ts
           packages/daemon/test/github-reviewers.test.ts
           packages/daemon/test/feedback.test.ts
+          packages/daemon/test/agent-attachments.test.ts
+          packages/daemon/test/app-comment.test.ts
+          packages/daemon/test/child-hide.test.ts
+          packages/daemon/test/child-shell.test.ts
+          packages/daemon/test/ci-checks.test.ts
+          packages/daemon/test/claude-delete-all.test.ts
+          packages/daemon/test/cycle-landed.test.ts
+          packages/daemon/test/cycle-ledger.test.ts
+          packages/daemon/test/cycle-reconcile.test.ts
+          packages/daemon/test/diagnostics-summary.test.ts
+          packages/daemon/test/edit-screens.test.ts
+          packages/daemon/test/event-mapper-error.test.ts
+          packages/daemon/test/first-look.test.ts
+          packages/daemon/test/first-prep.test.ts
+          packages/daemon/test/first-screen.test.ts
+          packages/daemon/test/github-ci.test.ts
+          packages/daemon/test/invite-check.test.ts
+          packages/daemon/test/login-wall-gate.test.ts
+          packages/daemon/test/login-wall.test.ts
+          packages/daemon/test/notice-voice.test.ts
+          packages/daemon/test/onboarding-plan.test.ts
+          packages/daemon/test/preview-claim.test.ts
+          packages/daemon/test/project-slug.test.ts
+          packages/daemon/test/session-viewing-line.test.ts
+          packages/daemon/test/submit-state.test.ts
+          packages/daemon/test/tool-labels.test.ts
+          packages/daemon/test/turn-retry-failure.test.ts
+          packages/daemon/test/viewing-line.test.ts
+          packages/daemon/test/write-guard.test.ts
+          packages/daemon/test/handoff-signals.test.ts
+          packages/daemon/test/invite-page-safety.test.ts
+          packages/daemon/test/push-gate-kind.test.ts
+          packages/daemon/test/replay-attachments.test.ts
+          packages/daemon/test/secret-shapes.test.ts
+          packages/daemon/test/write-guard-links.test.ts
+          packages/daemon/test/write-guard-shell.test.ts
           packages/web/test/chat-options.test.ts
           packages/web/test/error-words.test.ts
           packages/web/test/invite-file-name.test.ts
@@ -177,9 +213,29 @@ jobs:
           packages/web/test/next-sidebar-css.test.ts
           packages/web/test/next-status-css.test.ts
           packages/web/test/palette-match.test.ts
+          packages/web/test/next-account-line.test.ts
+          packages/web/test/next-ask-preview.test.ts
+          packages/web/test/next-ci-line.test.ts
+          packages/web/test/next-diagnostics-text.test.ts
+          packages/web/test/next-fail-card.test.ts
+          packages/web/test/next-first-look.test.ts
+          packages/web/test/next-invite-open.test.ts
+          packages/web/test/next-landed.test.ts
+          packages/web/test/next-live-follow.test.ts
+          packages/web/test/next-marker-cards.test.ts
+          packages/web/test/next-photo-diff.test.ts
+          packages/web/test/next-photo-share.test.ts
+          packages/web/test/next-photo-ui.test.ts
+          packages/web/test/next-ready-watch.test.ts
+          packages/web/test/next-secret-scrub.test.ts
           packages/desktop/test/app-reset.test.ts
           packages/desktop/test/notices.test.ts
           packages/desktop/test/pin-envelope.test.ts
           packages/desktop/test/pin-envelope-overlay.test.ts
           packages/desktop/test/quit-contract.test.ts
+          packages/desktop/test/clipboard-permission.test.ts
+          packages/desktop/test/daemon-start.test.ts
+          packages/desktop/test/invite-open.test.ts
+          packages/desktop/test/menu.test.ts
+          packages/desktop/test/notify-policy.test.ts
           scripts/bench/lib.test.mjs

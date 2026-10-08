@@ -157,6 +157,24 @@ interface MemPull {
   createdAt: string;
 }
 
+/** 메모리 속 자동 검사(체크 런) — GitHub 의 check_runs 행과 줄 단위 안내(2026-10-07 W6). */
+export interface MemCheckRun {
+  id: number;
+  name: string;
+  status: string;
+  conclusion: string | null;
+  title?: string;
+  summary?: string;
+  text?: string;
+  annotations?: Array<{
+    path: string;
+    line?: number;
+    level?: string;
+    title?: string;
+    message: string;
+  }>;
+}
+
 interface MemIssue {
   number: number;
   title: string;
@@ -197,6 +215,13 @@ export class MemoryGitHub implements RestTransport {
   private readonly issueComments = new Map<number, MemComment[]>();
   /** 개발자 알림의 이슈 (PLAN L11) — 번호는 PR 과 같은 열을 쓴다(GitHub 과 같다). */
   private readonly issues = new Map<number, MemIssue>();
+  /** 자동 검사 — head sha 별 체크 런(2026-10-07 W6). */
+  private readonly checkRuns = new Map<string, MemCheckRun[]>();
+  /** 검사 읽기의 모양 — forbidden 은 Checks: Read 없는 토큰(403), error 는 500. */
+  private checksMode: "ok" | "forbidden" | "error" = "ok";
+  /** 검사 목록 · 안내를 몇 번 읽었나 — 같은 head 를 틱마다 다시 읽지 않는지의 잣대. */
+  checkRunReads = 0;
+  annotationReads = 0;
 
   private readonly remote: RemoteRepo;
 
@@ -229,6 +254,50 @@ export class MemoryGitHub implements RestTransport {
         });
       }
       if (input.method === "GET" && rest[0] === "contents") {
+        return json(404, { message: "Not Found" });
+      }
+      // 자동 검사 — GET /commits/{sha}/check-runs · GET /check-runs/{id}/annotations (2026-10-07 W6).
+      if (input.method === "GET" && rest[0] === "commits" && rest[2] === "check-runs") {
+        this.checkRunReads += 1;
+        if (this.checksMode === "forbidden") {
+          return json(403, { message: "Resource not accessible by personal access token" });
+        }
+        if (this.checksMode === "error") return json(500, { message: "Internal Error" });
+        const runs = this.checkRuns.get(String(rest[1])) ?? [];
+        return json(200, {
+          total_count: runs.length,
+          check_runs: runs.map((run) => ({
+            id: run.id,
+            name: run.name,
+            status: run.status,
+            conclusion: run.conclusion,
+            html_url: `https://github.test/colonova-design/harness/runs/${run.id}`,
+            output: {
+              title: run.title ?? null,
+              summary: run.summary ?? null,
+              text: run.text ?? null,
+              annotations_count: run.annotations?.length ?? 0,
+            },
+          })),
+        });
+      }
+      if (input.method === "GET" && rest[0] === "check-runs" && rest[2] === "annotations") {
+        this.annotationReads += 1;
+        const id = Number(rest[1]);
+        for (const runs of this.checkRuns.values()) {
+          const run = runs.find((entry) => entry.id === id);
+          if (run === undefined) continue;
+          return json(
+            200,
+            (run.annotations ?? []).map((row) => ({
+              path: row.path,
+              start_line: row.line ?? 1,
+              annotation_level: row.level ?? "failure",
+              title: row.title ?? null,
+              message: row.message,
+            })),
+          );
+        }
         return json(404, { message: "Not Found" });
       }
       if (rest[0] === "pulls") {
@@ -580,6 +649,30 @@ export class MemoryGitHub implements RestTransport {
     pull.mergeableState = state;
   }
 
+  /** PR 의 head sha — 자동 검사가 걸리는 커밋. */
+  headShaOf(number: number): string {
+    const pull = this.pulls.get(number);
+    if (pull === undefined) throw new Error(`MemoryGitHub: PR #${number} 이 없습니다`);
+    return pull.headSha;
+  }
+
+  /** PR 의 head 를 옮긴다 — 개발자 · AI 가 푸시해 새 커밋이 선 순간(자동 검사는 새 sha 에서 다시 돈다). */
+  setHeadSha(number: number, sha: string): void {
+    const pull = this.pulls.get(number);
+    if (pull === undefined) throw new Error(`MemoryGitHub: PR #${number} 이 없습니다`);
+    pull.headSha = sha;
+  }
+
+  /** 한 커밋의 자동 검사를 통째로 갈아 끼운다 — 개발자 쪽 CI 가 결과를 낸 순간(2026-10-07 W6). */
+  setCheckRuns(sha: string, runs: MemCheckRun[]): void {
+    this.checkRuns.set(sha, runs);
+  }
+
+  /** 검사 읽기의 모양 — forbidden 은 `Checks: Read` 가 없는 토큰, error 는 GitHub 의 500. */
+  setChecksAccess(mode: "ok" | "forbidden" | "error"): void {
+    this.checksMode = mode;
+  }
+
   /** 코멘트를 단다 — kind: 인라인(pull) · 리뷰 본문(review) · 요청 코멘트(issue).
    *  review 의 state 는 GitHub 의 판정 단어다 — CHANGES_REQUESTED 가
    *  getPullRequest 의 changes_requested 를 만든다. bot 을 켜면 CI 봇의
@@ -793,9 +886,13 @@ export interface SupervisedScene extends Scene {
    *  `자세히` 로 가는 몫(fleet 의 describeProblem(key, reason ?? text) 과 같은 길). */
   notices: Array<{ key: string; text: string; reason?: string }>;
   /** onPrTransition 이 모은 개발자 쪽 사건 — 옛 폴러의 알림 몫. */
-  transitions: Array<{ kind: string; at: string; count?: number }>;
+  transitions: Array<{ kind: string; at: string; count?: number; title?: string }>;
   /** onNewReviews 가 모은 브리프 요청 — [pr, ids]. */
   reviewBriefs: Array<{ pr: number; ids: number[] }>;
+  /** onCiFailure 가 모은 자동 검사 브리프(2026-10-07 W6) — 표식 달린 본문과 통과하지 못한 검사의 수. */
+  ciBriefs: Array<{ pr: number; brief: string; failing: number }>;
+  /** 켜면 onCiFailure 가 false 를 돌린다 — 자동 검사 브리프를 못 보내는 세계. */
+  refuseCiSend: boolean;
   /** cycleEvent 가 모은 대화록 사건. */
   chatEvents: Array<{ kind: string; [key: string]: unknown }>;
   /** onRetargetBase 가 옮긴 베이스 — 없으면 null. */
@@ -880,6 +977,7 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
   const scene = {
     retargetedTo: null as string | null,
     refuseReviewSend: false,
+    refuseCiSend: false,
     refuseThread: false,
     deleteMergedBranches: true,
     active: true,
@@ -900,8 +998,9 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
   const machineNotices: SupervisedScene["machineNotices"] = [];
   const briefs: string[] = [];
   const notices: Array<{ key: string; text: string; reason?: string }> = [];
-  const transitions: Array<{ kind: string; at: string; count?: number }> = [];
+  const transitions: Array<{ kind: string; at: string; count?: number; title?: string }> = [];
   const reviewBriefs: Array<{ pr: number; ids: number[] }> = [];
+  const ciBriefs: Array<{ pr: number; brief: string; failing: number }> = [];
   const chatEvents: Array<{ kind: string; [key: string]: unknown }> = [];
   const ledgerPath = join(clone.path, "..", "cycle.json");
   // N6 — 제출 재시도 타이머의 가짜: 실제로 도는 타이머 없이 건 순간과 간격만
@@ -929,6 +1028,8 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
       projectName: () => scene.projectName,
       commentsFile: () => join(dirname(ledgerPath), "comments.json"),
       captureShots: () => Promise.resolve(scene.shots.slice()),
+      // 병합을 처음 본 틱의 화면 수(2026-10-08 · A2b) — 장면의 cycleScreens 를 fleet 의 지금 읽기처럼 읽는다.
+      cycleScreens: async () => scene.cycleScreens ?? [],
       github: () => new GitHubClient("harness-token", github),
       githubAuthExpired: () => scene.authExpired,
       onSubmitBlocked: (reason) => submitBlocked.push(reason),
@@ -936,10 +1037,16 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
       isActive: () => scene.active,
       openThread: async () => (scene.refuseThread ? null : { send: (text) => briefs.push(text) }),
       raiseNotice: (key, text, reason) => notices.push({ key, text, reason }),
-      onPrTransition: (kind, at, count) => transitions.push({ kind, at, count }),
+      onPrTransition: (kind, at, count, title) =>
+        transitions.push({ kind, at, count, ...(title === undefined ? {} : { title }) }),
       onNewReviews: async (pr, reviews) => {
         if (scene.refuseReviewSend) return false;
         reviewBriefs.push({ pr, ids: reviews.map((r) => r.id) });
+        return true;
+      },
+      onCiFailure: async (pr, brief, failing) => {
+        if (scene.refuseCiSend) return false;
+        ciBriefs.push({ pr, brief, failing });
         return true;
       },
       onRetargetBase: (to) => {
@@ -972,7 +1079,14 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
     notices,
     transitions,
     reviewBriefs,
+    ciBriefs,
     chatEvents,
+    get refuseCiSend() {
+      return scene.refuseCiSend;
+    },
+    set refuseCiSend(v: boolean) {
+      scene.refuseCiSend = v;
+    },
     get retargetedTo() {
       return scene.retargetedTo;
     },

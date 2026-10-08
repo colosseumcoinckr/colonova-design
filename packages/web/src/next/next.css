@@ -13,6 +13,7 @@
 @import "./ui/ui.css";
 @import "./ui/overlay.css";
 @import "./ui/sheet.css";
+@import "./ui/photo-diff.css";
 @import "./shell.css";
 @import "./palette.css";
 @import "./sidebar/sidebar.css";

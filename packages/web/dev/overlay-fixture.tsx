@@ -33,12 +33,16 @@ import {
   type ThemeChoice,
   useSettings,
 } from "../src/lib/settings";
+import { DEV } from "../src/next/labels";
+import { diagnosticsText } from "../src/next/lib/diagnostics-text";
 import type { ToastNote } from "../src/next/lib/use-shell-nav";
 import { Popover } from "../src/next/ui/Popover";
 import { Toast } from "../src/next/ui/Toast";
+import { askPreviewQuestion } from "./ask-preview-mocks";
 import {
   ago,
   calls,
+  DIAGNOSTICS,
   INVITE,
   INVITE_ROWS,
   mockDaemon,
@@ -239,9 +243,10 @@ function PaletteCase() {
 function ToastCase() {
   const [toast, setToast] = useState<ToastNote | null>(null);
   const seq = useRef(0);
-  const fire = (text: string) => {
+  const [pressed, setPressed] = useState(0);
+  const fire = (text: string, action?: ToastNote["action"]) => {
     seq.current += 1;
-    setToast({ text, seq: seq.current });
+    setToast({ text, seq: seq.current, ...(action ? { action } : {}) });
   };
   return (
     <div style={{ padding: 24, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -265,6 +270,34 @@ function ToastCase() {
       >
         긴 토스트
       </button>
+      {/* 단추가 달린 토스트(2026-10-07 서비스가 떴어요) — 누르면 일을 하고 닫힌다. 더 오래(8초) 머문다. */}
+      <button
+        type="button"
+        className="nx-btn"
+        id="t-action"
+        onClick={() =>
+          fire("‘회원 관리’ 서비스가 내 컴퓨터에서 떴어요", {
+            label: "화면 보기",
+            run: () => setPressed((count) => count + 1),
+          })
+        }
+      >
+        단추 토스트
+      </button>
+      <button
+        type="button"
+        className="nx-btn"
+        id="t-action-long"
+        onClick={() =>
+          fire(
+            "‘아주 아주 긴 프로젝트 이름의 관리자 콘솔 웹’ 서비스가 내 컴퓨터에서 떴어요 — 이 문장은 단추 곁에서도 두 줄까지 읽히는지 본다",
+            { label: "화면 보기", run: () => setPressed((count) => count + 1) },
+          )
+        }
+      >
+        긴 단추 토스트
+      </button>
+      <output id="t-pressed">{pressed}</output>
       <Toast toast={toast} onDone={() => setToast(null)} />
     </div>
   );
@@ -924,6 +957,29 @@ function PrepareCase() {
                   calls.push("retry");
                   setAttempts((n) => n + 1);
                 }}
+                // 실패 덮개의 `담당자에게 보낼 내용 복사`(2026-10-07) — 진짜 글 짜기(diagnostics-text)로 모은다.
+                help={
+                  query.get("help") === "0"
+                    ? undefined
+                    : async () => {
+                        const text = diagnosticsText(
+                          {
+                            at: new Date().toISOString(),
+                            summary: DIAGNOSTICS,
+                            status: null,
+                            web: {
+                              connected: true,
+                              protocolVersion: 19,
+                              repoPhase: "error",
+                              failureKind: "install",
+                            },
+                          },
+                          DEV,
+                        );
+                        calls.push(`copy-help:${text}`);
+                        return text;
+                      }
+                }
               />
             )}
           </div>
@@ -939,8 +995,11 @@ function PrepareCase() {
 /** 표면 표 — 새 겹판은 한 줄 더한다. 값은 그 표면을 그리는 컴포넌트다. */
 /**
  * 확인 카드(질문 · 허락) — 대화록 안에 서는 그대로(2026-10-06 겹판 손질 C).
- * `?kind=single|chips|multi|multichips|two|permission` 으로 모양을, `?fail=1` 은 전하지 못함(실패 줄),
+ * `?kind=single|chips|multi|multichips|two|permission` 으로 모양을(`permission` 은 `&tool=browser_snapshot` 으로 도구 이름을 바꾼다), `?fail=1` 은 전하지 못함(실패 줄),
  * `?hang=1` 은 보내는 중에 머문다(도는 표시), `?w=` 는 칸의 폭. 보낸 답은 `window.__overlay.calls` 에 남는다.
+ * `?preview=1|mixed|bad` 는 선택지에 AI 가 단 시안을 붙인다(`&set=search|button|card`, 악성 견본은
+ * `&beacon=http://127.0.0.1:포트`) — `dev/ask-preview-mocks.ts`. 시안이 든 질문은 `kind` 대신 이 질문이 선다
+ * (`kind=two` 면 뒤에 칸 고르기가 붙는다).
  */
 function AskCase() {
   const kind = query.get("kind") ?? "single";
@@ -981,6 +1040,14 @@ function AskCase() {
     multiSelect: true,
     options: [option("이름"), option("연락처"), option("가입일"), option("등급")],
   };
+  // 시안 견본 — 값이 있으면 이 질문이 첫 질문이 된다(글 선택지의 `place` 를 대신한다).
+  const shown = askPreviewQuestion(
+    query.get("preview"),
+    query.get("set"),
+    query.get("beacon") ?? "http://127.0.0.1:29399",
+  );
+  if (shown) Object.assign(window, { __askpPayload: shown.options.map((o) => o.preview ?? "") });
+  const first = shown ?? place;
   const questions =
     kind === "chips"
       ? [chips]
@@ -989,16 +1056,17 @@ function AskCase() {
         : kind === "multichips"
           ? [columnChips]
           : kind === "two"
-            ? [place, columnChips]
-            : [place];
+            ? [first, columnChips]
+            : [first];
   const request =
     kind === "permission"
       ? {
           kind: "permission",
           requestId: "p1",
           sessionId: "t1",
-          toolName: "Bash",
-          input: { command: "pnpm test" },
+          // `?tool=browser_snapshot` — 브라우저 게이트의 허락 카드는 도구 이름 대신 `browser_<op>` 로 묻는다(2026-10-07).
+          toolName: query.get("tool") ?? "Bash",
+          input: query.get("tool") ? {} : { command: "pnpm test" },
         }
       : { kind: "question", requestId: "q1", sessionId: "t1", questions };
   return (

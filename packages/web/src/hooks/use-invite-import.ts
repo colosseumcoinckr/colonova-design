@@ -8,6 +8,7 @@ import {
   planInviteRowsNamed,
   readInviteFile,
 } from "../lib/invite-import";
+import { nextOpenedInvite, type OpenedInviteFile, openedInviteFiles } from "../lib/invite-open";
 import { L } from "../next/labels";
 import { inviteReadError } from "../next/lib/invite-rows";
 
@@ -69,8 +70,11 @@ export interface InviteImportController {
   retry: (authorDraft?: string) => void;
   /** 카드를 닫고 idle 로. */
   close: () => void;
-  /** 드롭 영역이 초대 파일이 아닌 파일까지 같은 오류로 말하게 하는 길. */
-  takeFile: (file: File) => void;
+  /**
+   * 드롭 영역이 초대 파일이 아닌 파일까지 같은 오류로 말하게 하는 길. `diskPath` 는 데스크톱이 이미 아는 파일의
+   * 위치(더블클릭으로 열린 파일) — 없으면 끌어 놓은 `File` 에서 묻는다.
+   */
+  takeFile: (file: File, diskPath?: string) => void;
 }
 
 export function useInviteImport(daemon: Daemon): InviteImportController {
@@ -82,13 +86,13 @@ export function useInviteImport(daemon: Daemon): InviteImportController {
   }, [state]);
 
   const takeFile = useCallback(
-    (file: File) => {
+    (file: File, diskPath?: string) => {
       // 적용이 도는 동안에는 새 파일을 무시한다 — reading 이 applying 위를
       // 덮고, 끝난 적용의 done 이 그 위를 다시 덮는 일이 없게.
       if (stateRef.current.phase === "applying") return;
       setState({ phase: "reading" });
       // 데스크톱이 아는 파일의 디스크 위치(PLAN-UI U11) — 브라우저 File 에는 없다.
-      const path = window.colonovaDesignDesktop?.invite?.pathOf?.(file) ?? null;
+      const path = diskPath ?? window.colonovaDesignDesktop?.invite?.pathOf?.(file) ?? null;
       readInviteFile(file)
         .then((read) => {
           if (!read.ok) {
@@ -198,6 +202,50 @@ export function useInviteImport(daemon: Daemon): InviteImportController {
       }),
     [takeFile, openPicker],
   );
+
+  // OS 가 열라고 한 초대 파일(파일을 더블클릭, 2026-10-08 베타 준비 분석) — 데스크톱의 메인이 판정을 통과시킨 파일을 줄에
+  // 쥐고 있다가 이 컨트롤러가 마운트될 때, 그리고 새 파일이 줄에 설 때마다 오는 신호에 건넨다. 건너온 파일은 끌어 놓은
+  // 파일과 같은 길(`takeFile`)로 들어가 같은 확인 카드를 띄운다. 카드가 열려 있는 동안 온 파일은 줄을 서고, 첫 상태가
+  // 오기 전에는 기다린다(`nextOpenedInvite` — 그때의 프로젝트 목록은 비어 있어 첫 실행으로 오판한다).
+  const takeFileRef = useRef(takeFile);
+  takeFileRef.current = takeFile;
+  const statusLoaded = daemon.status !== null;
+  const loadedRef = useRef(statusLoaded);
+  loadedRef.current = statusLoaded;
+  const openedRef = useRef<OpenedInviteFile[]>([]);
+  const pumpOpened = useCallback(() => {
+    const { next, rest } = nextOpenedInvite(
+      openedRef.current,
+      stateRef.current.phase,
+      loadedRef.current,
+    );
+    openedRef.current = rest;
+    if (!next) return;
+    takeFileRef.current(next.file, next.path);
+    // takeFile 이 `reading` 으로 옮겨 가지만 stateRef 는 다음 렌더 뒤에야 따라온다 — 같은 틱의 두 번째 호출이 끼어
+    // 읽는 중인 카드를 덮지 않게 앞서 적는다.
+    stateRef.current = { phase: "reading" };
+  }, []);
+  useEffect(() => {
+    const bridge = window.colonovaDesignDesktop?.invite;
+    if (!bridge?.takeOpened) return;
+    const drain = () => {
+      void bridge.takeOpened?.().then(
+        (entries) => {
+          openedRef.current = [...openedRef.current, ...openedInviteFiles(entries)];
+          pumpOpened();
+        },
+        () => undefined,
+      );
+    };
+    const off = bridge.onOpenFile?.(drain);
+    drain();
+    return () => off?.();
+  }, [pumpOpened]);
+  // 카드가 닫혔거나(idle) 첫 상태가 온 순간 — 기다리던 파일을 이어서 연다.
+  useEffect(() => {
+    if (state.phase === "idle" && statusLoaded) pumpOpened();
+  }, [state.phase, statusLoaded, pumpOpened]);
 
   // 창 어디에 떨어뜨려도 초대 파일이면 가져오기가 먼저 잡는다(capture) — 컴포저의
   // 첨부 손보다 앞선다. 초대 파일이 없으면 아무것도 하지 않는다(입력창 첨부의 길).

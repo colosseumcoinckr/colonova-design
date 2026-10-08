@@ -13,7 +13,7 @@ import type { L } from "../labels";
  * 문장은 인자(`W`)로 받는다 — 시험이 src 에서 곧장 읽는 순수 모듈은 형제를
  * 부르지 않는다(journey.ts 와 같은 규칙).
  */
-export type ProblemWords = Pick<typeof L, "problem" | "chat">;
+export type ProblemWords = Pick<typeof L, "problem" | "chat" | "afterSubmit">;
 
 export interface Problem {
   /** 줄의 색 — 목업의 `.problem.fixing` · `.notified` · `.reconnect`. */
@@ -28,6 +28,11 @@ export interface Problem {
    * 않고, 풀렸다 새로 막히면 다른 신원으로 다시 선다.
    */
   dismissId: string | null;
+  /**
+   * 고치는 중 줄이 저절로 풀릴 때 `다 고쳤어요` 체크를 보일까 — 없으면 보인다. 자동 검사를 고치는 줄은 AI 가 손을
+   * 뗀 뒤에도 검사가 다시 돌아 통과해야 끝나므로 거기서 「다 고쳤다」 고 말하지 않는다(2026-10-07).
+   */
+  settles?: false;
 }
 
 /** 문제 문장 줄의 몸통 — ProblemLine 의 감싸개가 기억한다(문제 한 줄 또는 초대 파일 줄). */
@@ -43,7 +48,7 @@ export type ProblemLineBody =
 export function problemLineId(line: ProblemLineBody | null): string | null {
   if (line === null) return null;
   if (line.kind === "problem") {
-    return `problem:${line.problem.kind}:${line.problem.title}:${line.problem.dismissId}`;
+    return `problem:${line.problem.kind}:${line.problem.title}:${line.problem.dismissId}${line.problem.settles === false ? ":checks" : ""}`;
   }
   return `invite:${line.path}`;
 }
@@ -148,7 +153,11 @@ export function problemFor(
     return {
       kind: "blocked",
       title: W.problem.blocked,
-      body: W.problem.blockedBody,
+      // 권한 부족은 새 초대 파일이 풀지 않는다 — 개발자가 코드의 권한을 고쳐야 한다고 말한다(2026-10-07).
+      body:
+        repo.submit.lastError === "permission"
+          ? W.problem.blockedPermission
+          : W.problem.blockedBody,
       action: "copy",
       dismissId: `submit:${repo.submit.since ?? "?"}`,
     };
@@ -160,12 +169,25 @@ export function problemFor(
       body:
         repo?.submit?.phase === "blocked" && attention.key?.startsWith("submit:")
           ? W.problem.notifiedSubmit
-          : W.problem.notifiedOther,
+          : attention.key?.startsWith("ci:")
+            ? W.afterSubmit.notifiedChecks
+            : W.problem.notifiedOther,
       action: null,
       dismissId: `notice:${attention.since}`,
     };
   }
   if (attention?.kind === "ai-fixing") {
+    // 자동 검사가 통과하지 못해 AI 가 고치는 중(2026-10-07) — 미리보기가 떠 있든 아니든 이 말이 먼저다.
+    if (attention.key === "ci") {
+      return {
+        kind: "fixing",
+        title: W.problem.fixing,
+        body: W.afterSubmit.fixingChecks,
+        action: null,
+        dismissId: null,
+        settles: false,
+      };
+    }
     // 미리보기가 떠 있지 않으면 고치는 대상은 미리보기다 — 목업의 문장이 그렇게 말한다.
     const previewDown = repo !== null && (repo.phase !== "ready" || repo.previewUrl === null);
     return {

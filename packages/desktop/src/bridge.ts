@@ -9,6 +9,7 @@ import type { SelfUpdates } from "./app-updates.js";
 import { BRIDGE } from "./copy.js";
 import { saveDesktopSettings } from "./desktop-settings.js";
 import { inviteDiscardRefusal } from "./invite-discard.js";
+import { type InviteOpenQueue, readOpenedInvite } from "./invite-open.js";
 import { normalizeNotificationPrefs } from "./notify-policy.js";
 
 export interface BridgeDeps {
@@ -25,6 +26,10 @@ export interface BridgeDeps {
   /** 직전 렌더러 사망 기록(크래시 방어 층 3) — 렌더러가 부팅 때 읽는다. */
   lastRendererCrash(): { reason: string; at: number } | null;
   requestReset(): Promise<{ cancelled?: boolean; restarting?: boolean }>;
+  /** 더블클릭으로 열라고 OS 가 건넨 초대 파일의 줄(main.ts 가 채운다) — 렌더러가 가져가며 비운다. */
+  inviteOpen: InviteOpenQueue;
+  /** 데몬의 파일 기록 한 줄 — 종류와 숫자만(사용자의 말 · 파일 경로는 남기지 않는다). */
+  log(message: string, fields?: Record<string, string | number>): void;
 }
 
 export function registerDesktopBridge(deps: BridgeDeps): void {
@@ -74,6 +79,21 @@ export function registerDesktopBridge(deps: BridgeDeps): void {
     }
     if (!isFile) throw new Error(BRIDGE.inviteMissing);
     await shell.trashItem(path as string);
+  });
+
+  // 더블클릭으로 연 초대 파일(2026-10-08 베타 준비 분석) — 렌더러가 마운트될 때와 `invite.onOpenFile` 신호를 받을 때
+  // 줄을 가져간다. 건네는 것은 메인이 판정을 통과시킨 파일의 이름 · 경로 · 바이트뿐이다(렌더러가 경로를 건네지도
+  // 읽지도 않는다). 앱의 최상위 렌더러만 줄을 비울 수 있다 — 아닌 쪽이 부르면 줄은 그대로 남는다.
+  ipcMain.handle("desktop:invite-take", (event) => {
+    if (event.senderFrame !== event.sender.mainFrame) return [];
+    const opened = deps.inviteOpen.take().map((path) => readOpenedInvite(path));
+    if (opened.length > 0) {
+      deps.log("invite-open-take", {
+        files: opened.length,
+        unreadable: opened.filter((item) => item.bytes === null).length,
+      });
+    }
+    return opened;
   });
 
   // 알림 설정(시점·소리) — 렌더러의 설정이 메인의 알림을 움직인다. 창이

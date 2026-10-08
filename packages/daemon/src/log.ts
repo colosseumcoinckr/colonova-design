@@ -1,5 +1,6 @@
 import { appendFileSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { maskSecretShapes } from "@colonova-design/protocol";
 import { COLONOVA_DESIGN_DATA_DIR } from "./environment.js";
 
 /**
@@ -70,10 +71,9 @@ function serializable(fields: Record<string, unknown>): Record<string, unknown> 
  * 로그의 값이 되는 말에서 비밀·주소를 눌러 닫는다 — 로그는 지원의 흔적이지
  * 자료의 사본이 아니다 (zcode error-sanitizer 참조). 오류 문장은 SDK·git·
  * GitHub 을 지나오며 토큰과 사용자 경로를 그대로 실어 오는 자리라, 여기서
- * 한 번 걷는 것이 유일한 걸러마다.
+ * 한 번 걷는 것이 유일한 걸러마다. 비밀 모양 낱말의 규칙은 protocol 의 `maskSecretShapes` 한 곳이다 —
+ * 웹의 진단 복사 글(`scrubText`)과 같은 규칙을 읽는다(2026-10-08 검토 FIX1).
  */
-const SECRET_PATTERN =
-  /(ghp_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]{20,}|sk-[A-Za-z0-9_-]{8,}|rk-[A-Za-z0-9_-]{8,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{10,}|xox[bp]-[A-Za-z0-9-]+|hooks\.slack\.com\/services\/[A-Za-z0-9/]+|Bearer\s+[A-Za-z0-9._~+/=-]+)/g;
 const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 /** 계정 이름이 사는 절대 경로의 머리 — ~ 로 눌러 닫는다. 나머지 경로는 지원의 단서로 남는다. */
 const USER_ROOT_PATTERNS: Array<[RegExp, string]> = [
@@ -84,9 +84,7 @@ const USER_ROOT_PATTERNS: Array<[RegExp, string]> = [
 
 export function sanitizeText(text: string): string {
   // Bearer 쪽은 어휘(Bearer )를 남긴다 — 어떤 종류의 비밀인지의 단서다.
-  let out = text.replace(SECRET_PATTERN, (matched) =>
-    matched.startsWith("Bearer ") ? "Bearer {secret}" : "{secret}",
-  );
+  let out = maskSecretShapes(text);
   out = out.replace(EMAIL_PATTERN, "{email}");
   for (const [pattern, replacement] of USER_ROOT_PATTERNS) {
     out = out.replace(pattern, replacement);

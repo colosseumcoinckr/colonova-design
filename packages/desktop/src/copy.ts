@@ -81,6 +81,11 @@ export const NOTICE = {
     tail: "개발자 코멘트",
     body: `개발자 코멘트 ${count}건 — AI에게 반영을 맡겼어요.`,
   }),
+  // 병합이 어떤 일인지 알면 그 일의 이름으로 말한다(2026-10-08 베타 준비 분석 · A2b) — 웹 L.landed.head 와 같은 말.
+  mergedTitled: (title: string): NoticeLine => ({
+    tail: "반영됨",
+    body: `‘${title}’ 일이 반영됐어요. 다음에 고치는 것부터 새 작업이에요.`,
+  }),
   ready: { tail: "준비됐어요", body: "처음 여는 준비가 끝났어요. 바로 말을 걸 수 있어요." },
   // 제목은 짧게, `개발자에게 알렸어요` 는 몸글로(2026-10-06). 연결 코드가 끝난 막힘은 개발자에게 알린 것이
   // 아니라 사용자의 손이 필요한 일이다 — 알렸다고 말하지 않는다(웹 L.problem.notifiedSubmit · reconnectInvite).
@@ -94,12 +99,17 @@ export const NOTICE = {
       tail: "제출하지 못했어요",
       body: "연결 코드가 만료됐어요. 개발자에게 받은 새 초대 파일을 열어 주세요. 대화와 작업은 그대로예요.",
     },
+    // 연결 코드의 권한 부족 — 새 초대 파일이 해결이 아니다(웹 L.problem.blockedPermission 과 같은 말).
+    permission: {
+      tail: "제출하지 못했어요",
+      body: "연결 코드의 권한이 모자라요. 작업은 보관돼 있고, 개발자가 코드의 권한을 고치면 도구가 다시 제출해요.",
+    },
     // 이 기계의 인터넷 문제 — 개발자에게 알렸다고 말하지 않는다(웹 L.problem.blockedNetwork 와 같은 말).
     network: {
       tail: "제출하지 못했어요",
       body: "인터넷 연결이 끊겨 멈췄어요. 작업은 보관돼 있고, 연결되면 도구가 다시 제출해요.",
     },
-  } satisfies Record<"notified" | "auth" | "network", NoticeLine>,
+  } satisfies Record<"notified" | "auth" | "permission" | "network", NoticeLine>,
   updateDone: (agent: string, version: string): NoticeText => ({
     title: "AI를 업데이트했어요",
     body: `${agent} ${version} — 다음 새 대화부터 써요.`,
@@ -177,6 +187,24 @@ export const BRIDGE = {
   testNotice: { title: "시험 알림", body: "실제 알림은 이렇게 도착해요" },
   noNotifySettings: "이 컴퓨터에는 알림 설정 화면이 없어요.",
   inviteMissing: "지울 초대 파일을 찾지 못했어요.",
+};
+
+// ---------------------------------------------------------------------------
+// 애플리케이션 메뉴 — menu.ts 가 읽는다(한글 리터럴은 거기 두지 않는다). 도움말은 막혔을 때 앱 안에서
+// 도움을 찾는 입구다(2026-10-08 베타 준비 분석 — 기록 폴더 하나뿐이던 메뉴를 채웠다): 사용 설명서 ·
+// 진단 복사 · 기록 폴더. 진단 복사의 글은 웹이 모아 복사하고(설정의 개발자용 쪽과 같은 글), 앱은 알려 줄 뿐이다.
+// ---------------------------------------------------------------------------
+
+export const MENU = {
+  edit: "편집",
+  view: "보기",
+  window: "창",
+  help: "도움말",
+  /** 개발 실행에서만 서는 항목 — 사용자의 메뉴에는 없다. */
+  devTools: "개발자 도구",
+  helpGuide: "사용 설명서 열기",
+  helpReport: "문제가 생겼어요 — 진단 복사",
+  helpLogs: "기록 폴더 열기",
 };
 
 // ---------------------------------------------------------------------------

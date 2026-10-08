@@ -1,4 +1,5 @@
 import {
+  type HookCallback,
   type ModelInfo,
   type PermissionResult,
   type Query,
@@ -17,7 +18,13 @@ import type {
 import { withoutSelfUpdate } from "../../../agent-env.js";
 import { BROWSER_MCP_SERVER_NAME, claudeBrowserMcpServer } from "../../../browser-launch.js";
 import { sanitizeRepoAgentSettings } from "../../../claude-trust.js";
-import { ensureGitGuardHooks, gitGuardEnv, gitGuardHookDecision } from "../../../git-guard.js";
+import { ensureGitGuardHooks, gitGuardEnv } from "../../../git-guard.js";
+import {
+  autoMemoryRoots,
+  FILE_WRITE_MATCHER,
+  SHELL_MATCHER,
+  sessionGuardHookDecision,
+} from "../../../write-guard.js";
 import { composeTurnText, prepareAttachments } from "../../attachments.js";
 import type { AgentSession, DriverHooks, LaunchConfig, ToolClass, Turn } from "../../driver.js";
 import { MessageTranslator } from "./event-mapper.js";
@@ -101,7 +108,7 @@ function classifyTool(toolName: string, input: Record<string, unknown>): ToolCla
     return { kind: "mcp", name: toolName, ...(mcpServer ? { mcpServer } : {}) };
   }
   if (toolName === "AskUserQuestion") return { kind: "question", name: toolName };
-  if (toolName === "Bash") {
+  if (toolName === "Bash" || toolName === "PowerShell") {
     return {
       kind: "exec",
       name: toolName,
@@ -162,6 +169,19 @@ export class ClaudeAgentSession implements AgentSession {
     // .claude/settings.json 을 고쳐 권한을 넓혀도, 다음 질의는 잘려 나간
     // 파일을 본다(클론·갱신·기동 스윕과 같은 칼, 이미 깨끗하면 무동작).
     sanitizeRepoAgentSettings(launch.cwd);
+    // PreToolUse 훅 하나가 두 matcher(셸 도구 Bash · PowerShell, 파일 쓰기 도구)에서 불린다 — 판정은 도구 이름이 가른다.
+    // 상대 경로는 CLI 가 훅 입력에 실어 오는 지금의 cwd 기준이다(AI 가 `cd` 한 뒤에도 도구와 같은 곳을 본다).
+    const guardHook: HookCallback = async (input) =>
+      sessionGuardHookDecision(
+        "tool_name" in input ? input.tool_name : "",
+        "tool_input" in input ? input.tool_input : {},
+        {
+          cwd: launch.cwd,
+          base: input.cwd,
+          // 이 프로젝트의 Claude 자동 메모 폴더 — CLI 의 기본 기능이라 막을 이유가 없다.
+          extraRoots: autoMemoryRoots(input.transcript_path),
+        },
+      );
     this.run = query({
       prompt: this.queue,
       options: {
@@ -189,22 +209,17 @@ export class ClaudeAgentSession implements AgentSession {
         permissionMode: "bypassPermissions",
         allowDangerouslySkipPermissions: true,
         managedSettings: { permissions: { defaultMode: "bypassPermissions" } },
-        // git 가드 두 겹 (PLAN L5 · 단계 3):
-        // (a) PreToolUse 훅 — bypassPermissions 에서는 canUseTool 이 Bash 에
-        //     불리지 않으므로, SDK hooks 가 git 쓰기를 deny 한다. 판정은
-        //     decidePermission 과 같은 gitWriteDenied 를 읽는다.
+        // AI 가드 (PLAN L5 · 단계 3, 쓰기 울타리는 베타 준비 분석 2026-10-07):
+        // (a) PreToolUse 훅 — bypassPermissions 에서는 canUseTool 이 Bash · Write ·
+        //     Edit 에 불리지 않으므로, SDK hooks 가 그 자리를 메운다. 셸 도구(Bash ·
+        //     Windows 의 PowerShell)는 git 쓰기(gitWriteDenied)와 뻔한 파괴(sudo ·
+        //     클론 밖의 rm -r · chmod -R · 리다이렉션)를, 파일 쓰기 도구는 클론 ·
+        //     임시 폴더 밖의 파일을 deny 한다. 판정은 decidePermission 과 같은
+        //     write-guard 의 함수들을 읽는다.
         hooks: {
           PreToolUse: [
-            {
-              matcher: "Bash",
-              hooks: [
-                async (input) =>
-                  gitGuardHookDecision(
-                    "tool_name" in input ? input.tool_name : "",
-                    ("tool_input" in input ? input.tool_input : {}) as Record<string, unknown>,
-                  ),
-              ],
-            },
+            { matcher: SHELL_MATCHER, hooks: [guardHook] },
+            { matcher: FILE_WRITE_MATCHER, hooks: [guardHook] },
           ],
         },
         // 자기 업데이트를 끈다(PLAN-UI U12) — 업데이트는 앱의 `업데이트` 줄 하나다.
@@ -299,7 +314,7 @@ export class ClaudeAgentSession implements AgentSession {
   }
 
   async send(turn: Turn): Promise<void> {
-    const prepared = prepareAttachments(this.cwd, turn.attachments);
+    const prepared = prepareAttachments(this.cwd, turn.attachments, turn.text);
     const content =
       prepared.images.length > 0 || prepared.sections.length > 0
         ? [

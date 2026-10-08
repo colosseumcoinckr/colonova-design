@@ -61,6 +61,19 @@ export function fastToast(
 /** 한도 문장을 알아보는 단서 — SDK 가 답의 마지막 줄에 스스로 남기는 영어 문장. */
 export const LIMIT_RESULT = /usage limit|rate limit|limit reached|weekly limit|capacity/i;
 
+/**
+ * 실패 카드의 이유 한 문장 — 계정류(`failure: "account"`, 데몬이 판정한다)가 가장 먼저다: 다시 물어도 소용없고
+ * 계정이 풀어야 한다. 그다음 한도, 다섯 번 물은 실패(`escalated`), 짧은 기본 순이다(2026-10-07 베타 준비 분석).
+ */
+export function failWhy(
+  block: { failure?: "account"; resultText: string | null; escalated?: boolean },
+  words: Pick<typeof L, "account" | "chat" | "cards">,
+): string {
+  if (block.failure === "account") return words.account.failWhy;
+  if (block.resultText !== null && LIMIT_RESULT.test(block.resultText)) return words.chat.failLimit;
+  return block.escalated ? words.cards.failWhy : words.chat.failWhyShort;
+}
+
 /** 원문 한 줄을 화면의 문장으로 갈라 놓은 것(W3) — 접힌 `자세히` 아래 실릴 원문까지. */
 export interface RawErrorLine {
   title: string;

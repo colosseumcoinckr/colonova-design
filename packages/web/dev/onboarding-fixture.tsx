@@ -61,6 +61,15 @@ const CLAUDE_LOGIN = {
   fix: { kind: "login-claude", label: "Claude Code 로그인" },
 };
 const CLAUDE_OK = { id: "claude", status: "pass", detail: "Claude Code 준비됨 (2.1.3) · max" };
+/** 알려진 쓸 수 없는 요금제 — 데몬 게이트가 첫 요청 전에 막은 AI 단계(2026-10-07 베타 준비 분석). */
+const CLAUDE_PLAN = {
+  id: "claude",
+  status: "fail",
+  detail:
+    "이 계정의 요금제로는 Claude Code 를 쓸 수 없어요 — 유료 요금제 계정으로 다시 로그인해 주세요.",
+  fix: { kind: "login-claude", label: "다른 계정으로 로그인" },
+  reason: "plan",
+};
 const GIT_MISSING = {
   id: "git",
   status: "fail",
@@ -84,6 +93,13 @@ const NO_CODEX_STATUS = {
   ...STATUS,
   providers: (STATUS.providers ?? []).filter((entry) => entry.id !== "codex"),
 };
+
+/** 로그인 뒤의 계정 줄(2026-10-07 베타 준비 분석) — 상태의 이메일 · 요금제 · 로그인 방식만 갈아 끼운다. */
+const withAccount = (account: {
+  email: string | null;
+  subscriptionType: string | null;
+  authMethod: string | null;
+}) => ({ ...STATUS, ...account });
 
 interface Case {
   id: string;
@@ -263,6 +279,68 @@ const CASES: Case[] = [
     screen: "no-projects",
     daemon: { onboarding: gates(CLAUDE_OK) },
     invite: { phase: "reading" },
+  },
+  // ── 2026-10-07 베타 준비 분석 — 계정 · 요금제
+  {
+    id: "u",
+    label: "u · AI 통과 — 이메일 · 요금제로 연결됨(kim@회사.kr · Max 로 연결됨)",
+    daemon: {
+      onboarding: gates(CLAUDE_OK),
+      status: withAccount({
+        email: "kim@회사.kr",
+        subscriptionType: "max",
+        authMethod: "claude.ai",
+      }),
+    },
+  },
+  {
+    id: "v",
+    label: "v · AI 통과 — 요금제를 모를 때는 이메일만(null 이라 요금제 부분을 생략)",
+    daemon: {
+      onboarding: gates(CLAUDE_OK),
+      status: withAccount({
+        email: "kim@회사.kr",
+        subscriptionType: null,
+        authMethod: "claude.ai",
+      }),
+    },
+  },
+  {
+    id: "w",
+    label: "w · AI 통과 — API 키로 연결됨(이메일 · 요금제 없음)",
+    daemon: {
+      onboarding: gates(CLAUDE_OK),
+      status: withAccount({ email: null, subscriptionType: null, authMethod: "api_key" }),
+    },
+  },
+  {
+    id: "x",
+    label: "x · 알려진 쓸 수 없는 요금제(free) — 첫 요청 전에 AI 카드가 막혀 이유를 말한다",
+    daemon: {
+      onboarding: gates(CLAUDE_PLAN),
+      status: withAccount({
+        email: "kim@회사.kr",
+        subscriptionType: "free",
+        authMethod: "claude.ai",
+      }),
+    },
+  },
+  {
+    id: "y",
+    label: "y · 긴 이메일 + Enterprise — 알약이 줄어든다(전체는 title)",
+    daemon: {
+      onboarding: gates(CLAUDE_OK),
+      status: withAccount({
+        email: "very.long.name.of.a.person@a-company-with-a-very-long-domain-name.example.co.kr",
+        subscriptionType: "enterprise",
+        authMethod: "claude.ai",
+      }),
+    },
+  },
+  {
+    id: "z",
+    label: "z · 로그인 전 — 요금제가 필요하다는 말이 먼저 선다(로그인 단추 곁)",
+    daemon: { onboarding: gates(CLAUDE_LOGIN) },
   },
 ];
 

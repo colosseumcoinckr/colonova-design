@@ -1,5 +1,5 @@
 import type { ScreenComparison } from "@colonova-design/protocol";
-import { ImageOff, MoveHorizontal, SquareSplitHorizontal } from "lucide-react";
+import { Copy, ImageOff, MoveHorizontal, SquareDashed, SquareSplitHorizontal } from "lucide-react";
 import {
   type CSSProperties,
   type MutableRefObject,
@@ -40,8 +40,11 @@ import {
   zoomAt,
   zoomPercent,
 } from "../lib/compare-zoom";
+import type { Box } from "../lib/photo-diff";
+import { diffText, useCopyPhoto, usePhotoTools } from "../lib/use-photo-tools";
 import { InfoIcon, Spin } from "../ui/icons";
 import { ModalFoot, ModalFrame, ModalHead } from "../ui/ModalFrame";
+import { DiffOutlines } from "../ui/PhotoOutlines";
 import { MinusIcon, PlusIcon } from "./icons";
 
 export interface ComparisonTarget {
@@ -50,6 +53,11 @@ export interface ComparisonTarget {
   requestId?: string;
   sha?: string;
   submitted?: boolean;
+  /**
+   * 요청이 가리킨 곳(수정 후 사진 기준 0..1) — 있으면 그 밖의 변경을 경고색으로 말한다. 지금 이 값을 넘기는 곳은 없다:
+   * 핀의 위치는 요청 기록에 남지 않고, 있어도 미리보기 칸의 좌표라 사진의 좌표와 다르다(`docs/DEVELOPERS.md`).
+   */
+  pins?: readonly Box[];
 }
 const EVENT = "nx:comparison:open";
 export function openComparison(target: ComparisonTarget): void {
@@ -158,6 +166,15 @@ interface ViewerShared {
   metrics: MutableRefObject<Metrics>;
   beforeLabel: string;
   afterLabel: string;
+  /** 켜 둔 달라진 곳 윤곽 — 수정 후 사진 위에 얹는다. 꺼져 있거나 그릴 상자가 없으면 null. */
+  outline: OutlinePlan | null;
+}
+
+/** 달라진 곳 윤곽 한 벌 — 수정 후 사진의 크기(비율)와 상자들. */
+interface OutlinePlan {
+  size: Size;
+  boxes: readonly Box[];
+  warn: ReadonlySet<Box>;
 }
 
 /**
@@ -321,6 +338,40 @@ function Layer({
   );
 }
 
+/**
+ * 달라진 곳 윤곽 한 겹 — 사진(`Layer`)과 같은 크기 · 같은 확대 · 이동을 입어 사진 위의 같은 자리에 선다(수정 후 사진의
+ * 비율로 맞춘 칸이라 `fit` 이 곧 그 사진의 자리다). 번갈아의 수정 전 쪽에서는 `off` 로 감춘다 — 상자는 수정 후 사진의 좌표다.
+ */
+function OutlineLayer({
+  plan,
+  stage,
+  view,
+  off = false,
+}: {
+  plan: OutlinePlan;
+  stage: Size;
+  view: View;
+  off?: boolean;
+}) {
+  const fit = fitSize(plan.size, stage);
+  const pan = clampPan(view.pan, fit, view.zoom, stage);
+  return (
+    <div className={`nx-cv-layer nx-cv-layer--outline${off ? " is-off" : ""}`} aria-hidden="true">
+      <DiffOutlines
+        size={plan.size}
+        boxes={plan.boxes}
+        warn={plan.warn}
+        className="nx-diff-svg--stage"
+        style={{
+          width: fit.width,
+          height: fit.height,
+          transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px) scale(${view.zoom})`,
+        }}
+      />
+    </div>
+  );
+}
+
 /** 사진 위의 이름표 — 지금 무슨 사진을 보는지, 언제 찍은 것인지. */
 function Tag({ side, label, at }: { side: "before" | "after"; label: string; at?: Date | null }) {
   return (
@@ -332,7 +383,7 @@ function Tag({ side, label, at }: { side: "before" | "after"; label: string; at?
 }
 
 function SideView({ both, ...shared }: ViewerShared & { both: { before: Shot; after: Shot } }) {
-  const { title, view, update, metrics, beforeLabel, afterLabel } = shared;
+  const { title, view, update, metrics, beforeLabel, afterLabel, outline } = shared;
   const frame = (which: "before" | "after", shot: Shot, label: string) => (
     <section className={`nx-compare-side nx-compare-side--${which}`} aria-label={label}>
       <h3 className="nx-compare-cap">
@@ -340,7 +391,14 @@ function SideView({ both, ...shared }: ViewerShared & { both: { before: Shot; af
         {shot.at && <small className="nx-compare-cap-at">{timeOf(shot.at)}</small>}
       </h3>
       <Stage view={view} update={update} metrics={metrics} reference={both.after.size}>
-        {(stage) => <Layer shot={shot} alt={`${title} · ${label}`} stage={stage} view={view} />}
+        {(stage) => (
+          <>
+            <Layer shot={shot} alt={`${title} · ${label}`} stage={stage} view={view} />
+            {which === "after" && outline && (
+              <OutlineLayer plan={outline} stage={stage} view={view} />
+            )}
+          </>
+        )}
       </Stage>
     </section>
   );
@@ -362,7 +420,7 @@ function OverlayView({
   split: number;
   setSplit: (percent: number) => void;
 }) {
-  const { title, view, update, metrics, beforeLabel, afterLabel } = shared;
+  const { title, view, update, metrics, beforeLabel, afterLabel, outline } = shared;
   const shares = splitShares(split);
   return (
     <Stage
@@ -382,6 +440,8 @@ function OverlayView({
             view={view}
             clip={split}
           />
+          {/* 윤곽은 두 사진 위에 — 선이 어디에 있든 달라진 곳이 보인다(좌표는 수정 후 사진의 것이다). */}
+          {outline && <OutlineLayer plan={outline} stage={stage} view={view} />}
           {/* 선은 화면 낭독이 읽는 슬라이더다 — 손으로 끄는 것은 아래의 막대(굵은 선과 손잡이)가 한다. */}
           <input
             type="range"
@@ -422,7 +482,7 @@ function FlipView({
   side,
   ...shared
 }: ViewerShared & { both: { before: Shot; after: Shot }; side: "before" | "after" }) {
-  const { title, view, update, metrics, beforeLabel, afterLabel } = shared;
+  const { title, view, update, metrics, beforeLabel, afterLabel, outline } = shared;
   const shown = side === "before" ? both.before : both.after;
   return (
     <Stage view={view} update={update} metrics={metrics} reference={both.after.size}>
@@ -442,6 +502,9 @@ function FlipView({
             view={view}
             off={side !== "after"}
           />
+          {outline && (
+            <OutlineLayer plan={outline} stage={stage} view={view} off={side !== "after"} />
+          )}
           <Tag side="before" label={side === "before" ? beforeLabel : afterLabel} at={shown.at} />
         </>
       )}
@@ -524,11 +587,13 @@ function Comparison({
   daemon,
   returnRef,
   onClose,
+  onToast,
 }: {
   target: ComparisonTarget;
   daemon: Daemon;
   returnRef: RefObject<HTMLElement | null>;
   onClose: () => void;
+  onToast?: (text: string) => void;
 }) {
   const [phase, setPhase] = useState<"loading" | "ready" | "failed">("loading");
   const [shots, setShots] = useState<Shots | null>(null);
@@ -594,6 +659,32 @@ function Comparison({
     : L.compare.noAfter;
   const pictures = phase === "ready" && layout !== "none";
 
+  // 달라진 곳 윤곽 · 한 장 복사(2026-10-08 베타 준비 분석) — 두 사진이 다 있을 때만 윤곽이 있다.
+  const tools = usePhotoTools(both?.before.src ?? null, both?.after.src ?? null, target.pins);
+  const { busy: copying, copy } = useCopyPhoto(onToast);
+  const outline: OutlinePlan | null =
+    both && tools.on && tools.diff && tools.boxes.length > 0
+      ? { size: both.after.size, boxes: tools.boxes, warn: tools.warn }
+      : null;
+  const diffLine = pictures && both && tools.on && tools.summary ? diffText(tools.summary) : null;
+  const warnLine = diffLine !== null && tools.warn.size > 0 ? L.photo.diffOutside : null;
+  const copyPhoto = () => {
+    if (both) {
+      copy({
+        before: { src: both.before.src, label: beforeLabel },
+        after: { src: both.after.src, label: afterLabel },
+        outlines: outline ? { boxes: outline.boxes, warn: outline.warn } : null,
+      });
+    } else if (solo) {
+      // 한 장뿐이면 한 장만 — 없는 쪽을 만들어 거짓 전·후를 짓지 않는다.
+      copy({
+        before: null,
+        after: { src: solo.src, label: soloIsAfter ? afterLabel : beforeLabel },
+        outlines: null,
+      });
+    }
+  };
+
   // 키 — 맨 위 층일 때만 듣는다(서랍 위의 비교가 열린 동안 서랍의 키와 섞이지 않게).
   const keyState = useRef({ layout });
   keyState.current = { layout };
@@ -644,6 +735,7 @@ function Comparison({
     metrics,
     beforeLabel,
     afterLabel,
+    outline,
   };
 
   let viewer: ReactNode = null;
@@ -699,7 +791,15 @@ function Comparison({
     viewer = <SoloView shot={solo} isAfter={soloIsAfter} note={soloNote} {...shared} />;
   }
 
-  const status = phase === "loading" ? L.compare.loading : pictures ? L.compare.loaded : "";
+  // 켠 윤곽의 말은 낭독 칸이 읽는다(곁의 눈에 보이는 줄은 낭독에서 뺀다 — 같은 말을 두 번 읽지 않게).
+  const status =
+    phase === "loading"
+      ? L.compare.loading
+      : diffLine !== null
+        ? [diffLine, warnLine].filter(Boolean).join(" · ")
+        : pictures
+          ? L.compare.loaded
+          : "";
 
   return (
     <ModalFrame
@@ -739,6 +839,31 @@ function Comparison({
             />
           )}
           <span className="nx-grow" />
+          {tools.diff && (
+            <div className="nx-compare-switch nx-diff-seg">
+              <button
+                type="button"
+                aria-pressed={tools.on}
+                onClick={() => {
+                  // 번갈아에서 수정 전을 보던 중에 켜면 수정 후로 넘어간다 — 윤곽은 수정 후 사진의 좌표다.
+                  if (!tools.on && layout === "flip") setSide("after");
+                  tools.toggle();
+                }}
+              >
+                <SquareDashed size={14} strokeWidth={1.8} aria-hidden="true" />
+                {L.photo.showDiff}
+              </button>
+            </div>
+          )}
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm nx-diff-copy"
+            aria-busy={copying || undefined}
+            onClick={copyPhoto}
+          >
+            <Copy size={14} strokeWidth={1.8} aria-hidden="true" />
+            {L.photo.copy}
+          </button>
           <div className="nx-compare-zoom">
             <button
               type="button"
@@ -774,6 +899,13 @@ function Comparison({
         </div>
       )}
       <div className="nx-compare-body" ref={body}>
+        {diffLine !== null && (
+          <p className="nx-compare-note nx-diff-note">
+            <InfoIcon />
+            <span>{diffLine}</span>
+            {warnLine && <span className="nx-diff-warn">{warnLine}</span>}
+          </p>
+        )}
         {viewer}
       </div>
       <p className="nx-sr" role="status">
@@ -803,7 +935,13 @@ function Comparison({
 }
 
 /** 읽기 전용 사진 — 지난 요청의 `수정 후` 는 오늘의 미리보기가 아니라 그때 찍어 둔 사진이다. */
-export function ComparisonDialog({ daemon }: { daemon: Daemon }) {
+export function ComparisonDialog({
+  daemon,
+  onToast,
+}: {
+  daemon: Daemon;
+  onToast?: (text: string) => void;
+}) {
   const [open, setOpen] = useState<{ target: ComparisonTarget; seq: number } | null>(null);
   const returnRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -832,6 +970,7 @@ export function ComparisonDialog({ daemon }: { daemon: Daemon }) {
       daemon={daemon}
       returnRef={returnRef}
       onClose={() => setOpen(null)}
+      onToast={onToast}
     />,
     document.querySelector(".nx") ?? document.body,
   );

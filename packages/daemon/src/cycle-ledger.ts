@@ -17,7 +17,7 @@
  */
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { DeveloperReview, SubmitSent } from "@colonova-design/protocol";
+import type { DeveloperReview, LandedWork, SubmitSent } from "@colonova-design/protocol";
 import { BUDGETS, type BudgetEntry, backoffDelay } from "./budgets.js";
 
 /** 원장 파일의 자리 — 프로젝트 폴더(<slug>) 아래의 cycle.json. */
@@ -63,8 +63,25 @@ export interface CyclePendingRejection {
   since: string;
 }
 
-/** 제출 실패의 분류 — 푸시의 분류와 같은 네 말. */
-export type SubmitErrorKind = "auth" | "network" | "rejected" | "other";
+/**
+ * 제출 실패의 분류 — 푸시의 분류와 같은 말. 인증 · 권한 · 한도는 사람이 하는 일이 갈린다(2026-10-07):
+ * auth 는 새 초대 파일이, permission 은 개발자가 코드의 권한을 고치는 것이, limit 은 시간이 푼다.
+ */
+export type SubmitErrorKind = "auth" | "permission" | "limit" | "network" | "rejected" | "other";
+
+const SUBMIT_ERROR_KINDS: readonly string[] = [
+  "auth",
+  "permission",
+  "limit",
+  "network",
+  "rejected",
+  "other",
+];
+
+/** 원장에서 읽은 분류가 아는 말인가 — 모르는 값은 버린다(옛 · 깨진 원장). */
+function isSubmitErrorKind(value: string | null): value is SubmitErrorKind {
+  return value !== null && SUBMIT_ERROR_KINDS.includes(value);
+}
 
 /** 제출 상태의 네 국면(PLAN-UI U13) — RepoStatus.submit.phase 와 같은 말. */
 export type SubmitPhase = "idle" | "running" | "retrying" | "blocked";
@@ -87,7 +104,7 @@ export interface CyclePushState {
   behindSince: string;
   attempts: number;
   nextAttemptAt: string;
-  lastError?: "auth" | "network" | "rejected" | "other";
+  lastError?: SubmitErrorKind;
 }
 
 export interface CycleLedger {
@@ -160,6 +177,19 @@ export interface CycleLedger {
     }
   >;
   budgets: Record<string, BudgetEntry>;
+  /**
+   * 자동 검사 반영의 장부 (2026-10-07 베타 준비 분석 · W6) — PR 번호별로 이미 브리프한 head 의 sha 와 마지막 브리프의
+   * 시각. 같은 head 를 두 번 브리프하지 않는다: AI 가 하나도 고치지 못한 채 끝난 턴도 같은 head 를 다시 맡기지 않는다.
+   * 최근 head 열 개 · 최근 PR 스무 개만 둔다. 라운드의 셈은 예산의 `ci:<pr>` 가 한다. 옛 원장에는 없고, 비어 있으면
+   * 필드 자체가 없다.
+   */
+  ci?: Record<string, { briefed: string[]; at?: string }>;
+  /**
+   * 반영된 일 (2026-10-08 베타 준비 분석 · A2b) — 병합돼 반영된 요청의 기록, 최근 것부터 스무 건. 병합 뒤 새 사이클이 시작되면
+   * 작업 기록이 비어 성취가 사라지므로 여기에 남긴다: 새 사이클이 지우지 않고 데몬을 다시 켜도 산다. 반려는 성취가 아니라 쌓지 않는다.
+   * 사용자의 말(제목)이 담기는 곳은 이 원장(사용자 데이터 폴더)이고 로그 · 통계에는 싣지 않는다. 옛 원장에는 없고, 비어 있으면 필드 자체가 없다.
+   */
+  landed?: LandedWork[];
   /**
    * 서 있는 개발자 알림(L11) — raise 의 중복 억제 잣체. 조정자가 올리고 지운다.
    * 주의(developer-notified)의 재료이므로 실제 알림이 아닌 표식은 두지 않는다.
@@ -342,14 +372,7 @@ function parseSubmit(raw: unknown): CycleLedger["submit"] {
   const sent = parseSent(record.sent);
   if (sent !== null) submit.sent = sent;
   const lastError = asString(record.lastError);
-  if (
-    lastError === "auth" ||
-    lastError === "network" ||
-    lastError === "rejected" ||
-    lastError === "other"
-  ) {
-    submit.lastError = lastError;
-  }
+  if (isSubmitErrorKind(lastError)) submit.lastError = lastError;
   return submit;
 }
 
@@ -381,15 +404,7 @@ function parsePush(raw: unknown): CyclePushState | null {
   if (behindSince === null || attempts === null || attempts < 0 || nextAttemptAt === null) {
     return null;
   }
-  if (
-    lastError !== null &&
-    lastError !== "auth" &&
-    lastError !== "network" &&
-    lastError !== "rejected" &&
-    lastError !== "other"
-  ) {
-    return null;
-  }
+  if (lastError !== null && !isSubmitErrorKind(lastError)) return null;
   return lastError === null
     ? { behindSince, attempts, nextAttemptAt }
     : { behindSince, attempts, nextAttemptAt, lastError };
@@ -454,6 +469,76 @@ function parseReviews(raw: unknown): CycleLedger["reviews"] {
     };
   }
   return reviews;
+}
+
+/** 자동 검사 장부 — 번호가 양의 정수가 아닌 키와 sha 가 아닌 값은 버리고, 남는 것이 없으면 없다. */
+const CI_BRIEFED_KEEP = 10;
+const CI_PRS_KEEP = 20;
+function parseCi(raw: unknown): CycleLedger["ci"] | null {
+  const root = asRecord(raw);
+  if (root === null) return null;
+  const ci: NonNullable<CycleLedger["ci"]> = {};
+  for (const [key, value] of Object.entries(root)) {
+    if (!/^[1-9]\d*$/.test(key)) continue;
+    const list = asRecord(value)?.briefed;
+    if (!Array.isArray(list)) continue;
+    const briefed = list
+      .filter((sha): sha is string => typeof sha === "string" && /^[0-9a-f]{7,64}$/i.test(sha))
+      .slice(-CI_BRIEFED_KEEP);
+    const at = asString(asRecord(value)?.at);
+    if (briefed.length > 0) {
+      ci[key] = { briefed, ...(at !== null && !Number.isNaN(Date.parse(at)) ? { at } : {}) };
+    }
+  }
+  return Object.keys(ci).length > 0 ? ci : null;
+}
+
+/** 반영된 일의 기억 상한 — 최근 스무 건(홈은 그중 여덟을 보인다). */
+export const LANDED_KEEP = 20;
+
+/** 선택 정수 — 음수 · 비정수는 없는 것이다. */
+const asCount = (value: unknown): number | undefined => {
+  const n = asInt(value);
+  return n !== null && n >= 0 ? n : undefined;
+};
+
+/** 반영된 일 — 깨진 줄(시각 · 번호)은 버리고 같은 번호는 앞선 줄 하나만 남긴다. 남는 것이 없으면 없다. */
+function parseLanded(raw: unknown): LandedWork[] | null {
+  if (!Array.isArray(raw)) return null;
+  const seen = new Set<number>();
+  const landed: LandedWork[] = [];
+  for (const item of raw) {
+    const record = asRecord(item);
+    if (record === null) continue;
+    const at = asString(record.at);
+    const pr = asInt(record.pr);
+    if (at === null || Number.isNaN(Date.parse(at))) continue;
+    if (pr === null || pr <= 0 || seen.has(pr)) continue;
+    seen.add(pr);
+    const title = asString(record.title)?.trim();
+    const days = asCount(record.days);
+    const screens = asCount(record.screens);
+    landed.push({
+      at,
+      pr,
+      ...(title ? { title } : {}),
+      ...(days === undefined ? {} : { days }),
+      ...(screens === undefined || screens === 0 ? {} : { screens }),
+    });
+    if (landed.length >= LANDED_KEEP) break;
+  }
+  return landed.length > 0 ? landed : null;
+}
+
+/**
+ * 반영된 일을 맨 앞에 더한다 — 같은 번호는 새 값으로 갈아 끼우고(되풀이 관찰이 두 줄을 만들지 않는다) 스무 건을 넘으면
+ * 오래된 것부터 버린다. 순수 함수 — 입력은 바뀌지 않는다.
+ */
+export function recordLanded(
+  landed: readonly LandedWork[] | undefined,
+  entry: LandedWork,
+): LandedWork[] {
+  return [entry, ...(landed ?? []).filter((item) => item.pr !== entry.pr)].slice(0, LANDED_KEEP);
 }
 
 /** 보내지 못한 반려 반영 턴 — 이유가 하나도 살아남지 못하면 없는 것으로 친다. */
@@ -628,6 +713,8 @@ export function parseLedger(raw: unknown): CycleLedger {
     parseReviews(record.reviews),
   );
   const submitTrail = parseSubmitTrail(record.submitTrail);
+  const ci = parseCi(record.ci);
+  const landed = parseLanded(record.landed);
   return {
     v: 1,
     ended: parseEnded(record.ended),
@@ -638,6 +725,8 @@ export function parseLedger(raw: unknown): CycleLedger {
     pendingOp: parsePendingOp(record.pendingOp),
     reviews,
     budgets: parseBudgets(record.budgets),
+    ...(ci === null ? {} : { ci }),
+    ...(landed === null ? {} : { landed }),
     notices,
     branches: parseBranches(record.branches),
     salvages: parseSalvages(record.salvages),
@@ -695,9 +784,7 @@ export function writeLedger(file: string, ledger: CycleLedger): void {
 
 // ————— 순수 도우미 — 푸시 밀림의 기록(L10 · L3 12행) —————
 
-export type PushOutcome =
-  | { ok: true }
-  | { ok: false; error: "auth" | "network" | "rejected" | "other" };
+export type PushOutcome = { ok: true } | { ok: false; error: SubmitErrorKind };
 
 /** 밀림이 처음 관찰된 순간만 찍는다 — 1시간 알림(push:behind)의 기준점이다. */
 export function notePushBehind(ledger: CycleLedger, now: number): CycleLedger {
@@ -709,7 +796,8 @@ export function notePushBehind(ledger: CycleLedger, now: number): CycleLedger {
 /**
  * 푸시 결과를 원장에 적는다 — 성공은 밀림 · 백오프 · 오류 흔적을 함께 지우고,
  * 실패는 시도를 올려 다음 시도를 백오프(L7 푸시: 30초에서 두 배, 최대 10분)
- * 뒤로 미룬다.
+ * 뒤로 미룬다. GitHub 한도(`limit`)는 제출과 같은 한도 사다리(`BUDGETS.limitRetry`: 한 분에서
+ * 두 배, 최대 10분)를 탄다 — 공식 지침이 한 분 이상 기다리라고 한다(2026-10-08 검토 · F14).
  */
 export function recordPushResult(
   ledger: CycleLedger,
@@ -722,7 +810,8 @@ export function recordPushResult(
   }
   const prev = ledger.push;
   const attempts = (prev?.attempts ?? 0) + 1;
-  const delay = backoffDelay(attempts, BUDGETS.push.baseMs, BUDGETS.push.capMs);
+  const pace = result.error === "limit" ? BUDGETS.limitRetry : BUDGETS.push;
+  const delay = backoffDelay(attempts, pace.baseMs, pace.capMs);
   return {
     ...ledger,
     push: {
@@ -786,4 +875,38 @@ export function unmarkBriefed(ledger: CycleLedger, pr: number, ids: number[]): C
       [key]: { ...prev, briefed: prev.briefed.filter((id) => !drop.has(id)) },
     },
   };
+}
+
+/**
+ * 이 head 를 자동 검사 반영으로 브리프했다고 적는다 — head 는 최근 열 개, PR 은 최근 스무 개만 남긴다. 이미 있으면
+ * 그대로다(시각도 처음 것을 지킨다).
+ */
+export function markCiBriefed(
+  ci: CycleLedger["ci"],
+  pr: number,
+  headSha: string,
+  at: string,
+): NonNullable<CycleLedger["ci"]> {
+  const key = String(pr);
+  const prev = ci?.[key]?.briefed ?? [];
+  if (prev.includes(headSha)) return ci ?? {};
+  const next = { ...ci, [key]: { briefed: [...prev, headSha].slice(-CI_BRIEFED_KEEP), at } };
+  const keys = Object.keys(next).sort((a, b) => Number(a) - Number(b));
+  for (const old of keys.slice(0, Math.max(0, keys.length - CI_PRS_KEEP))) delete next[old];
+  return next;
+}
+
+/**
+ * 보내기가 거절된 자동 검사 브리프의 되감기 — 판정이 미리 적은 head 를 뺀다(코멘트 브리프의 `unmarkBriefed` 와
+ * 같은 규칙). 되감긴 head 는 다음 관찰에서 다시 브리프 대상이 된다. 예산은 돌려주지 않는다 — 못 연 대화도 한 번이다.
+ */
+export function unmarkCiBriefed(ledger: CycleLedger, pr: number, headSha: string): CycleLedger {
+  const key = String(pr);
+  const prev = ledger.ci?.[key];
+  if (prev === undefined) return ledger;
+  const briefed = prev.briefed.filter((sha) => sha !== headSha);
+  const { [key]: _dropped, ...rest } = ledger.ci ?? {};
+  const ci = briefed.length > 0 ? { ...rest, [key]: { ...prev, briefed } } : rest;
+  const { ci: _old, ...without } = ledger;
+  return Object.keys(ci).length > 0 ? { ...without, ci } : without;
 }

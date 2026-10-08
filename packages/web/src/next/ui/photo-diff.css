@@ -1,0 +1,68 @@
+/*
+ * 사진 위의 달라진 곳 윤곽 — 결과 카드(chat/chat.css)와 비교 대화상자(preview/preview.css)가 함께 쓴다
+ * (2026-10-08 베타 준비 분석 · 2026-10-06 겹판 점검 E). 윤곽은 사진 위의 SVG 도형이다 — 캔버스에 굽지 않아 토큰을 입고,
+ * 확대해도 선이 또렷하다. 놓는 자리는 쓰는 쪽이 정한다(카드는 사진 칸 전체 · 대화상자는 사진과 같은 크기 · 같은 변환).
+ */
+.nx-diff-svg {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  /* 고정 — 윤곽 둘레의 어두운 띠. 찍힌 화면은 어느 팔레트에서도 흰 종이라 옅은 포인트 색(어두운 팔레트의 것)만으로는 묻힌다. */
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.5));
+  /* 채움은 backwards 만 — 끝난 뒤에 쌓임 맥락이 남지 않게(next/README.md 의 움직임 규칙). */
+  animation: nx-diff-in 180ms ease-out backwards;
+}
+
+@keyframes nx-diff-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 상자 — 옅은 칠 위에 선. 선은 사진이 확대돼도 굵어지지 않는다. */
+.nx-diff-box {
+  fill: color-mix(in srgb, var(--accent) 12%, transparent);
+  stroke: var(--accent);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+/* 요청한 곳 밖에서 달라진 상자 — 경고색. 색만으로 말하지 않는다: 곁의 한 줄이 같은 말을 글자로 한다. */
+.nx-diff-box--warn {
+  fill: color-mix(in srgb, var(--warn) 16%, transparent);
+  stroke: var(--warn);
+}
+
+/* 켠 윤곽이 말하는 한 줄 — 곳 수와(있다면) 요청 밖의 변경. 비면(:empty) 자리를 접되 낭독기의 상태 칸으로는 남는다. */
+.nx-diff-line {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 9px 14px 0;
+  color: var(--ink2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  word-break: keep-all;
+}
+
+.nx-diff-line:empty {
+  height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.nx-diff-warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nx-diff-svg {
+    animation: none;
+  }
+}

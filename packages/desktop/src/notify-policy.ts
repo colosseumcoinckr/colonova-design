@@ -47,3 +47,21 @@ export function shouldNotify(notice: DaemonNotice, prefs: NotificationPrefs): bo
   if (prefs.done === "all") return true;
   return (notice.durationMs ?? LONG_TURN_MS) >= LONG_TURN_MS;
 }
+
+/**
+ * 이 순간이 OS 알림으로 사용자를 부르는가 — 앱 창이 앞에 있으면 사용자가 이미 보고 있으니 어떤 알림도 내지 않는다
+ * (앱 안의 알림이 말한다). 창이 뒤에 있으면 `shouldNotify` 가 판정한다.
+ *
+ * 2026-10-07(베타 준비 분석 · 첫 5분): 첫 준비가 끝났다는 소식(`ready`)도 이 길이다. 데몬은 지금 보고 있는 프로젝트에도
+ * 이 소식을 보내고(`ready-notice.ts`), 창이 앞에 있는지는 여기서만 안다 — 활성 프로젝트의 준비가 끝났을 때 창이 뒤에
+ * 있으면(다른 앱에서 기다리는 중) 알림이 나가고, 앞에 있으면 웹이 그 프로젝트의 작업 화면을 보고 있지 않을 때만 앱
+ * 안에서 말한다(`next/lib/ready-watch.ts`). 한 순간에 두 신호가 겹치지 않는다.
+ */
+export function shouldInterrupt(
+  notice: DaemonNotice,
+  prefs: NotificationPrefs,
+  windowFocused: boolean,
+): boolean {
+  if (windowFocused) return false;
+  return shouldNotify(notice, prefs);
+}

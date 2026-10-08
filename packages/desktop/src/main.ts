@@ -25,8 +25,11 @@ import {
   START_ANSWER,
   startFailedOptions,
 } from "./copy.js";
+import { startDaemonServer } from "./daemon-start.js";
 import { loadNotificationPrefs, loadStoredPort, saveDesktopSettings } from "./desktop-settings.js";
 import { APP_BUNDLE_ID } from "./identity.js";
+import { InviteOpenQueue, inviteArgvPaths } from "./invite-open.js";
+import { GUIDE_URL } from "./links.js";
 import { buildMenuTemplate } from "./menu.js";
 import { createBrowserDriverFactory, createPreviewDriverFactory } from "./preview-driver.js";
 import { PlannerPreviewView, registerPreviewIpc } from "./preview-view.js";
@@ -56,6 +59,10 @@ export { createBrowserDriverFactory, createPreviewDriverFactory } from "./previe
  */
 
 const LOGS_DIR = join(COLONOVA_DESIGN_DATA_DIR, "logs");
+
+/** 렌더러로 가는 신호 둘(preload.ts 가 같은 이름으로 받는다) — 내용 없이 알리기만 한다. */
+const INVITE_OPEN_CHANNEL = "colonovadesign:invite-open";
+const COPY_REPORT_CHANNEL = "colonovadesign:copy-report";
 
 // ---------------------------------------------------------------------------
 // 데스크톱 설정 — desktop-settings.json 은 창이 없어도 메인이 알아야 하는 값
@@ -98,6 +105,14 @@ async function showStartFailure(reason: string): Promise<void> {
 let daemonServer: DaemonServer | null = null;
 
 /**
+ * 도움말의 `사용 설명서 열기` — 기본 브라우저로 설명서 주소(links.ts, https 한 주소)를 연다. 렌더러 없이 메인이
+ * 직접 여는 길이다(창이 없어도 닿는다). 못 열어도 앱이 할 수 있는 일은 없다.
+ */
+function openGuide(): void {
+  void shell.openExternal(GUIDE_URL).catch(() => undefined);
+}
+
+/**
  * 리뷰 B3 + ⌘Q 의 구멍: 돌아가는 턴이 앱과 함께 조용히 죽지 않게 한 번
  * 묻는다. 비-mac 의 창 닫기(닫기=종료인 규칙)와 모든 플랫폼의 앱 종료(⌘Q ·
  * 메뉴)가 같은 질문을 공유한다 — mac 은 닫기가 창만 닫으므로 종료 경로에만
@@ -120,6 +135,26 @@ const updates = new SelfUpdates({
 host.onCreated = registerCloseGuard;
 
 /**
+ * 초대 파일 더블클릭으로 열기(2026-10-08 베타 준비 분석) — OS 가 건넨 경로를 판정해 줄에 세우고 떠 있는 렌더러에
+ * 신호를 보낸다. 줄은 렌더러가 마운트될 때(`desktop:invite-take`) 비워진다 — 앱이 뜨기 전에 온 것도 줄이 쥔다(mac 의
+ * open-file 은 ready 보다 먼저 올 수 있다). 판정 · 읽기는 invite-open.ts 의 순수 부분이다. 기록은 종류와 숫자만이다.
+ */
+const inviteOpen = new InviteOpenQueue();
+
+function offerInviteFiles(
+  source: "argv" | "second-instance" | "open-file",
+  paths: readonly string[],
+): void {
+  if (paths.length === 0) return;
+  let accepted = 0;
+  for (const path of paths) if (inviteOpen.offer(path)) accepted += 1;
+  daemonServer?.hostLog("invite-open", { source, offered: paths.length, accepted });
+  if (accepted > 0 && host.window && !host.window.isDestroyed()) {
+    host.window.webContents.send(INVITE_OPEN_CHANNEL);
+  }
+}
+
+/**
  * 같은 userData 를 두 데몬이 쓰는 경쟁을 막는다 — 독립 데몬이 daemon.json 의
  * /health 로 세우던 이중 실행 가드의 앱 판본. 두 번째 실행은 첫째의 창으로
  * 합쳐진다. 테스트 실행(단위 임포트 · 격리 userData 스모크)은 잠그지 않는다
@@ -129,11 +164,25 @@ const underTest =
   process.env.COLONOVA_DESIGN_DESKTOP_UNIT === "1" ||
   Boolean(process.env.COLONOVA_DESIGN_DESKTOP_SMOKE);
 if (underTest || app.requestSingleInstanceLock()) {
-  app.on("second-instance", () => host.focusMain());
+  // 두 번째 실행의 인자에 초대 파일이 있으면(Windows 에서 앱이 떠 있는 동안의 두 번째 더블클릭) 줄에 세우고 창을
+  // 앞으로 — 인자의 상대 경로는 그 실행의 작업 폴더로 푼다.
+  app.on("second-instance", (_event, argv, workingDirectory) => {
+    offerInviteFiles("second-instance", inviteArgvPaths(argv, workingDirectory));
+    host.focusMain();
+  });
   // The preview-driver unit imports this module inside its own Electron to
   // reach createPreviewDriverFactory() — the daemon boot below belongs to the
   // app entry only (PLAN D61).
   if (process.env.COLONOVA_DESIGN_DESKTOP_UNIT !== "1") {
+    // mac 은 더블클릭 · Dock 에 끌어 놓기가 인자가 아니라 open-file 로 온다 — ready 보다 먼저 올 수 있어 모듈을 읽는
+    // 때 단다. 처리하겠다는 뜻으로 preventDefault 를 부른다. Windows 는 첫 실행의 인자(process.argv)에 담겨 온다 —
+    // 플래그 · 실행 파일 · 개발 실행의 `.` 는 걸러진다.
+    app.on("open-file", (event, path) => {
+      event.preventDefault();
+      offerInviteFiles("open-file", [path]);
+      host.focusMain();
+    });
+    offerInviteFiles("argv", inviteArgvPaths(process.argv, process.cwd()));
     void app
       .whenReady()
       .then(() => bootApp())
@@ -156,27 +205,6 @@ if (underTest || app.requestSingleInstanceLock()) {
 // has logged in. setPath must precede every userData reader below.
 if (process.env.COLONOVA_DESIGN_DESKTOP_SMOKE) {
   app.setPath("userData", process.env.COLONOVA_DESIGN_DESKTOP_SMOKE);
-}
-
-/**
- * 저장 포트로 먼저 뜨고, 그 자리가 점유돼 있으면 임시 포트로 물러난다.
- * 점유(EADDRINUSE)가 아닌 실패는 그대로 던진다 — bootApp 이 오류 상자로 바꾼다.
- */
-async function startDaemonServer(
-  makeServer: (port: number) => DaemonServer,
-  storedPort: number | null,
-): Promise<DaemonServer> {
-  let server = makeServer(storedPort ?? 0);
-  try {
-    await server.start();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE" || storedPort === null) {
-      throw error;
-    }
-    server = makeServer(0);
-    await server.start();
-  }
-  return server;
 }
 
 /**
@@ -399,8 +427,15 @@ async function bootApp(): Promise<void> {
             key: "t",
             meta: true,
           }),
-        // 도움말의 `기록 폴더 열기` — 메인이 직접 연다(렌더러가 죽어 있어도 닿는다).
+        // 도움말의 세 항목 — 설명서 · 기록 폴더는 메인이 직접 연다(렌더러가 죽어 있어도 닿는다). 진단 복사는 웹이
+        // 글을 모으니 신호만 보낸다(창이 없으면 창을 다시 연다).
+        openGuide,
         openLogs: () => void openLogsFolder(),
+        copyReport: () => {
+          const target = host.window;
+          if (target && !target.isDestroyed()) target.webContents.send(COPY_REPORT_CHANNEL);
+          else host.focusMain();
+        },
         packaged: app.isPackaged,
       }),
     ),
@@ -432,6 +467,8 @@ async function bootApp(): Promise<void> {
     logsDir: LOGS_DIR,
     settingsPath: desktopSettingsPath,
     lastRendererCrash: () => host.takeRendererCrash(),
+    inviteOpen,
+    log: (message, fields) => daemonServer?.hostLog(message, fields),
     requestReset: async () => {
       assertResetPaths(resetPaths, process.env);
       // 취소가 첫 단추 · 기본 · Esc 의 답이다(종료 확인과 같은 문법 — copy.ts). 도는 AI 일이 있으면

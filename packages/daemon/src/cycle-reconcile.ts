@@ -15,12 +15,20 @@
  * push:auth)은 원장의 서 있는 알림(notices) 기록으로 여기서 억제한다. 조정자가
  * 실제로 올린 뒤 notices 에 적고, 풀리면 지운다 — 이 함수는 그 기록을 읽기만
  * 한다. 반려 반영 턴의 예산 소진 알림(review:*:rejection)은 올리는 판정이 보낼
- * 기록(pendingRejection)을 함께 지우는 것으로 한 번이다(14b행).
+ * 기록(pendingRejection)을 함께 지우는 것으로 한 번이다(14b행). 자동 검사 반영의 알림(ci:*:rounds)은
+ * 예산 ci:<pr> 의 escalated 표식으로 한 번이고, 검사가 통과하면 풀린다(14c행).
  */
 
-import type { DeveloperReview } from "@colonova-design/protocol";
-import { BUDGETS, markEscalated, spend } from "./budgets.js";
-import { type CycleLedger, type CyclePendingOp, notePushBehind } from "./cycle-ledger.js";
+import type { DeveloperReview, LandedWork } from "@colonova-design/protocol";
+import { BUDGETS, markEscalated, resetBudget, spend } from "./budgets.js";
+import { type CiChecks, failingNames } from "./ci-checks.js";
+import {
+  type CycleLedger,
+  type CyclePendingOp,
+  markCiBriefed,
+  notePushBehind,
+  recordLanded,
+} from "./cycle-ledger.js";
 
 export interface CycleSnapshot {
   now: number;
@@ -47,6 +55,11 @@ export interface CycleSnapshot {
   /** HEAD 에 없는 origin/base 커밋 수. */
   behindBase: number;
   remoteBranchExists: boolean;
+  /**
+   * 원격 브랜치의 끝 sha(마지막 fetch · push 가 아는 것) — 14c행이 「AI 가 끝났는데 PR 의 head 가 그대로」 를
+   * 가르는 재료다. 모르면(브랜치 없음) null, 옛 시험의 손으로 지은 스냅샷에는 없다(undefined — 판정하지 않는다).
+   */
+  remoteBranchSha?: string | null;
   localAheadOfRemote: number;
   remoteAheadOfLocal: number;
   pr: null | {
@@ -56,7 +69,25 @@ export interface CycleSnapshot {
     mergeableState: string | null;
     /** 요청이 열린 때 — 레지스트리가 모르면(옛 기록) 감독자가 이것으로 채운다. */
     since?: string;
+    /** 닫힌(병합 · 반려) 시각 — GitHub 의 `closed_at`. 반영된 일의 병합 시각과 며칠 만인지가 읽는다. 읽지 못하면 없다. */
+    closedAt?: string;
+    /**
+     * 개발자의 승인 (2026-10-07 베타 준비 분석) — 한 사람이라도 마지막 판정이 승인이고 변경을 청한 사람이 없다.
+     * 이름 대신 불리언만 싣는다. 판정은 이 값으로 아무것도 하지 않는다 — 선로(HandoffStatus.approved)로 나갈 뿐이다.
+     */
+    approved?: boolean;
+    /**
+     * 자동 검사의 요약 (2026-10-07 베타 준비 분석 · W6) — 14c행이 읽는다. 없으면 검사 상태를 모른다(권한 없음 ·
+     * GitHub 에 닿지 못함): 그 세계에서는 아무것도 하지 않는다. `mergeableState` 는 이 값을 대신하지 않는다.
+     */
+    checks?: CiChecks;
   };
+  /**
+   * 반영된 일의 재료 (2026-10-08 베타 준비 분석 · A2b) — 병합을 처음 본 틱에만 감독자가 읽어 얹는다. `title` 은 요청 제목에서
+   * 종류 접두어와 작성자 꼬리를 뗀 말, `screens` 는 이번 작업이 만진 화면의 수다. 관찰의 값이 아니라 판정의 입력이고,
+   * 없거나 모르면 그 말을 하지 않는다(옛 시험의 손으로 지은 스냅샷에도 없다).
+   */
+  work?: { title?: string; screens?: number };
   /** 병합은 rev-list <prHead>..HEAD 수, 반려는 브랜치 전체 커밋 수. */
   commitsAfterPrHead: number | null;
   /** 레지스트리가 기억하는 넘긴 요청의 상태 — ended 판정의 한 축(옛 폴러의 handoff.state). */
@@ -98,6 +129,7 @@ export type CycleAction =
   | { kind: "submitStep" }
   | { kind: "briefReviews"; pr: number; reviews: DeveloperReview[] }
   | { kind: "briefRejection"; pr: number; reasons: DeveloperReview[] }
+  | { kind: "briefCiFailure"; pr: number; headSha: string; checks: CiChecks }
   | { kind: "reinstall" }
   | { kind: "hygiene" }
   | { kind: "reclone" }
@@ -124,6 +156,8 @@ export interface CycleDecision {
   attentions: CycleAttention[];
   /** AI 가 고치는 중인가 — 주의 목록에 없는 셋째 문장의 재료. */
   aiFixing: boolean;
+  /** 무엇을 고치는 중인가 — `ci` 는 자동 검사(2026-10-07). aiFixing 이 아니면 null. */
+  aiFixingKey: "ci" | null;
   ledger: CycleLedger;
   /**
    * 대화록에 적을 사건 (PLAN L2 흡수표 — 옛 폴러의 cycle.merged ·
@@ -131,7 +165,7 @@ export interface CycleDecision {
    * 조치를 마친 뒤 한 번에 싣는다.
    */
   tapeEvents: Array<
-    | { kind: "cycle.merged"; pr: number }
+    | { kind: "cycle.merged"; pr: number; title?: string; days?: number; screens?: number }
     | { kind: "cycle.closed"; pr: number }
     | { kind: "cycle.carried"; from: string; to: string; commits: number }
     | { kind: "review.arrived"; reviews: DeveloperReview[] }
@@ -145,7 +179,53 @@ export interface CycleDecision {
     state: "merged" | "closed" | "changes_requested" | "comments";
     pr: number;
     count?: number;
+    /** `merged` 만: 반영된 일을 부르는 말 — OS 알림이 `‘제목’ 일이 반영됐어요` 를 말한다. 모르면 없다. */
+    title?: string;
   }>;
+}
+
+/** 달력으로 센 하루 — 서머타임으로 하루가 23 · 25시간인 날도 반올림이 지킨다. */
+const DAY_MS = 86_400_000;
+
+function startOfLocalDay(ms: number): number {
+  const day = new Date(ms);
+  day.setHours(0, 0, 0, 0);
+  return day.getTime();
+}
+
+/**
+ * 제출부터 병합까지 달력으로 며칠 — 0 은 같은 날이다. 요청이 열린 때를 모르거나 읽을 수 없으면 null(며칠 만이라고
+ * 말하지 않는다). 시계가 어긋나 병합이 제출보다 앞서면 0. 이 기계의 달력으로 센다(웹의 `N일째` 와 같은 잣대).
+ */
+export function landedDays(since: string | undefined, atMs: number): number | null {
+  if (since === undefined) return null;
+  const from = Date.parse(since);
+  if (Number.isNaN(from)) return null;
+  return Math.max(0, Math.round((startOfLocalDay(atMs) - startOfLocalDay(from)) / DAY_MS));
+}
+
+/**
+ * 병합을 처음 본 판정이 짓는 반영된 일 한 건 (2026-10-08 베타 준비 분석 · A2b) — `at` 은 GitHub 이 말하는 병합 시각이다
+ * (앱이 꺼져 있던 동안의 병합을 지금 본 것으로 치지 않는다 · 없으면 지금). `days` 는 요청이 열린 날부터의 달력 차이,
+ * `title` · `screens` 는 감독자가 얹은 `snapshot.work` 에서 온다. 모르는 것은 싣지 않는다. 순수 함수.
+ */
+export function landedWorkOf(
+  snapshot: CycleSnapshot,
+  pr: NonNullable<CycleSnapshot["pr"]>,
+  now: number,
+): LandedWork {
+  const closed = pr.closedAt === undefined ? Number.NaN : Date.parse(pr.closedAt);
+  const atMs = Number.isNaN(closed) ? now : Math.min(closed, now);
+  const days = landedDays(pr.since, atMs);
+  const title = snapshot.work?.title?.trim();
+  const screens = snapshot.work?.screens;
+  return {
+    at: new Date(atMs).toISOString(),
+    pr: pr.number,
+    ...(title ? { title } : {}),
+    ...(days === null ? {} : { days }),
+    ...(screens !== undefined && Number.isInteger(screens) && screens > 0 ? { screens } : {}),
+  };
 }
 
 /** base-missing 알림의 억제 — 한 번만 올린다(L3 7행의 예산 키). */
@@ -210,7 +290,10 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
   let lastPr = ledger.lastPr;
   let corrupt = ledger.corrupt;
   let reclone = ledger.reclone;
+  let ci = ledger.ci;
+  let landed = ledger.landed;
   let aiFixing = false;
+  let aiFixingKey: "ci" | null = null;
 
   const decide = (action: CycleAction): CycleDecision => ({
     action,
@@ -218,7 +301,21 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
     attention: pickAttention(attentions, aiFixing),
     attentions: [...attentions],
     aiFixing,
-    ledger: { ...ledger, budgets, pendingOp, push, reviews, ended, lastPr, corrupt, reclone },
+    aiFixingKey: aiFixing ? aiFixingKey : null,
+    ledger: {
+      ...ledger,
+      budgets,
+      pendingOp,
+      push,
+      reviews,
+      ended,
+      lastPr,
+      corrupt,
+      reclone,
+      // 장부는 바뀐 판정에서만 싣는다 — 없던 필드를 undefined 로 만들지 않는다.
+      ...(ci === ledger.ci || ci === undefined ? {} : { ci }),
+      ...(landed === ledger.landed || landed === undefined ? {} : { landed }),
+    },
     tapeEvents,
     handoffEvents,
   });
@@ -238,8 +335,22 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
     const seen = snapshot.handoffState;
     const alreadyEnded = ended?.pr === pr.number;
     if (pr.state === "merged" && seen !== "merged" && !alreadyEnded) {
-      handoffEvents.push({ state: "merged", pr: pr.number });
-      tapeEvents.push({ kind: "cycle.merged", pr: pr.number });
+      // 병합은 성취다(2026-10-08 · A2b) — 사건이 제목 · 며칠 · 화면 수를 싣고, 원장이 최근 스무 건을 기억한다.
+      // 반려는 쌓지 않는다. 새 사이클이 작업 기록을 비워도 이 기록은 남는다.
+      const work = landedWorkOf(snapshot, pr, now);
+      handoffEvents.push({
+        state: "merged",
+        pr: pr.number,
+        ...(work.title === undefined ? {} : { title: work.title }),
+      });
+      tapeEvents.push({
+        kind: "cycle.merged",
+        pr: pr.number,
+        ...(work.title === undefined ? {} : { title: work.title }),
+        ...(work.days === undefined ? {} : { days: work.days }),
+        ...(work.screens === undefined ? {} : { screens: work.screens }),
+      });
+      landed = recordLanded(landed, work);
       ended = {
         pr: pr.number,
         state: "merged",
@@ -458,6 +569,23 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
       if (gone) notices.push({ op: "resolve", key });
     }
   }
+  // ci:<pr>:rounds 알림(14c행)은 그 PR 이 더 이상 열려 있지 않거나 자동 검사가 통과하면 풀린다. 못 읽은 것은 풀린 것이
+  // 아니다 — PR 을 못 읽는 세계(pr === null 이면서 레지스트리는 열린 요청을 안다)와 검사를 못 읽는 세계(checks 없음)
+  // 에서는 거두지 않는다.
+  if (!snapshot.githubAuthExpired) {
+    for (const key of Object.keys(ledger.notices)) {
+      const match = /^ci:(\d+):rounds$/.exec(key);
+      if (match === null) continue;
+      const gone =
+        pr === null
+          ? snapshot.githubReachable && snapshot.handoffState === null
+          : pr.number !== Number(match[1]) ||
+            pr.state === "merged" ||
+            pr.state === "closed" ||
+            pr.checks?.state === "passing";
+      if (gone) notices.push({ op: "resolve", key });
+    }
+  }
   // review:<pr>:rejection 알림(14b행)은 다음 요청이 서면 풀린다 — 반려된 작업이
   // 새 요청으로 개발자에게 다시 갔다. 그 PR 은 올릴 때 이미 닫혀 있으므로 위의
   // "열려 있지 않음" 잣대로는 올리자마자 풀린다. 인증 만료로 pr 을 못 읽는
@@ -546,6 +674,19 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
           });
         }
       }
+      // 권한이 모자라 거절된 푸시 — 코드는 맞으니 `다시 연결이 필요해요` 가 아니다. 새 초대 파일은
+      // 해결이 아니고 개발자가 코드의 권한을 고쳐야 한다: 개발자에게 바로 알린다(2026-10-07).
+      if (push.lastError === "permission") {
+        attentions.push("developer-notified");
+        if (ledger.notices["push:permission"] === undefined) {
+          notices.push({
+            op: "raise",
+            key: "push:permission",
+            reason:
+              "GitHub 이 푸시를 권한 부족으로 거절했습니다(403) — 연결 코드의 Contents 쓰기 권한을 확인해 주세요",
+          });
+        }
+      }
     }
     if (push === null || Date.parse(push.nextAttemptAt) <= now) {
       return decide({ kind: "push" });
@@ -555,6 +696,9 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
     // 밀림이 풀렸다 — 서 있는 알림을 지우고 원장의 푸시 흔적을 치운다.
     notices.push({ op: "resolve", key: "push:behind" });
     notices.push({ op: "resolve", key: "push:auth" });
+    if (ledger.notices["push:permission"] !== undefined) {
+      notices.push({ op: "resolve", key: "push:permission" });
+    }
     push = null;
   }
 
@@ -647,6 +791,89 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
       });
       const { pendingRejection: _dropped, ...rest } = entry;
       reviews = { ...reviews, [entryKey]: rest };
+    }
+  }
+
+  // ————— 14c 행 — 자동 검사가 통과하지 못했다 (2026-10-07 베타 준비 분석 · W6) —————
+  // 14행(코멘트 반영)과 같은 틀이다: 관찰 → 브리프 턴 → AI 가 고침 → 자동 보관 → 푸시 → 검사가 다시 돈다. 사람의 말이
+  // 먼저다 — 아직 브리프하지 않은 개발자 코멘트가 있으면 이 행은 서지 않는다(14행이 라운드를 다한 뒤에도 마찬가지:
+  // 개발자가 확인할 차례다). 「턴 중 아니요」: 도는 대화 사이에 끼우지 않고 기다린다.
+  // 아무것도 하지 않는 세계 — 검사를 읽지 못함(pr.checks 없음: 권한 없음 · 닿지 못함), 검사가 없음(none), 도는 중
+  // (pending), 통과(passing), 통과도 실패도 아닌 결론(unknown). 거짓 실패로 AI 를 깨우지 않는다. 한 head 에는 한 번만
+  // 브리프하고(장부 ci), PR 당 3 라운드(예산 ci:<pr>)를 다하면 개발자에게 한 번 알린다.
+  if (
+    pr !== null &&
+    (pr.state === "open" || pr.state === "changes_requested") &&
+    pr.checks !== undefined
+  ) {
+    const checks = pr.checks;
+    const budgetKey = `ci:${pr.number}`;
+    const entry = ci?.[String(pr.number)];
+    if (checks.state === "passing") {
+      // 풀렸다 — 같은 PR 의 다음 실패는 새 사건이다(라운드와 알림의 한 번을 다시 쓴다).
+      budgets = resetBudget(budgets, budgetKey);
+    } else if (
+      checks.state === "failing" &&
+      pr.headSha !== "" &&
+      snapshot.pendingReviews.length === 0
+    ) {
+      if (entry?.briefed.includes(pr.headSha) !== true) {
+        if (!turnRunning) {
+          const round = spend(budgets, budgetKey, BUDGETS.ciRounds, now);
+          budgets = round.ledger;
+          if (round.allowed) {
+            // 브리프를 내리는 순간 장부에 적는다 — 판정과 실행 사이에 끊겨도 같은 head 가 두 번 나가지 않게(I5).
+            ci = markCiBriefed(ci, pr.number, pr.headSha, new Date(now).toISOString());
+            aiFixing = true;
+            aiFixingKey = "ci";
+            return decide({
+              kind: "briefCiFailure",
+              pr: pr.number,
+              headSha: pr.headSha,
+              checks,
+            });
+          }
+          attentions.push("developer-notified");
+          if (!budgets[budgetKey]?.escalated) {
+            notices.push({
+              op: "raise",
+              key: `ci:${pr.number}:rounds`,
+              reason: `통과하지 못한 검사: ${failingNames(checks)} — AI 가 PR 당 정해진 라운드(${BUDGETS.ciRounds.max}번)까지 고쳐 보았지만 같은 검사가 계속 통과하지 못했습니다`,
+            });
+            budgets = markEscalated(budgets, budgetKey);
+          }
+        }
+      } else {
+        // 이 head 는 이미 브리프했다 — 다시 브리프하지 않는다. AI 가 고치는 중이면 그 사실만 말한다: 턴이 도는 중이거나
+        // 고친 것이 올라가는 길(보관 · 푸시, 또는 원격은 올랐는데 PR 의 head 가 아직 따라오지 않음)에 있다.
+        const remote = snapshot.remoteBranchSha;
+        const onItsWay =
+          turnRunning ||
+          snapshot.dirtyFiles > 0 ||
+          snapshot.localAheadOfRemote > 0 ||
+          (typeof remote === "string" && remote !== pr.headSha);
+        if (onItsWay) {
+          aiFixing = true;
+          aiFixingKey = "ci";
+        } else if (
+          remote === pr.headSha &&
+          entry?.at !== undefined &&
+          now - Date.parse(entry.at) >= BUDGETS.ciStuckMs
+        ) {
+          // AI 가 끝났는데 올라온 것이 없다 — 하나도 고치지 못한 채 끝났다. 같은 head 를 다시 맡기지 않으니(셈이 남아도)
+          // 개발자에게 한 번 알린다. 턴이 아직 시작하지 못한 순간(대기 줄 · 로그인 대기)을 이 판정이 잘못 읽지 않도록
+          // 브리프한 지 ciStuckMs 가 지난 뒤에만 선다.
+          attentions.push("developer-notified");
+          if (!budgets[budgetKey]?.escalated) {
+            notices.push({
+              op: "raise",
+              key: `ci:${pr.number}:rounds`,
+              reason: `통과하지 못한 검사: ${failingNames(checks)} — AI 가 고치려 했지만 같은 커밋에서 변경이 올라오지 않았습니다`,
+            });
+            budgets = markEscalated(budgets, budgetKey);
+          }
+        }
+      }
     }
   }
 

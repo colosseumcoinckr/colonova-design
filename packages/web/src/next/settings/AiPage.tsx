@@ -1,4 +1,4 @@
-import type { OnboardingFixKind } from "@colonova-design/protocol";
+import { isUnusablePlan, type OnboardingFixKind } from "@colonova-design/protocol";
 import { type UIEvent, useEffect, useState } from "react";
 import { useInstallStep } from "../../hooks/use-install-step";
 import type { Daemon } from "../../lib/daemon-client";
@@ -6,11 +6,21 @@ import { composing } from "../../lib/ime";
 import { type ChatSettings, type Settings, switchProviderPatch } from "../../lib/settings";
 import { ProviderMark } from "../chat/icons";
 import { L } from "../labels";
+import { accountLine, accountText } from "../lib/account-line";
 import { type FixKind, type FixView, fixState } from "../lib/agent-fix";
 import { useFreshKeys } from "../lib/use-fresh-keys";
 import { Spin } from "../ui/icons";
 import { BandAlertIcon } from "./icons";
-import { radioArrowStep, rovingTab, SBand, SPage, useAnnounce } from "./parts";
+import {
+  radioArrowStep,
+  rovingTab,
+  SBand,
+  SGroup,
+  SPage,
+  SRow,
+  Switch,
+  useAnnounce,
+} from "./parts";
 
 type Provider = NonNullable<NonNullable<Daemon["status"]>["providers"]>[number];
 
@@ -32,6 +42,7 @@ export function AiPage({
   daemon,
   settings,
   onChatChange,
+  onSettingsChange,
   loginExpired,
   onScroll,
 }: {
@@ -39,17 +50,38 @@ export function AiPage({
   daemon: Daemon;
   settings: Settings;
   onChatChange: (patch: Partial<ChatSettings>) => void;
+  /** AI 가 고치는 화면으로 따라가기(2026-10-08) — 미리보기의 동작이라 채팅 설정이 아니라 앱 설정에 저장된다. */
+  onSettingsChange: (patch: Partial<Settings>) => void;
   /** AI 로그인이 끝났다는 주의가 서 있다(연결 코드의 만료와 다른 일이다). */
   loginExpired: boolean;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
 }) {
   const providers = daemon.status?.providers ?? [];
+  // 로그인은 됐는데 이 요금제로는 쓸 수 없다고 알려진 Claude 계정(2026-10-07 베타 준비 분석) — 쓸 수 있는 카드가 아니라
+  // 다른 계정으로 로그인하는 점선 카드로 선다. 모르는 값(null)으로는 막지 않는다.
+  const planBlocked = isUnusablePlan(daemon.status?.subscriptionType);
+  const blockedByPlan = (provider: Provider) => provider.id === "claude" && planBlocked;
   // 쓸 수 있는 AI — 설치되어 있고 로그인돼 있는 것만 카드로 선다(README B1).
-  const usable = providers.filter((provider) => provider.available && provider.loggedIn !== false);
+  const usable = providers.filter(
+    (provider) => provider.available && provider.loggedIn !== false && !blockedByPlan(provider),
+  );
   // 설치는 됐지만 로그인이 없는 AI — 미설치와 갈라 읽는다(2026-09-28).
   const needsLogin = providers.filter(
-    (provider) => provider.available && provider.loggedIn === false,
+    (provider) => provider.available && (provider.loggedIn === false || blockedByPlan(provider)),
   );
+  // 로그인 뒤의 한 줄 — Claude 의 계정만 상태에 있다(이메일 · 요금제로 연결됨).
+  const status = daemon.status;
+  const claudeAccount = status
+    ? accountText(
+        accountLine({
+          loggedIn: status.loggedIn,
+          authMethod: status.authMethod,
+          email: status.email,
+          subscriptionType: status.subscriptionType,
+        }),
+        L,
+      )
+    : null;
   const missing = providers.filter((provider) => !provider.available);
   const usableAt = usable.findIndex((provider) => provider.id === settings.chat.provider);
   const pick = (provider: Provider | undefined) => {
@@ -168,6 +200,8 @@ export function AiPage({
         >
           {usable.map((provider, index) => {
             const on = settings.chat.provider === provider.id;
+            const connected =
+              (provider.id === "claude" ? claudeAccount : null) ?? L.settings.loggedIn;
             return (
               // biome-ignore lint/a11y/useSemanticElements: 카드 전체가 누르는 과녁이다 — 동그라미 입력칸 없이 radio 로 읽힌다(radiogroup 안).
               <button
@@ -186,10 +220,11 @@ export function AiPage({
                   <b>{provider.label}</b>
                   <span>
                     <i className="nx-dot nx-dot--green" />
-                    {on
-                      ? `${L.settings.loggedIn} · ${L.settings.aiPickedNow}`
-                      : L.settings.loggedIn}
+                    <span className="nx-ptxt-t" title={connected}>
+                      {connected}
+                    </span>
                   </span>
+                  {on && <span className="nx-ptxt-now">{L.settings.aiPickedNow}</span>}
                 </span>
                 <span className="nx-rd" aria-hidden="true" />
               </button>
@@ -223,11 +258,28 @@ export function AiPage({
               daemon={daemon}
               locked={starting !== null}
               onStart={() => void start(provider.id, "login")}
+              {...(blockedByPlan(provider)
+                ? {
+                    note: L.account.planBlockedPill,
+                    foot: L.account.planBlocked,
+                    loginLabel: L.account.switchAccount,
+                  }
+                : {})}
             />
           ))}
         </div>
       )}
       {providers.length === 0 && <EmptyProviders loading={daemon.status === null} />}
+      {/* AI 가 일하는 동안 미리보기가 고치는 화면으로 옮겨 간다 — 기본 켜짐, 끄는 길이 이 한 줄이다(2026-10-08 베타 준비 분석). */}
+      <SGroup>
+        <SRow title={L.live.followRow} id="nx-ai-follow" sub={L.live.followRowSub}>
+          <Switch
+            on={settings.followEdits}
+            labelledBy="nx-ai-follow"
+            onChange={(followEdits) => onSettingsChange({ followEdits })}
+          />
+        </SRow>
+      </SGroup>
     </SPage>
   );
 }
@@ -241,6 +293,9 @@ function FixCard({
   daemon,
   locked,
   onStart,
+  note,
+  foot,
+  loginLabel,
 }: {
   provider: Provider;
   kind: FixKind;
@@ -249,6 +304,12 @@ function FixCard({
   daemon: Daemon;
   locked: boolean;
   onStart: () => void;
+  /** 카드의 둘째 줄을 대신하는 짧은 이유 — 요금제가 막은 계정이 이유를 말한다. */
+  note?: string;
+  /** 카드 아래 한 줄로 서는 긴 설명 — 짧은 이유(`note`) 곁에서 해야 할 일까지 말한다. */
+  foot?: string;
+  /** 로그인 단추의 글 — 다른 계정으로 로그인하는 길은 `다른 계정으로 로그인`. */
+  loginLabel?: string;
 }) {
   const announce = useAnnounce();
   const phase = view.phase;
@@ -258,8 +319,12 @@ function FixCard({
     else if (phase === "login") announce(L.settings.aiLoginWaiting);
   }, [phase, announce]);
   const known = provider.id === "claude" || provider.id === "codex";
+  // 긴 설명(`foot`)이 있는 카드는 단추도 그 아래에 선다 — 좁은 카드에서 오른쪽 단추가 글줄을 짓눌러 글자가 세로로 서지 않게.
+  const buttonBelow = known && foot !== undefined && phase === "idle";
   const sub =
-    provider.reason ?? (kind === "install" ? L.settings.notInstalled : L.settings.loginNeeded);
+    note ??
+    provider.reason ??
+    (kind === "install" ? L.settings.notInstalled : L.settings.loginNeeded);
   const busy = phase === "installing" || phase === "starting-login" || phase === "login";
   return (
     <div
@@ -294,13 +359,13 @@ function FixCard({
           <span>{sub}</span>
         )}
       </span>
-      {known && (phase === "idle" || phase === "failed") && (
+      {known && (phase === "idle" || phase === "failed") && !buttonBelow && (
         <button type="button" className="nx-btn nx-btn--sm" disabled={locked} onClick={onStart}>
           {phase === "failed"
             ? L.vocab.retry
             : kind === "install"
               ? L.settings.install
-              : L.settings.login}
+              : (loginLabel ?? L.settings.login)}
         </button>
       )}
       {phase === "installing" && (
@@ -320,6 +385,18 @@ function FixCard({
             </button>
           </div>
           {view.wantsCode && <AgentLoginCode daemon={daemon} />}
+        </div>
+      )}
+      {buttonBelow && (
+        <div className="nx-ptile-foot">
+          <p className="nx-snote nx-snote--red" role="alert">
+            {foot}
+          </p>
+          <div>
+            <button type="button" className="nx-btn nx-btn--sm" disabled={locked} onClick={onStart}>
+              {loginLabel ?? L.settings.login}
+            </button>
+          </div>
         </div>
       )}
       {view.phase === "failed" && view.detail && (

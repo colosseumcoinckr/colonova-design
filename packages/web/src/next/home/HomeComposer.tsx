@@ -6,7 +6,7 @@ import type { Daemon } from "../../lib/daemon-client";
 import { Composer, type ComposerHandle } from "../chat/Composer";
 import { L } from "../labels";
 import { connectionLock } from "../lib/connection-copy";
-import { recentScreenName, startersOf } from "../lib/home-starters";
+import { firstScreenName, recentScreenName, startersOf } from "../lib/home-starters";
 import { CheckIcon, ChevronDownIcon, DropIcon, Spin } from "../ui/icons";
 import { Popover } from "../ui/Popover";
 import { ProjectMark } from "../ui/ProjectMark";
@@ -61,9 +61,11 @@ export function HomeComposer({
   const [filled, setFilled] = useState(false);
   const lock = connectionLock(daemon.connection, L);
   const cycleScreens = daemon.repo?.cycleScreens;
+  // 이번 작업이 만진 화면이 없으면(처음 켠 서비스) 서비스의 첫 화면 이름으로 선다 — 데몬이 준비가 끝나면 읽어 온다.
+  const firstName = firstScreenName(daemon.repo?.firstScreen);
   const starters = useMemo(
-    () => startersOf(recentScreenName(cycleScreens), L.home.starters),
-    [cycleScreens],
+    () => startersOf(recentScreenName(cycleScreens) ?? firstName, L.home.starters),
+    [cycleScreens, firstName],
   );
 
   const send = async (text: string, attachments: Attachment[]) => {
@@ -184,7 +186,8 @@ export function HomeComposer({
           </div>
         )}
       </div>
-      <div className="nx-home-hint">{L.home.hint}</div>
+      {/* 첫 준비가 도는 동안은 기다리는 사람에게 말한다 — 먼저 써 두어도 되고, 보낸 말은 준비가 끝나면 나간다(데몬이 대기 줄에 세운다). */}
+      <div className="nx-home-hint">{active?.firstPrep ? L.home.hintPreparing : L.home.hint}</div>
       <HomeStarters
         starters={starters}
         away={filled || lock !== null}

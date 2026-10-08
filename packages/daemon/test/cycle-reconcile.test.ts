@@ -3,6 +3,8 @@ import { test } from "node:test";
 import type { DeveloperReview } from "@colonova-design/protocol";
 // `../dist` 임포트인 이유: cycle-reconcile 는 형제(budgets)를 `.js` 지정자로
 // 부른다 — src 직접 로드는 그 지정을 못 고친다(revive-budget 와 같은 길).
+import { BUDGETS } from "../dist/budgets.js";
+import type { CiChecks } from "../dist/ci-checks.js";
 import { type CycleLedger, emptyLedger } from "../dist/cycle-ledger.js";
 import { type CycleSnapshot, nextCycleAction } from "../dist/cycle-reconcile.js";
 
@@ -626,6 +628,64 @@ test("인증 거절 푸시 — 다시 연결을 말하고 알림을 한 번 올�
   );
 });
 
+test("권한 거절 푸시 — 다시 연결이 아니라 개발자 알림 한 번(새 초대 파일은 해결이 아니다)", () => {
+  const ledger = led({
+    push: {
+      behindSince: iso(NOW - 60_000),
+      attempts: 1,
+      nextAttemptAt: iso(NOW - 1_000),
+      lastError: "permission",
+    },
+  });
+  const shot = snap({ localAheadOfRemote: 1 });
+  const out = nextCycleAction(shot, ledger);
+  assert.equal(kindOf(out), "push");
+  assert.notEqual(out.attention, "reconnect", "코드는 맞다 — 다시 연결을 말하지 않는다");
+  assert.equal(out.attention, "developer-notified");
+  assert.deepEqual(
+    out.notices.map((n) => n.key),
+    ["push:permission"],
+  );
+  // 이미 서 있으면 다시 올리지 않는다.
+  const standing = {
+    ...out.ledger,
+    notices: { "push:permission": { via: "pr" as const, ref: 3, raisedAt: iso(NOW), count: 1 } },
+  };
+  assert.deepEqual(nextCycleAction(shot, standing).notices, []);
+});
+
+test("한도로 거절된 푸시 — 다시 연결도 알림도 없다(시간이 푼다)", () => {
+  const ledger = led({
+    push: {
+      behindSince: iso(NOW - 60_000),
+      attempts: 1,
+      nextAttemptAt: iso(NOW - 1_000),
+      lastError: "limit",
+    },
+  });
+  const out = nextCycleAction(snap({ localAheadOfRemote: 1 }), ledger);
+  assert.equal(kindOf(out), "push");
+  assert.equal(out.attention, null);
+  assert.deepEqual(out.notices, []);
+});
+
+test("밀림이 풀리면 서 있는 권한 거절 알림도 거둔다", () => {
+  const ledger = led({
+    push: {
+      behindSince: iso(NOW - 90 * 60_000),
+      attempts: 2,
+      nextAttemptAt: iso(NOW),
+      lastError: "permission",
+    },
+    notices: {
+      "push:permission": { via: "issue" as const, ref: 4, raisedAt: iso(NOW - 1), count: 1 },
+    },
+  });
+  const out = nextCycleAction(snap(), ledger);
+  assert.ok(out.notices.some((n) => n.op === "resolve" && n.key === "push:permission"));
+  assert.equal(out.ledger.push, null);
+});
+
 test("밀림이 풀리면 서 있는 푸시 알림을 지우고 원장 흔적을 치운다", () => {
   const ledger = led({
     push: {
@@ -806,4 +866,254 @@ test("손상 행 — 하루 한 번을 다 쓰면 clone:corrupt 알림 한 번, 
   // 하루가 지나면 새 사건 — 다시 재클론한다.
   const nextDay = nextCycleAction(snap({ now: NOW + 25 * 3_600_000 }), first.ledger);
   assert.equal(kindOf(nextDay), "reclone");
+});
+
+// ————— 14c행 — 자동 검사가 통과하지 못했다 (2026-10-07 베타 준비 분석 · W6) —————
+
+const HEAD = "a".repeat(40);
+const NEXT_HEAD = "b".repeat(40);
+
+/** 통과하지 못한 검사 n 개의 요약 — 스냅샷 pr.checks 의 모양. */
+function failingChecks(count = 1): CiChecks {
+  return {
+    state: "failing",
+    failingCount: count,
+    failing: Array.from({ length: count }, (_, i) => ({
+      name: `check-${i}`,
+      summary: "컴파일 오류",
+      annotations: [],
+    })),
+    total: count + 1,
+  };
+}
+const checksOf = (state: CiChecks["state"]): CiChecks => ({
+  state,
+  failingCount: 0,
+  failing: [],
+  total: 2,
+});
+
+/** 열린 PR 의 스냅샷 — 14c행 밖의 행은 모두 조용하다. */
+function ciSnap(
+  over: Partial<CycleSnapshot> = {},
+  pr: Partial<NonNullable<CycleSnapshot["pr"]>> = {},
+) {
+  return snap({
+    handoffState: "open",
+    remoteBranchSha: HEAD,
+    pr: { number: 12, state: "open", headSha: HEAD, mergeableState: "unstable", ...pr },
+    ...over,
+  });
+}
+
+test("14c행 — 자동 검사가 실패했으면 AI 에게 고침 브리프를 보내고 head · 라운드를 적는다", () => {
+  const checks = failingChecks(2);
+  const out = nextCycleAction(ciSnap({}, { checks }), led());
+  assert.deepEqual(out.action, { kind: "briefCiFailure", pr: 12, headSha: HEAD, checks });
+  assert.equal(out.aiFixing, true);
+  assert.equal(out.aiFixingKey, "ci");
+  assert.equal(out.attention, "ai-fixing");
+  assert.deepEqual(out.ledger.ci?.["12"]?.briefed, [HEAD]);
+  assert.equal(out.ledger.ci?.["12"]?.at, iso(NOW));
+  assert.equal(out.ledger.budgets["ci:12"]?.spent, 1);
+  assert.deepEqual(out.notices, []);
+});
+
+test("14c행 — 같은 head 는 두 번 브리프하지 않는다(AI 가 하나도 고치지 못한 채 끝나도)", () => {
+  const first = nextCycleAction(ciSnap({}, { checks: failingChecks() }), led());
+  // AI 의 턴이 끝났다 — 보관된 것도 올라간 것도 없고 PR 의 head 도 그대로다.
+  const idle = nextCycleAction(ciSnap({}, { checks: failingChecks() }), first.ledger);
+  assert.equal(kindOf(idle), "none", "같은 head 에는 브리프가 다시 나가지 않는다");
+  assert.equal(idle.ledger.budgets["ci:12"]?.spent, 1, "라운드도 더 쓰지 않는다");
+  // 말미(ciStuckMs) 안에서는 조용하다 — 턴이 아직 시작하지 못한 순간을 「하나도 못 고침」 으로 읽지 않는다.
+  assert.equal(idle.aiFixing, false);
+  assert.deepEqual(idle.notices, []);
+  assert.equal(idle.attention, null);
+});
+
+test("14c행 — 브리프한 head 에서 AI 가 고치는 중이면 ai-fixing 만 말한다(턴 중 · 올라가는 중)", () => {
+  const first = nextCycleAction(ciSnap({}, { checks: failingChecks() }), led());
+  const working = nextCycleAction(
+    ciSnap({ turnRunning: true }, { checks: failingChecks() }),
+    first.ledger,
+  );
+  assert.equal(kindOf(working), "none");
+  assert.equal(working.aiFixing, true);
+  assert.equal(working.aiFixingKey, "ci");
+  assert.equal(working.attention, "ai-fixing");
+  // 보관은 됐고 원격까지 올랐지만 PR 의 head 가 아직 따라오지 않았다 — 고친 것이 길에 있다.
+  const pushed = nextCycleAction(
+    ciSnap({ remoteBranchSha: NEXT_HEAD }, { checks: failingChecks() }),
+    first.ledger,
+  );
+  assert.equal(kindOf(pushed), "none");
+  assert.equal(pushed.aiFixing, true);
+  assert.equal(pushed.attention, "ai-fixing");
+  // 새 head 가 서면 검사가 다시 돈다 — 도는 중이면 아무 말도 하지 않는다.
+  const rerun = nextCycleAction(
+    ciSnap({ remoteBranchSha: NEXT_HEAD }, { headSha: NEXT_HEAD, checks: checksOf("pending") }),
+    first.ledger,
+  );
+  assert.equal(kindOf(rerun), "none");
+  assert.equal(rerun.aiFixing, false);
+});
+
+test("14c행 — AI 가 끝났는데 head 가 그대로면 말미 뒤 개발자에게 한 번 알린다", () => {
+  const first = nextCycleAction(ciSnap({}, { checks: failingChecks(3) }), led());
+  const later = NOW + BUDGETS.ciStuckMs + 1;
+  const stuck = nextCycleAction(ciSnap({ now: later }, { checks: failingChecks(3) }), first.ledger);
+  assert.equal(kindOf(stuck), "none");
+  assert.equal(stuck.attention, "developer-notified");
+  assert.equal(stuck.notices.length, 1);
+  assert.equal(stuck.notices[0]?.op, "raise");
+  assert.equal(stuck.notices[0]?.key, "ci:12:rounds");
+  assert.match(stuck.notices[0]?.reason ?? "", /통과하지 못한 검사: check-0, check-1, check-2/);
+  assert.ok(stuck.ledger.budgets["ci:12"]?.escalated);
+  // 다음 틱 — 알림은 한 번뿐이다.
+  const again = nextCycleAction(
+    ciSnap({ now: later + 120_000 }, { checks: failingChecks(3) }),
+    stuck.ledger,
+  );
+  assert.deepEqual(again.notices, []);
+  assert.equal(again.attention, "developer-notified");
+});
+
+test("14c행 — 턴이 도는 중에는 새 head 도 기다린다(턴 중 아니요)", () => {
+  const out = nextCycleAction(ciSnap({ turnRunning: true }, { checks: failingChecks() }), led());
+  assert.equal(kindOf(out), "none");
+  assert.equal(out.aiFixing, false);
+  assert.equal(out.ledger.ci, undefined, "기다리는 동안 장부를 건드리지 않는다");
+  assert.deepEqual(out.ledger.budgets, {});
+});
+
+test("14c행 — 사람의 코멘트가 먼저다(14행이 앞서고, 14행의 라운드가 다해도 이 행은 서지 않는다)", () => {
+  const withReview = ciSnap({ pendingReviews: [rev(1)] }, { checks: failingChecks() });
+  assert.equal(kindOf(nextCycleAction(withReview, led())), "briefReviews");
+  // 14행 라운드를 다 썼다 — 개발자가 확인할 차례라서 AI 가 검사까지 건드리지 않는다.
+  const spent = led({
+    budgets: {
+      "review:12": { spent: 5, firstAt: iso(NOW), lastAt: iso(NOW), escalated: true },
+    },
+  });
+  const out = nextCycleAction(withReview, spent);
+  assert.equal(kindOf(out), "none");
+  assert.equal(out.ledger.ci, undefined);
+  assert.equal(out.aiFixingKey, null);
+});
+
+test("14c행 — PR 당 3 라운드: 넷째 실패 head 는 브리프 없이 개발자에게 한 번만 알린다", () => {
+  const heads = ["1", "2", "3", "4"].map((c) => c.repeat(40));
+  let ledger = led();
+  for (const head of heads.slice(0, 3)) {
+    const out = nextCycleAction(
+      ciSnap({ remoteBranchSha: head }, { headSha: head, checks: failingChecks() }),
+      ledger,
+    );
+    assert.equal(kindOf(out), "briefCiFailure", head);
+    ledger = out.ledger;
+  }
+  assert.equal(ledger.budgets["ci:12"]?.spent, 3);
+  const over = nextCycleAction(
+    ciSnap({ remoteBranchSha: heads[3] }, { headSha: heads[3], checks: failingChecks(2) }),
+    ledger,
+  );
+  assert.equal(kindOf(over), "none");
+  assert.equal(over.attention, "developer-notified");
+  assert.equal(over.notices.filter((n) => n.op === "raise").length, 1);
+  assert.equal(over.notices[0]?.key, "ci:12:rounds");
+  assert.match(over.notices[0]?.reason ?? "", /3번/);
+  const quiet = nextCycleAction(
+    ciSnap({ remoteBranchSha: heads[3] }, { headSha: heads[3], checks: failingChecks(2) }),
+    over.ledger,
+  );
+  assert.deepEqual(quiet.notices, [], "알림은 한 번뿐이다");
+});
+
+test("14c행 — 검사를 읽지 못했거나 없거나 도는 중이거나 통과했으면 아무것도 하지 않는다", () => {
+  // 권한 없음 · 닿지 못함 — pr.checks 가 없다. mergeable_state 가 unstable · blocked 여도 AI 를 깨우지 않는다.
+  for (const mergeableState of [
+    "unstable",
+    "blocked",
+    "clean",
+    "behind",
+    "draft",
+    "unknown",
+    null,
+  ]) {
+    const out = nextCycleAction(ciSnap({}, { mergeableState }), led());
+    assert.equal(kindOf(out), "none", String(mergeableState));
+    assert.equal(out.attention, null);
+    assert.equal(out.ledger.ci, undefined);
+  }
+  for (const state of ["none", "pending", "passing", "unknown"] as const) {
+    const out = nextCycleAction(ciSnap({}, { checks: checksOf(state) }), led());
+    assert.equal(kindOf(out), "none", state);
+    assert.equal(out.attention, null, state);
+    assert.deepEqual(out.ledger.budgets, {}, state);
+  }
+  // 열린 PR 이 아니거나, 연결 코드가 만료돼 GitHub 의 말을 믿지 못하는 세계.
+  const merged = nextCycleAction(
+    ciSnap({ handoffState: "merged" }, { state: "merged", checks: failingChecks() }),
+    led(),
+  );
+  assert.notEqual(kindOf(merged), "briefCiFailure");
+  const expired = nextCycleAction(
+    ciSnap({ githubAuthExpired: true }, { checks: failingChecks() }),
+    led(),
+  );
+  assert.equal(kindOf(expired), "none");
+  assert.equal(expired.ledger.ci, undefined);
+  // 변경을 청한 요청도 열린 요청이다 — 고친다.
+  const asked = nextCycleAction(
+    ciSnap({}, { state: "changes_requested", checks: failingChecks() }),
+    led(),
+  );
+  assert.equal(kindOf(asked), "briefCiFailure");
+});
+
+test("14c행 — 통과하면 라운드를 지우고 서 있는 알림을 거둔다, 읽지 못한 동안은 거두지 않는다", () => {
+  const standing = led({
+    budgets: { "ci:12": { spent: 3, firstAt: iso(NOW), lastAt: iso(NOW), escalated: true } },
+    notices: { "ci:12:rounds": { via: "pr", ref: 7, raisedAt: iso(NOW), count: 1 } },
+    ci: { "12": { briefed: [HEAD], at: iso(NOW) } },
+  });
+  const passing = nextCycleAction(ciSnap({}, { checks: checksOf("passing") }), standing);
+  assert.deepEqual(passing.notices, [{ op: "resolve", key: "ci:12:rounds" }]);
+  assert.equal(passing.ledger.budgets["ci:12"], undefined, "같은 PR 의 다음 실패는 새 사건이다");
+  assert.deepEqual(
+    passing.ledger.ci?.["12"]?.briefed,
+    [HEAD],
+    "브리프한 head 의 기억은 지키지 않는다고 지우지도 않는다",
+  );
+  // 검사를 읽지 못한 틱 — 풀린 것이 아니라 못 보는 것이다.
+  const unreadable = nextCycleAction(ciSnap({}, {}), standing);
+  assert.deepEqual(unreadable.notices, []);
+  // PR 이 합쳐지거나 닫히면 거둔다.
+  const merged = nextCycleAction(ciSnap({ handoffState: "open" }, { state: "merged" }), standing);
+  assert.ok(merged.notices.some((n) => n.op === "resolve" && n.key === "ci:12:rounds"));
+  // GitHub 를 못 읽는 틱(pr 없음 · 레지스트리는 열린 요청을 안다) — 거두지 않는다.
+  const blind = nextCycleAction(snap({ handoffState: "open", githubReachable: false }), standing);
+  assert.deepEqual(blind.notices, []);
+});
+
+test("14c행 — 순수하다: 입력 원장은 바뀌지 않고, 장부는 PR 스무 개 · head 열 개만 남긴다", () => {
+  const input = led();
+  const frozen = JSON.stringify(input);
+  nextCycleAction(ciSnap({}, { checks: failingChecks() }), input);
+  assert.equal(JSON.stringify(input), frozen);
+  let ledger = led();
+  for (let i = 1; i <= 25; i += 1) {
+    const head = i.toString(16).padStart(40, "0");
+    const out = nextCycleAction(
+      ciSnap(
+        { remoteBranchSha: head },
+        { number: 100 + i, headSha: head, checks: failingChecks() },
+      ),
+      ledger,
+    );
+    ledger = out.ledger;
+  }
+  const keys = Object.keys(ledger.ci ?? {}).map(Number);
+  assert.equal(keys.length, 20);
+  assert.equal(Math.min(...keys), 106, "가장 오래된 PR 의 기억부터 잊는다");
 });

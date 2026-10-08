@@ -89,13 +89,13 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 │           초대 파일 가져오기의 컨트롤러 하나 + onboarding/InviteConfirm(확인판)
 └ Workspace ─ useSessions · usePins · useShellNav 를 한 번만 부른다
   ├ sidebar/Sidebar     새 대화 · 홈 · 찾기 / 전환기 / 다른 프로젝트 줄 / 대화 목록 · 도구가 한 일 / 설정
-  ├ home/HomeView       인사 · 큰 입력창(HomeComposer) + 시작점 칩(HomeStarters) · 받은 편지함(HomeInbox) — 파일은 홈 어디에 놓아도 첨부
+  ├ home/HomeView       인사 · 큰 입력창(HomeComposer) + 시작점 칩(HomeStarters) · 서비스가 떴어요 줄(HomeReady) · 받은 편지함(HomeInbox) — 파일은 홈 어디에 놓아도 첨부
   └ 작업 보기(홈에서도 마운트된 채 `nx-offstage` 로 숨는다 — 미리보기 게스트가 살게)
     ├ status/StatusLine  제목 · 만드는 중 · 여정 세 점 · 제출(SubmitPopover) · 이번 작업(WorkPopover)
     ├ status/ProblemLine 문제 문장 셋 · 초대 파일 휴지통에 넣기 줄 — 대화와 미리보기에 걸친 한 줄
     ├ (좁은 창) 대화 | 화면 · <이름> 탭
     ├ chat/ChatColumn     대화록(Thread) · 카드 · 진행 줄(RunLine) · 입력창(Composer · ModelChip — 칩의 주인 subject: next · session)
-    └ preview/PreviewColumn 막대 · 무대(PreviewHost) · 말풍선 · 준비 화면 · 작업 기록 서랍
+    └ preview/PreviewColumn 막대 · 무대(PreviewHost) · 라이브 층(LiveLayer) · 말풍선 · 준비 화면 · 작업 기록 서랍
 ```
 
 첫 가져오기(프로젝트 0개)의 행이 모두 `새로` 면 확인판 없이 곧바로 적용하고, 첫
@@ -109,7 +109,9 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 
 이동 상태(홈 ↔ 대화 · 좁은 창의 탭 · 서랍 · 접힘)는 `lib/nav.ts` 의 줄임 함수,
 그 손은 `lib/use-shell-nav.ts` 가 만든다. 주소에 싣지 않는다. 열린 대화의 주인은
-`sessions.activeId` 하나다.
+`sessions.activeId` 하나다. 같은 훅이 첫 준비가 끝난 순간(`lib/ready-watch.ts` — 데몬의
+`ProjectSummary.firstPrep` 표식과 보고 있는 화면으로 판정)을 알아 토스트와 홈의 `서비스가 떴어요` 줄
+(`home/HomeReady`)을 세운다(2026-10-07).
 
 ## 칸의 계약 (`slots.ts`)
 
@@ -120,9 +122,11 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 | `openThread(slug, threadId)` | 대화를 연다. 다른 프로젝트면 `project.activate` 뒤, 등록부가 옮겨 앉으면 연다 |
 | `newThread(slug?)` | 새 대화의 빈 자리(`sessions.fresh()`) — 세션은 첫 말이 나갈 때 태어난다 |
 | `goHome()` · `showThread()` | 홈 · 대화 보기 |
+| `showScreen()` | 작업 화면의 미리보기 쪽(좁은 창은 화면 탭) — 홈의 `처음 켜는 준비` 줄이 부른다. `switchProject` 는 이미 활성인 프로젝트로는 아무 데도 가지 않는다(2026-10-07) |
+| `openProjectScreen(slug)` · `dismissReady(slug)` | 서비스가 떴다는 소식(토스트 · 홈 줄 · OS 알림)의 단추 — 활성이 아니면 옮긴 뒤 그 작업 화면 · 홈 줄 닫기 |
 | `switchProject(slug, { quiet? })` | 옮기기 + 토스트 — 옮겼는지(`Promise<boolean>`)를 돌려 줘 부르는 줄이 도는 표시를 세운다. 옮겨 앉으면 셸은 홈부터 |
 | `showTab("chat" \| "preview")` | 좁은 창의 탭 |
-| `openSettings()` · `toast(text)` | 설정 대화상자(서랍이 열려 있으면 먼저 닫는다) · 잠깐 뜨는 한 줄 |
+| `openSettings()` · `toast(text, action?)` | 설정 대화상자(서랍이 열려 있으면 먼저 닫는다) · 잠깐 뜨는 한 줄 — `action`(`{ label, run }`)이 있으면 단추가 달리고 8초 머문다 |
 
 **`SlotProps`** — `ChatColumn`(단계 2)과 `PreviewColumn`(단계 3)이 함께 받는다:
 `daemon` · `settings` · `sessions`(`useSessions` 결과) · `pins`(`usePins` 결과 —
@@ -151,8 +155,12 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
   가장 급한 것) · `projectStatus`(전환기의 둘째 줄) · `isPreparing` · `neverPrepared`.
 - `update-row.ts` — 설정의 업데이트 줄 한 줄(`updateRowCopy`) · 홈의 `방금 있던 일` 에
   서는 AI 프로그램 업데이트 소식(`agentUpdateEvents` — `DaemonStatus.agentUpdates` 의 done).
-- `home-feed.ts` — `buildHomeFeed(pending, sessions, projects, activeSlug, L, { hidden?, titleOf? })`:
-  홈의 `asking` · `running` · `done` · `resume`. 지워 낸 대화는 거두고 제목은 사용자가 바꾼 이름을 따른다.
+- `home-feed.ts` — `buildHomeFeed(pending, sessions, projects, activeSlug, L, { hidden?, titleOf?, landed?, now? })`:
+  홈의 `asking` · `running` · `done` · `resume` · `landed`(반영된 일) · `news`(활성 프로젝트의 개발자 소식). 지워 낸 대화는 거두고 제목은 사용자가 바꾼 이름을 따른다.
+- `landed.ts` — 반영된 일(2026-10-08): `landedLines(landed, limit = 8)` 가 홈의 `반영된 일` 줄(최신순 · 같은 요청 번호는 한 번 · 0건이면 묶음이 없다),
+  `landedFacts(days, screens, words)` 가 `3일 만에 · 화면 2곳`(아는 것만), `hasLandedFacts(event)` 가 사건이 카드로 설지(필드 없는 옛 사건은 얇은 한 줄),
+  `landedIsFresh(at, now)` 가 체크를 그릴 만큼 막 도착했는지, `activeNewsOf({...})` 가 활성 프로젝트의 소식 줄을 세울지(병합은 `반영된 일` 이 · 코멘트는 코멘트 카드가
+  이미 말하면 없고, 이틀이 지나면 거둔다)를 가른다. 카드 그림은 `chat/LandedCard.tsx`.
 - `home-resume.ts` — `resumeItems(threads, taken, systemTitles, titleOf?, limit?)`: `이어서 하기` 의
   최근 대화 세 개(다른 묶음에 선 것 · 도는 중 · 기다리는 중 · 도구의 대화는 뺀다).
 - `home-starters.ts` — `startersOf(screen, L.home.starters)` · `recentScreenName(cycleScreens)` ·
@@ -167,8 +175,9 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 - `handoff-preview.ts` · `use-handoff-draft.ts` — 제출 확인의 `개발자에게는 이렇게 보여요`: `handoffPreviewOf(draft, firstSubject)` 가 데몬의 요청 초안
   (`repo.handoffDraft`)에서 사용자가 읽는 제목(종류 접두어 · 작성자 꼬리를 뗌) · 설명 첫 대목 · 사진 수 · 자동 확인 결과(`extras.checks`)를 뽑고, `useHandoffDraft` 가 제출을 붙잡지 않고 따로 읽는다.
   첫 제출에만 읽는다 — 더하는 제출은 개발자의 글이 그대로라 지금 제목만 보인다. 정규식 안의 한글 · 역따옴표는 `\u` 로 적는다(한글 리터럴 린트가 정규식을 읽지 못한다).
-- `waiting.ts` — 기다림이 보이게: `daysSince(since, today)` 가 요청이 열린 지 달력으로 며칠인지(오늘 0), `waitingRows(projects, today)` 가 홈의
+- `waiting.ts` — 기다림이 보이게: `daysSince(since, today)` 가 요청이 열린 지 달력으로 며칠인지(오늘 0), `waitingRows(projects, today, { active, words }?)` 가 홈의
   `지금 진행 중` 에 설 한 줄들(`open` 요청만 · 오래 기다린 것이 먼저 · 때를 모르면 맨 뒤)을 낸다. 오늘의 자정은 부르는 쪽(`useToday`)이 쥔다.
+  활성 프로젝트의 같은 요청이면 `note` 가 부제가 된다(`waitingNote` — 개발자의 승인 · 통과하지 못한 자동 검사, 검사 문장은 `ci-line.ts` 와 같은 판정).
 - `receipt.ts` — 제출 영수증이 말하는 것: `sentOf(screens)` 가 확인 창의 이번 제출 화면을 사건에 실을 모양(`SubmitSent`)으로,
   `receiptFacts(block, same, more)` 가 받을 개발자 · 보낸 화면 · `nobody`(링크를 직접 전해야 하는가)를 가린다. 모르는 것은 말하지 않는다.
 - `making.ts` · `use-held-phase.ts` — 단계 말: `makingPhase(blocks)` 가 도는 도구의 묶음을 고르고 `makingWordOf(phase, words)` 가 말로 옮긴다.
@@ -185,6 +194,12 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
   `SENT_ORIGINAL_MAX_BYTES` 까지, 앱을 다시 켜면 없다).
 - `agent-fix.ts` · `settings-shell.ts` · `reset-scope.ts` — 설정의 판정: AI 카드의 설치 · 로그인 진행과 실패 ·
   닫기 보호와 이름 칸의 Esc · 전체 초기화가 지우는 것의 크기.
+- `follow-edit.ts` · `preview/use-live-follow.ts` — 라이브감(2026-10-08): AI 가 고치는 화면을 같이 따라간다. `shouldFollow` 가 첫 편집에서
+  미리보기를 그 화면으로 옮겨도 되는지(설정 · 칸이 숨음 · 덮개 · 외부 페이지 · 찍기 · 겹판 · 얼린 화면 · 작업 기록 · 이번 턴에 사용자가
+  만졌는지 · 이미 그 화면인지)를, `judgeSignal` 이 `session.editing` 신호 하나를 「턴의 첫 신호인가 · 막 도착했는가 · 이름을 말할 수
+  있는가」 까지 가려 내고, `pickLiveLine` 이 한 줄의 차례(옮겼어요 → 눌러 보는 중 → 고치는 중)를 정한다. 훅은 사용자의 손(`touchedAt`)과
+  `browser.driving` 의 붙들기를 맡고, 마크업은 `preview/LiveLayer.tsx`(견본이 같은 것을 그린다). 이름 앞 · 뒤의 말을 둘로 나눈 문장(`L.live`)
+  은 줄임표가 이름만 자르게 한 것이다.
 - `shortcut-sheet.ts` — 단축키 시트의 묶음 · 키캡 조각(`keyHint` 로 이 컴퓨터에 맞춘 표기를 받아 쪼갠다).
 - `problem.ts` · `invite-rows.ts` · `revert-summary.ts` · `thread.ts` · `nav.ts` ·
   `preview-geometry.ts` — 문제 문장 · 초대 확인판의 행(`inviteRows` · `inviteTitle` · `inviteReadError`) ·

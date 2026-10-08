@@ -29,6 +29,8 @@ export const L = {
     blockedBody: "개발자에게 전달됐는지 아직 확인하지 못했어요. 작업은 보관돼 있어요. 아래 내용을 담당자에게 전달해 주세요.",
     /** 인터넷 문제로 막혔을 때 — 담당자 · 개발자를 기다릴 일이 아니다. 데스크톱 알림(copy.ts)과 같은 말. */
     blockedNetwork: "인터넷 연결이 끊겨 멈췄어요. 작업은 보관돼 있고, 연결되면 도구가 다시 제출해요.",
+    /** 연결 코드의 권한이 모자라 막혔을 때 — 개발자가 코드의 권한을 고쳐야 한다(새 초대 파일이 풀지 않으므로 그 말은 하지 않는다). 데스크톱 알림(copy.ts)과 같은 말. */
+    blockedPermission: "연결 코드의 권한이 모자라요. 작업은 보관돼 있고, 개발자가 코드의 권한을 고치면 도구가 다시 제출해요.",
     copyHelp: "담당자에게 보낼 내용 복사",
     copiedHelp: "복사했어요",
     helpText: (name: string, body: string) => `${name}에서 작업 제출이 멈췄어요. ${body}` ,
@@ -86,6 +88,49 @@ export const L = {
     nowPoint: (point: string) => `지금은 ${point}`,
   },
 
+  /**
+   * 제출 뒤의 시야 — 자동 검사 · 개발자의 확인(2026-10-07 베타 준비 분석 · A2a). 말하는 만큼만 읽은 것이다: 검사를
+   * 읽지 못하면(권한이 없는 연결) 이 문장들은 하나도 서지 않는다. 사용자는 `CI` · `체크` 를 읽지 않는다 — 자동 검사다.
+   */
+  afterSubmit: {
+    /** 문제 문장 — AI 가 통과하지 못한 자동 검사를 고치는 중(고치는 동안 하실 일은 없다). */
+    fixingChecks: "자동 검사가 통과하지 못해 AI가 고치고 있어요. 하실 일은 없어요.",
+    /** 문제 문장 — AI 가 몇 번 고쳐도 통과하지 못해 개발자에게 알렸다. */
+    notifiedChecks: "자동 검사가 계속 통과하지 못해 개발자에게 알렸어요. 풀리면 저절로 이어져요.",
+    /** 여정 — 개발자가 승인했다. 둘째 점은 지나온 점이 되고 셋째 점이 지금이 된다. */
+    approved: "개발자가 확인했어요",
+    approvedWaiting: "반영을 기다려요",
+    /** 이번 작업 팝오버의 검사 줄 — 제출 칸 아래에 한 줄. */
+    checkPassing: "자동 검사를 통과했어요",
+    checkPending: "자동 검사가 돌고 있어요",
+    checkFixing: "자동 검사가 통과하지 못해 AI가 고치고 있어요",
+    checkNotified: "자동 검사가 계속 통과하지 못해 개발자에게 알렸어요",
+    checkFailing: "자동 검사가 통과하지 못했어요",
+    /** 대화 카드 — 자동 검사가 통과하지 못해 AI 에게 맡긴 차례. 받은 글(검사 이름 · 출력)은 접혀 있다. */
+    cardTitle: "자동 검사",
+    cardCount: (n: number) => `검사 ${n}개가 통과하지 못했어요`,
+    cardText: "제출한 요청의 자동 검사가 통과하지 못했어요. AI가 결과를 읽고 고쳐요 — 하실 일은 없어요.",
+    cardDone: "AI가 확인을 마쳤어요",
+  },
+
+  /**
+   * 반영된 일(2026-10-08 베타 준비 분석 · A2b) — 제출한 일이 개발자에게 병합된 순간의 보상. 대화 안의 카드 · 홈의 `반영된 일` 묶음 ·
+   * 데스크톱 알림(`desktop/src/copy.ts` 의 `mergedTitled`)이 같은 말을 쓴다. 말하는 만큼만 말한다: 제목 · 며칠 · 화면 수를 모르면
+   * 그 말이 서지 않는다. 이름 뒤의 조사를 가리지 않으려 `일` 을 붙인다(`firstReady.title` 의 `서비스` 와 같은 까닭).
+   */
+  landed: {
+    head: (title: string) => `‘${title}’ 일이 반영됐어요`,
+    headPlain: "제출한 일이 반영됐어요",
+    /** 제출부터 며칠 만인가 — 달력으로 센 차이다. 읽는 날이 아니라 제출한 날이 기준이라 `오늘` 이라 하지 않는다. */
+    took: (days: number) => (days >= 1 ? `${days}일 만에` : "제출한 날 안에"),
+    screens: (n: number) => `화면 ${n}곳`,
+    /** 카드의 끝줄 — 반영된 뒤에는 어디서부터 새 작업인지. */
+    next: "다음에 만드는 것은 새 작업이에요",
+    /** 홈의 묶음 이름 · 제목을 모르는 줄의 이름. */
+    fold: "반영된 일",
+    untitled: "제출한 일",
+  },
+
 
 
   // ── 단계 1 뼈대
@@ -131,6 +176,8 @@ export const L = {
     greet: (name: string) => `${name}님, 무엇을 만들까요?`,
     placeholder: "예: 회원 목록에 이름으로 찾는 검색창을 넣어 줘",
     hint: "그림이나 문서를 끌어다 놓아도 돼요 · 보내면 그 프로젝트의 새 대화가 열려요",
+    /** 첫 준비가 도는 동안의 안내(2026-10-07 베타 준비 분석 · 첫 5분) — 기다리는 동안 무엇을 해도 되는지, 보낸 말은 어떻게 되는지. */
+    hintPreparing: "서비스를 처음 켜는 중이에요 · 먼저 말해 두면 준비가 끝나는 대로 시작해요",
     whichService: "어느 프로젝트에서 만들까요?",
     waiting: "답을 기다려요",
     calm: "기다리는 일이 없어요",
@@ -192,6 +239,15 @@ export const L = {
     /** 프로젝트를 못 옮겼을 때 — 사이드바 · 찾기 · 홈이 한 문장을 쓴다(2026-10-06 겹판 조사). */
     switchFailed: "프로젝트로 옮기지 못했어요 — 잠시 뒤 다시 시도해 주세요",
     close: "알림 닫기",
+  },
+  /**
+   * 첫 준비가 끝난 순간(2026-10-07 베타 준비 분석 · 첫 5분) — 서비스가 내 컴퓨터에서 떴다는 첫 `와`. 홈 줄과 토스트가
+   * 같은 문장을 쓴다(사용자가 어디에 있든 같은 말). 이름 뒤의 조사를 가리지 않으려 `서비스` 를 붙인다.
+   */
+  firstReady: {
+    title: (name: string) => `‘${name}’ 서비스가 내 컴퓨터에서 떴어요`,
+    sub: "이제 말로 시키면 화면이 바뀌어요",
+    see: "화면 보기",
   },
   /** 겹판(대화상자) 공용 — `ui/ModalFrame` 이 읽는다. */
   modal: {
@@ -473,6 +529,18 @@ export const L = {
     needAll: "모든 질문에 답하면 보낼 수 있어요",
     needOne: "하나 이상 고르면 보낼 수 있어요",
   },
+  /**
+   * 질문 카드의 시안(2026-10-08 베타 준비 분석 C1) — AI 가 선택지마다 작은 그림을 달아 보낸 질문. 눈으로 비교하다
+   * 잘못 눌러 보내지 않도록 그림 카드는 고르기만 하고, 보내기는 따로다.
+   */
+  askPreview: {
+    pickThis: "이걸로 할게요",
+    needPick: "하나를 고르면 보낼 수 있어요",
+    zoom: "크게 보기",
+    zoomOf: (name: string) => `${name} 크게 보기`,
+    choose: "이걸로 고르기",
+    chosen: "골랐어요",
+  },
   inviteCleanup: {
     title: "초대 파일을 가져왔어요",
     body: "파일에 연결 코드가 들어 있어요. 이 앱이 휴지통에 넣어 드릴게요.",
@@ -643,6 +711,27 @@ export const L = {
     lookAsk: "이 화면이 이렇게 보여요. 무엇이 잘못됐는지 보고 고쳐 주세요.",
     lookConsole: (lines: string) => `콘솔 마지막 기록:\n${lines}`,
   },
+  /**
+   * 라이브감 — AI 가 고치는 화면을 같이 따라간다(2026-10-08 베타 준비 분석). 한 줄은 미리보기 가장자리에 서고, 이름은
+   * 화면 지도의 제목이다. 긴 이름은 줄임표가 이름만 자르고 문장의 끝(`고치는 중`)은 남아야 하므로, 이름이 들어가는 문장은
+   * 이름 앞 · 뒤의 말 둘로 나눠 준다(이름 + 앞 + 뒤 = 한 문장). 이름 뒤의 조사는 이름 끝소리에 따라 달라지므로 `화면` 을
+   * 붙여 정하고, 이름이 이미 `화면` 으로 끝나면 그 말을 겹치지 않는다(`ㄴ` 받침이라 `을` · `으로` 가 늘 맞는다).
+   */
+  live: {
+    /** AI 가 브라우저 도구로 미리보기를 직접 눌러 보는 동안. */
+    driving: "AI가 화면을 직접 눌러 보는 중",
+    /** AI 가 이 화면의 파일을 고치는 중 — [이름 앞, 이름 뒤]. 제목을 모르면 이 문장을 쓰지 않는다. */
+    editing: (name: string): [string, string] =>
+      String(name).endsWith("화면")
+        ? ["AI가 지금 ‘", "’을 고치는 중"]
+        : ["AI가 지금 ‘", "’ 화면을 고치는 중"],
+    /** 첫 편집에서 그 화면으로 옮겼을 때 몇 초 서는 줄 — [이름 앞, 이름 뒤]. 되돌리는 길은 뒤로 가기와 주소 목록이다. */
+    moved: (name: string): [string, string] =>
+      String(name).endsWith("화면") ? ["‘", "’으로 옮겼어요"] : ["‘", "’ 화면으로 옮겼어요"],
+    /** 설정(AI 쪽)의 한 줄 — 끄는 길이다. */
+    followRow: "AI가 고치는 화면으로 따라가기",
+    followRowSub: "미리보기가 그 화면으로 옮겨 가요 · 내가 미리보기를 만지는 중이면 그대로 둬요",
+  },
   pin: {
     stripTitle: "수정할 곳 선택 중",
     stripBody: "화면을 누르면 그 자리가 입력창에 담겨요 · 끌면 영역을 짚어요",
@@ -752,6 +841,22 @@ export const L = {
     retrying: "다시 읽는 중…",
     failedAgain: "아직 읽지 못했어요 — 잠시 뒤에 다시 시도해 주세요.",
   },
+  /**
+   * 사진 위의 달라진 곳 윤곽과 한 장 복사(2026-10-08 베타 준비 분석 · 2026-10-06 겹판 점검 E) — 결과 카드와 비교 대화상자가
+   * 같은 말을 쓴다. 1~2px 의 변화는 번갈아 봐도 안 보였고, 이 결과를 Slack · 메일로 공유할 길이 없었다.
+   */
+  photo: {
+    /** 윤곽을 켜는 눌림 단추 — 기본은 꺼짐. */
+    showDiff: "달라진 곳 표시",
+    diffCount: (count: number) => `${count}곳이 달라졌어요`,
+    diffNone: "거의 달라진 곳이 없어요",
+    diffWide: "화면 대부분이 달라졌어요",
+    /** 요청이 가리킨 곳 밖에서도 달라졌을 때 — 단정하지 않고 확인을 권한다. */
+    diffOutside: "요청한 곳 밖도 달라졌어요 — 확인해 보세요",
+    copy: "사진 복사",
+    copied: "사진을 복사했어요 — 붙여 넣어 공유해 보세요",
+    copyFailed: "복사하지 못했어요",
+  },
   history: {
     title: "작업 기록",
     sub: "AI가 한 차례 답할 때마다 저절로 보관돼요.\n따로 저장할 필요가 없어요.",
@@ -829,6 +934,13 @@ export const L = {
     whyAuth: "연결 코드가 만료돼 제출이 막혔어요 — 새 초대 파일이 필요해요",
     /** 막힘 중 인터넷 문제 — 사람이 할 일은 없고 연결되면 도구가 다시 제출한다(2026-10-06 UX 점검). */
     whyNetwork: "인터넷 연결이 끊겨 제출이 막혔어요 — 연결되면 다시 제출해요",
+    /**
+     * 막힘 중 연결 코드의 권한 부족 — 새 초대 파일은 해결이 아니다(같은 코드를 받으면 같은 문장이 난다).
+     * 개발자가 코드의 권한을 고쳐야 풀리고, 풀리면 도구가 다시 제출한다(2026-10-07 베타 준비 분석).
+     */
+    whyPermission: "연결 코드의 권한이 모자라 제출이 막혔어요 — 개발자가 코드의 권한을 고치면 풀려요",
+    /** 다시 제출하는 중 GitHub 의 한도에 걸린 것 — 막힘이 아니라 시간이 푼다(사다리가 알아서 기다린다). */
+    whyLimit: "요청이 몰려 잠시 쉬는 중이에요 — 곧 도구가 다시 제출해요",
   },
   /** 제출 확인 팝오버(U3). */
   submitConfirm: {
@@ -883,6 +995,8 @@ export const L = {
       ].filter((part) => part !== "");
       return parts.length > 0 ? `${parts.join(" · ")}도 함께 가요` : "";
     },
+    /** 개발자가 받는 본문의 범위가 의존성 · 락파일 · 설정 · CI 파일을 포함할 때만 — 사용자가 몰라도 되지만 숨기지는 않는다(2026-10-07 베타 준비 분석). */
+    previewScope: "설정 파일도 함께 바뀌었어요",
     /** AI 가 쓴 글이라 고칠 길은 한마디다 — 상자의 마지막 줄이 그 길을 가리킨다. */
     previewHint: "AI 가 정리한 글이에요 · 틀린 곳이 있으면 아래 한마디에 적어 주세요",
     previewHintRequest: "AI 가 글을 쓰지 못해 처음 한 말이 제목이 돼요 · 더 알려 줄 것은 아래 한마디에 적어 주세요",
@@ -967,6 +1081,11 @@ export const L = {
     inviteFrom: "개발자에게 받은 파일",
     invitePick: "파일 고르기",
     inviteOpening: "초대 파일을 여는 중…",
+    /**
+     * AI 를 기다리는 동안 초대 파일 칸에 서는 한 줄(2026-10-07 베타 준비 분석 · 첫 5분) — 서비스 준비(내려받기 · 설치 ·
+     * 미리보기 켜기, 3~5분)는 초대 파일을 가져오는 즉시 AI 와 무관하게 돌기 시작한다. 파일을 먼저 놓으면 그 시간이 AI 설치와 겹친다.
+     */
+    inviteEarly: "초대 파일을 먼저 놓아 두면 서비스 준비가 미리 시작돼요 · AI 설치와 나란히 진행돼요",
     inviteDone: (names: string) => `${names}를 가져왔어요.`,
     inviteFirst: (name: string) => `${name}를 먼저 열어요. 나머지는 처음 고를 때 준비해요.`,
     inviteWarn: "초대 파일에는 연결 코드가 들어 있어요. 가져왔으니 지워 주세요.",
@@ -1010,6 +1129,46 @@ export const L = {
     inviteHelpMessage: (url: string) =>
       `ColoNova Design 초대 파일(.colonova-invite) 하나 만들어 주세요!\n여기서 바로 만들 수 있어요 → ${url}`,
     askCopied: "개발자에게 보낼 문장을 복사했어요",
+  },
+  // ── 계정 · 요금제 (2026-10-07 베타 준비 분석) — 로그인 뒤의 한 줄 · 요금제가 필요하다는 말 · 쓸 수 없는 계정
+  account: {
+    /** 로그인 뒤의 한 줄 — `kim@회사.kr · Max 로 연결됨`. 이메일 · 요금제는 아는 것만 앞에 붙는다. */
+    connectedAs: (who: string) => `${who} 로 연결됨`,
+    /** 이메일도 요금제도 말할 수 없을 때(구독 코드 · 다른 서비스로 이어진 계정). */
+    connected: "연결됨",
+    apiKey: "API 키로 연결됨",
+    /**
+     * 요금제가 필요하다는 말 — 로그인 전에 먼저 알려 헛걸음을 막는다. 소개 페이지 · README 의 같은 문장과 뜻이 같다
+     * (Anthropic 공식 문서: Claude Code 는 Pro · Max · Team · Enterprise 구독, Console, 클라우드 공급자로 쓴다).
+     */
+    planNeed:
+      "AI 계정은 유료 요금제여야 해요 — Claude Code 는 Claude Pro · Max · Team · Enterprise 계정으로 쓸 수 있어요(무료 요금제로는 쓸 수 없어요)",
+    /** 알려진 쓸 수 없는 요금제 — 첫 요청 전에 막힌 AI 카드의 이유. */
+    planBlocked: "이 계정의 요금제로는 Claude Code 를 쓸 수 없어요 — 유료 요금제 계정으로 다시 로그인해 주세요",
+    planBlockedPill: "이 요금제로는 쓸 수 없어요",
+    switchAccount: "다른 계정으로 로그인",
+    /** 계정류 실패 카드 — 다시 물어도 소용없다. 계정을 고치고(요금제 · 크레딧 · 다른 계정) 다시 시도한다. */
+    failWhy: "이 계정으로는 AI 를 쓸 수 없어요 — 요금제나 크레딧을 확인하고 다시 로그인해 주세요",
+    /** 로그인을 연 뒤의 한 줄 — 브라우저에서 마치면 같은 말로 다시 시도한다. */
+    failLoginNote: "브라우저에서 로그인을 마친 뒤 다시 시도를 눌러 주세요",
+  },
+  // ── 베타 막힘 보고 (2026-10-07 베타 준비 분석) — 진단 복사 곁의 안내
+  report: {
+    /**
+     * 앱의 `기능 제안` 은 누구나 보는 공개 게시판이다(PLAN-FEEDBACK). 막힘 · 버그 보고는 거기에 붙이지 않는다 —
+     * 채널의 이름은 팀마다 달라 일반 문장으로 말한다.
+     */
+    privateNote: "공개 게시판이 아니라 팀이 정한 비공개 채널에 붙여 주세요",
+    /** 복사 단추가 진단을 모으는 동안의 글. */
+    gathering: "모으는 중…",
+  },
+  /**
+   * 도움말 메뉴(데스크톱)가 웹에 시키는 일의 답 — `문제가 생겼어요 — 진단 복사`(2026-10-08 베타 준비 분석). 메뉴의 문장은
+   * 데스크톱의 copy.ts 에 있고, 여기는 복사한 뒤 토스트가 한 줄로 알리는 말이다.
+   */
+  help: {
+    reportCopied: "진단을 복사했어요 — 담당자에게 붙여 넣어 주세요",
+    reportFailed: "복사하지 못했어요 — 한 번 더 눌러 주세요",
   },
   /** 처음 여는 프로젝트의 준비 화면(U8). */
   prepare: {
@@ -1426,12 +1585,72 @@ export const L = {
  * `test/next-labels.test.ts` 가 이 export 를 금칙어 검사에서 건너뛴다.
  */
 export const DEV = {
-  daemonLine: (protocol: number, connected: boolean) =>
-    `데몬 · ${connected ? "정상" : "연결 안 됨"} · 프로토콜 v${protocol}`,
-  activeProject: (repo: string | null, ready: boolean) =>
-    `활성 프로젝트 · ${repo ?? "-"} · 미리보기 ${ready ? "준비됨" : "대기"}`,
   selfUpdateNote: "AI 프로그램의 자기 업데이트는 꺼 두고 이 앱이 대신 맡아요",
   crash: {
     details: "자세히",
+  },
+  /**
+   * 진단 복사의 글(2026-10-07 베타 준비 분석) — 담당자가 읽는 `키: 값` 블록. 종류 · 숫자 · 버전만 싣는다(사용자의 말 ·
+   * 파일 경로 · 이메일 · 프로젝트 이름 · 토큰은 한 줄도 없다). 개발자의 어휘가 정당한 자리라 `DEV` 에 둔다.
+   */
+  diagnostics: {
+    title: "ColoNova Design 진단",
+    appVersion: "앱 버전",
+    os: "OS",
+    protocol: "프로토콜",
+    connected: "연결 정상",
+    disconnected: "연결 끊김",
+    daemonNode: "데몬 Node",
+    tools: "도구",
+    present: "있음",
+    absent: "없음",
+    ai: "AI",
+    loggedIn: "로그인됨",
+    loggedOut: "로그인 안 됨",
+    account: "계정",
+    accountLine: (method: string, plan: string) => `${method} · 요금제 ${plan}`,
+    unknown: "알 수 없음",
+    turns: "최근 7일 턴",
+    turnsLine: (all: number, user: number, pins: number, machine: number) =>
+      `${all}개 (직접 ${user} · 핀 ${pins} · 도구 ${machine})`,
+    failures: "실패",
+    failureNone: "없음",
+    failureLine: (count: number, parts: string) => `${count}개 (${parts})`,
+    stages: {
+      length: "길이",
+      auth: "로그인",
+      account: "계정",
+      limit: "한도",
+      stream: "스트림",
+      other: "기타",
+    },
+    stageItem: (stage: string, count: number) => `${stage} ${count}`,
+    pinTurns: "핀 사용 턴",
+    avgTools: "평균 도구 호출",
+    firstEdit: "첫 편집까지",
+    firstDelta: "첫 글자까지",
+    duration: "턴 길이",
+    percentLine: (p50: string, p90: string, n: number) => `p50 ${p50} · p90 ${p90} (n ${n})`,
+    noData: "자료 없음",
+    secondsUnit: "초",
+    errors: "최근 오류",
+    errorsNone: "없음",
+    errorItem: (level: string, kind: string, count: number) => `${level} ${kind} ×${count}`,
+    levels: { error: "오류", warn: "경고" },
+    summaryMissing: "자세한 진단은 받지 못했어요 — 데몬에 닿지 못했어요",
+    repoPhase: "프로젝트 준비 단계",
+    failureKind: "준비 실패 종류",
+    kindItem: (kind: string, gloss: string) => `${kind} (${gloss})`,
+    repoKinds: {
+      clone: "내려받기",
+      install: "설치",
+      "registry-auth": "패키지 저장소 인증",
+      "pnpm-missing": "pnpm 없음",
+      preview: "미리보기 서버",
+      "port-undetected": "미리보기 포트를 못 찾음",
+      "no-preview-command": "미리보기 명령 없음",
+      conflict: "충돌",
+      commands: "명령 설정",
+    },
   },
 } as const;

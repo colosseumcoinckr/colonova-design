@@ -126,6 +126,30 @@ test("problemFor: 제출 막힘만으로 알림 성공을 말하지 않는다", 
   assert.equal(problem?.dismissId, "submit:2026-09-27T00:00:00.000Z");
 });
 
+test("problemFor: 권한이 모자라 막힌 제출은 개발자가 코드의 권한을 고쳐야 한다고 말한다 — 새 초대 파일 단추도 만료도 없다(2026-10-07)", () => {
+  const problem = problemFor(
+    null,
+    {
+      ...REPO,
+      submit: {
+        phase: "blocked",
+        attempts: 1,
+        lastError: "permission",
+        since: "2026-10-07T00:00:00.000Z",
+        log: [],
+      },
+    },
+    L,
+  );
+  assert.equal(problem?.kind, "blocked");
+  assert.equal(problem?.body, L.problem.blockedPermission);
+  assert.match(problem?.body ?? "", /개발자가 코드의 권한을 고치면/);
+  assert.doesNotMatch(problem?.body ?? "", /새 초대 파일|만료/);
+  // 사용자의 손이 풀 일이 아니다 — 초대 파일 열기 단추가 아니라 담당자에게 건넬 글(복사)이 선다.
+  assert.equal(problem?.action, "copy");
+  assert.equal(problem?.dismissId, "submit:2026-10-07T00:00:00.000Z");
+});
+
 test("problemFor: 인터넷 문제로 막힌 제출은 담당자에게 보낼 말도 개발자에게 알렸다는 말도 하지 않는다", () => {
   const submit = {
     phase: "blocked" as const,
@@ -246,4 +270,47 @@ test("submit notification must belong to this failure; stale or unrelated notice
   );
   assert.equal(delivered?.kind, "notified");
   assert.equal(delivered?.body, L.problem.notifiedSubmit);
+});
+
+// ————— 자동 검사 (2026-10-07 베타 준비 분석 · A2a) —————
+
+test("problemFor: 자동 검사를 AI 가 고치는 중 — 검사의 문장이 서고 풀려도 `다 고쳤어요` 를 말하지 않는다", () => {
+  const ci: Attention = { kind: "ai-fixing", since, key: "ci" };
+  for (const repo of [REPO, { ...REPO, phase: "starting", previewUrl: null } as RepoStatus]) {
+    const problem = problemFor({ attention: ci }, repo, L);
+    assert.equal(problem?.kind, "fixing");
+    assert.equal(problem?.title, L.problem.fixing);
+    assert.equal(problem?.body, L.afterSubmit.fixingChecks);
+    assert.equal(problem?.dismissId, null);
+    assert.equal(
+      problem?.settles,
+      false,
+      "검사가 다시 돌아 통과해야 끝난다 — 미리 고쳤다고 하지 않는다",
+    );
+  }
+  // 고치는 중이 둘이어도 줄의 신원은 다르다 — 몸통이 바뀐다.
+  const preview = problemFor({ attention: fixing }, REPO, L);
+  const checks = problemFor({ attention: ci }, REPO, L);
+  assert.ok(preview !== null && checks !== null);
+  assert.equal(preview.settles, undefined);
+  assert.notEqual(
+    problemLineId({ kind: "problem", problem: preview }),
+    problemLineId({ kind: "problem", problem: checks }),
+  );
+});
+
+test("problemFor: 자동 검사가 계속 통과하지 못해 개발자에게 알렸다 — 검사의 문장", () => {
+  const ci: Attention = { kind: "developer-notified", since, via: "pr", key: "ci:12:rounds" };
+  const problem = problemFor({ attention: ci }, REPO, L);
+  assert.equal(problem?.kind, "notified");
+  assert.equal(problem?.body, L.afterSubmit.notifiedChecks);
+  assert.equal(problem?.dismissId, `notice:${since}`, "다른 알림처럼 ✕ 로 닫을 수 있다");
+  // 다른 알림은 그대로 일반 문장이다.
+  const other: Attention = {
+    kind: "developer-notified",
+    since,
+    via: "pr",
+    key: "review:12:rounds",
+  };
+  assert.equal(problemFor({ attention: other }, REPO, L)?.body, L.problem.notifiedOther);
 });

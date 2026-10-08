@@ -114,11 +114,12 @@ export function Workspace({
     setSettingsOpen(false);
     focusMenuButton();
   }, [focusMenuButton]);
-  const { state, nav, toast, dismissToast, setCollapsed, setDrawer } = useShellNav({
+  const { state, nav, ready, toast, dismissToast, setCollapsed, setDrawer } = useShellNav({
     daemon,
     sessions,
     collapsed: settings.layout.sidebarCollapsed,
     discardableInvitePath,
+    narrow,
     onLayoutChange,
     onOpenSettings: openSettings,
   });
@@ -169,6 +170,7 @@ export function Workspace({
       comments: commentCount(ledger.reviews),
       outsideChanges: outsideChanges(ledger.history, daemon.repo?.cycleScreens, copy.lastAt),
       waitingDays: daysSince(daemon.repo?.handoff?.since, today),
+      approved: daemon.repo?.handoff?.approved === true,
       submitCopy: copy,
     },
     L,
@@ -406,7 +408,13 @@ export function Workspace({
                 onClearInvite={() => nav.setDiscardableInvitePath(null)}
                 onToast={nav.toast}
               />
-              <HomeView daemon={daemon} sessions={sessions} nav={nav} titleFor={titleForThread} />
+              <HomeView
+                daemon={daemon}
+                sessions={sessions}
+                nav={nav}
+                titleFor={titleForThread}
+                ready={ready}
+              />
             </div>
           )}
           <div className={`nx-view nx-work${home ? " nx-offstage" : ""}`} aria-hidden={home}>

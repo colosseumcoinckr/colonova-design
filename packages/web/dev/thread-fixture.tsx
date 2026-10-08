@@ -10,11 +10,13 @@
 import { markTurn } from "@colonova-design/protocol";
 import { type ComponentProps, StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { Block } from "../src/lib/daemon-client";
+import type { Block, Daemon } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
+import { ResultScreen } from "../src/next/chat/ResultScreens";
 import { RunLine } from "../src/next/chat/RunLine";
 import { Thread } from "../src/next/chat/Thread";
 import { L } from "../src/next/labels";
+import { ComparisonDialog, openComparison } from "../src/next/preview/ComparisonDialog";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
 import "../src/next/next.css";
@@ -91,6 +93,19 @@ const loadComparison: ComponentProps<typeof Thread>["loadComparison"] = async ({
 }) => {
   // 카드가 넘기는 길은 `/member/empty` 처럼 앞 슬래시가 붙는다 — 견본의 열쇠는 뗀 모양이다.
   const key = route.replace(/^\//, "");
+  const diffShot = diffShots()[key];
+  if (diffShot) {
+    return {
+      requestId: requestId ?? "",
+      sessionId: "s",
+      sha: "x",
+      route,
+      title: route,
+      viewport: "desktop",
+      before: diffShot.before ? { at: "", ...diffShot.before } : null,
+      after: { at: "", ...diffShot.after },
+    };
+  }
   if (key === "member/empty") return null;
   if (key === "member/fail") throw new Error("fixture");
   if (key === "member/slow") return new Promise(() => {});
@@ -396,6 +411,49 @@ const repro: Block[] = [
   },
 ];
 
+/**
+ * `?scene=account` — 계정류 실패(2026-10-07 베타 준비 분석): 데몬이 `failure: "account"` 를 달아 사다리 없이 곧바로 끝낸
+ * 실패. 카드가 계정의 말로 서고 `다른 계정으로 로그인` 이 `다시 시도` 곁에 선다(마지막 실패에만). 앞선 일시 실패는
+ * 평소의 짧은 말이다. `?scene=account-old` 는 계정류 실패 뒤에 다른 실패가 이어진 대화 — 옛 계정류 카드에는 단추가 없고
+ * 마지막 실패만 `다시 시도` 를 든다(`다른 계정으로 로그인` 도 마지막 카드에만).
+ */
+const accountFail: Block[] = [
+  user("a1", "회원 목록에 이름으로 찾는 검색창을 넣어 줘."),
+  {
+    type: "turn",
+    id: "a1e",
+    subtype: "error",
+    isError: true,
+    costUsd: null,
+    durationMs: 1000,
+    resultText: "API Error: 529 Overloaded",
+  },
+  user("a2", "회원 목록에 이름으로 찾는 검색창을 넣어 줘."),
+  {
+    type: "turn",
+    id: "a2e",
+    subtype: "error",
+    isError: true,
+    costUsd: null,
+    durationMs: 800,
+    resultText: "Credit balance is too low",
+    failure: "account",
+  },
+];
+const accountOld: Block[] = [
+  ...accountFail.slice(2),
+  user("a3", "다시 해 줘."),
+  {
+    type: "turn",
+    id: "a3e",
+    subtype: "error",
+    isError: true,
+    costUsd: null,
+    durationMs: 900,
+    resultText: "API Error: 529 Overloaded",
+  },
+];
+
 /** `?scene=queue` — 줄에 선 말(`편집` · `지금 보내기`)이 새 말풍선 모양에서도 그대로인지 본다. */
 const queued: Block[] = [
   user("q1", "회원 목록에 검색창을 넣어 줘."),
@@ -537,6 +595,345 @@ function WorkingLines() {
   );
 }
 
+/**
+ * `?scene=tools` — 작업 과정 줄의 도구 이름(2026-10-07 베타 준비 분석). `browser_snapshot` 같은 영어가 그대로 뜨던 자리가
+ * 한국어로 읽히는지 본다: Claude 의 `mcp__서버__이름` · Codex 의 `서버/이름` · 통계가 아는 공급자 이름 · 모르는 도구(원문 그대로).
+ * 줄 머리를 눌러 펼쳐 본다 — 작업 과정 보기는 이 장면에서 켜져 있다.
+ */
+const toolRow = (id: string, name: string, input: unknown = {}, isError = false): Block => ({
+  type: "tool",
+  id,
+  name,
+  input,
+  agentId: null,
+  done: true,
+  isError,
+  result: isError
+    ? "이 프로젝트 폴더 밖의 파일은 고치지 않아요 — 프로젝트 안의 파일만 고쳐 주세요."
+    : "ok",
+  startedAt: Date.now() - 20_000,
+});
+const toolsThread: Block[] = [
+  {
+    type: "user",
+    id: "tl1",
+    text: "회원 목록 화면을 열어서 검색창을 확인하고 제출까지 해 줘.",
+    images: 0,
+  },
+  toolRow("tl-a", "mcp__colonova-browser__browser_navigate", {
+    url: "http://127.0.0.1:5274/member/list",
+  }),
+  toolRow("tl-b", "mcp__colonova-browser__browser_snapshot"),
+  toolRow("tl-c", "mcp__colonova-browser__browser_click", { ref: "e12" }),
+  toolRow("tl-d", "mcp__colonova-browser__browser_fill", { ref: "e3", text: "김기획" }),
+  toolRow("tl-e", "mcp__colonova-browser__browser_screenshot"),
+  toolRow("tl-f", "mcp__colonova-browser__screen_check", { route: "/member/list" }),
+  toolRow("tl-g", "mcp__colonova-browser__repo_diagnostics"),
+  toolRow("tl-h", "mcp__colonova-browser__submit_for_review", { note: "검색창 추가" }),
+  toolRow("tl-i", "colonova-browser/browser_navigate", { url: "http://127.0.0.1:5274/" }),
+  toolRow("tl-j", "colonova-browser/notify_developer", { title: "락파일" }),
+  toolRow("tl-k", "commandExecution", { command: "pnpm test" }),
+  toolRow("tl-l", "fileChange", { changes: [] }),
+  toolRow("tl-m", "Write", { file_path: "/home/u/.claude/settings.json" }, true),
+  toolRow("tl-n", "mcp__other-server__mystery_tool"),
+  answer("tl-z", "검색창을 확인했어요."),
+  turn("tl-t", 21000),
+];
+
+/**
+ * `?scene=ci` — 자동 검사가 통과하지 못해 AI 에게 맡긴 차례(2026-10-07 베타 준비 분석): 끝난 모양. `?scene=ci-live` 는 AI 가 고치는
+ * 중(알약이 `AI가 고치는 중`), `?scene=ci-one` 은 수를 모르는 옛 표식(머리에 `검사 N개` 가 없다). 받은 글은 접혀 있고 펼치면
+ * AI 가 읽은 검사 이름 · 줄 위치가 보인다.
+ */
+const ciBody = [
+  "자동 검사가 통과하지 못했습니다 — 제출한 요청에서 검사 2개가 실패했습니다. 아래 결과를 읽고 고쳐 주세요.",
+  "",
+  "1. build",
+  "   컴파일 오류 1개",
+  "   - src/pages/members.tsx:42 — Cannot find name 'searchWord'",
+  "2. lint (node 20)",
+  "   - src/pages/members.tsx:17 — 'query' is assigned a value but never used",
+  "",
+  "끝의 기준: 이 검사가 통과하도록 고치고, 레포가 선언한 검사 명령(package.json 의 lint · typecheck · test · build)을 돌려 확인해 주세요 — 검사와 무관한 변경은 하지 마세요.",
+].join("\n");
+const ciUser = (id: string, failing: number): Block => ({
+  type: "user",
+  id,
+  text: markTurn({ kind: "ci", pr: 12, failing }, ciBody),
+  images: 0,
+});
+const ciScene: Block[] = [
+  user("ci1", "회원 목록 맨 위에 검색창을 넣어 줘."),
+  answer("ci1a", "검색창을 넣었어요."),
+  done("cie1"),
+  ciUser("ci2", 2),
+  answer("ci2a", "두 검사 모두 확인했어요."),
+  done("cie2"),
+];
+const ciLiveScene: Block[] = [
+  user("cl1", "회원 목록 맨 위에 검색창을 넣어 줘."),
+  answer("cl1a", "검색창을 넣었어요."),
+  done("cle1"),
+  ciUser("cl2", 2),
+];
+const ciOneScene: Block[] = [ciUser("co1", 0), answer("co1a", "확인했어요."), done("coe1")];
+
+/**
+ * `?scene=merged` — 반영된 일의 성취 카드(2026-10-08 · A2b). 모양 여섯: ① 제목 · 며칠 · 화면 수를 다 아는 카드 ② 같은 날 반영(`제출한 날 안에`)
+ * ③ 제목을 모르는 카드(`제출한 일이 반영됐어요`) ④ 아주 긴 제목 ⑤ 제목만 아는 카드(사실 줄에는 시각만 선다) ⑥ 필드 없는 옛 사건 — 지금의 얇은 한 줄 그대로.
+ * `?scene=merged-live` 는 열린 지 0.7초 뒤에 새 반영이 도착한다 — 체크가 한 번 그려지는 모습(이번 창에서 막 도착한 카드에만).
+ */
+const mergedAt = (id: string, over: Partial<Extract<Block, { type: "milestone" }>>): Block => ({
+  type: "milestone",
+  id,
+  subtype: "merged",
+  at: "2026-10-06T09:30:00+09:00",
+  pr: 12,
+  ...over,
+});
+const mergedScene: Block[] = [
+  user("mg1", "회원 목록에 이름으로 찾는 검색창을 넣어 줘."),
+  answer("mg1a", "검색창을 넣었어요."),
+  done("mge1"),
+  mergedAt("mgm1", {
+    title: "회원 목록에 이름으로 찾는 검색창",
+    days: 3,
+    screens: 2,
+  }),
+  user("mg2", "검색 결과가 없을 때 안내 문구도 넣어 줘."),
+  answer("mg2a", "안내 문구를 넣었어요."),
+  done("mge2"),
+  mergedAt("mgm2", { title: "빈 결과 안내 문구", days: 0, screens: 1, pr: 13 }),
+  mergedAt("mgm3", { days: 1, screens: 3, pr: 14 }),
+  mergedAt("mgm4", {
+    title:
+      "결제 내역 화면의 필터 · 정렬 · 기간 선택 · 엑셀 내려받기 · 빈 화면 안내 문구를 한꺼번에 손본 아주 긴 제목의 일",
+    days: 12,
+    pr: 15,
+  }),
+  mergedAt("mgm5", { title: "로그인 화면 문구 다듬기", pr: 16 }),
+  mergedAt("mgm6", { pr: 17 }),
+];
+const mergedLiveStart: Block[] = [
+  user("ml1", "회원 목록에 이름으로 찾는 검색창을 넣어 줘."),
+  answer("ml1a", "검색창을 넣었어요."),
+  done("mle1"),
+];
+const mergedLiveArrival = (): Block =>
+  mergedAt("mlm1", {
+    title: "회원 목록에 이름으로 찾는 검색창",
+    days: 2,
+    screens: 2,
+    at: new Date().toISOString(),
+  });
+
+/**
+ * `?scene=diff` — 달라진 곳 윤곽 · 사진 복사(2026-10-08 베타 준비 분석 · 겹판 점검 E). 전/후 사진 쌍을 이 페이지가 캔버스로 직접
+ * 합성해 `data:` 주소로 싣는다(1200×750 — 데몬이 찍는 PC 크기와 같다). 카드 일곱: 단추 하나만 바뀐 것 · 단추와 푸터가 바뀐 것
+ * · 거의 같은 것(같은 그림을 JPEG 로 다시 구움) · WebP 두 장(단추 하나) · 세로가 두 배인 것(비교 불가 — 단추가 없다)
+ * · 세로가 조금 긴 것(아래 넘침) · 통째로 바뀐 것. 그 아래에는 요청이 가리킨 곳(핀) 위치를 넘긴 카드 셋 — 핀 밖의 변경이 경고색으로 서는 모양 · 핀이 가리킨
+ * 곳이 안 달라져서 경고를 거두는 모양 · 핀이 없는(말만 한) 모양. 제품은 지금 핀의 위치를 넘기지 않는다(docs/DEVELOPERS.md).
+ * `?w=420|387|320` · `?theme=dark` 로 좁은 칸 · 어두운 팔레트에서 본다.
+ */
+interface DiffLook {
+  button?: "blue" | "green";
+  footer?: "light" | "dark";
+  height?: number;
+  dark?: boolean;
+}
+
+function drawDiffPage(look: DiffLook = {}): HTMLCanvasElement {
+  const { button = "blue", footer = "light", height = 750, dark = false } = look;
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  const paper = dark ? "#14161d" : "#f4f5f7";
+  const card = dark ? "#1d2029" : "#ffffff";
+  const ink = dark ? "#e8eaf0" : "#1f2430";
+  ctx.fillStyle = paper;
+  ctx.fillRect(0, 0, 1200, height);
+  ctx.fillStyle = card;
+  ctx.fillRect(0, 0, 1200, 76);
+  ctx.fillStyle = ink;
+  ctx.font = "700 26px sans-serif";
+  ctx.fillText("ColoNova 회원관리", 36, 48);
+  ctx.font = "500 18px sans-serif";
+  ctx.fillStyle = dark ? "#9aa1b2" : "#6b7280";
+  ctx.fillText("회원      결제      포인트", 380, 46);
+  // 오른쪽 위의 단추 — 초록은 더 크고 글이 길다.
+  const big = button === "green";
+  ctx.fillStyle = big ? "#16a34a" : "#2f6fed";
+  const bx = big ? 1012 : 1030;
+  const by = big ? 15 : 19;
+  const bw = big ? 170 : 140;
+  const bh = big ? 46 : 38;
+  ctx.fillRect(bx, by, bw, bh);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "600 17px sans-serif";
+  ctx.fillText(big ? "새 회원 추가" : "새 회원", bx + 24, by + bh / 2 + 6);
+  ctx.fillStyle = ink;
+  ctx.font = "700 30px sans-serif";
+  ctx.fillText("회원 목록", 36, 136);
+  ctx.fillStyle = card;
+  ctx.fillRect(36, 162, 420, 44);
+  ctx.strokeStyle = dark ? "#343947" : "#d5d9e2";
+  ctx.strokeRect(36.5, 162.5, 419, 43);
+  ctx.fillStyle = dark ? "#7d8497" : "#9aa1b2";
+  ctx.font = "500 16px sans-serif";
+  ctx.fillText("이름이나 연락처로 찾기", 54, 190);
+  for (let row = 0; row < 7; row += 1) {
+    const y = 232 + row * 62;
+    if (y + 52 > height - 70) break;
+    ctx.fillStyle = card;
+    ctx.fillRect(36, y, 1128, 52);
+    ctx.fillStyle = ink;
+    ctx.font = "600 17px sans-serif";
+    ctx.fillText(
+      ["김기획", "이운영", "박디자인", "최개발", "정마케팅", "한고객", "오파트너"][row] ?? "",
+      60,
+      y + 32,
+    );
+    ctx.fillStyle = dark ? "#343947" : "#e4e7ee";
+    ctx.fillRect(420, y + 20, 160 + ((row * 41) % 90), 12);
+    ctx.fillStyle = dark ? "#2b3a5c" : "#dbe6ff";
+    ctx.fillRect(1040, y + 14, 96, 24);
+  }
+  ctx.fillStyle = footer === "dark" ? "#1f2430" : "#e5e7ec";
+  ctx.fillRect(0, height - 60, 1200, 60);
+  ctx.fillStyle = footer === "dark" ? "#e8eaf0" : "#6b7280";
+  ctx.font = "500 16px sans-serif";
+  ctx.fillText("© ColoNova Design · 문의 help@example.com", 36, height - 24);
+  return canvas;
+}
+
+const shotOf = (canvas: HTMLCanvasElement, type = "image/png", quality?: number) => ({
+  mediaType: type,
+  data: canvas.toDataURL(type, quality).split(",")[1] ?? "",
+});
+
+type DiffShots = Record<
+  string,
+  | {
+      before: { mediaType: string; data: string } | null;
+      after: { mediaType: string; data: string };
+    }
+  | undefined
+>;
+let diffShotsCache: DiffShots | null = null;
+function diffShots(): DiffShots {
+  if (query.get("scene") !== "diff") return {};
+  diffShotsCache ??= {
+    "diff/button": {
+      before: shotOf(drawDiffPage()),
+      after: shotOf(drawDiffPage({ button: "green" })),
+    },
+    "diff/footer": {
+      before: shotOf(drawDiffPage()),
+      after: shotOf(drawDiffPage({ button: "green", footer: "dark" })),
+    },
+    // 같은 그림을 JPEG 로 다시 구웠다 — 압축 흔적이 가장자리에 남아도 윤곽이 서면 안 된다.
+    "diff/same": {
+      before: shotOf(drawDiffPage()),
+      after: shotOf(drawDiffPage(), "image/jpeg", 0.7),
+    },
+    // 데몬의 사진처럼 WebP(품질 88)로 따로 구운 두 장 — 손실 압축의 잡음 속에서도 단추 하나만 잡혀야 한다.
+    "diff/webp": {
+      before: shotOf(drawDiffPage(), "image/webp", 0.88),
+      after: shotOf(drawDiffPage({ button: "green" }), "image/webp", 0.88),
+    },
+    "diff/size": {
+      before: shotOf(drawDiffPage()),
+      after: shotOf(drawDiffPage({ height: 1500 })),
+    },
+    "diff/tall": {
+      before: shotOf(drawDiffPage()),
+      after: shotOf(drawDiffPage({ height: 800 })),
+    },
+    "diff/wide": {
+      before: shotOf(drawDiffPage()),
+      after: shotOf(drawDiffPage({ dark: true, footer: "dark" })),
+    },
+  };
+  return diffShotsCache;
+}
+
+const diffScene: Block[] = [
+  withResult(
+    "df1",
+    "회원 목록의 새 회원 단추와 푸터를 눈에 띄게 바꿔 줘.",
+    "req-df",
+    [
+      { route: "diff/button", title: "단추 하나" },
+      { route: "diff/footer", title: "단추와 푸터" },
+      { route: "diff/same", title: "거의 같은 화면" },
+      { route: "diff/webp", title: "WebP 두 장 · 단추 하나" },
+      { route: "diff/size", title: "세로가 두 배" },
+      { route: "diff/tall", title: "아래가 조금 긴 화면" },
+      { route: "diff/wide", title: "통째로 바뀐 화면" },
+    ],
+    { screens: 7, phone: false },
+  ),
+  answer("df1a", "새 회원 단추를 초록으로 키우고 푸터를 어둡게 바꿨어요."),
+  turn("dfe1", 24000),
+];
+
+/** 마지막 토스트 — 이 견본에는 셸의 토스트가 없어 한 줄로 보여 준다(`window.__calls` 에도 남는다). */
+function say(text: string) {
+  calls.push(`toast:${text}`);
+  const line = document.getElementById("fixture-toast");
+  if (line) line.textContent = text;
+}
+
+/** 수정 후 사진(1200×750) 위 단추의 자리 — 정규화 좌표. */
+const PIN_BUTTON = { x: 0.84, y: 0.018, w: 0.15, h: 0.065 };
+/** 아무것도 안 바뀐 표의 한 줄. */
+const PIN_TABLE = { x: 0.03, y: 0.42, w: 0.5, h: 0.08 };
+
+const diffDaemon = {
+  api: { comparison: loadComparison },
+  activeSlug: "fixture",
+} as unknown as Daemon;
+
+/** 핀 위치를 넘기면 — 직접 그린 카드 셋과 `수정 전·후 보기` 대화상자. */
+function DiffPins() {
+  const open = (title: string, pins?: (typeof PIN_BUTTON)[]) =>
+    openComparison({
+      route: "/diff/footer",
+      title,
+      requestId: "req-df",
+      ...(pins ? { pins } : {}),
+    });
+  const cards: Array<{ title: string; pins?: (typeof PIN_BUTTON)[] }> = [
+    { title: "핀이 가리킨 곳 밖도 달라진 요청", pins: [PIN_BUTTON] },
+    { title: "핀이 가리킨 곳이 안 달라진 요청", pins: [PIN_TABLE] },
+    { title: "핀 없이 말로만 한 요청" },
+  ];
+  return (
+    <section className="nx-results" style={{ margin: "24px 20px 0" }}>
+      <div className="nx-results-heading">
+        <span>핀 위치를 넘긴 카드(견본 전용)</span>
+      </div>
+      <div className="nx-results-grid">
+        {cards.map((card) => (
+          <ResultScreen
+            key={card.title}
+            title={card.title}
+            route="/diff/footer"
+            requestId="req-df"
+            loadComparison={loadComparison}
+            onOpen={() => calls.push("open")}
+            onCompare={() => open(card.title, card.pins)}
+            onToast={say}
+            {...(card.pins ? { pins: card.pins } : {})}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 const scene = query.get("scene");
 
 /** 도는 답 견본 — 사람 말이 올라온 뒤 글이 이어지고 마감까지를 시간대로 밟는다. */
@@ -638,6 +1035,16 @@ function LiveFixture() {
 }
 
 function Fixture() {
+  // `?scene=merged-live` — 열린 뒤에 도착하는 반영(체크가 그려지는 순간을 본다).
+  const [lateMerged, setLateMerged] = useState<Block[]>(mergedLiveStart);
+  useEffect(() => {
+    if (scene !== "merged-live") return;
+    const id = window.setTimeout(
+      () => setLateMerged((prev) => [...prev, mergedLiveArrival()]),
+      700,
+    );
+    return () => window.clearTimeout(id);
+  }, []);
   return (
     /* .nx 는 견본에서 토큰 범위만 빌린다 — 셸의 그리드(사이드바 + 미리보기)와
        고정 높이는 풀어 평범한 문서가 되게 하고, 대화 칸은 margin auto 로 가운데. */
@@ -649,27 +1056,45 @@ function Fixture() {
         <div className="nx-transcript">
           <Thread
             blocks={
-              scene === "repro"
-                ? repro
-                : scene === "queue"
-                  ? queued
-                  : scene === "receipt"
-                    ? receipts
-                    : scene === "receipt-none"
-                      ? receiptNone
-                      : scene === "receipt-chat"
-                        ? receiptChat
-                        : scene === "receipt-old"
-                          ? receiptOld
-                          : scene === "undo"
-                            ? undoScene
-                            : scene === "working"
-                              ? workingThread
-                              : blocks
+              scene === "merged"
+                ? mergedScene
+                : scene === "merged-live"
+                  ? lateMerged
+                  : scene === "repro"
+                    ? repro
+                    : scene === "queue"
+                      ? queued
+                      : scene === "receipt"
+                        ? receipts
+                        : scene === "receipt-none"
+                          ? receiptNone
+                          : scene === "receipt-chat"
+                            ? receiptChat
+                            : scene === "receipt-old"
+                              ? receiptOld
+                              : scene === "undo"
+                                ? undoScene
+                                : scene === "working"
+                                  ? workingThread
+                                  : scene === "tools"
+                                    ? toolsThread
+                                    : scene === "account"
+                                      ? accountFail
+                                      : scene === "account-old"
+                                        ? accountOld
+                                        : scene === "ci"
+                                          ? ciScene
+                                          : scene === "ci-live"
+                                            ? ciLiveScene
+                                            : scene === "ci-one"
+                                              ? ciOneScene
+                                              : scene === "diff"
+                                                ? diffScene
+                                                : blocks
             }
-            live={scene === "queue"}
+            live={scene === "queue" || scene === "ci-live"}
             showThinking={false}
-            showTools={false}
+            showTools={scene === "tools"}
             previewUrl={PREVIEW_URL}
             cycleScreens={[{ route: "member/list", title: "회원 목록", note: "", at: "" }]}
             handoff={
@@ -690,6 +1115,7 @@ function Fixture() {
             onAdditionalEdit={() => {}}
             onRetry={() => {}}
             onRetryDropped={() => {}}
+            onLogin={() => calls.push("login")}
             onOpenScreen={() => {}}
             onOpenHistory={() => calls.push("history")}
             undoLast={
@@ -697,15 +1123,26 @@ function Fixture() {
             }
             onReply={async () => {}}
             onNote={async () => {}}
-            onToast={(text) => calls.push(`toast:${text}`)}
+            onToast={scene === "diff" ? say : (text) => calls.push(`toast:${text}`)}
             onQueueEdit={() => {}}
             onQueueNow={() => {}}
             onBackgroundTask={() => {}}
             onStopTask={() => {}}
           />
           {scene === "working" && <WorkingLines />}
+          {scene === "diff" && <DiffPins />}
         </div>
       </section>
+      {scene === "diff" && (
+        <>
+          <ComparisonDialog daemon={diffDaemon} onToast={say} />
+          <p
+            id="fixture-toast"
+            role="status"
+            style={{ position: "fixed", left: 12, bottom: 12, margin: 0, fontSize: 13 }}
+          />
+        </>
+      )}
       {scene === null && <LiveFixture />}
     </div>
   );

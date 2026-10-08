@@ -137,6 +137,38 @@ export function buildInvite({ token, author, projects, notify, ...single }) {
   };
 }
 
+/** 미리 보기가 비밀 대신 찍는 자리 표시. */
+export const PREVIEW_MASK = "••••••••";
+
+/** 미리 보기에 그대로 보여도 되는 Slack 길의 칸 — 나머지 글자 칸(웹훅 주소 · 봇 토큰)은 가린다. */
+const SLACK_SHOWN_KEYS = new Set(["kind", "channel"]);
+
+/**
+ * 초대 내용(buildInvite 의 결과)을 화면에 미리 보일 사본으로 — 비밀이 사는 자리를 가린다: 연결 코드
+ * (`token`)와 Slack 길(`notify.slack` 의 웹훅 주소 · 봇 토큰). Slack 쪽은 보여 줘도 되는 칸(`kind` ·
+ * `channel`)만 남기고 나머지 글자 칸은 모두 가려서, 길에 새 비밀 칸이 생겨도 기본이 가림이다. 원본은
+ * 건드리지 않는다(실제 파일에는 진짜 값이 간다). 2026-10-08 검토 FIX1 — 옛 미리 보기는 연결 코드만
+ * 가려 Slack 웹훅 · 봇 토큰이 화면(과 어깨너머)에 그대로 찍혔다.
+ */
+export function maskInviteForPreview(values) {
+  const masked = { ...values, token: values.token ? PREVIEW_MASK : "" };
+  const slack = values.notify?.slack;
+  if (slack && typeof slack === "object") {
+    masked.notify = {
+      ...values.notify,
+      slack: Object.fromEntries(
+        Object.entries(slack).map(([key, value]) => [
+          key,
+          SLACK_SHOWN_KEYS.has(key) || value === "" || value === null || value === undefined
+            ? value
+            : PREVIEW_MASK,
+        ]),
+      ),
+    };
+  }
+  return masked;
+}
+
 /** 이름 → 파일 조각. make-invite.mjs 의 slug 와 같은 규칙이다. */
 export function inviteSlug(name) {
   return (

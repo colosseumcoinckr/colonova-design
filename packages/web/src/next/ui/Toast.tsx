@@ -1,12 +1,15 @@
 import { type CSSProperties, useEffect, useRef, useState } from "react";
 import { L } from "../labels";
-import { TOAST_MS, type ToastNote } from "../lib/use-shell-nav";
+import { TOAST_ACTION_MS, TOAST_MS, type ToastNote } from "../lib/use-shell-nav";
 import { CloseIcon } from "./icons";
 
 /** 나가는 애니메이션의 길이 — ui.css 의 `nx-toast-out` 과 같은 값. */
 const LEAVE_MS = 220;
 /** 손을 뗀 뒤 적어도 이만큼은 더 머문다 — 떼자마자 사라지면 읽다 만 줄이 도망친다. */
 const MIN_LEFT_MS = 900;
+
+/** 이 토스트가 머무는 시간 — 단추가 달렸으면 누를 시간이 더 필요하다. */
+const lifeOf = (note: ToastNote | null) => (note?.action ? TOAST_ACTION_MS : TOAST_MS);
 
 /**
  * 셸의 토스트 — 위에서 튕기며 내려앉고, 머무는 동안 아래 막대가 닳고, 사라질 때는
@@ -22,7 +25,7 @@ export function Toast({ toast, onDone }: { toast: ToastNote | null; onDone: () =
   const [held, setHeld] = useState(false);
   const done = useRef(onDone);
   done.current = onDone;
-  const left = useRef(TOAST_MS);
+  const left = useRef(lifeOf(toast));
   const startedAt = useRef(0);
 
   useEffect(() => {
@@ -45,7 +48,7 @@ export function Toast({ toast, onDone }: { toast: ToastNote | null; onDone: () =
   // mouseleave 가 오지 않는다 — 새 노드 위에 손이 그대로면 곧 mouseenter 가 다시 건다).
   // biome-ignore lint/correctness/useExhaustiveDependencies: 열쇠가 바뀔 때만 다시 잰다 — seq 가 그 열쇠다.
   useEffect(() => {
-    left.current = TOAST_MS;
+    left.current = lifeOf(toast);
     setHeld(false);
   }, [toast?.seq]);
   useEffect(() => {
@@ -65,13 +68,25 @@ export function Toast({ toast, onDone }: { toast: ToastNote | null; onDone: () =
       key={shown.seq}
       className={`nx-toast${leaving ? " nx-toast--out" : ""}${held ? " nx-toast--held" : ""}`}
       role="status"
-      style={{ "--nx-toast-ms": `${TOAST_MS}ms` } as CSSProperties}
+      style={{ "--nx-toast-ms": `${lifeOf(shown)}ms` } as CSSProperties}
       onMouseEnter={() => setHeld(true)}
       onMouseLeave={() => setHeld(false)}
       onFocus={() => setHeld(true)}
       onBlur={() => setHeld(false)}
     >
       <span className="nx-toast-text">{shown.text}</span>
+      {shown.action && (
+        <button
+          type="button"
+          className="nx-toast-act"
+          onClick={() => {
+            shown.action?.run();
+            done.current();
+          }}
+        >
+          {shown.action.label}
+        </button>
+      )}
       <button
         type="button"
         className="nx-toast-x"

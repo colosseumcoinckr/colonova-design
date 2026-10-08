@@ -15,6 +15,7 @@ import type { AgentUpdates } from "./agent-update.js";
 import { captureTargets, readComments, recordComments } from "./comments.js";
 import type { DeveloperNotice } from "./developer-notice.js";
 import { describeProblem } from "./developer-notice.js";
+import { collectDiagnostics } from "./diagnostics.js";
 import { browseFiles, currentPlatform, listFiles } from "./environment.js";
 import type { Escalation } from "./escalation.js";
 import { submitFeatureRequest } from "./feedback.js";
@@ -199,6 +200,13 @@ export class RequestRouter {
   private readonly handlers: Partial<DispatchHandlers> = {
     "daemon.status": async () => {
       return await this.deps.status();
+    },
+    // 진단 한 덩어리(2026-10-07 베타 준비 분석) — 읽기뿐. 종류 · 숫자 · 버전만 나간다.
+    "diagnostics.summary": async () => {
+      return await collectDiagnostics({
+        status: () => this.deps.status(),
+        appVersion: this.deps.appVersion,
+      });
     },
     "session.list": async (message) => {
       return await this.deps.manager.list(this.workspaceCwd(), message.limit ?? 50);
@@ -1043,6 +1051,13 @@ export class RequestRouter {
             }
           : null,
       };
+    },
+    // 서비스의 첫 화면 사진(2026-10-07) — 첫 화면의 주소는 준비가 끝나며 읽은 것, 모르면 루트. 쿼리는 뗀다.
+    "repo.firstLook": async () => {
+      const active = this.requireActive();
+      const found = this.deps.fleet.firstScreenOf(active.slug)?.path.split(/[?#]/, 1)[0] ?? "/";
+      const route = found.startsWith("/") && !found.startsWith("//") ? found : "/";
+      return { route, image: await this.deps.previewDrivers.captureFirstLook(route) };
     },
     "repo.submitPreview": async () => {
       const active = this.requireActive();

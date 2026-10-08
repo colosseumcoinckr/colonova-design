@@ -1,4 +1,5 @@
 import { markTurn } from "@colonova-design/protocol";
+import { loginWallOf } from "./login-wall.js";
 import type {
   PreviewA11y,
   PreviewCapture,
@@ -40,6 +41,11 @@ import type {
  * 막는다(처음 본 화면의 원래 문제는 한 번은 말한다 — 브리프가 "이번 턴에 만들거나 고친
  * 것만" 이라고 범위를 좁힌다). 데스크톱 폭의 열기에서 재므로 여는 값은 늘지 않는다. 휴대폰
  * 폭 넘침과 한 화면의 한 묶음으로 간다.
+ *
+ * 로그인 벽도 가려낸다(2026-10-07 베타 준비 분석) — 검증 창은 사용자의 로그인 세션을 쓰지 않아 로그인이 필요한
+ * 화면은 로그인 화면으로 튕기는데, 그 화면은 멀쩡히 로드되고 콘솔도 조용해서 「확인했다」 로 샜다. 열기가 닿은
+ * 자리(`arrival`)가 로그인 화면이면(login-wall.ts) 그 화면은 확인한 화면으로 세지 않고 문제로도 세지 않는다
+ * (`loginWall`) — screen_check 는 AI 에게 그 사실을 한 줄로 말한다.
  *
  * 이 도구의 목표는 **연결 레포가 정한 규칙**으로 화면을 만드는 것이다 — 특정 디자인
  * 시스템을 씌우는 것이 아니다. 그래서 브리프가 고치는 방향을 말할 때는 늘 "이 레포가 그
@@ -368,6 +374,12 @@ export type ScreenVerdict =
        * 아니라 부르는 쪽(inspectScreens)의 일이다.
        */
       a11y?: ScreenA11y;
+      /**
+       * 열었더니 로그인 화면이었다(2026-10-07 베타 준비 분석) — 요청한 화면이 아니라 그 앞의 벽이다. 이 칸이 있으면
+       * 다른 칸은 비어 있다(로그인 화면의 콘솔 · 넘침은 이 화면의 것이 아니다). 부르는 쪽은 이 화면을 확인한
+       * 화면으로 세지 않는다.
+       */
+      loginWall?: true;
     };
 
 /** D3 재시도 전의 한숨 — 창 세우기와 로드의 일시적 흔들림이 지나가길 기다린다. */
@@ -396,6 +408,21 @@ export async function judgeScreen(
   // 조용히 건너뛰고, screen_check 는 그 사실을 답에 실어 AI 가 읽게 한다.
   if (opened === null) return { route, opened: false };
   if (opened.ok !== true) return { route, opened: false, reason: opened.reason };
+  // 로그인 화면으로 튕겼다 — 문서가 멀쩡히 로드되고 콘솔이 조용해도 요청한 화면을 본 것이 아니다. 로그인
+  // 화면의 콘솔 · 폭 · 접근성은 이 화면의 판정이 아니므로 읽지 않는다.
+  if (opened.settled && loginWallOf(route, opened.arrival) !== null) {
+    return {
+      route,
+      opened: true,
+      unsettled: false,
+      blank: false,
+      lines: [],
+      consoleCount: 0,
+      netCount: 0,
+      rescued,
+      loginWall: true,
+    };
+  }
   const troubleLines = (await driver.consoleLines().catch(() => [])).filter(
     (line) => TROUBLE_LEVELS[line.level.toLowerCase()] === true,
   );
@@ -428,6 +455,11 @@ export interface InspectOptions {
    * 옆으로 안 밀려요」 라는 말은 이 집합이 열어 본 화면을 모두 덮을 때만 참이다.
    */
   phone?: Set<string>;
+  /**
+   * 열었더니 로그인 화면이었던 화면들(2026-10-07 베타 준비 분석) — `opened` 에도 문제에도 들지 않는다. 확인한 화면이
+   * 아니고, 로그인 화면의 오류를 이 화면의 고침 턴으로 돌리지도 않는다. 부르는 쪽이 통계의 횟수로만 쓴다.
+   */
+  loginWall?: Set<string>;
   /**
    * 접근성 점검을 켠다 — 화면 주소별로 지난번에 본 문제의 기억이다. 데스크톱 폭의 열기에서
    * 접근성의 재료를 모으고, 지난번에 못 본 **새** 문제만 문제로 센다. 없으면 접근성은 보지 않는다.
@@ -486,6 +518,10 @@ export async function inspectScreens(
       options.a11y !== undefined ? { a11y: true } : undefined,
     );
     if (!verdict.opened) continue;
+    if (verdict.loginWall === true) {
+      options.loginWall?.add(screen.route);
+      continue;
+    }
     options.opened?.add(screen.route);
     if (verdict.unsettled || verdict.blank || verdict.lines.length > 0) {
       troubles.push({

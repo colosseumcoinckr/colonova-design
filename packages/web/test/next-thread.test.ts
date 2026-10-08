@@ -59,7 +59,7 @@ test("noticeKind: 데몬 알림의 첫머리로 종류를 알아본다", () => {
     noticeKind("AI 프로그램을 다시 켰어요 — 하던 일을 이어서 합니다", L.daemonNotice),
     "revive",
   );
-  assert.equal(noticeKind("대화가 길어져 정리한 뒤 이어서 합니다", L.daemonNotice), null);
+  assert.equal(noticeKind("대화가 길어져 정리한 뒤 이어서 해요", L.daemonNotice), null);
 });
 
 test("retryCount: 문장 끝의 (n/N)", () => {

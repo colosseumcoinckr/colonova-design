@@ -12,6 +12,7 @@ import {
   type ChatEvent,
   type DiffFile,
   type DiffStatus,
+  type HandoffCi,
   type HandoffStatus,
   markTurn,
   type RepoErrorKind,
@@ -99,15 +100,12 @@ export const GATE_BRIEF: Record<"commit" | "push" | "pr", string> = {
  * for the step that ran. This is what the transcript CARD says (PLAN D9); the
  * brief above is what the agent reads, command output and all.
  *
- * D90 ⓑ: push 거절 중 인증 · 권한 사유의 표식 — 이 문자열들이면 AI 대신
- * 설정 안내로 간다. 문자열 분기의 위험(D41)은 상수 하나에 모으고 단위 테스트가
- * 잡는 것으로; 모르면 AI 쪽(보수적)이다.
- * 리뷰 C6: 만료 · 무효 토큰의 말(401, Bad credentials, expired)도 같은
- * 안내로 가야 한다 — 만료 토큰으로 push 하면 AI 에게 헛돌았다.
+ * D90 ⓑ: push 거절 중 인증 · 권한 사유는 AI 대신 설정 안내로 간다 — 판정은
+ * `classifyGitHubFailure`(submit-state.ts) 한 곳이고, 문자열 분기의 위험(D41)은 그 표 시험이 잡는다.
+ * 모르면 AI 쪽(보수적)이다. 리뷰 C6: 만료 · 무효 토큰의 말(401, Bad credentials, expired)도 같은
+ * 안내로 간다. 2026-10-08 검토 · F12: 옛 `PUSH_AUTH_FAILURE` 는 `403` 만 있으면 한도 거절도 인증으로
+ * 읽어 `push:auth` 알림과 `다시 연결` 로 말했다 — 정규식을 걷고 분류기 한 곳으로 모았다.
  */
-export const PUSH_AUTH_FAILURE =
-  /401|403|Permission denied|authentication|denied to|not authorized|bad credentials|credentials? (?:expired|invalid)|token expired|authenticity/i;
-
 export const GATE_STEP: Record<"commit" | "push" | "pr", string> = {
   commit: "보관",
   push: "보관한 내용 올리기",
@@ -133,6 +131,26 @@ export const RECOVER_CONFLICT_DETAIL =
   "치워 둔 보관 전 변경을 돌려놓다 겹치는 부분이 생겼습니다 — 대화를 열면 AI가 정리합니다. 정리 전까지는 같은 상태입니다.";
 
 /** 충돌 브리프의 양쪽 — 개발자 쪽과 이번 작업의 커밋 제목들 (PLAN L5). */
+/** 관찰이 읽은 승인 · 자동 검사의 요약 — 열린 요청 번호와 함께 선로의 handoff 에 얹힌다(2026-10-07). */
+export interface HandoffSignals {
+  pr: number;
+  approved?: true;
+  ci?: HandoffCi;
+}
+
+/**
+ * 레지스트리가 기억하는 요청에서 휘발 신호(승인 · 자동 검사)를 뗀다(2026-10-08 검토 · F9). 제출 단계의 `getPullRequest`
+ * 결과는 `approved` 를 달고 오는데, 그대로 저장하면 `handoffWithSignals` 가 신호를 얹기만 할 뿐 옛 값을 지우지 못해
+ * 승인이 철회(DISMISSED)된 뒤에도 승인으로 남는다. 뗄 것이 없으면 같은 참조를 돌려준다.
+ */
+export function withoutHandoffSignals(handoff: HandoffStatus | null): HandoffStatus | null {
+  if (handoff === null || (handoff.approved === undefined && handoff.ci === undefined)) {
+    return handoff;
+  }
+  const { approved: _approved, ci: _ci, ...stable } = handoff;
+  return stable;
+}
+
 export interface ConflictSides {
   theirs: string[];
   ours: string[];
@@ -302,7 +320,10 @@ export interface RepoWorkspaceOptions {
    * 개발자 알림 (PLAN L11) — 저장·넘기기의 인증·권한 게이트가 문제 키와
    * 함께 여기를 부른다. fleet 의 DeveloperNotice 로 이어진다.
    */
-  notice?: (key: "push:auth" | "submit:pr", detail: string) => void;
+  notice?: (
+    key: "push:auth" | "push:permission" | "submit:permission" | "submit:pr",
+    detail: string,
+  ) => void;
   /**
    * 서 있던 개발자 알림을 거둔다 (PLAN L11) — 넘기기 성공이 `submit:pr` 을
    * 푸는 한 길이다. fleet 의 DeveloperNotice.resolve 로 이어진다.
@@ -323,7 +344,7 @@ export interface RepoWorkspaceOptions {
    * 이번 작업의 두 조각 (PLAN-UI U2 · U13) — 바뀐 화면과 제출 상태. fleet 이
    * 화면 캐시와 감독자에서 모아 넣는다. 동기로 읽히므로 캐시된 값만 돌려준다.
    */
-  cycleView?: () => Pick<RepoStatus, "cycleScreens" | "submit">;
+  cycleView?: () => Pick<RepoStatus, "cycleScreens" | "submit" | "firstScreen" | "landed">;
 }
 
 /**
@@ -456,6 +477,19 @@ export class RepoCore {
   openHandoff: HandoffStatus | null;
 
   /**
+   * 관찰이 읽은 승인 · 자동 검사의 요약 (2026-10-07 베타 준비 분석) — 선로의 handoff 에 얹어 보낸다. 틱마다 새로
+   * 읽는 휘발 값이라 레지스트리에 남기지 않고(`onCycleChange` 를 타지 않는다), 열린 요청의 번호가 같을 때만 얹는다.
+   */
+  private handoffSignals: HandoffSignals | null = null;
+
+  /** 승인 · 자동 검사의 요약을 갈아 끼운다 — 바뀐 것이 있을 때만 상태를 다시 방송한다. */
+  setHandoffSignals(next: HandoffSignals | null): void {
+    if (JSON.stringify(next) === JSON.stringify(this.handoffSignals)) return;
+    this.handoffSignals = next;
+    this.emit();
+  }
+
+  /**
    * 이 사이클의 핀 앵커 (D93 후속): 이 시각 이후의 코멘트가 이 사이클의 것이다 —
    * 넘기기가 요청 본문의 `### 수정 요청` 절을 여기부터 읽는다. 사이클이
    * 태어난 시각(프로젝트 생성 · 이전 요청의 착지)에 새로 쓰이고, setCycle 이
@@ -492,7 +526,9 @@ export class RepoCore {
   /** 이 프로젝트의 주의 (PLAN L8) — 스냅샷이 읽는 재료의 묶음. */
   readonly attention: (() => Attention | null) | null;
   /** 이번 작업의 두 조각 (PLAN-UI U2 · U13) — 스냅샷이 싣는다. */
-  readonly cycleView: (() => Pick<RepoStatus, "cycleScreens" | "submit">) | null;
+  readonly cycleView:
+    | (() => Pick<RepoStatus, "cycleScreens" | "submit" | "firstScreen" | "landed">)
+    | null;
   /** 넘긴 요청에 적을 작성자 이름 — PR 제목·본문이 읽는다(P1-3). */
   readonly authorName: (() => string | null) | null;
 
@@ -542,7 +578,7 @@ export class RepoCore {
     /** 이 프로젝트의 주의 (PLAN L8) — 스냅샷이 읽는 재료의 묶음. */
     attention?: () => Attention | null;
     /** 이번 작업의 두 조각 (PLAN-UI U2 · U13) — 스냅샷이 싣는다. */
-    cycleView?: () => Pick<RepoStatus, "cycleScreens" | "submit">;
+    cycleView?: () => Pick<RepoStatus, "cycleScreens" | "submit" | "firstScreen" | "landed">;
   }) {
     this.root = options.root;
     this.url = options.url;
@@ -552,7 +588,7 @@ export class RepoCore {
     this.onUrlChange = options.onUrlChange ?? null;
     this.baseBranch = options.baseBranch ?? "main";
     this.branch = options.cycle?.branch ?? null;
-    this.openHandoff = options.cycle?.handoff ?? null;
+    this.openHandoff = withoutHandoffSignals(options.cycle?.handoff ?? null);
     this.commentsSince = options.cycle?.commentsSince ?? null;
     this.commandsApproved = options.commandsApproved ?? true;
     this.onCycleChange = options.onCycleChange ?? null;
@@ -1293,8 +1329,13 @@ export class RepoCore {
 
   setCycle(branch: string | null, handoff: HandoffStatus | null): void {
     this.branch = branch;
-    this.openHandoff = handoff;
-    this.onCycleChange?.({ branch, handoff, commentsSince: this.commentsSince });
+    // 휘발 신호(승인 · 자동 검사)는 저장하지 않는다 — 틱마다 새로 읽어 `handoffWithSignals` 가 얹는다(F9).
+    this.openHandoff = withoutHandoffSignals(handoff);
+    this.onCycleChange?.({
+      branch,
+      handoff: this.openHandoff,
+      commentsSince: this.commentsSince,
+    });
     this.emit();
   }
 
@@ -1481,7 +1522,8 @@ export class RepoCore {
 
     let child: ChildProcess;
     try {
-      child = spawn(command, args, options);
+      // 호출자의 옵션 위에 얹는다 — Windows 콘솔 창이 깜빡이지 않게(2026-10-07).
+      child = spawn(command, args, { windowsHide: true, ...options });
     } catch (error) {
       reject(error);
       return promise;
@@ -1560,6 +1602,20 @@ export class RepoCore {
   // Status plumbing
   // -------------------------------------------------------------------------
 
+  /** 레지스트리가 기억하는 요청에 휘발 신호(승인 · 자동 검사)를 얹은 선로의 모양. */
+  private handoffWithSignals(): HandoffStatus | null {
+    const handoff = this.openHandoff;
+    const signals = this.handoffSignals;
+    if (handoff === null || signals === null || signals.pr !== handoff.number) return handoff;
+    // 얹을 것이 없으면 레지스트리의 값 그대로다 — 같은 참조를 지켜 상태 비교가 쓸데없이 흔들리지 않는다.
+    if (!signals.approved && !signals.ci) return handoff;
+    return {
+      ...handoff,
+      ...(signals.approved ? { approved: true } : {}),
+      ...(signals.ci ? { ci: signals.ci } : {}),
+    };
+  }
+
   snapshot(): RepoStatus {
     const url = this.phase === "ready" ? this.previewUrl : null;
     const port = previewPortOf(url);
@@ -1574,7 +1630,7 @@ export class RepoCore {
       url: this.url,
       branch: this.branch,
       baseBranch: this.baseBranch,
-      handoff: this.openHandoff,
+      handoff: this.handoffWithSignals(),
       attention: this.attention?.() ?? null,
       ...(this.cycleView?.() ?? {}),
       pendingChanges: this.pendingChanges,

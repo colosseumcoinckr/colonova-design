@@ -64,6 +64,20 @@ const PROBLEM = { key: "push:auth", slug: "app", ...describeProblem("push:auth")
 
 // ————— 순수 —————
 
+test("describeProblem — 권한 부족 알림은 모자랄 권한과 권한표 자리와 `새 초대 파일은 해결이 아니다` 를 싣는다(2026-10-07)", () => {
+  const submit = describeProblem("submit:permission");
+  assert.match(submit.ask, /Pull requests: Read and write/);
+  assert.match(submit.ask, /Contents/);
+  assert.match(submit.ask, /연결 코드 권한표/);
+  assert.match(submit.tried, /새 초대 파일을 받아도 풀리지 않습니다/);
+  const push = describeProblem("push:permission");
+  assert.match(push.ask, /Contents: Read and write/);
+  assert.match(push.ask, /새 초대 파일은 필요 없습니다/);
+  // 이 두 키는 만료 알림(github:auth · push:auth)과 다른 말이다 — 사용자의 손이 아니라 개발자의 손이다.
+  assert.notEqual(submit.title, describeProblem("push:auth").title);
+  assert.match(describeProblem("github:auth").ask, /새 초대 파일/);
+});
+
 test("describeProblem — 표의 키는 한국어 네 줄, 모르는 키는 키가 곧 제목이다", () => {
   const known = describeProblem("push:auth");
   assert.equal(known.title, "푸시가 인증 · 권한으로 거절됐습니다");
@@ -161,7 +175,7 @@ test("PR 이 없으면 이슈를 열고, 다시 raise 는 코멘트만, resolve 
     const after = github.issue(1);
     assert.ok(after !== undefined);
     assert.equal(after.state, "closed");
-    assert.ok(after.comments.some((c) => c.body === "해결됐습니다"));
+    assert.ok(after.comments.some((c) => c.body.startsWith("해결됐습니다")));
   } finally {
     remote.dispose();
   }
@@ -404,4 +418,16 @@ test("넘기기가 성공하면 서 있던 submit:pr 알림을 거둔다", async
     clone.dispose();
     remote.dispose();
   }
+});
+
+test("describeProblem — 자동 검사 알림(ci:<pr>:rounds)은 검사 문장이고, 이름은 자세히 · 권한 안내는 부탁에 선다", () => {
+  const problem = describeProblem("ci:12:rounds", "통과하지 못한 검사: build, lint");
+  assert.equal(problem.title, "자동 검사가 계속 통과하지 못했습니다");
+  assert.ok(
+    problem.ask.includes("Checks: Read"),
+    "도구가 검사를 읽으려면 필요한 권한을 한 줄로 안내한다",
+  );
+  assert.equal(problem.detail, "통과하지 못한 검사: build, lint");
+  // 코멘트 반영의 라운드 상한 문장과 섞이지 않는다.
+  assert.notEqual(problem.title, describeProblem("review:12:rounds").title);
 });

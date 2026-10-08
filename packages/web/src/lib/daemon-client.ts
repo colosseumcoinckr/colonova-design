@@ -5,6 +5,7 @@ import type {
   ContextUsage,
   DaemonStatus,
   DeveloperReview,
+  DiagnosticsSummary,
   DiffFile,
   DiffStatus,
   EffortLevel,
@@ -124,6 +125,8 @@ export type Block =
       /** 사다리를 다 쓴 실패 (PLAN L12) — 개발자에게 알렸다는 표식. 카드가
        *  이유 옆에 한 줄로 싣는다. */
       escalated?: boolean;
+      /** 계정류 실패(2026-10-07 베타 준비 분석) — 데몬이 갈래를 판정해 싣는다. 카드가 계정의 말로 선다. */
+      failure?: "account";
     }
   | {
       type: "notice";
@@ -167,6 +170,13 @@ export type Block =
       note?: string;
       /** 제출을 누를 때 확인 창이 보인 화면(2026-10-07 UX 점검 3단계) — 영수증이 되읽는다. 대화로 낸 제출에는 없다. */
       sent?: SubmitSent;
+      /**
+       * 반영(`merged`)의 성취 카드 재료(2026-10-08 베타 준비 분석 · A2b) — 제출한 일을 부르는 말 · 제출부터 달력으로 며칠 ·
+       * 만진 화면의 수. 모르면 없고, 옛 사건에는 없다(없으면 얇은 한 줄로 읽는다).
+       */
+      title?: string;
+      days?: number;
+      screens?: number;
     }
   | {
       /** 개발자 코멘트 도착 (review.arrived): 하나의 이벤트에 달려온 리뷰들을
@@ -353,6 +363,7 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
           durationMs: event.durationMs,
           resultText: event.resultText,
           ...(event.escalated ? { escalated: true } : {}),
+          ...(event.failure === "account" ? { failure: "account" as const } : {}),
         },
       ];
     }
@@ -444,6 +455,9 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
           subtype: "merged",
           at: event.at,
           pr: event.pr,
+          ...(event.title ? { title: event.title } : {}),
+          ...(event.days !== undefined ? { days: event.days } : {}),
+          ...(event.screens !== undefined ? { screens: event.screens } : {}),
         },
       ];
 
@@ -718,6 +732,11 @@ interface DaemonApi {
   backgroundTask: (sessionId: string, toolUseId: string) => Promise<{ moved: boolean }>;
   refreshStatus: () => Promise<void>;
   /**
+   * 진단 한 덩어리(2026-10-07 베타 준비 분석) — 앱 버전 · OS · 도구 · AI 종류와 요금제 종류 · 최근 7일 턴 통계 요약 ·
+   * 최근 오류의 종류. 종류 · 숫자 · 버전만 온다(이메일 · 경로 · 프로젝트 이름은 없다). 읽기뿐이다.
+   */
+  diagnosticsSummary: () => Promise<DiagnosticsSummary>;
+  /**
    * The registry, asked for on connect. `hello` already carries it, so the
    * switcher only needs this after a change it did not see broadcast.
    */
@@ -803,6 +822,11 @@ interface DaemonApi {
     sha?: string;
     submitted?: boolean;
   }) => Promise<import("@colonova-design/protocol").ScreenComparison | null>;
+  /**
+   * 서비스의 첫 화면 사진 한 장(2026-10-07 베타 준비 분석 · 첫 5분) — 데스크톱의 숨은 창이 찍는다. 못 찍으면(드라이버가
+   * 없는 개발 경로 · 비어 보이는 화면 · 시간 초과) `image: null` 이고 부른 쪽은 사진 없이 그린다.
+   */
+  firstLook: () => Promise<import("@colonova-design/protocol").FirstLook>;
   /**
    * 상태 확인 — the pull request plus the developer's comments. Asked for by
    * the planner, never polled — the state only moves when a developer acts on
@@ -932,6 +956,17 @@ interface DaemonApi {
   agentLoginCode: (code: string) => Promise<{ ok: true }>;
 }
 
+/**
+ * AI 가 지금 고치는 화면 한 장(2026-10-08 라이브감) — `route` 는 쿼리 없는 `/경로`, `title` 은 데몬이 화면 지도에서 읽은
+ * 제목(모르면 null), `at` 은 이 창이 신호를 받은 시각(ms)이다. 미리보기 칸이 이 값으로 `고치는 중` 한 줄과 첫 편집에서의
+ * 따라가기를 정한다 — 따라가기는 막 도착한 신호에만 반응하므로(대화를 옮겨 낡은 신호를 다시 만나도 움직이지 않는다) 시각이 필요하다.
+ */
+export interface EditingScreen {
+  route: string;
+  title: string | null;
+  at: number;
+}
+
 /** One connection to one daemon, as the views consume it. */
 export interface Daemon {
   connection: ConnectionState;
@@ -975,6 +1010,11 @@ export interface Daemon {
    * 거둔다.
    */
   browserDriving: ReadonlySet<string>;
+  /**
+   * AI 가 지금 고치는 화면(2026-10-08 라이브감) — 세션별 `session.editing` 방송의 마지막 한 장. 턴이 내려앉거나 세션이
+   * 닫히거나 연결이 끊기면 거둔다. 신호가 올 때마다 새 객체라 앞의 값과 `===` 가 아니면 새 신호다.
+   */
+  editingScreens: ReadonlyMap<string, EditingScreen>;
   /**
    * 데몬이 몰고 있는 에이전트 로그인의 판(P1-1) — 주소와 코드 붙여넣기 칸
    * 여부. 진행 중이 아닐 때 null. `loginDone` 은 마지막 끝의 알림.
@@ -1199,6 +1239,10 @@ export function useDaemon(url: string | null): Daemon {
    * 켜고 끄는 세션 id 목록.
    */
   const [driving, setDriving] = useState<Set<string>>(new Set());
+  /** AI 가 지금 고치는 화면: `session.editing` 방송이 세우고, 턴이 끝나면 거둔다. */
+  const [editingScreens, setEditingScreens] = useState<ReadonlyMap<string, EditingScreen>>(
+    () => new Map(),
+  );
   /**
    * The thread the planner is looking at: the last one they opened or spoke
    * into. A DIFFERENT thread settling is what a notification is for;
@@ -1300,6 +1344,7 @@ export function useDaemon(url: string | null): Daemon {
         // 데몬이 끊기면 조작 중 표시의 끝 신호도 함께 죽는다 — 재연결 뒤에도
         // 스피너가 남지 않게 여기서 전부 거둔다.
         setDriving(new Set());
+        setEditingScreens((prev) => (prev.size === 0 ? prev : new Map()));
         if (!everOpen) {
           // First attempt never got in: most likely a wrong url or the daemon
           // is genuinely down. Show the connect screen; the retry below still
@@ -1402,6 +1447,17 @@ export function useDaemon(url: string | null): Daemon {
         });
         return;
       }
+      if (message.type === "session.editing") {
+        // AI 가 지금 고치는 화면 — 세션마다 마지막 신호만 남는다. 낯선 모양은 흘린다(옛 · 새 데몬의 차이).
+        if (typeof message.route !== "string" || !message.route.startsWith("/")) return;
+        const entry: EditingScreen = {
+          route: message.route,
+          title: typeof message.title === "string" && message.title !== "" ? message.title : null,
+          at: Date.now(),
+        };
+        setEditingScreens((prev) => new Map(prev).set(message.sessionId, entry));
+        return;
+      }
       if (message.type === "agent.login.url") {
         // 데몬이 몰고 있는 로그인의 판 — 주소(wantsCode 일 때 코드 칸 포함).
         setLogin({ url: message.url, wantsCode: message.wantsCode });
@@ -1439,6 +1495,15 @@ export function useDaemon(url: string | null): Daemon {
         // '해결됨'이 따로 없으므로 기다리지 않는 상태가 곧 해결의 신호다.
         if (message.state !== "waiting_permission" && message.state !== "waiting_question") {
           setPending((prev) => prev.filter((p) => p.sessionId !== message.sessionId));
+        }
+        // 턴이 내려앉았거나 세션이 닫혔다 — 그 턴이 고치던 화면의 신호도 함께 거둔다.
+        if (message.state === "idle" || message.state === "error" || message.state === "closed") {
+          setEditingScreens((prev) => {
+            if (!prev.has(message.sessionId)) return prev;
+            const next = new Map(prev);
+            next.delete(message.sessionId);
+            return next;
+          });
         }
         // 죽은 세션의 조작 표시도 함께 걷어 낸다 — on:false를 놓친 채 죽은
         // 세션이 스피너를 남기지 않게.
@@ -1764,6 +1829,8 @@ export function useDaemon(url: string | null): Daemon {
           setProjects(status.projects);
           setActiveSlug(status.activeProject);
         }),
+      // 연결이 끊긴 채 누른 복사가 오래 매달리지 않게 짧은 시한 — 복사는 받은 만큼의 글로 이어 간다.
+      diagnosticsSummary: () => call<DiagnosticsSummary>({ type: "diagnostics.summary" }, 8_000),
       projectList: () => call<ProjectList>({ type: "project.list" }).then(keepProjects),
       // Creating clones the repo and installs when needed: a first run is
       // minutes, not the minute a normal request gets.
@@ -1881,6 +1948,7 @@ export function useDaemon(url: string | null): Daemon {
       // 제출 (PLAN L6): 의도를 적는 것으로 끝나고, 데몬은 그 틱을 최대 60초
       // 기다렸다 지금 상태를 돌려준다 — 창은 그 대기에 여유를 곁들인 값.
       comparison: (input) => call({ type: "repo.comparison", ...input }, 30_000),
+      firstLook: () => call({ type: "repo.firstLook" }, 30_000),
       submit: (
         sessionId?: string | null,
         note?: string,
@@ -2033,7 +2101,10 @@ export function useDaemon(url: string | null): Daemon {
   // 확인을 기다리지 않고 스스로 다시 묻는다. 실패는 loginDone.detail 로 마법사
   // 카드가 말한다.
   useEffect(() => {
-    if (loginDone?.ok) void api.onboardingCheck(onboardingProvider ?? undefined);
+    if (!loginDone?.ok) return;
+    void api.onboardingCheck(onboardingProvider ?? undefined);
+    // 상태도 다시 읽는다(2026-10-07) — 어느 계정으로 로그인했는지(이메일 · 요금제)가 AI 카드에 서려면 로그인 전의 상태가 낡는다.
+    void api.refreshStatus();
   }, [loginDone, api, onboardingProvider]);
 
   // 설치의 끝(1단계): 성공이면 게이트가 다시 채색해야 한다 — 로그인 끝과
@@ -2162,6 +2233,7 @@ export function useDaemon(url: string | null): Daemon {
     repo,
     diffStatus,
     browserDriving: driving,
+    editingScreens,
     onboarding,
     onboardingProvider,
   };

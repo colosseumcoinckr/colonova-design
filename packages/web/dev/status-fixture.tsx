@@ -24,6 +24,10 @@
  *     `hook-failthen`(열고 4초 안에는 실패, 그 뒤 성공 — `다시 시도` 가 고치는 길) · `hook-ok`.
  * 화면의 `열기` 단추가 부른 길은 `window.__opened`(경로 목록)에 쌓인다. 상태 줄 아래에 문제 문장 줄(`ProblemLine`)이
  * 함께 선다 — `?case=g`(제출이 막힘 — 복사 단추) · `?case=p`(다시 로그인 — 로그인 단추).
+ *
+ * 제출 뒤의 시야(2026-10-07 베타 준비 분석) — `?case=r`(개발자가 승인 → 여정의 둘째 점 `개발자가 확인했어요`) · `s`(자동 검사를
+ * AI 가 고치는 중 — 문제 문장 줄) · `t`(몇 번 고쳐도 통과하지 못해 개발자에게 알림) · `u`(통과) · `v`(도는 중). 여정을 누르면 열리는
+ * `이번 작업` 팝의 제출 칸에 자동 검사 한 줄이 같이 보인다.
  */
 
 import type {
@@ -201,6 +205,8 @@ interface Case {
   comments?: number;
   /** 요청이 열린 지 달력으로 며칠인가(0 = 오늘) — 코멘트가 없는 기다림의 `N일째`. */
   waitingDays?: number;
+  /** 개발자가 승인했다(`handoff.approved`) — 여정의 둘째 점이 `개발자가 확인했어요` 가 된다. */
+  approved?: boolean;
   phase?: "read" | "file" | "command" | null;
   width?: number;
   narrow?: boolean;
@@ -245,6 +251,55 @@ const BASE_CASES: Case[] = [
     repo: { handoff: handoff("open"), cycleScreens: SCREENS },
     waitingDays: 2,
   },
+  // ————— 제출 뒤의 시야 (2026-10-07 베타 준비 분석) — 이번 작업 팝(여정을 누르면)의 자동 검사 줄이 같이 보인다.
+  {
+    id: "r",
+    label: "r · 개발자가 확인했어요 · 반영을 기다려요(승인 + 자동 검사 통과)",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: {
+      handoff: { ...handoff("open"), approved: true, ci: { state: "passing" } },
+      cycleScreens: SCREENS,
+    },
+    approved: true,
+  },
+  {
+    id: "s",
+    label: "s · 자동 검사가 통과하지 못해 AI 가 고치는 중(문제 문장 줄)",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: {
+      handoff: { ...handoff("open"), ci: { state: "failing", failing: 2 } },
+      cycleScreens: SCREENS,
+      attention: { kind: "ai-fixing", since: ago(2), key: "ci" },
+    },
+  },
+  {
+    id: "t",
+    label: "t · 자동 검사가 계속 통과하지 못해 개발자에게 알렸어요",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: {
+      handoff: { ...handoff("open"), ci: { state: "failing", failing: 1 } },
+      cycleScreens: SCREENS,
+      attention: { kind: "developer-notified", since: ago(5), via: "pr", key: "ci:7:rounds" },
+    },
+  },
+  {
+    id: "u",
+    label: "u · 자동 검사를 통과했어요 · 개발자 확인을 기다려요(승인 전)",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: {
+      handoff: { ...handoff("open"), ci: { state: "passing" } },
+      cycleScreens: SCREENS,
+    },
+  },
+  {
+    id: "v",
+    label: "v · 자동 검사가 돌고 있어요",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: {
+      handoff: { ...handoff("open"), ci: { state: "pending" } },
+      cycleScreens: SCREENS,
+    },
+  },
   {
     id: "f",
     label: "f · 반영됨",
@@ -258,6 +313,31 @@ const BASE_CASES: Case[] = [
     repo: {
       cycleScreens: SCREENS,
       submit: { phase: "blocked", attempts: 3, lastError: "network", log: [] },
+    },
+  },
+  {
+    id: "w",
+    label:
+      "w · 제출이 막힘 · 연결 코드의 권한이 모자라요(새 초대 파일이 아니다 — 개발자가 권한을 고친다)",
+    title: "회원 목록에 이름으로 찾는 검색창을 넣어 줘",
+    repo: {
+      cycleScreens: SCREENS,
+      submit: {
+        phase: "blocked",
+        attempts: 1,
+        lastError: "permission",
+        since: ago(1),
+        log: [],
+      },
+    },
+  },
+  {
+    id: "x",
+    label: "x · 다시 제출하는 중 · GitHub 한도에 걸림(막힘이 아니라 쉬는 중)",
+    title: "회원 목록에 이름으로 찾는 검색창을 넣어 줘",
+    repo: {
+      cycleScreens: SCREENS,
+      submit: { phase: "retrying", attempts: 2, lastError: "limit", log: [] },
     },
   },
   {
@@ -306,10 +386,10 @@ const BASE_CASES: Case[] = [
   },
 ];
 
-/** `?sweep=1` — 같은 상태(a · d · e · g)를 여러 막대 폭으로 늘어놓는다. 접히는 순서와 겹침을 본다. */
+/** `?sweep=1` — 같은 상태(a · d · e · g · q · r)를 여러 막대 폭으로 늘어놓는다. 접히는 순서와 겹침을 본다. */
 const SWEEP_WIDTHS = [1500, 1300, 1150, 1000, 900, 800, 700, 620, 540];
 const SWEEP: Case[] = SWEEP_WIDTHS.flatMap((width) =>
-  BASE_CASES.filter((spec) => ["a", "d", "e", "g", "q"].includes(spec.id)).map((spec) => ({
+  BASE_CASES.filter((spec) => ["a", "d", "e", "g", "q", "r"].includes(spec.id)).map((spec) => ({
     ...spec,
     id: `${spec.id}-${width}`,
     label: `${spec.id} @ ${width}`,
@@ -354,6 +434,7 @@ function Row({ spec }: { spec: Case }) {
       running: spec.running ?? false,
       comments: spec.comments ?? 0,
       ...(spec.waitingDays === undefined ? {} : { waitingDays: spec.waitingDays }),
+      ...(spec.approved ? { approved: true } : {}),
       submitCopy: copy,
     },
     L,
@@ -403,6 +484,8 @@ function Row({ spec }: { spec: Case }) {
                         shotCount: 3,
                         checksSection: null,
                         checks: { total: 5, checked: 4, phone: true },
+                        // `?draft=risk` — 의존성 · 설정 · CI 파일이 바뀐 사이클(제출 확인의 「설정 파일도 함께 바뀌었어요」).
+                        ...(DRAFT === "risk" ? { scopeRisk: true } : {}),
                       },
                     },
               ),

@@ -93,7 +93,11 @@ export function describeProblem(key: string, detail?: string): Omit<Problem, "ke
   // 문장이 아니다 — AI 가 반영을 시작도 못 했을 수 있다.
   const known =
     PROBLEM_TEXT[key] ??
-    (/^review:\d+:rejection$/.test(key) ? PROBLEM_TEXT["review:*:rejection"] : undefined);
+    (/^review:\d+:rejection$/.test(key)
+      ? PROBLEM_TEXT["review:*:rejection"]
+      : /^ci:\d+:rounds$/.test(key)
+        ? PROBLEM_TEXT["ci:*"]
+        : undefined);
   const base: Omit<Problem, "key" | "slug" | "detail"> =
     known ??
     (key.startsWith("review:")
@@ -147,6 +151,20 @@ const PROBLEM_TEXT: Record<string, Omit<Problem, "key" | "slug" | "detail">> = {
     tried: "커밋과 푸시는 끝났고 PR 열기만 거절됐습니다",
     ask: "저장소의 권한 · 브랜치 보호 규칙을 확인해 주세요",
   },
+  "push:permission": {
+    title: "푸시가 연결 코드의 권한 부족으로 거절됐습니다",
+    what: "보관한 작업을 원격에 올리지 못하고 있습니다 — GitHub 이 403 으로 거절합니다",
+    tried:
+      "같은 푸시를 다시 시도했지만 같은 거절이 돌아왔습니다. 연결 코드는 유효해서 사용자에게는 `다시 연결` 이 아니라 이 알림이 갑니다",
+    ask: "연결 코드(토큰)의 Contents: Read and write 권한을 확인해 주세요(권한표: 소개 페이지 `초대장 만들기` 위의 `연결 코드 권한표`). 같은 토큰의 권한을 고치면 도구가 저절로 다시 올립니다 — 새 초대 파일은 필요 없습니다",
+  },
+  "submit:permission": {
+    title: "연결 코드의 권한이 모자라 제출이 막혔습니다",
+    what: "제출(풀 리퀘스트 열기)이 GitHub 의 403 으로 거절됩니다 — 토큰에 필요한 권한이 없습니다",
+    tried:
+      "같은 요청을 다시 시도했지만 같은 거절이 돌아왔습니다. 연결 코드는 유효해서 새 초대 파일을 받아도 풀리지 않습니다",
+    ask: "연결 코드(토큰)의 Repository permissions 를 확인해 주세요 — 가장 흔한 원인은 Pull requests: Read and write 입니다(Contents · Issues: Read and write, Metadata: Read 도 필요). 권한표: 소개 페이지 `초대장 만들기` 위의 `연결 코드 권한표`. 같은 토큰의 권한을 고치면 도구가 저절로 다시 제출합니다",
+  },
   "push:behind": {
     title: "보관한 작업을 1시간 넘게 올리지 못하고 있습니다",
     what: "커밋은 쌓였는데 원격에 올라가지 않고 있습니다",
@@ -170,6 +188,12 @@ const PROBLEM_TEXT: Record<string, Omit<Problem, "key" | "slug" | "detail">> = {
     what: "개발자 코멘트를 AI 가 여러 번 반영했지만 끝나지 않았습니다",
     tried: "PR 당 정해진 라운드까지 반영했습니다",
     ask: "PR 의 코멘트를 직접 확인해 주세요",
+  },
+  "ci:*": {
+    title: "자동 검사가 계속 통과하지 못했습니다",
+    what: "제출한 요청의 자동 검사(CI)가 통과하지 못한 채로 남아 있습니다",
+    tried: "AI 가 실패한 검사의 결과를 읽고 정해진 라운드까지 고쳐 보았습니다",
+    ask: "PR 의 검사 결과를 직접 확인해 주세요 — 도구가 검사의 상세를 읽으려면 토큰에 Checks: Read 권한이 필요합니다",
   },
   "review:*:rejection": {
     title: "반려 이유를 AI 에게 맡기지 못했습니다",

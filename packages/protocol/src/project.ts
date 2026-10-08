@@ -52,6 +52,12 @@ export interface ProjectSummary {
   repoUrl?: string | null;
   /** Disk/process state. Only the active project climbs past `ready`; an inactive cloned one reports `ready` from disk alone. */
   phase: RepoPhase;
+  /**
+   * 처음 여는 준비(내려받기부터)가 도는 중이다(2026-10-07 베타 준비 분석 · 첫 5분) — 데몬이 내려받기를 본 순간 켜지고
+   * `ready` 에 닿으면 꺼진다(오류는 끄지 않는다). 웹이 `ready` 로 바뀌는 순간 `서비스가 떴어요` 를 말하는 재료다 —
+   * `phase` 만으로는 앱을 다시 켤 때의 준비(최신화 · 재설치)와 첫 준비가 갈리지 않는다. 첫 준비가 아니면 키가 없다.
+   */
+  firstPrep?: boolean;
   /** Last counted unsaved-change files — the delivery chip's number, per project. */
   pendingChanges: number;
   /** A live Claude session is running in this project's clone right now. */
@@ -417,6 +423,12 @@ export interface OnboardingStep {
   /** Korean: what passed, or why it failed and what to do. */
   detail: string;
   fix?: OnboardingFix;
+  /**
+   * 막힌 이유의 갈래(2026-10-07 베타 준비 분석) — `plan`: 로그인은 됐지만 이 계정의 요금제로는 쓸 수 없다고
+   * 알려진 경우(`isUnusablePlan`). 로그인 만료와 같은 고침 단추(`login-claude`)를 쓰지만, 카드가 로그인을
+   * 저절로 열지 않고 이유를 말한 뒤 사용자가 누르게 한다. 없는 단계가 대부분이다.
+   */
+  reason?: "plan";
 }
 
 // ---------------------------------------------------------------------------

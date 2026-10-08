@@ -269,6 +269,7 @@ export class TypeChecker {
           cwd: repoRoot,
           env,
           stdio: ["ignore", "pipe", "pipe"],
+          windowsHide: true,
         });
       } catch (error) {
         resolve({

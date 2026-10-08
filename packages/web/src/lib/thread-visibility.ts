@@ -36,6 +36,8 @@ export const SYSTEM_THREAD_TITLES: Record<string, true> = {
   "최신 변경 합치기": true,
   "반려 반영": true,
   "제출 마저하기": true,
+  // 2026-10-07 — 제출한 요청의 자동 검사가 통과하지 못해 감독자가 여는 대화(project-fleet 의 CI_THREAD_TITLE).
+  "자동 검사 반영": true,
 };
 
 export function hideThread(hidden: HiddenThreads, slug: string, sessionId: string): HiddenThreads {

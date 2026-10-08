@@ -14,13 +14,18 @@
  * missing token eventually refuses.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { promisify } from "node:util";
-import type { OnboardingFix, OnboardingStep, OnboardingStepId } from "@colonova-design/protocol";
+import {
+  isUnusablePlan,
+  type OnboardingFix,
+  type OnboardingStep,
+  type OnboardingStepId,
+} from "@colonova-design/protocol";
 import type { AgentDriver } from "./agent/driver.js";
 import { withoutSelfUpdate } from "./agent-env.js";
+import { run, shellPlan } from "./child.js";
 import { extraPathPrefix } from "./claude-trust.js";
 import {
   currentPlatform,
@@ -35,8 +40,6 @@ import {
 import type { GitHubClient } from "./github.js";
 
 export type { OnboardingStep };
-
-const run = promisify(execFile);
 
 export interface OnboardingDeps {
   claudeExecutableOverride?: string;
@@ -133,6 +136,9 @@ async function checkAgent(deps: OnboardingDeps): Promise<OnboardingStep> {
       label: "Claude Code 로그인",
     });
   }
+  // 로그인은 됐는데 이 요금제로는 쓸 수 없다고 알려진 계정 — 첫 요청을 보내고 기다리기 전에 막는다.
+  const planBlocked = planBlockedStep(auth.subscriptionType);
+  if (planBlocked !== null) return planBlocked;
   if (process.env.ANTHROPIC_API_KEY) {
     return {
       id: "claude",
@@ -144,6 +150,25 @@ async function checkAgent(deps: OnboardingDeps): Promise<OnboardingStep> {
   const version = await readClaudeVersion(executable);
   const plan = auth.subscriptionType ? ` · ${auth.subscriptionType}` : "";
   return pass("claude", `Claude Code 준비됨${version ? ` (${version})` : ""}${plan}`);
+}
+
+/**
+ * 쓸 수 없다고 알려진 요금제의 막힘(2026-10-07 베타 준비 분석) — 고침은 다른 계정으로 로그인하는 길
+ * 하나이고, `reason: "plan"` 이 카드에게 로그인을 저절로 열지 말고 이유를 말하라고 알린다. 모르는
+ * 값(null · 처음 보는 이름)은 막지 않는다 — 거짓 차단이 거짓 허용보다 나쁘다. 번들 CLI 의 값 표는
+ * 무료 요금제를 `free` 가 아니라 null 로 내므로(protocol/plan.ts) [추정], 이 길은 CLI 가 쓸 수 없는
+ * 요금제를 값으로 내기 시작할 때를 위한 장치다. 순수.
+ */
+export function planBlockedStep(subscriptionType: string | null): OnboardingStep | null {
+  if (!isUnusablePlan(subscriptionType)) return null;
+  return {
+    id: "claude",
+    status: "fail",
+    detail:
+      "이 계정의 요금제로는 Claude Code 를 쓸 수 없어요 — 유료 요금제 계정으로 다시 로그인해 주세요.",
+    fix: { kind: "login-claude", label: "다른 계정으로 로그인" },
+    reason: "plan",
+  };
 }
 
 /**
@@ -424,11 +449,13 @@ export class AgentLogin {
     this.stop();
     const generation = this.generation;
     try {
-      // Windows: `claude` is a .cmd shim, which is not an executable — a shell
-      // resolves it. Everywhere else the direct spawn is one process fewer.
-      const child = this.spawnLike(command, args, {
+      // Windows: `.cmd` shim 은 실행 파일이 아니라 셸이 풀어야 한다 — 그때만 셸을 거치고
+      // 경로의 공백 · `&` 는 따옴표로 감싼다(shellPlan, 2026-10-07). `.exe` 는 직접 띄운다.
+      const plan = shellPlan(process.platform, command, args);
+      const child = this.spawnLike(plan.command, plan.args, {
         stdio: ["pipe", "pipe", "pipe"],
-        shell: process.platform === "win32",
+        shell: plan.shell,
+        windowsHide: true,
         // 로그인도 Claude 자식이다 — 자기 업데이트를 끈다(PLAN-UI U12, Codex 에는 무해).
         env: withoutSelfUpdate(process.env),
       });

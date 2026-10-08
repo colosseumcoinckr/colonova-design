@@ -500,6 +500,8 @@
 
 .nx-ptxt {
   display: grid;
+  /* 한 칸이 카드 폭을 못 넘긴다 — 긴 이메일 한 줄이 칸을 밀어 라디오 눈금 밑으로 흘러들지 않게(2026-10-07 계정 줄). */
+  grid-template-columns: minmax(0, 1fr);
   flex: 1;
   gap: 3px;
   min-width: 0;
@@ -516,6 +518,19 @@
   gap: 6px;
   font-size: 12px;
   color: var(--ink3);
+}
+
+/* 로그인 뒤의 계정 줄(`이메일 · 요금제로 연결됨`) — 길면 한 줄로 줄이고 전체는 title 에 둔다(2026-10-07 베타 준비 분석). */
+.nx-ptxt-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 고른 AI 의 `다음 새 대화에 써요` — 계정 줄 아래, 계정 글자의 왼쪽(점 8px + 간격 6px)에 맞춘다. */
+.nx-ptxt > .nx-ptxt-now {
+  padding-left: 14px;
 }
 
 /* 라디오 눈금 — 고르면 강조색 테두리에 알 하나. */
@@ -1046,7 +1061,15 @@
 
 .nx-sfoot-act {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-start;
+  /* 복사 단추 곁의 안내(`공개 게시판이 아니라 비공개 채널에 붙여 주세요`, 2026-10-07)가 단추와 눈높이를 맞춘다. */
+  gap: 4px 12px;
+}
+
+.nx-sfoot-act > .nx-snote {
+  margin: 0;
 }
 
 /* ── 이름 칸 — 저장되면 오른쪽에 ✓ 가 잠깐 떴다 사라진다. 윗줄의 말은 칸 아래에 선다. */

@@ -151,6 +151,20 @@ export type ChatEvent =
        * 원문(resultText)은 기록으로만 간다.
        */
       escalated?: true;
+      /**
+       * CLI 가 이 실패에 직접 단 오류 코드(2026-10-07 베타 준비 분석) — Claude 드라이버가 SDK 의
+       * `SDKAssistantMessageError`(`billing_error` · `account_on_hold` …)를 그대로 싣는다.
+       * 데몬 안의 판정 재료이고(세션이 `failure` 를 정할 때 문장보다 먼저 본다), 화면은 읽지
+       * 않는다. 없는 실패가 대부분이다.
+       */
+      errorCode?: string;
+      /**
+       * 실패의 갈래(2026-10-07) — 세션이 판정해 싣는다. `account`: 계정 · 요금제 · 크레딧 ·
+       * 조직 · 모델 접근처럼 시간이 풀어 주지 않는 실패 — 사다리를 타지 않고 곧바로 끝나며
+       * 실패 카드가 계정의 말(`이 계정으로는 AI 를 쓸 수 없어요 …`)로 선다. 개발자 알림도
+       * 나가지 않는다(`escalated` 없음) — 사용자 자신의 계정이라 개발자가 풀 일이 아니다.
+       */
+      failure?: "account";
     }
   | {
       kind: "retry";
@@ -301,7 +315,19 @@ export type ChatEvent =
       note?: string;
       sent?: SubmitSent;
     }
-  | { kind: "cycle.merged"; at: string; pr: number }
+  /**
+   * 반영 — 개발자가 병합했다. 세 선택 필드(2026-10-08 베타 준비 분석 · A2b)는 성취 카드의 재료다: `title` 은 제출한 일을
+   * 부르는 말(요청 제목에서 종류 접두어와 작성자 꼬리를 뗀 것, 80자까지), `days` 는 제출부터 병합까지 달력으로 며칠
+   * (0 = 같은 날), `screens` 는 이번 작업이 만진 화면의 수다. 모르면 싣지 않고, 옛 사건에는 없다 — 없으면 얇은 한 줄로 읽는다.
+   */
+  | {
+      kind: "cycle.merged";
+      at: string;
+      pr: number;
+      title?: string;
+      days?: number;
+      screens?: number;
+    }
   /**
    * 넘긴 요청이 병합 없이 닫혔다(반려, PLAN L4) — 작업은 새 사이클 브랜치로
    * 이월됐으므로 대화록은 한 줄로 그 사실만 말한다.
@@ -337,6 +363,12 @@ export interface GateChecked {
   screens: number;
   /** 열어 본 화면이 모두 휴대폰 폭으로도 열려 문서가 옆으로 밀리는지까지 봤다. */
   phone: boolean;
+  /**
+   * 이 턴이 바꾼 TypeScript 파일의 타입 검사가 돌았고 그 파일들에서 오류가 없었다(2026-10-07 베타 준비 분석).
+   * 돌지 못했거나(바꾼 TypeScript 파일이 없음 · 시간 안에 끝나지 않음 · 레포에 타입 검사가 없음) 오류가 있었으면 칸이 없다.
+   * 레포의 린트 · 테스트 · 빌드는 이 값과 무관하다.
+   */
+  types?: boolean;
 }
 
 export type GateResult =

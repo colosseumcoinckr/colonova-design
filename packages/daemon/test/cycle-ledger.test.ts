@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 // `../dist` 임포트인 이유: cycle-ledger 는 형제(budgets)를 `.js` 지정자로
 // 부른다 — src 직접 로드는 그 지정을 못 고친다(revive-budget 와 같은 길).
+import { BUDGETS } from "../dist/budgets.js";
 import {
   type CycleLedger,
   cycleLedgerFile,
@@ -278,6 +279,33 @@ test("옛 reject:<pr> 표식 — 읽을 때 notices 에서 걷어 reviews[pr].re
   assert.deepEqual(parseLedger(JSON.parse(JSON.stringify(parsed))), parsed);
 });
 
+test("권한 · 한도 분류는 원장을 다시 읽어도 남는다 — 제출 의도와 밀린 푸시 둘 다(2026-10-07)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "cycle-kinds-"));
+  const file = join(dir, "cycle.json");
+  for (const kind of ["permission", "limit"] as const) {
+    const ledger = fullLedger();
+    ledger.submit = { requestedAt: iso(T0), via: "button", attempts: 1, lastError: kind };
+    ledger.push = {
+      behindSince: iso(T0),
+      attempts: 1,
+      nextAttemptAt: iso(T0),
+      lastError: kind,
+    };
+    writeFileSync(file, JSON.stringify(ledger));
+    const back = readLedger(file);
+    assert.equal(back.submit?.lastError, kind);
+    assert.equal(back.push?.lastError, kind);
+  }
+  // 모르는 분류는 그대로 믿지 않는다 — 제출 의도는 분류만 버리고, 푸시는 통째로 버린다(옛 · 깨진 원장).
+  const odd = fullLedger();
+  odd.submit = { requestedAt: iso(T0), via: "button", attempts: 1 };
+  writeFileSync(
+    file,
+    JSON.stringify({ ...odd, submit: { ...odd.submit, lastError: "elsewhere" } }),
+  );
+  assert.equal(readLedger(file).submit?.lastError, undefined);
+});
+
 test("푸시 실패는 백오프(30초에서 두 배, 최대 10분)로 다음 시도를 미룬다", () => {
   let ledger = notePushBehind(emptyLedger(), T0);
   assert.deepEqual(ledger.push, { behindSince: iso(T0), attempts: 0, nextAttemptAt: iso(T0) });
@@ -296,6 +324,24 @@ test("푸시 실패는 백오프(30초에서 두 배, 최대 10분)로 다음 �
 
   const ok = recordPushResult(ledger, { ok: true }, T0 + 120_000);
   assert.equal(ok.push, null); // 올라가면 밀림 · 백오프 · 오류 흔적을 함께 지운다
+});
+
+test("한도(limit)로 밀린 푸시는 한 분에서 시작해 두 배씩, 최대 10분 — 제출의 한도 사다리와 한 상수(2026-10-08 F14)", () => {
+  let ledger = notePushBehind(emptyLedger(), T0);
+  const gaps: number[] = [];
+  for (let i = 0; i < 6; i += 1) {
+    const at = T0 + i * 1_000_000;
+    ledger = recordPushResult(ledger, { ok: false, error: "limit" }, at);
+    gaps.push(Date.parse(ledger.push?.nextAttemptAt ?? "") - at);
+  }
+  assert.deepEqual(gaps, [60_000, 120_000, 240_000, 480_000, 600_000, 600_000]);
+  assert.equal(gaps[0], BUDGETS.limitRetry.baseMs, "제출 쪽 한도 사다리와 같은 시작");
+  assert.equal(ledger.push?.lastError, "limit");
+  // 한도가 아닌 실패는 30초 시작 그대로다.
+  for (const error of ["network", "auth", "permission", "rejected", "other"] as const) {
+    const next = recordPushResult(emptyLedger(), { ok: false, error }, T0);
+    assert.equal(Date.parse(next.push?.nextAttemptAt ?? "") - T0, 30_000, error);
+  }
 });
 
 test("push 가 없던 원장의 실패는 지금을 밀림 기준점으로 찍는다", () => {

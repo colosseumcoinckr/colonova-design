@@ -18,7 +18,7 @@ import { markTurn, readTurn } from "@colonova-design/protocol";
 import type { AgentSession, DriverHooks, PermissionVerdict, ToolClass } from "./agent/driver.js";
 import { GIT_WRITE_REFUSAL, gitWriteDenied } from "./git-guard.js";
 import { sanitizeText } from "./log.js";
-import { containsPath, realpathBestEffort } from "./paths.js";
+import { realpathBestEffort } from "./paths.js";
 import { permissionLog } from "./permission-log.js";
 import { pinEffortFor } from "./pin-effort.js";
 import type { QueueDisk, StoredSend } from "./queue-store.js";
@@ -28,6 +28,13 @@ import {
   RETRY_DELAYS_MS,
   type RetryDecision,
 } from "./turn-retry.js";
+import { withViewingLine } from "./viewing-line.js";
+import {
+  bashCommandVerdict,
+  OUTSIDE_COMMAND_REFUSAL,
+  OUTSIDE_WRITE_REFUSAL,
+  pathWritable,
+} from "./write-guard.js";
 
 /**
  * A send refusal the planner can read. The daemon's own guards answer in
@@ -42,9 +49,7 @@ export function asPlannerFacingError(error: unknown): Error {
   if (/[\p{Script=Hangul}]/u.test(detail))
     return error instanceof Error ? error : new Error(detail);
   console.error(`[session] 전송이 거절됐습니다: ${sanitizeText(detail)}`);
-  return new Error(
-    "에이전트와의 대화가 방금 끊겼습니다 — 입력창의 말을 잠시 뒤 다시 보내면 이어집니다.",
-  );
+  return new Error("AI와의 대화가 방금 끊겼어요 — 입력창의 말을 잠시 뒤 다시 보내면 이어져요.");
 }
 
 /**
@@ -216,8 +221,10 @@ export interface SessionEvents {
  *
  * - `allow` — write it without asking (the repo's own working set).
  * - `ask`   — surface a permission card, as any non-edit tool would.
- * - `deny`  — refuse outright, with a Korean reason the agent can read. Used for
- *   files the tool owns and a session must never rewrite.
+ * - `deny`  — refuse outright, with a Korean reason the agent can read. The
+ *   repo policy answers it for everything outside the clone and the temp
+ *   folders (write-guard.ts — 베타 준비 분석 2026-10-07); nobody can answer a
+ *   card there, since every session runs bypassPermissions.
  */
 type WriteDecision = "allow" | "ask" | "deny";
 export type WritePolicy = (absolutePath: string) => WriteDecision;
@@ -545,9 +552,10 @@ export class Session {
     // cwd makes it read its own workspace as foreign and card every Read in it.
     this.cwd = realpathBestEffort(options.cwd);
     // Containment is the floor, not the whole rule: a policy may refuse files
-    // inside the cwd itself.
+    // inside the cwd itself. The default reads the same function the Claude
+    // PreToolUse hook does (write-guard.ts), so the two never disagree.
     this.writePolicy =
-      options.writePolicy ?? ((path) => (containsPath(this.cwd, path) ? "allow" : "ask"));
+      options.writePolicy ?? ((path) => (pathWritable(path, { cwd: this.cwd }) ? "allow" : "deny"));
     this.selectedModel = options.launch?.model ?? null;
     this.selectedEffort = options.launch?.effort ?? null;
     this.effortExplicit = options.launch?.effort !== undefined;
@@ -652,12 +660,17 @@ export class Session {
           rateLimit: this.lastRateLimit,
           now: Date.now(),
           delays: this.retryDelays,
+          errorCode: event.errorCode ?? null,
         });
         if (
           decision.action === "stop" &&
           (decision.reason === "exhausted" || decision.reason === "limit-no-reset")
         ) {
           event = { ...event, escalated: true };
+        } else if (decision.action === "stop" && decision.reason === "account") {
+          // 계정류(2026-10-07): 카드가 계정의 말로 서도록 갈래를 싣는다. 개발자 알림 표식
+          // (escalated)은 싣지 않는다 — 사용자 자신의 계정이라 개발자가 풀 일이 아니다.
+          event = { ...event, failure: "account" };
         }
       }
       // 턴 끝을 먼저 알리고, 그 다음에 대기 줄을 푼다 — 다음 턴은 앞
@@ -816,10 +829,12 @@ export class Session {
   /**
    * 실패한 턴을 스스로 다시 시도한다 — 판정은 classifyRetry(순수), 실행은
    * 이곳. 상한은 retryDelays 의 길이가 지키고, 사람의 중지 · 닫힘은 예약을
-   * 즉시 거둔다. 알림은 조용히: 재시도 사실만 기록에 남는다. stop 의 세 갈래
+   * 즉시 거둔다. 알림은 조용히: 재시도 사실만 기록에 남는다. stop 의 네 갈래
    * (PLAN L12) — 로그인 만료는 상태를 기다리고(auth), 길이 초과는 요약 뒤 한
-   * 번 다시(compact), 나머지(사다리 소진 · 한도 미회복)는 개발자 알림과 함께
-   * 실패 카드가 사람의 손으로 남는다.
+   * 번 다시(compact), 계정류는 아무것도 더 하지 않고(account — 다시 보내지도
+   * 개발자에게 알리지도 않는다: 사용자의 계정이 풀 일이고, 카드가 그렇게 말한다),
+   * 나머지(사다리 소진 · 한도 미회복)는 개발자 알림과 함께 실패 카드가 사람의
+   * 손으로 남는다.
    */
   private scheduleSelfRetry(resultText: string | null, decision?: RetryDecision): void {
     if (this.closed || this.crashed || this.aborted) return;
@@ -840,6 +855,7 @@ export class Session {
     if (verdict.action === "stop") {
       if (verdict.reason === "auth") this.stallOnAuth();
       else if (verdict.reason === "permanent") this.tryCompactRetry(item);
+      else if (verdict.reason === "account") return;
       else this.events.onTurnFailed?.(this.id, resultText);
       return;
     }
@@ -912,7 +928,7 @@ export class Session {
     this.events.onEvent(this.id, {
       kind: "notice",
       level: "info",
-      text: "로그인이 돌아왔습니다 — 방금 하던 일을 이어서 합니다.",
+      text: "로그인이 돌아왔어요 — 방금 하던 일을 이어서 해요.",
     });
     this.selfRedeliver();
   }
@@ -932,7 +948,7 @@ export class Session {
     this.events.onEvent(this.id, {
       kind: "notice",
       level: "info",
-      text: "대화가 길어져 정리한 뒤 이어서 합니다 — 잠시만 기다려 주세요.",
+      text: "대화가 길어져 정리한 뒤 이어서 해요 — 잠시만 기다려 주세요.",
     });
     this.turnStartedAt = Date.now();
     // 새 턴의 답변 문장은 여기서 시작한다 (PLAN L9).
@@ -1132,9 +1148,10 @@ export class Session {
   /**
    * The hub's single permission choke point — the driver's `decidePermission`
    * hook. Edit-class tools are answered by the session's `writePolicy`:
-   * silent for the repo's own working set, a card for anything ambiguous, a
-   * refusal for the files the tool owns. Everything else goes to the planner
-   * as a permission (or question) card.
+   * silent for the repo's own working set, a refusal for anything outside the
+   * clone and the temp folders. Shell commands meet the git-write refusal and
+   * the obvious-destruction refusal. Everything else goes to the planner as a
+   * permission (or question) card.
    */
   private decidePermission(
     tool: ToolClass,
@@ -1150,6 +1167,10 @@ export class Session {
     if (tool.kind === "exec" && gitWriteDenied(command)) {
       return Promise.resolve({ behavior: "deny", message: GIT_WRITE_REFUSAL });
     }
+    // 뻔한 파괴(sudo · 클론 밖의 rm -r · 리다이렉션)도 같은 자리에서 — 훅과 같은 판정이다(write-guard).
+    if (tool.kind === "exec" && !bashCommandVerdict(command, { cwd: this.cwd }).allow) {
+      return Promise.resolve({ behavior: "deny", message: OUTSIDE_COMMAND_REFUSAL });
+    }
     if (tool.kind === "edit") {
       const paths = tool.paths ?? [];
       if (paths.length > 0) {
@@ -1158,12 +1179,8 @@ export class Session {
         const decisions = paths.map((value) =>
           this.writePolicy(realpathBestEffort(isAbsolute(value) ? value : join(this.cwd, value))),
         );
-        const denied = decisions.indexOf("deny");
-        if (denied !== -1) {
-          return Promise.resolve({
-            behavior: "deny",
-            message: `${paths[denied]} 은(는) 도구가 관리하는 파일이라 수정할 수 없습니다.`,
-          });
+        if (decisions.includes("deny")) {
+          return Promise.resolve({ behavior: "deny", message: OUTSIDE_WRITE_REFUSAL });
         }
         if (decisions.every((decision) => decision === "allow")) {
           return Promise.resolve({ behavior: "allow", updatedInput: input });
@@ -1565,9 +1582,12 @@ export class Session {
           explicit: this.effortExplicit,
         });
     if (!replay) this.deliveredAny = true;
+    // AI 가 읽는 글에만 보던 화면 한 줄이 붙는다(2026-10-07 베타 준비 분석) — `text` 는 사용자의 말
+    // 그대로라 에코 · 제목 · 보관 제목 · 통계는 이 줄을 모른다. 핀이 있는 턴은 화면을 직접 가리킨다.
+    const agentText = withViewingLine(text, item.viewing, pins.length > 0);
     const send = (): void => {
       if (this.closed || this.interrupting || this.lastDelivered !== item) return;
-      void this.agent?.send({ text, attachments }).catch((error: unknown) => {
+      void this.agent?.send({ text: agentText, attachments }).catch((error: unknown) => {
         // 전송이 살아 있어도 보내기가 거절될 수 있다(codex 의 turn/start 거절,
         // 방금 닫힌 SDK 입력 큐). 삼키면 turnStartedAt 만 남고 turn.end 는
         // 영원히 오지 않는다 — 시계가 도는 죽은 턴. 여기서 스스로 턴을 닫는다:
@@ -1576,7 +1596,7 @@ export class Session {
         this.events.onEvent(this.id, {
           kind: "notice",
           level: "error",
-          text: `${this.providerLabel}에게 말을 전달하지 못했습니다 — 다시 보내 주세요.${
+          text: `${this.providerLabel}에게 말을 보내지 못했어요 — 다시 보내 주세요.${
             detail ? `\n\n${detail.slice(0, 200)}` : ""
           }`,
         });
@@ -1652,7 +1672,7 @@ export class Session {
     const { text, attachments, pins } = item;
     if (pins.length > 0) this.events.onPinned?.(this.id, pins);
     void this.agent
-      ?.steer?.({ text, attachments })
+      ?.steer?.({ text: withViewingLine(text, item.viewing, pins.length > 0), attachments })
       .then(() => this.echoSend(item))
       .catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
@@ -1662,7 +1682,7 @@ export class Session {
         this.events.onEvent(this.id, {
           kind: "notice",
           level: "warn",
-          text: `도는 턴에 실지 못해 대기 줄에 두었습니다 — 턴이 끝나면 나갑니다.${
+          text: `지금 도는 답에 바로 보내지 못했어요 — 답이 끝나면 바로 보낼게요.${
             detail ? `\n\n${detail.slice(0, 200)}` : ""
           }`,
         });

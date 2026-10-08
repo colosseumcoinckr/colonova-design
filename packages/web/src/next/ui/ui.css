@@ -533,6 +533,26 @@
   animation: nx-toast-text 0.4s 0.08s ease-out both;
 }
 
+/* 단추 — 토스트 바탕이 잉크색이라 뒤집어 입는다. 누르면 일을 하고 토스트는 닫힌다(2026-10-07 서비스가 떴어요). */
+.nx .nx-toast-act {
+  position: relative;
+  flex: none;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 16%, transparent);
+  color: var(--bg);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition-property: background-color;
+}
+
+.nx .nx-toast-act:hover,
+.nx .nx-toast-act:focus-visible {
+  background: color-mix(in srgb, var(--bg) 28%, transparent);
+}
+
 /* 치우는 손 — 손이나 초점이 얹혀 있을 때만 또렷하다(터치는 늘). 토스트 바탕이 잉크색이라 글자는 뒤집어 입는다. */
 .nx .nx-toast-x {
   position: relative;

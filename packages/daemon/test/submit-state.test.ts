@@ -1,10 +1,11 @@
 // PLAN-UI U13 의 순수 시험 — 제출 국면의 판정(deriveSubmitPhase) · 기록의 전이
-// (advanceSubmitTrail) · 실패 분류(classifySubmitError). `../dist` 임포트인
+// (advanceSubmitTrail) · 실패 분류(classifySubmitError · classifyGitHubFailure). `../dist` 임포트인
 // 이유는 cycle-ledger.test.ts 와 같다.
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   advanceSubmitTrail,
+  classifyGitHubFailure,
   classifySubmitError,
   deriveSubmitPhase,
   SUBMIT_LOG_TEXT,
@@ -171,6 +172,223 @@ test("advanceSubmitTrail — 성공 없이 idle 로 돌아가면(보낼 것이 �
   const step = advanceSubmitTrail(trail, { phase: "idle", attempts: 0 }, AT);
   assert.equal(step.trail.phase, "idle");
   assert.deepEqual(step.trail.log, []);
+});
+
+// ————— 인증 · 권한 · 한도 (2026-10-07 베타 준비 분석) —————
+// 403 을 전부 `연결 코드 만료` 로 읽으면 개발자가 권한을 틀리게 만든 초대장에서 사용자가 새 초대 파일을
+// 받아도 같은 문장을 본다. 갈래마다 사람이 하는 일이 다르다: auth → 새 초대 파일 · permission → 개발자가 코드의
+// 권한을 고침 · limit → 시간이 푼다(막힘 아님).
+
+test("deriveSubmitPhase — 권한 부족은 예산보다 먼저 막힌다(첫 실패 · 단계도 푸시도)", () => {
+  assert.deepEqual(
+    deriveSubmitPhase({ ...base, intent: intent({ attempts: 1, lastError: "permission" }) }),
+    { phase: "blocked", attempts: 1, lastError: "permission", blockedBy: "permission" },
+  );
+  const push = {
+    behindSince: AT,
+    attempts: 2,
+    nextAttemptAt: AT,
+    lastError: "permission" as const,
+  };
+  assert.deepEqual(deriveSubmitPhase({ ...base, push, intent: intent() }), {
+    phase: "blocked",
+    attempts: 2,
+    lastError: "permission",
+    blockedBy: "permission",
+  });
+  // 인증이 권한보다 앞선다 — 코드가 만료됐으면 새 초대 파일이 먼저다.
+  assert.equal(
+    deriveSubmitPhase({
+      ...base,
+      authExpired: true,
+      intent: intent({ attempts: 1, lastError: "permission" }),
+    }).blockedBy,
+    "auth",
+  );
+});
+
+test("deriveSubmitPhase — 한도는 막힘이 아니라 retrying 이다(예산이 아직 안 다했을 때)", () => {
+  assert.deepEqual(
+    deriveSubmitPhase({ ...base, intent: intent({ attempts: 3, lastError: "limit" }) }),
+    { phase: "retrying", attempts: 3, lastError: "limit" },
+  );
+  // 한 시간 넘게 이어져 개발자 알림이 선 뒤(예산의 표식)에야 막힘이다 — 그때도 인증 · 권한이 아니다.
+  const escalated = deriveSubmitPhase({
+    ...base,
+    budgets: { "submit:pr": { spent: 5, firstAt: AT, lastAt: AT, escalated: true } },
+    intent: intent({ attempts: 5, lastError: "limit" }),
+  });
+  assert.equal(escalated.phase, "blocked");
+  assert.equal(escalated.blockedBy, "developer-notified");
+});
+
+test("advanceSubmitTrail — 권한 막힘은 새로 들어설 때 한 번 permission 으로 알린다", () => {
+  const view = {
+    phase: "blocked" as const,
+    attempts: 1,
+    lastError: "permission" as const,
+    blockedBy: "permission" as const,
+  };
+  const step = advanceSubmitTrail(undefined, view, AT);
+  assert.equal(step.blocked, "permission");
+  assert.deepEqual(
+    step.trail.log.map((line) => line.text),
+    [SUBMIT_LOG_TEXT.blocked],
+  );
+  const again = advanceSubmitTrail(step.trail, view, AT);
+  assert.equal(again.changed, false);
+  assert.equal(again.blocked, null);
+});
+
+test("classifyGitHubFailure — 같은 403 도 문장이 갈래를 정한다", () => {
+  const table: Array<[string, string | null]> = [
+    // 인증 — 새 초대 파일이 푼다
+    ["제출에 실패했습니다 — GitHub 401: Bad credentials", "auth"],
+    ["fatal: Authentication failed for 'https://github.com/org/app.git/'", "auth"],
+    ["remote: Invalid username or password.", "auth"],
+    ["git@github.com: Permission denied (publickey).", "auth"],
+    ["토큰이 유효하지 않거나 만료됐습니다 — 새 토큰을 넣어 주세요.", "auth"],
+    // 권한 — 개발자가 코드의 권한을 고쳐야 푼다
+    [
+      "제출에 실패했습니다 — GitHub 403: Resource not accessible by personal access token",
+      "permission",
+    ],
+    ["remote: Permission to org/app.git denied to colonova-bot.", "permission"],
+    [
+      "fatal: unable to access 'https://github.com/org/app.git/': The requested URL returned error: 403",
+      "permission",
+    ],
+    [
+      "제출에 실패했습니다 — GitHub 403: Resource protected by organization SAML enforcement.",
+      "permission",
+    ],
+    ["제출에 실패했습니다 — GitHub 403: Must have admin rights to Repository.", "permission"],
+    // 비공개 레포는 권한이 없어도 404 로 답한다
+    ["제출에 실패했습니다 — GitHub 404: Not Found", "permission"],
+    // 한도 — 시간이 푼다(403 · 429 둘 다). 한도의 403 은 권한 문장이 아니다
+    ["제출에 실패했습니다 — GitHub 403: API rate limit exceeded for user ID 1.", "limit"],
+    [
+      "제출에 실패했습니다 — GitHub 403: You have exceeded a secondary rate limit. Please wait a few minutes",
+      "limit",
+    ],
+    ["제출에 실패했습니다 — GitHub 403: You have triggered an abuse detection mechanism", "limit"],
+    ["제출에 실패했습니다 — GitHub 429: Too Many Requests", "limit"],
+    // 그 밖
+    ["fetch failed", null],
+    ["요청 열기 실패 (422)", null],
+    ["제출에 실패했습니다 — GitHub 422: Validation Failed — A pull request already exists", null],
+    ["error: cannot open .git/FETCH_HEAD: Permission denied", null],
+  ];
+  for (const [text, expected] of table) {
+    assert.equal(classifyGitHubFailure(text), expected, text);
+  }
+});
+
+test("classifyGitHubFailure — 레포 · 브랜치 · 파일 이름의 숫자와 낱말은 상태가 아니다(2026-10-08 F11)", () => {
+  const table: Array<[string, string | null]> = [
+    // 이름이 한도로 읽히던 것 — 주소의 `abuse` · `429`
+    [
+      "fatal: unable to access 'https://github.com/acme/abuse-reports.git/': The requested URL returned error: 403",
+      "permission",
+    ],
+    ["fatal: Authentication failed for 'https://github.com/acme/app-429.git/'", "auth"],
+    ["remote: Permission to acme/abuse-reports.git denied to colonova-bot.", "permission"],
+    // 이름이 권한으로 읽히던 것 — 브랜치 · 경로의 `403`
+    [
+      "제출에 실패했습니다 — GitHub 422: Validation Failed — A pull request already exists for acme:fix/403-page.",
+      null,
+    ],
+    ["error: pathspec 'src/pages/403.tsx' did not match any file(s) known to git", null],
+    ["error: src refspec fix-403 does not match any", null],
+    ["fatal: invalid reference: abuse-reports", null],
+    // 상태 자리의 숫자는 그대로 센다 — 앱의 머리 · git 의 returned error · HTTP · 괄호
+    ["error: RPC failed; HTTP 403 curl 22 The requested URL returned error: 403", "permission"],
+    [
+      "제출에 실패했습니다 — GitHub 403: Resource not accessible by personal access token",
+      "permission",
+    ],
+    ["제출에 실패했습니다 — GitHub 401: Bad credentials", "auth"],
+    [
+      "fatal: unable to access 'https://github.com/o/r.git/': The requested URL returned error: 429",
+      "limit",
+    ],
+    ["< HTTP/2 429", "limit"],
+    ["401 Unauthorized", "auth"],
+    ["요청 열기 실패 (403)", "permission"],
+    // 진짜 한도의 말은 주소가 섞여도 한도다
+    [
+      "제출에 실패했습니다 — GitHub 403: You have exceeded a secondary rate limit. See https://docs.github.com/en/rest/guides/best-practices",
+      "limit",
+    ],
+    // 문장의 낱말은 그대로 — 공백 든 따옴표 글 · 아포스트로피는 문장이다
+    ['{"message":"Bad credentials","status":"401"}', "auth"],
+    ["You don't have permission, that's that — retry-after: 60", "limit"],
+    ["page 403 of the report", null],
+  ];
+  for (const [text, expected] of table) {
+    assert.equal(classifyGitHubFailure(text), expected, text);
+  }
+  // 두 분류기가 같은 잣대다 — 이름의 숫자가 막힘 · 한 시간 재시도로 이어지지 않는다.
+  assert.equal(
+    classifySubmitError("fatal: Authentication failed for 'https://github.com/acme/app-429.git/'"),
+    "auth",
+  );
+  assert.equal(
+    classifySubmitError(
+      "제출에 실패했습니다 — GitHub 422: A pull request already exists for acme:fix/403-page.",
+    ),
+    "other",
+  );
+});
+
+test("classifyGitHubFailure — 긴 글에서도 선형이다: 공백 없는 10만 자 줄이 데몬을 멈추지 않는다(2026-10-08 F11)", () => {
+  // 이름을 지우는 정규식이 낱말 안을 되돌아가면 10만 자 한 줄에서 30초가 걸렸다 — 낱말 단위로 한 번만 본다.
+  // 여유를 크게 잡은 한계다(실제는 몇 ms) — 부하 속의 흔들림이 아니라 제곱으로 느려지는 것을 잡는다.
+  const long = [
+    "a".repeat(100_000),
+    "a-".repeat(50_000),
+    `error${" ".repeat(100_000)}x`,
+    `${"x/".repeat(50_000)}403`,
+  ];
+  for (const text of long) {
+    const startedAt = Date.now();
+    assert.equal(classifyGitHubFailure(text), null);
+    assert.ok(Date.now() - startedAt < 3_000, "긴 글을 선형 시간에 훑는다");
+  }
+  // 긴 글의 끝에 붙은 진짜 거절 문장은 그대로 읽힌다.
+  assert.equal(
+    classifyGitHubFailure(
+      `${"a".repeat(100_000)}\nfatal: Authentication failed for 'https://github.com/o/r.git/'`,
+    ),
+    "auth",
+  );
+});
+
+test("classifySubmitError — 인증 · 권한 · 한도가 갈린다(같은 403 이 전부 auth 가 아니다)", () => {
+  assert.equal(
+    classifySubmitError(
+      "제출에 실패했습니다 — GitHub 403: Resource not accessible by personal access token",
+    ),
+    "permission",
+  );
+  assert.equal(classifySubmitError("제출에 실패했습니다 — GitHub 401: Bad credentials"), "auth");
+  assert.equal(
+    classifySubmitError(
+      "제출에 실패했습니다 — GitHub 403: You have exceeded a secondary rate limit.",
+    ),
+    "limit",
+  );
+  // 푸시 쪽 문장도 같은 잣대다 — git 의 403 은 권한, 인증 실패는 인증.
+  assert.equal(
+    classifySubmitError(
+      "fatal: unable to access 'https://github.com/org/app.git/': The requested URL returned error: 403",
+    ),
+    "permission",
+  );
+  assert.equal(
+    classifySubmitError("fatal: Authentication failed for 'https://github.com/org/app.git/'"),
+    "auth",
+  );
 });
 
 test("classifySubmitError — 네 분류", () => {

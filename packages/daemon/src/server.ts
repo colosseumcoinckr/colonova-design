@@ -2,7 +2,7 @@ export { daemonOwnedPorts } from "./preview-claim.js";
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { homedir } from "node:os";
+import { arch, homedir, release } from "node:os";
 import {
   type ClientMessage,
   type ColoNovaDesignCommentTarget,
@@ -54,7 +54,9 @@ import {
 } from "./credentials.js";
 import { readHeadSha, screensOfTurn } from "./cycle-screens.js";
 import { AGENT_NOTICE_KEY_PREFIX, DeveloperNotice, describeProblem } from "./developer-notice.js";
+import { startupLogFields } from "./diagnostics.js";
 import { RequestRouter } from "./dispatch.js";
+import { EditAnnouncer } from "./edit-screens.js";
 import { buildStatus, resolveClaudeExecutable } from "./environment.js";
 import { Escalation } from "./escalation.js";
 import { ensureGitGuardHooks } from "./git-guard.js";
@@ -63,6 +65,7 @@ import { GitHubBridge } from "./github-bridge.js";
 import { expiryJudgement, expiryNoticeStep } from "./github-expiry.js";
 import { HandoffPreviews } from "./handoff-preview.js";
 import { createFileLogger, type DaemonLogger } from "./log.js";
+import { LOGIN_WALL_NOTICE } from "./login-wall.js";
 import { MachineTurns } from "./machine-provider.js";
 import { MachineSetting } from "./machine-setting.js";
 import { type DaemonNotice, noticeForState } from "./notices.js";
@@ -113,6 +116,7 @@ export type {
   BrowserDriver,
   BrowserDriverFactory,
   PreviewA11y,
+  PreviewArrival,
   PreviewAxNode,
   PreviewCapture,
   PreviewConsoleLine,
@@ -605,6 +609,8 @@ export class DaemonServer {
   private readonly loginWatchers = new Map<string, NodeJS.Timeout>();
   /** 턴 통계 (AI 작업 시간 측정) — 종류와 숫자만 남기는 하루 JSONL. */
   private readonly stats: TurnStats;
+  /** 라이브감(2026-10-08) — AI 가 지금 고치는 화면을 턴당 화면당 한 번 알린다. 선로 전용, 로그에 남기지 않는다. */
+  private readonly editAnnouncer: EditAnnouncer;
   /**
    * 증분 타입 검사 (PLAN-HARNESS §3.C) — `repo_diagnostics` 의 몸. 첫 턴의
    * prewarm 이 가장 느린 첫 검사를 AI 가 생각하는 동안 끝낸다.
@@ -693,6 +699,8 @@ export class DaemonServer {
             );
           // 턴 통계 — 아래의 return 들보다 먼저: 모든 사건이 새겨져야 한다.
           this.stats.observe(sessionId, event);
+          // 라이브감(2026-10-08): 편집 도구가 끝난 파일이 알려진 화면 하나에 이어지면 `session.editing` 으로 알린다.
+          this.editAnnouncer.observe(sessionId, event);
           this.broadcast({ type: "session.event", sessionId, event });
           // 한도가 움직였다 (PLAN D100): 요금 칩이 2분 뒤에야 진실을 말하면,
           // 계획자는 이미 막힌 뒤에 그 사실을 안다. 다음 읽기를 앞당긴다 —
@@ -744,6 +752,10 @@ export class DaemonServer {
             turnDurationMs = startedAt === undefined ? undefined : Date.now() - startedAt;
           } else if (state === "closed") {
             this.notifyClockAt.delete(sessionId);
+          }
+          // 라이브감: 턴이 내려앉았거나 세션이 닫혔으면 알린 화면의 장부를 버린다(turn.end 를 못 본 끝까지 덮는다).
+          if (state === "idle" || state === "error" || state === "closed") {
+            this.editAnnouncer.forget(sessionId);
           }
           // 카드 대기의 시계 (턴 통계): waiting_* 진입에 놓고 벗어날 때 구간을
           // 통계에 더한다. 세션이 닫혀도 else 가 지우므로 시계는 남지 않는다.
@@ -1034,6 +1046,25 @@ export class DaemonServer {
         return usage?.totalTokens ?? null;
       },
     });
+    this.editAnnouncer = new EditAnnouncer({
+      where: (sessionId) => {
+        const workspaces = this.workspaceOfSession(sessionId);
+        if (workspaces === null) return null;
+        const repoRoot = workspaces.paths.repoRoot;
+        return {
+          roots: [...new Set([repoRoot, realpathBestEffort(repoRoot)])],
+          projectRoot: workspaces.paths.root,
+        };
+      },
+      readRows: (projectRoot) => readScreenMap(projectRoot),
+      emit: (sessionId, screen) =>
+        this.broadcast({
+          type: "session.editing",
+          sessionId,
+          route: screen.route,
+          ...(screen.title === undefined ? {} : { title: screen.title }),
+        }),
+    });
   }
 
   async start(): Promise<void> {
@@ -1278,6 +1309,14 @@ export class DaemonServer {
       host: bound.address,
       port: bound.port,
       protocolVersion: PROTOCOL_VERSION,
+      // 베타 관측(2026-10-07): 이 줄이 어느 앱 · 어느 OS 의 것인지 — 버전 · 이름 · 숫자뿐이다.
+      ...startupLogFields({
+        appVersion: this.config.appVersion,
+        platform: process.platform,
+        osRelease: release(),
+        arch: arch(),
+        nodeVersion: process.versions.node,
+      }),
     });
   }
 
@@ -1556,7 +1595,12 @@ export class DaemonServer {
     void this.drivers.runGate(sessionId, turnDurationMs).then(
       (outcome) => {
         if (outcome.status === "ok" && outcome.opened > 0) {
-          this.gateChecked.set(sessionId, { screens: outcome.opened, phone: outcome.phone });
+          this.gateChecked.set(sessionId, {
+            screens: outcome.opened,
+            phone: outcome.phone,
+            // 타입 검사가 돌았고 오류가 없었다 — 돌지 않았으면(칸이 없음) 말하지 않는다(2026-10-07 베타 준비 분석).
+            ...(outcome.typeErrors === 0 ? { types: true } : {}),
+          });
         }
         this.stats.noteGateCheck(sessionId, {
           ms: Date.now() - gateStart,
@@ -2247,6 +2291,11 @@ export class DaemonServer {
     const origin = new URL(previewUrl).origin;
     const screens: Array<{
       url: string;
+      /**
+       * 열었더니 로그인 화면이었다(2026-10-07 베타 준비 분석) — AI 가 읽는 한 문장이다. 이 칸이 있으면 화면을 본 것이
+       * 아니다: 문서는 멀쩡히 로드됐지만 요청한 화면이 아니라 그 앞의 벽이다.
+       */
+      loginWall?: string;
       settled: boolean;
       blank: boolean;
       errors: string[];
@@ -2259,6 +2308,7 @@ export class DaemonServer {
       a11y?: { unnamed: string[]; contrast: string[] };
       capture?: PreviewCapture;
     }> = [];
+    let walls = 0;
     try {
       for (const route of normalized.routes) {
         const verdict = await judgeScreen(driver, route, {
@@ -2287,6 +2337,19 @@ export class DaemonServer {
         // screen_check 만으로 확인한 화면은 장부에서 빠졌다. navigate 가
         // 남기는 것과 같은 전체 주소다.
         this.drivers.notePinned(sessionId, url);
+        if (verdict.loginWall === true) {
+          // 로그인 벽 — 화면을 확인한 것이 아니다. 조용한 `settled: true` · 빈 `errors` 가 「깨끗함」 으로 읽히지
+          // 않게 한 문장이 맨 앞에 선다. 그림은 찍지 않는다(로그인 화면의 사진은 이 화면의 것이 아니다).
+          screens.push({
+            url,
+            loginWall: LOGIN_WALL_NOTICE,
+            settled: true,
+            blank: false,
+            errors: [],
+          });
+          walls += 1;
+          continue;
+        }
         const errors = verdict.lines.map((line) => `${line.level}: ${line.text}`);
         const screen: (typeof screens)[number] = {
           url,
@@ -2316,6 +2379,8 @@ export class DaemonServer {
     } finally {
       await driver.destroy().catch(() => undefined);
     }
+    // 통계에는 횟수만 — 주소 · 경로는 남기지 않는다.
+    if (walls > 0) this.stats.noteLoginWall(sessionId, walls);
     return {
       status: 200,
       body: {

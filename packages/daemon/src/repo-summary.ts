@@ -10,6 +10,7 @@ import {
   buildCommentsSection,
   buildFilesSection,
   formatHandoffTitle,
+  scopeOfNumstat,
   summarizeChecks,
 } from "./handoff-body.js";
 import { type MachineTurn, NO_MACHINE_TURN } from "./machine-provider.js";
@@ -122,11 +123,12 @@ export class RepoSummarizer {
     // appends the section for real, so the preview is never a promise the
     // body does not keep.
     let filesSection: string | null = null;
+    // 본문의 `### 범위` 가 ⚠ 를 세우는 같은 판정 — 같은 numstat 을 같은 빌더가 읽는다(2026-10-07 베타 준비 분석).
+    let scopeRisk = false;
     try {
-      filesSection = buildFilesSection(
-        await this.core.git(["diff", "--numstat", options.range]),
-        HANDOFF_FILE_LIMIT,
-      );
+      const numstat = await this.core.git(["diff", "--numstat", options.range]);
+      filesSection = buildFilesSection(numstat, HANDOFF_FILE_LIMIT);
+      scopeRisk = (scopeOfNumstat(numstat)?.risky.length ?? 0) > 0;
     } catch {
       // A range that will not diff costs only the preview line.
     }
@@ -156,6 +158,7 @@ export class RepoSummarizer {
       shotCount: options.shotCount ?? 0,
       checksSection: checks ? buildChecksSection(checks) : null,
       checks,
+      ...(scopeRisk ? { scopeRisk: true } : {}),
     };
   }
 

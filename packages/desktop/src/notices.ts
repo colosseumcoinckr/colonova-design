@@ -35,7 +35,9 @@ export function noticeCopy(notice: DaemonNotice): {
         notice.projectName,
         notice.event === "comments"
           ? NOTICE.comments(notice.count ?? 1)
-          : NOTICE.handoff[notice.event],
+          : notice.event === "merged" && notice.title
+            ? NOTICE.mergedTitled(notice.title)
+            : NOTICE.handoff[notice.event],
       );
     case "ready":
       return titled(notice.title, NOTICE.ready);
@@ -44,9 +46,11 @@ export function noticeCopy(notice: DaemonNotice): {
         notice.title,
         notice.reason === "auth"
           ? NOTICE.submitBlocked.auth
-          : notice.reason === "network"
-            ? NOTICE.submitBlocked.network
-            : NOTICE.submitBlocked.notified,
+          : notice.reason === "permission"
+            ? NOTICE.submitBlocked.permission
+            : notice.reason === "network"
+              ? NOTICE.submitBlocked.network
+              : NOTICE.submitBlocked.notified,
       );
     case "update-done":
       return NOTICE.updateDone(notice.agent === "claude" ? "Claude Code" : "Codex", notice.version);

@@ -81,6 +81,30 @@ test("PR 초안 — 미리보기의 extras 가 본문과 같은 `확인한 것` 
   }
 });
 
+test("PR 초안 — 의존성 · 설정 · CI 파일이 바뀌면 미리보기가 그 사실을 싣고, 화면 코드만이면 칸이 없다(2026-10-07)", async () => {
+  const scene = await makeScene();
+  try {
+    const branch = "colonova-design/scope-test";
+    await scene.git(["checkout", "-b", branch]);
+    writeFileSync(join(scene.clone.path, "members.ts"), "export const searchByName = true;\n");
+    await scene.git(["add", "members.ts"]);
+    await scene.git(["commit", "-m", "이름 검색을 넣어 줘"]);
+    scene.core.setCycle(branch, null);
+    const summarizer = new RepoSummarizer(scene.core, async () => "feat: 이름 검색\n\n본문");
+
+    const plain = await summarizer.handoffDraft();
+    assert.equal("scopeRisk" in (plain.extras ?? {}), false, "화면 코드만이면 칸이 없다");
+
+    writeFileSync(join(scene.clone.path, "package.json"), '{ "name": "scope-test" }\n');
+    await scene.git(["add", "package.json"]);
+    await scene.git(["commit", "-m", "패키지를 더해 줘"]);
+    const risky = await summarizer.handoffDraft();
+    assert.equal(risky.extras?.scopeRisk, true, "본문의 `### 범위` 가 ⚠ 를 세우는 같은 판정이다");
+  } finally {
+    await scene.dispose();
+  }
+});
+
 test("PR 초안 — 큰 파일과 여러 파일의 diff는 생략 사실을 밝히고 크기를 제한한다", () => {
   const prompt = handoffPrompt(
     ["화면 추가"],

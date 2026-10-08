@@ -221,6 +221,12 @@ export interface Settings {
    * 자리다. 데스크톱이 아니면(plain 브라우저) 읽혀도 아무 일도 안 한다.
    */
   openLinksInApp: boolean;
+  /**
+   * AI 가 고치는 화면으로 따라가기(2026-10-08 라이브감 · 베타 준비 분석): AI 가 일하는 동안 미리보기가 첫 편집에서 그 화면으로
+   * 옮겨 간다 — 사용자가 이번 턴에 미리보기를 직접 만지지 않았을 때만. 기본 켜짐, 끄는 길은 설정의 AI 쪽 한 줄이다
+   * (베타 결과로 판정할 항목).
+   */
+  followEdits: boolean;
   /** Type sizes in px — the size each axis' base token resolves to. They
       land on <html> as --*-scale custom properties (px ÷ base) that the
       stylesheet's font tokens multiply by. */
@@ -257,6 +263,7 @@ const DEFAULT_SETTINGS: Settings = {
   theme: "claude",
   sendKey: "enter",
   openLinksInApp: false,
+  followEdits: true,
   uiSize: SIZE_PX.ui.base,
   contentSize: SIZE_PX.content.base,
   codeSize: SIZE_PX.code.base,
@@ -339,6 +346,8 @@ function loadSettings(): Settings {
     theme: oneOf(THEMES, storedTheme, DEFAULT_SETTINGS.theme),
     sendKey: oneOf(["enter", "modEnter"] as const, stored.sendKey, DEFAULT_SETTINGS.sendKey),
     openLinksInApp: stored.openLinksInApp === true,
+    // 꺼 둔 사람의 고름만 남는다 — 저장이 없거나 낯선 값이면 기본(켜짐).
+    followEdits: stored.followEdits !== false,
     uiSize: loadSizePx("ui", stored.uiSize ?? stored.uiScale),
     contentSize: loadSizePx("content", stored.contentSize ?? stored.contentScale),
     codeSize: loadSizePx("code", stored.codeSize ?? stored.codeScale),

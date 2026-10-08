@@ -31,6 +31,8 @@ export interface CycleScreen {
   requestId?: string;
   /** 이 작업의 턴이 자동 확인을 문제 없이 지났다는 기록 — 지도 행에서 온다(2026-10-07). */
   checked?: GateChecked;
+  /** 이 작업의 턴을 쓴 AI 의 공급자 id — 지도 행에서 온다(2026-10-07 베타 준비 분석). */
+  provider?: string;
 }
 
 /** 사이클의 커밋 하나 — git log 의 sha · 제목 · 커밋 시각. */
@@ -176,6 +178,9 @@ export function deriveCycleScreens(
         ...(row.sessionId ? { sessionId: row.sessionId } : {}),
         ...(row.requestId ? { requestId: row.requestId } : {}),
         ...(row.checked ? { checked: row.checked } : {}),
+        ...(typeof row.provider === "string" && row.provider !== ""
+          ? { provider: row.provider }
+          : {}),
         title,
         note: commit.subject,
         at: commit.at,
@@ -232,6 +237,16 @@ export class CycleScreens {
   current(): CycleScreen[] {
     if (!this.inFlight && this.keyNow() !== this.key) void this.refresh();
     return this.value;
+  }
+
+  /**
+   * 지금 한 번 읽는다 (2026-10-08 베타 준비 분석 · A2b) — 병합을 처음 본 틱이 `화면 N곳` 을 세는 길이다. 상태 방송의 캐시는
+   * 앱을 막 켠 틱에서 아직 비어 있을 수 있어 따로 읽는다. 새로 읽은 것이 비면 캐시가 가진 마지막 값을 쓴다: 합쳐 들이는 병합은
+   * 베이스가 사이클의 커밋을 삼켜 빈 목록이 된다.
+   */
+  async read(): Promise<CycleScreen[]> {
+    const fresh = await this.compute().catch(() => []);
+    return fresh.length > 0 ? fresh : this.value;
   }
 
   private keyNow(): string {

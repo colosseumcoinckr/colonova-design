@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { L } from "../labels";
 import { elapsedParts, prepProgress, prepStep } from "../lib/preview-geometry";
+import { useCopied } from "../lib/use-copied";
 import { Spin } from "../ui/icons";
 import { SmallCheckIcon } from "./icons";
 
@@ -139,10 +140,16 @@ export function StageNotice({
   kind,
   onRetry,
   since,
+  help,
 }: {
   kind: "restarting" | "fixing" | "failed";
   /** 실패의 다시 시도 — 있는 손만 건넨다(미리보기 다시 불러오기 · 준비 파이프). */
   onRetry?: () => void;
+  /**
+   * 실패의 `담당자에게 보낼 내용 복사`(2026-10-07 베타 준비 분석) — 복사할 글을 지금 모아 돌려주는 손. 진단 한 덩어리에
+   * 실패의 종류가 든다. 제출 막힘 카드의 같은 단추와 같은 말이다. 없으면 단추도 없다.
+   */
+  help?: () => Promise<string>;
   /** 고침 턴의 발사 시각(밀리초) — 없으면 이 카드가 본 순간부터 센다(2026-10-04 ux-review(2차)). */
   since?: number;
 }) {
@@ -159,6 +166,18 @@ export function StageNotice({
   // 다시 시도 — 누르면 돌며 잠긴다. 덮개가 바뀌면(다시 켜는 중 · 고치는 중으로) 거기서 끝나고, 8초가 지나도
   // 그대로 실패면 `아직 안 떠요` 를 말하며 손이 다시 열린다.
   const [retry, setRetry] = useState<"idle" | "busy" | "still">("idle");
+  // 복사 — 글은 누른 순간에 모으고(데몬에 묻는다), 모으는 동안 단추가 잠긴다.
+  const { copied, copy } = useCopied();
+  const [gathering, setGathering] = useState(false);
+  const copyHelp = async () => {
+    if (!help) return;
+    setGathering(true);
+    try {
+      copy(await help());
+    } finally {
+      setGathering(false);
+    }
+  };
   // biome-ignore lint/correctness/useExhaustiveDependencies: 덮개의 종류가 바뀌면 시도는 끝난 것이다.
   useEffect(() => {
     setRetry("idle");
@@ -200,21 +219,36 @@ export function StageNotice({
           {L.prepare.retryStill}
         </p>
       )}
-      {kind === "failed" && onRetry && (
+      {kind === "failed" && (onRetry || help) && (
         <div className="nx-prep-retry">
-          <button
-            type="button"
-            className="nx-btn"
-            disabled={retry === "busy"}
-            aria-busy={retry === "busy" || undefined}
-            onClick={() => {
-              setRetry("busy");
-              onRetry();
-            }}
-          >
-            {retry === "busy" && <Spin />}
-            {retry === "busy" ? L.prepare.retrying : L.preview.retry}
-          </button>
+          {onRetry && (
+            <button
+              type="button"
+              className="nx-btn"
+              disabled={retry === "busy"}
+              aria-busy={retry === "busy" || undefined}
+              onClick={() => {
+                setRetry("busy");
+                onRetry();
+              }}
+            >
+              {retry === "busy" && <Spin />}
+              {retry === "busy" ? L.prepare.retrying : L.preview.retry}
+            </button>
+          )}
+          {help && (
+            <button
+              type="button"
+              className="nx-btn nx-btn--ghost"
+              disabled={gathering}
+              onClick={() => void copyHelp()}
+            >
+              {copied ? L.problem.copiedHelp : gathering ? L.report.gathering : L.problem.copyHelp}
+            </button>
+          )}
+          <span className="nx-sr" role="status">
+            {copied ? L.problem.copiedHelp : ""}
+          </span>
         </div>
       )}
     </div>

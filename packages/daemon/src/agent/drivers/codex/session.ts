@@ -32,6 +32,16 @@ const EFFORT_LEVELS: readonly string[] = ["low", "medium", "high", "xhigh", "max
  * (what may it touch). 바로 진행은 `never` + `danger-full-access` — 묻는
  * 카드 없이, 샌드박스 없이. Both are per-turn params, so the pin rides every
  * `thread/*` and `turn/start`.
+ *
+ * 그래서 Codex 에는 파일 쓰기 울타리가 없다 — Claude 의 PreToolUse 훅(write-guard.ts)에 맞서는 것이
+ * 공통 규칙과 git 가드(`core.hooksPath`)뿐이다. 조사만 하고 바꾸지 않았다(베타 준비 분석 2026-10-07):
+ * 번들 Codex 0.159 의 스키마(`codex app-server generate-json-schema`)로 확인한 길은 둘이다 —
+ * (1) `thread/*` 는 `sandbox: "workspace-write"`, `turn/start` 는 `sandboxPolicy: { type:
+ * "workspaceWrite", writableRoots, networkAccess, excludeSlashTmp, excludeTmpdirEnvVar }`. `codex sandbox`
+ * 로 mac 에서 보니 클론 안 · /tmp 는 쓰이고, 홈과 클론의 `.git` 은 거절되며, 기본으로는 loopback 도
+ * 막힌다(`networkAccess: true` 가 열어 준다). (2) `hooks` 기능의 `preToolUse` 훅(명령 훅, `commandWindows`
+ * 따로). 둘 다 실제 Codex 대화(브라우저 MCP · 미리보기 · 가드 훅 경로 · AI 의 `pnpm`/corepack 캐시 쓰기)와
+ * Windows(샌드박스 준비 단계)에서 확인하지 못해 켜지 않았다 — 확인하면 이 두 상수와 turnStartParams 를 바꾼다.
  */
 const BYPASS_APPROVAL_POLICY = "never";
 const BYPASS_SANDBOX = "danger-full-access";
@@ -1067,7 +1077,7 @@ export class CodexAgentSession implements AgentSession {
   }
 
   private userInput(turn: Turn): Wire[] {
-    const prepared = prepareAttachments(this.launch.cwd, turn.attachments);
+    const prepared = prepareAttachments(this.launch.cwd, turn.attachments, turn.text);
     const input: Wire[] = [
       { type: "text", text: composeTurnText(turn.text, prepared), text_elements: [] },
     ];

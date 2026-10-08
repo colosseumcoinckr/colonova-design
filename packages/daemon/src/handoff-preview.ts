@@ -320,6 +320,7 @@ export class HandoffPreviews {
       shell: true,
       detached: !windows,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
       env: {
         ...process.env,
         ...(hint === undefined ? {} : { PORT: String(hint) }),
@@ -432,6 +433,7 @@ async function git(cwd: string, args: string[]): Promise<string | null> {
       child = spawn(executable, args, {
         cwd,
         stdio: ["ignore", "pipe", "pipe"],
+        windowsHide: true,
         env: { ...process.env, ANTHROPIC_API_KEY: undefined },
       });
     } catch {

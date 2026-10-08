@@ -10,14 +10,12 @@
  * settings files into the store and rewrites the files without them.
  */
 
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { promisify } from "node:util";
+import { run } from "./child.js";
 import { CONFIG_DIR } from "./environment.js";
-
-const run = promisify(execFile);
 
 export const CREDENTIAL_SERVICE = "ColoNova Design";
 /** The credential-store item holding the machine-wide GitHub token. */

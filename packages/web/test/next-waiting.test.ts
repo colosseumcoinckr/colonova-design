@@ -98,6 +98,6 @@ test("여정은 코멘트가 없을 때 며칠째를 말한다 — 날짜 계산
 
 test("홈의 한 줄은 지금 진행 중 묶음에 서고, 기다리는 줄은 사용자의 손이 필요한 수에 세지 않는다", () => {
   const inbox = read("../src/next/home/HomeInbox.tsx");
-  assert.match(inbox, /waitingRows\(daemon\.projects, today\)/);
+  assert.match(inbox, /waitingRows\(daemon\.projects, today, \{/);
   assert.match(inbox, /const waitCount = feed\.asking\.length \+ otherWaiting\.length;/);
 });

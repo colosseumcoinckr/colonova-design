@@ -13,7 +13,7 @@ import type { SubmitCopy } from "./submit-copy";
  * (turn-screens.ts 와 같은 규칙). 부르는 쪽은 `deriveJourney(input, L)`. 같은
  * 까닭으로 제출 상태의 문장(`submitCopy`)도 부르는 쪽이 지어 `input.submitCopy` 로 건넨다.
  */
-export type JourneyWords = Pick<typeof L, "journey" | "submit" | "shell">;
+export type JourneyWords = Pick<typeof L, "journey" | "submit" | "shell" | "afterSubmit">;
 
 /** 이번 사이클의 자리 — 세 점 중 어디에 서 있나. */
 export type JourneyCycle = "draft" | "review" | "merged";
@@ -65,6 +65,12 @@ export interface JourneyInput {
    * (2026-10-07 UX 점검 3단계). 모르면 붙이지 않는다. 계산은 `lib/waiting.ts`, 오늘의 자정은 부르는 쪽의 것이다.
    */
   waitingDays?: number | null;
+  /**
+   * 개발자가 승인했는가(`handoff.approved`) — 열린 요청에서만 뜻이 있다. 참이면 둘째 점이 지나온 점이 되고
+   * `개발자가 확인했어요` 를 말하며 셋째 점이 지금(`반영을 기다려요`)이 된다(2026-10-07 베타 준비 분석). 승인은 코멘트 수보다
+   * 큰 소식이라 둘째 점의 코멘트 수 · 며칠째를 대신한다 — 코멘트는 `이번 작업` 의 코멘트 칸이 그대로 말한다.
+   */
+  approved?: boolean;
   /** 제출 상태의 문장 — `submitCopy(repo?.submit, L)`(U13). 막힘 · 도는 중을 이것이 말한다. */
   submitCopy: SubmitCopy;
 }
@@ -101,6 +107,8 @@ export function deriveJourney(input: JourneyInput, words: JourneyWords): Journey
   // 변경이 청해졌거나 닫힌 요청은 기다리는 것이 아니다. 제출한 날(0)은 말할 것이 없다.
   const days = input.waitingDays ?? null;
   const waitingDays = handoff?.state === "open" && days !== null && days >= 1 ? days + 1 : null;
+  // 승인은 변경을 청하지 않은 열린 요청에서만 선다 — 변경 요청이 있으면 데몬이 승인을 말하지 않는다.
+  const approved = input.approved === true && handoff?.state === "open";
 
   // 병합 뒤에 쌓인 작업은 새 사이클이다 — `반영됐어요` 가 넘길 일감을 가리지 않는다.
   const cycle: JourneyCycle =
@@ -122,25 +130,31 @@ export function deriveJourney(input: JourneyInput, words: JourneyWords): Journey
           { label: J.merged, state: "todo" },
         ]
       : cycle === "review"
-        ? [
-            { label: J.submittedDone, state: "done" },
-            {
-              label:
-                comments > 0
-                  ? J.reviewingComments(comments)
-                  : waitingDays !== null
-                    ? J.reviewingDays(waitingDays)
-                    : J.reviewing,
-              state: "cur",
-            },
-            { label: J.merged, state: "todo" },
-          ]
+        ? approved
+          ? [
+              { label: J.submittedDone, state: "done" },
+              { label: words.afterSubmit.approved, state: "done" },
+              { label: words.afterSubmit.approvedWaiting, state: "cur" },
+            ]
+          : [
+              { label: J.submittedDone, state: "done" },
+              {
+                label:
+                  comments > 0
+                    ? J.reviewingComments(comments)
+                    : waitingDays !== null
+                      ? J.reviewingDays(waitingDays)
+                      : J.reviewing,
+                state: "cur",
+              },
+              { label: J.merged, state: "todo" },
+            ]
         : [
             { label: J.submittedDone, state: "done" },
             { label: J.reviewed, state: "done" },
             { label: J.mergedNow, state: "cur" },
           ];
-  const current = cycle === "draft" ? 0 : cycle === "review" ? 1 : 2;
+  const current = cycle === "draft" ? 0 : cycle === "review" && !approved ? 1 : 2;
 
   return {
     cycle,

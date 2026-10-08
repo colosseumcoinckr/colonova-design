@@ -44,18 +44,24 @@ export type DaemonNotice =
       event: "merged" | "closed" | "changes_requested" | "comments" | "replied";
       /** `comments` 만: 새로 읽힌 개수. */
       count?: number;
+      /**
+       * `merged` 만(2026-10-08 베타 준비 분석 · A2b): 반영된 일을 부르는 말 — 요청 제목에서 종류 접두어와 작성자 꼬리를 뗀 것.
+       * 모르면 없다. 사용자의 말이라 로그에는 남기지 않는다.
+       */
+      title?: string;
     }
   /** 처음 여는 프로젝트의 준비가 배경에서 끝났다(PLAN-UI U8) — 행선은 프로젝트. */
   | { kind: "ready"; slug: string; title: string }
   /**
-   * 제출이 막혔다(PLAN-UI U13) — `auth` 는 연결 코드 만료, `network` 는 이 기계의 인터넷 문제
-   * (연결되면 저절로 풀린다), `developer-notified` 는 재시도 예산을 다 써 개발자에게 알린 경우.
+   * 제출이 막혔다(PLAN-UI U13) — `auth` 는 연결 코드 만료, `permission` 은 연결 코드의 권한 부족
+   * (개발자가 코드의 권한을 고쳐야 한다 — 새 초대 파일은 해결이 아니다, 2026-10-07), `network` 는 이 기계의
+   * 인터넷 문제(연결되면 저절로 풀린다), `developer-notified` 는 재시도 예산을 다 써 개발자에게 알린 경우.
    */
   | {
       kind: "submit-blocked";
       slug: string;
       title: string;
-      reason: "auth" | "developer-notified" | "network";
+      reason: "auth" | "permission" | "developer-notified" | "network";
     }
   /** 에이전트 CLI 를 새 버전으로 바꿨다(PLAN-UI U12). */
   | { kind: "update-done"; agent: "claude" | "codex"; version: string };

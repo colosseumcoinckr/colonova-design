@@ -6,12 +6,14 @@ import type {
   SessionSummary,
   ThreadSummary,
 } from "@colonova-design/protocol";
+import { stripReplayedAttachments } from "./agent/attachments.js";
 import type { AgentDriver, ImportableSession } from "./agent/driver.js";
 import type { DriverRegistry } from "./agent/registry.js";
 import type { BrowserMcpEntry } from "./browser-launch.js";
 import { closeReplayTurns } from "./replay-turns.js";
 import { NEW_SESSION_TITLE, Session, type SessionEvents, type SessionOptions } from "./session.js";
 import { SessionIdentities } from "./session-identity.js";
+import { stripReplayedViewing } from "./viewing-line.js";
 
 /** A bounded handshake wait's tick — resolvers kept, no executor nesting. */
 function pause(ms: number): Promise<void> {
@@ -793,7 +795,12 @@ export class SessionManager {
     // 저장된 대화록에는 턴 끝이 없다 (PLAN-THREAD T-1) — 정산 줄과 `고친
     // 화면` 카드가 서는 `turn.end` 를 재생에 한 번 입힌다. `open` 은 그 세션의
     // 턴이 지금 도는 중인가 — 도는 턴을 끝난 것처럼 그리지 않게.
-    const replayed = (await driver.store?.import?.(storeId, cwd, 1000)) ?? [];
+    // 벤더 대화록은 AI 가 받은 글 그대로다 — 사용자의 말 끝에 붙은 `보던 화면` 꼬리를 떼어 에코가
+    // 사용자의 말만 말하게 한다(2026-10-07 베타 준비 분석). 첨부 섹션도 같다(2026-10-08 검토 · F10) —
+    // 경로와 안내 문장은 AI 에게 가는 글이고, 사용자는 그림 수 · 파일 이름 칸으로 본다.
+    const replayed = stripReplayedViewing(
+      stripReplayedAttachments((await driver.store?.import?.(storeId, cwd, 1000)) ?? []),
+    );
     return closeReplayTurns(replayed, { open: live !== undefined && this.busyState(live) });
   }
 

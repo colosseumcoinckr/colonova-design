@@ -5,7 +5,7 @@
 import type { DaemonNotice } from "@colonova-design/daemon/server";
 import { app, Notification } from "electron";
 import { noticeCopy } from "./notices.js";
-import { DEFAULT_NOTIFICATION_PREFS, shouldNotify } from "./notify-policy.js";
+import { DEFAULT_NOTIFICATION_PREFS, shouldInterrupt } from "./notify-policy.js";
 import type { MainWindowHost } from "./windows.js";
 
 /** OS 가 show·failed 중 어느 것도 말하지 않을 때 시험 버튼이 기다리는 한계. */
@@ -28,10 +28,9 @@ export class PlannerNotices {
    * 세션 아이디를 렌더러에 건네 열려는 대화를 알린다(리뷰 B7).
    */
   notifyPlanner(notice: DaemonNotice): void {
-    if (this.host.window?.isFocused()) return;
-    // 완료 알림만 시점 정책을 탄다 — 확인 요청·중단·게이트 실패·개발자 쪽
-    // 사건(커미티 B1)은 언제나 즉시.
-    if (!shouldNotify(notice, this.prefs)) return;
+    // 창이 앞에 있으면 조용히(앱 안의 알림이 말한다). 완료 알림만 시점 정책을 탄다 —
+    // 확인 요청·중단·게이트 실패·개발자 쪽 사건(커미티 B1)과 첫 준비 끝은 언제나 즉시.
+    if (!shouldInterrupt(notice, this.prefs, this.host.window?.isFocused() === true)) return;
     this.unread += 1;
     this.paintBadge();
     const { title, body } = noticeCopy(notice);

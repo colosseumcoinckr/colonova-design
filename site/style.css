@@ -4346,12 +4346,6 @@ main {
   font-size: 11px;
   color: var(--muted);
 }
-.irepos__badge--warn {
-  display: inline-block;
-  margin: 0 0 6px 14px;
-  border-color: var(--warn);
-  color: var(--warn);
-}
 
 .ichosen {
   display: flex;
@@ -4454,10 +4448,177 @@ main {
   resize: vertical;
 }
 
-/* 고른 프로젝트 행의 개발 서버 경고 — 목록 배지의 여백 규칙을 이 자리에 맞게 누른다. */
-.ichosen__devbadge {
+/* ---- 초대장 만들기 — 연결 코드 권한표 · 초대 전 점검 (2026-10-07 베타 준비 분석) ---- */
+/* 경고 한 줄 — 만들기를 막지 않는다(막는 것은 --error). */
+.irepos__status--warn {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* 권한표 — 토큰을 만들기 전에 보게 열어 둔다. summary 의 모양은 .invite-notes 가 준다. */
+.iperm {
+  margin-bottom: 18px;
+}
+.iperm__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 0 20px 20px;
+  font-size: 13.5px;
+  line-height: 1.75;
+  color: var(--text-2);
+  word-break: keep-all;
+}
+.iperm__body p {
   margin: 0;
-  align-self: flex-start;
+}
+.iperm__body b {
+  color: var(--text);
+}
+.iperm__body .note {
+  margin: 0;
+  font-size: 12.5px;
+}
+.iperm__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.iperm__table th,
+.iperm__table td {
+  padding: 9px 12px;
+  text-align: left;
+  vertical-align: top;
+  border-top: 1px solid var(--line-soft);
+}
+.iperm__table thead th {
+  border-top: 0;
+  padding-top: 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.iperm__table tbody th {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.iperm__table td:nth-child(2) {
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.iperm__table em {
+  margin-left: 4px;
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+.iperm__rec td:last-child {
+  color: var(--muted);
+}
+.iperm__rules {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding-left: 18px;
+}
+
+/* 점검 칸 — 연결 코드 한 상자, 고른 레포마다 한 상자. 막힘이 맨 위로 온다. */
+.ichk {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel) 38%, transparent);
+  padding: 16px;
+}
+.ichk__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+.ichk__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.ichk__summary {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  word-break: keep-all;
+}
+.ichk__sec {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-soft);
+}
+.ichk__name {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.ichk__list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ichk__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--text-2);
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.ichk__mark {
+  flex: none;
+  width: 1.4em;
+  text-align: center;
+}
+.ichk__item--fail {
+  color: var(--danger);
+  font-weight: 600;
+}
+.ichk__item--warn {
+  color: var(--warn);
+}
+.ichk__item--unknown {
+  color: var(--muted);
+}
+.ichk__wait {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+/* 낭독용 이름 — 기호만으로는 읽히지 않아서 화면 밖에 둔다. */
+.ichk__sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 /* ---- 알림 토스트 — OS 알림의 재현 ---- */
@@ -5186,6 +5347,28 @@ main {
   }
   .iform__row {
     grid-template-columns: 1fr;
+  }
+  /* 권한표 — 좁으면 한 권한이 한 덩어리로 쌓인다(이름 · 수준이 위, 설명이 아래). */
+  .iperm__body {
+    padding: 0 16px 16px;
+  }
+  .iperm__table thead {
+    display: none;
+  }
+  .iperm__table tr {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0 12px;
+    padding: 8px 0;
+    border-top: 1px solid var(--line-soft);
+  }
+  .iperm__table th,
+  .iperm__table td {
+    padding: 2px 0;
+    border-top: 0;
+  }
+  .iperm__table td:last-child {
+    grid-column: 1 / -1;
   }
   .toast {
     right: 14px;

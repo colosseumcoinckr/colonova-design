@@ -218,6 +218,13 @@ test("막힘 — 첫 점이 제출하지 못했어요, 제출은 잠기고 이�
   });
   assert.equal(notified.submit.reason, L.submit.whyBlocked);
   assert.equal(notified.points[0].label, "제출 전 · 제출하지 못했어요");
+  const lacking = run({
+    branch: "b",
+    submit: { phase: "blocked", attempts: 1, lastError: "permission", log: [] },
+  });
+  assert.equal(lacking.submit.reason, L.submit.whyPermission);
+  assert.equal(lacking.submit.enabled, false);
+  assert.equal(lacking.points[0].label, L.journey.beforeBlocked);
   const offline = run({
     branch: "b",
     submit: { phase: "blocked", attempts: 5, lastError: "network", log: [] },
@@ -269,4 +276,50 @@ test("넘기기 방송만 제출로 읽는다 — 자동 보관의 푸시는 버
 
 test("미리보기가 죽어도(error) 작업은 살아 있다 — 제출은 열린다", () => {
   assert.equal(run({ phase: "error", branch: "b" }).submit.enabled, true);
+});
+
+// ————— 개발자의 승인 (2026-10-07 베타 준비 분석 · A2a) —————
+
+test("승인 — 둘째 점이 지나온 점이 되고 셋째 점이 지금이 된다: `개발자가 확인했어요` → `반영을 기다려요`", () => {
+  const j = run({ branch: "b", handoff: handoff("open") }, { approved: true });
+  assert.equal(j.cycle, "review", "여전히 열린 요청이다 — 사이클은 반영 전이다");
+  assert.equal(j.current, 2);
+  assert.deepEqual(
+    j.points.map((p) => [p.label, p.state]),
+    [
+      ["제출됨", "done"],
+      ["개발자가 확인했어요", "done"],
+      ["반영을 기다려요", "cur"],
+    ],
+  );
+  assert.equal(j.points[1].label, L.afterSubmit.approved);
+  assert.equal(j.points[2].label, L.afterSubmit.approvedWaiting);
+  // 이미 열린 요청에 더하는 제출은 그대로다 — 승인이 제출 버튼을 바꾸지 않는다.
+  assert.equal(j.submit.more, true);
+});
+
+test("승인 — 코멘트 수 · 며칠째보다 앞선다(승인은 더 큰 소식), 변경 요청 · 닫힘 · 승인 아님에서는 서지 않는다", () => {
+  const label = (state: HandoffStatus["state"], approved: boolean | undefined) =>
+    run(
+      { branch: "b", handoff: handoff(state) },
+      { comments: 2, waitingDays: 3, ...(approved === undefined ? {} : { approved }) },
+    ).points[1].label;
+  assert.equal(label("open", true), "개발자가 확인했어요");
+  assert.equal(label("open", false), L.journey.reviewingComments(2));
+  assert.equal(label("open", undefined), L.journey.reviewingComments(2));
+  // 변경을 청한 요청은 데몬이 승인을 말하지 않지만, 들어와도 읽지 않는다 — 코멘트 문장이 그대로 선다.
+  assert.equal(label("changes_requested", true), L.journey.reviewingComments(2));
+  assert.equal(label("closed", true), L.journey.reviewingComments(2));
+  // 제출 전 · 합쳐짐에는 승인이 뜻이 없다.
+  assert.equal(run({ branch: "b" }, { approved: true }).cycle, "draft");
+  const merged = run({ branch: null, handoff: handoff("merged") }, { approved: true });
+  assert.equal(merged.cycle, "merged");
+  assert.equal(merged.current, 2);
+  assert.equal(merged.points[2].label, L.journey.mergedNow);
+});
+
+test("승인 문장은 가장 긴 문장보다 짧다 — 상태 줄의 접힘 문턱을 건드리지 않는다", () => {
+  const longest = L.journey.reviewingComments(10).length;
+  assert.ok(L.afterSubmit.approved.length < longest);
+  assert.ok(L.afterSubmit.approvedWaiting.length < longest);
 });

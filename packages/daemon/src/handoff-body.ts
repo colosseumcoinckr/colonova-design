@@ -68,6 +68,41 @@ export function buildCommentsSection(
   return `${title}\n\n${lead}\n\n${lines.join("\n")}${tail}\n`;
 }
 
+/** numstat 한 줄 — 경로와 ±수(바이너리 · 이름 바꿈처럼 git 이 수를 주지 않으면 null). */
+interface NumstatRow {
+  path: string;
+  added: number | null;
+  removed: number | null;
+}
+
+/**
+ * `git diff --numstat` 출력을 줄마다 읽는다 — `### 바뀐 파일` 과 `### 범위` 가 같은 입력을 같은 눈으로 읽는다.
+ * 경로를 못 읽은 줄(탭이 모자라거나 경로가 빔)은 버리되 수는 센다: `### 범위` 는 못 읽은 줄이 있으면 「건드리지
+ * 않았다」 고 말하지 않는다.
+ */
+function readNumstat(numstat: string): { rows: NumstatRow[]; unreadable: number } {
+  const rows: NumstatRow[] = [];
+  let unreadable = 0;
+  for (const line of numstat.split(/\r?\n/)) {
+    const text = line.trim();
+    if (text === "") continue;
+    const fields = text.split("\t");
+    const path = fields.slice(2).join("\t").trim();
+    if (!path) {
+      unreadable += 1;
+      continue;
+    }
+    const added = Number.parseInt(fields[0] ?? "", 10);
+    const removed = Number.parseInt(fields[1] ?? "", 10);
+    rows.push({
+      path,
+      added: Number.isNaN(added) ? null : added,
+      removed: Number.isNaN(removed) ? null : removed,
+    });
+  }
+  return { rows, unreadable };
+}
+
 /**
  * `### 바뀐 파일` 절 (저장·넘기기 목업 02): 이 사이클 브랜치의 numstat 을
  * 개발자가 읽는 목록으로 — 행마다 ±수, 머리줄에 합계. 개발자는 PR 의
@@ -77,23 +112,7 @@ export function buildCommentsSection(
  * 개발자에게 간다.
  */
 export function buildFilesSection(numstat: string, max = 60): string | null {
-  const rows = numstat
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const fields = line.split("\t");
-      const path = fields.slice(2).join("\t").trim();
-      if (!path) return null;
-      const added = Number.parseInt(fields[0] ?? "", 10);
-      const removed = Number.parseInt(fields[1] ?? "", 10);
-      return {
-        path,
-        added: Number.isNaN(added) ? null : added,
-        removed: Number.isNaN(removed) ? null : removed,
-      };
-    })
-    .filter((row): row is NonNullable<typeof row> => row !== null);
+  const { rows } = readNumstat(numstat);
   if (rows.length === 0) return null;
   const shown = rows.slice(0, max);
   const overflow = rows.length - shown.length;
@@ -114,6 +133,210 @@ export function buildFilesSection(numstat: string, max = 60): string | null {
 }
 
 /**
+ * 범위 분류(2026-10-07 베타 준비 분석) — 개발자가 요청 본문에서 가장 먼저 묻는 것: 위험한 곳(의존성 · 락파일 · 설정 ·
+ * CI)을 건드렸는가. 입력은 `### 바뀐 파일` 이 읽는 같은 numstat 이라 새 git 호출이 없고, **경로의 모양만** 본다 —
+ * `package.json` 의 어느 항목이 바뀌었는지, `.env` 에 무엇이 적혔는지는 읽지 않으므로 말하지 않는다(파일이 건드려졌다는
+ * 사실뿐). 표에 없는 파일은 `그 밖` 이다 — 모르는 것을 위험으로 몰지 않는다(과분류 금지).
+ */
+export type ScopeKind = "lockfile" | "package" | "ci" | "config";
+
+export interface ScopeRule {
+  kind: ScopeKind;
+  /** 개발자가 읽는 분류 이름. */
+  label: string;
+  /** 소문자 · 슬래시로 고친 레포 기준 경로가 이 중 하나에 맞으면 이 분류다. */
+  paths: readonly RegExp[];
+}
+
+/**
+ * 분류 표 — 순서가 우선순위이자 본문에 서는 차례다(한 파일이 둘에 맞으면 앞의 것: CI 폴더 안의 `*.config.js` 는 CI).
+ * AI 는 락파일을 고치지 않는다(공통 규칙) — 락파일이 서 있다는 것 자체가 신호라 맨 앞이다.
+ */
+export const SCOPE_RULES: readonly ScopeRule[] = [
+  {
+    kind: "lockfile",
+    label: "락파일",
+    paths: [
+      /(^|\/)(pnpm-lock\.yaml|package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|bun\.lockb?|cargo\.lock|poetry\.lock|pipfile\.lock|uv\.lock|composer\.lock|gemfile\.lock|go\.sum|podfile\.lock)$/,
+    ],
+  },
+  {
+    kind: "package",
+    label: "의존성 정의",
+    paths: [
+      /(^|\/)(package\.json|requirements\.txt|pyproject\.toml|cargo\.toml|go\.mod|gemfile|composer\.json)$/,
+    ],
+  },
+  {
+    kind: "ci",
+    label: "CI · 배포",
+    paths: [
+      /^\.(github\/(workflows|actions)|circleci)\//,
+      /(^|\/)(\.gitlab-ci\.ya?ml|jenkinsfile|azure-pipelines\.ya?ml|bitbucket-pipelines\.ya?ml|\.travis\.ya?ml)$/,
+    ],
+  },
+  {
+    kind: "config",
+    label: "설정",
+    paths: [
+      /(^|\/)[^/]*\.config\.[^/]+$/,
+      /(^|\/)(ts|js)config[^/]*\.json$/,
+      /(^|\/)\.(eslintrc|prettierrc|stylelintrc|babelrc)[^/]*$/,
+      /(^|\/)(biome\.jsonc?|\.npmrc|\.nvmrc|\.node-version|\.tool-versions|\.browserslistrc)$/,
+      /(^|\/)\.env(rc|\.[^/]+)?$/,
+      /(^|\/)dockerfile(\.[^/]+)?$/,
+      /(^|\/)(docker-compose[^/]*|compose)\.ya?ml$/,
+      /(^|\/)(vercel\.json|netlify\.toml|wrangler\.toml|firebase\.json)$/,
+    ],
+  },
+];
+
+/** 위험 분류의 파일 이름을 한 줄에 늘어놓는 상한 — 넘으면 `외 N개`. */
+const SCOPE_PATHS_MAX = 5;
+/**
+ * numstat 출력이 이 길이에 닿으면 앞이 잘렸을 수 있다 — 데몬의 git 출력 보관 상한(`repo-core` 의 `capture` 가 뒤쪽 100만
+ * 글자만 쥔다)과 같은 값. 잘린 목록으로는 「건드리지 않았다」 고 말하지 않는다.
+ */
+export const NUMSTAT_TRUST_CHARS = 1_000_000;
+
+/** git 이 이름 바꿈을 `a/{b => c}/d` 나 `a => b` 로 적는다 — 분류는 바뀌기 전 · 후의 두 경로를 모두 본다. */
+function renameSides(path: string): string[] {
+  const brace = /^(.*)\{(.*) => (.*)\}(.*)$/.exec(path);
+  if (brace) {
+    const [, head = "", from = "", to = "", tail = ""] = brace;
+    const side = (middle: string) =>
+      `${head}${middle}${tail}`.replace(/\/{2,}/g, "/").replace(/^\//, "");
+    return [side(from), side(to)];
+  }
+  const sides = path.split(" => ");
+  return sides.length === 2 ? sides : [path];
+}
+
+/** git 은 특수 문자가 든 경로를 따옴표로 싼다 — 싼 따옴표를 벗긴 경로. */
+function unquotePath(path: string): string {
+  return path.length >= 2 && path.startsWith('"') && path.endsWith('"') ? path.slice(1, -1) : path;
+}
+
+/**
+ * 경로 하나(이름 바꿈이면 두 쪽)가 표의 어느 위험 분류에 드는지 — 어디에도 안 들면 null(그 밖). 순수.
+ */
+export function classifyScopePath(path: string): ScopeRule | null {
+  const sides = renameSides(unquotePath(path)).map((side) =>
+    side.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase(),
+  );
+  return (
+    SCOPE_RULES.find((rule) => sides.some((side) => rule.paths.some((test) => test.test(side)))) ??
+    null
+  );
+}
+
+/** 범위 판정 — 위험 분류별 파일과 그 밖의 수, 목록을 끝까지 믿을 수 있는지. */
+export interface ChangeScope {
+  /** 읽은 파일 수. */
+  total: number;
+  /** 위험 분류별 파일 — 분류 표의 차례, 없는 분류는 빠진다. */
+  risky: Array<{ rule: ScopeRule; paths: string[] }>;
+  /** 표에 없는 그 밖의 파일 수. */
+  other: number;
+  /** 목록을 끝까지 믿을 수 있다 — 출력이 잘렸거나 못 읽은 줄이 있으면 false. */
+  complete: boolean;
+}
+
+/** numstat → 범위 판정. 읽은 파일이 하나도 없으면 null. 순수. */
+export function scopeOfNumstat(numstat: string): ChangeScope | null {
+  const { rows, unreadable } = readNumstat(numstat);
+  if (rows.length === 0) return null;
+  const byRule = new Map<ScopeRule, string[]>();
+  let other = 0;
+  for (const row of rows) {
+    const rule = classifyScopePath(row.path);
+    if (rule === null) {
+      other += 1;
+      continue;
+    }
+    byRule.set(rule, [...(byRule.get(rule) ?? []), unquotePath(row.path)]);
+  }
+  return {
+    total: rows.length,
+    risky: SCOPE_RULES.flatMap((rule) => {
+      const paths = byRule.get(rule);
+      return paths ? [{ rule, paths }] : [];
+    }),
+    other,
+    complete: unreadable === 0 && numstat.length < NUMSTAT_TRUST_CHARS,
+  };
+}
+
+/**
+ * `### 범위` 절 — 위험 분류(의존성 · 락파일 · 설정 · CI)가 하나라도 있으면 머리줄에 ⚠ 를 세우고 그 파일 이름만 늘어놓는다.
+ * 하나도 없으면 「의존성 · 설정 · CI 파일은 건드리지 않았습니다」 한 줄 — 개발자가 안심하는 근거라 가장 값진 문장이다.
+ * 단 목록이 잘렸거나 못 읽은 줄이 있으면 그 말을 하지 않고 확인하지 못했다고 말한다. 내용은 읽지 않았으므로
+ * `package.json` 은 어느 항목이 바뀌었는지 모른다고 밝힌다. 미리보기와 실제 본문이 같은 numstat 과 같은 빌더를 지난다.
+ */
+export function buildScopeSection(numstat: string, maxPaths = SCOPE_PATHS_MAX): string | null {
+  const scope = scopeOfNumstat(numstat);
+  if (scope === null) return null;
+  const riskyCount = scope.risky.reduce((sum, group) => sum + group.paths.length, 0);
+  const lines = scope.risky.map(({ rule, paths }) => {
+    const names = paths.slice(0, maxPaths).join(", ");
+    const more = paths.length > maxPaths ? ` 외 ${paths.length - maxPaths}개` : "";
+    const note = rule.kind === "package" ? " (어느 항목이 바뀌었는지는 확인하지 않았습니다)" : "";
+    return `- ⚠ ${rule.label} ${paths.length}개 — ${names}${more}${note}`;
+  });
+  let lead: string;
+  if (riskyCount > 0) {
+    lead = `⚠ 이번 변경의 범위 — 의존성 · 설정 · CI 파일이 바뀌었습니다 (파일 ${scope.total}개 중 ${riskyCount}개)`;
+    if (scope.other > 0) lines.push(`- 그 밖의 파일 ${scope.other}개`);
+    if (!scope.complete) lines.push("- 파일 목록을 끝까지 읽지 못해 이보다 더 있을 수 있습니다");
+  } else if (scope.complete) {
+    lead = `이번 변경의 범위 — 파일 ${scope.total}개`;
+    lines.push("- 의존성 · 설정 · CI 파일은 건드리지 않았습니다");
+  } else {
+    lead = `이번 변경의 범위 — 읽은 파일 ${scope.total}개`;
+    lines.push("- 의존성 · 설정 · CI 파일은 잘려서 확인하지 못했습니다");
+  }
+  return `### 범위\n\n${lead}\n\n${lines.join("\n")}\n`;
+}
+
+/** 도구가 이름을 아는 AI — 공급자 id → 개발자가 읽는 이름. 여기 없는 공급자는 이름 없이 AI 로만 말한다. */
+const AI_NAMES: ReadonlyMap<string, string> = new Map([
+  ["claude", "Claude Code"],
+  ["codex", "Codex"],
+]);
+
+/**
+ * 이번 제출에 담긴 화면 작업(보관)을 쓴 AI 의 종류(2026-10-07 베타 준비 분석) — 지도 행이 보관 때 적은 공급자다. 작업 하나라도
+ * 공급자를 모르거나 이름을 모르는 공급자면 종류를 말하지 않는다(빈 목록) — 일부만 아는 채로 「Claude Code 가 썼다」 고
+ * 말하지 않는다. 한 작업은 보관 하나(`sha`)다. 되돌리기 · 병합은 도구가 한 일이라 세지 않는다 — 코멘트 반영은 AI 가 쓴
+ * 코드라 센다(`summarizeChecks` 와 다르다: 그쪽은 사용자의 화면 작업만 센다). 이름은 알파벳순이라 제출마다 같은 글이다.
+ */
+export function aiKindsOf(
+  screens: ReadonlyArray<{ sha?: string; kind?: string; provider?: string }>,
+): string[] {
+  const works = new Map<string, string | undefined>();
+  for (const screen of screens) {
+    if (!screen.sha || screen.kind === "merge" || screen.kind === "restore") continue;
+    if (!works.has(screen.sha)) works.set(screen.sha, screen.provider);
+  }
+  const names: string[] = [];
+  for (const provider of works.values()) {
+    const name = typeof provider === "string" ? AI_NAMES.get(provider) : undefined;
+    if (name === undefined) return [];
+    if (!names.includes(name)) names.push(name);
+  }
+  return names.sort();
+}
+
+/**
+ * 「코드는 AI 가 썼습니다」 줄 — 개발자가 리뷰의 강도를 정하는 근거다. 사실만 말한다: 코드는 AI 가 썼고, 요청한 사람은
+ * 코드가 아니라 화면으로 확인했다. 종류를 알면(`aiKindsOf`) 이름을 싣고, 모르면 이름 없이 AI 로만 말한다.
+ */
+export function buildAiLine(kinds: readonly string[] = []): string {
+  const who = kinds.length > 0 ? `AI(${kinds.join(" · ")})가` : "AI 가";
+  return `코드는 ${who} 썼고, 요청한 사람은 코드가 아니라 화면으로 확인했습니다.`;
+}
+
+/**
  * 이번 제출에 담긴 화면 작업(보관)마다의 자동 확인 기록을 센다(2026-10-07 UX 점검 3단계). 한 작업은 지도의 보관 하나
  * (`sha`)다 — 한 보관이 여러 화면을 고쳐도 하나로 센다. 되돌리기 · 병합 · 코멘트 반영(`kind`)은 사용자의 화면
  * 작업이 아니라 세지 않는다. 확인이 문제 없이 지난 작업만 기록이 있으므로, 기록이 하나도 없으면 null — 하지 않은
@@ -129,17 +352,21 @@ export function summarizeChecks(
   }
   const passed = [...rows.values()].filter((checked): checked is GateChecked => checked !== null);
   if (passed.length === 0) return null;
+  // 타입 검사가 돌고 오류가 없었던 작업의 수(2026-10-07 베타 준비 분석) — 하나도 없으면 칸이 없다.
+  const types = passed.filter((checked) => checked.types === true).length;
   return {
     total: rows.size,
     checked: passed.length,
     phone: passed.every((checked) => checked.phone),
+    ...(types > 0 ? { types } : {}),
   };
 }
 
 /**
  * `### 확인한 것` 절 — 개발자가 이 화면 작업을 얼마나 믿어도 되는지 읽는 한 단락. 도구가 한 것(다시 열어 본 것)만 말하고,
  * 하지 않은 것(레포의 검사 · 빌드)은 하지 않았다고 말한다. 접근성 · 대비는 지난번에 본 문제를 다시 말하지 않으므로
- * 「새로 찾은 문제가 없었다」 고만 한다. 화면 이름 · 요소 · 경로는 쓰지 않는다(D38) — 숫자뿐이다.
+ * 「새로 찾은 문제가 없었다」 고만 한다. 화면 이름 · 요소 · 경로는 쓰지 않는다(D38) — 숫자뿐이다. 타입 검사는 게이트가
+ * 돌린 작업(`types`)만 한 줄로 센다 — 도구가 이 턴이 바꾼 TypeScript 파일에서 센 오류이지 레포 전체의 검사가 아니다.
  */
 export function buildChecksSection(checks: HandoffChecks): string {
   const count =
@@ -157,11 +384,24 @@ export function buildChecksSection(checks: HandoffChecks): string {
     checks.checked < checks.total
       ? ` 나머지 ${checks.total - checks.checked}건은 확인 기록이 없습니다.`
       : "";
+  // 타입 검사 한 줄(2026-10-07 베타 준비 분석) — 이 턴이 바꾼 TypeScript 파일에서만 센 오류다. 돌지 않은 작업은 기록이 없다고
+  // 말하고, 하나도 돌지 않았으면 줄이 없다(돌리지 않은 검사를 통과라고 말하지 않는다).
+  const typed = Math.min(checks.types ?? 0, checks.total);
+  const types =
+    typed > 0
+      ? [
+          typed >= checks.total
+            ? `타입 검사: 이번 제출에 담긴 화면 작업 ${checks.total}건 모두에서 바뀐 TypeScript 파일의 타입 오류가 없었습니다.`
+            : `타입 검사: 이번 제출에 담긴 화면 작업 ${checks.total}건 중 ${typed}건에서 바뀐 TypeScript 파일의 타입 오류가 없었습니다. 나머지 ${checks.total - typed}건은 검사 기록이 없습니다.`,
+          "",
+        ]
+      : [];
   return [
     "### 확인한 것",
     "",
     `AI 가 작업을 끝낼 때마다 도구가 바뀐 화면을 다시 열어 봅니다. ${count}에서 확인이 문제 없이 지나갔습니다 — 화면이 끝까지 열렸고, ${kinds}에서 새로 찾은 문제가 없었습니다.${rest}`,
     "",
+    ...types,
     "레포의 검사(check)와 빌드는 이 확인에 들어 있지 않습니다.",
     "",
   ].join("\n");
@@ -298,4 +538,37 @@ export function formatHandoffTitle(title: string, authorName?: string | null): s
       .join("")
       .trimEnd() + suffix
   );
+}
+
+/** 사용자의 말로 다시 읽은 요청 제목의 상한 (2026-10-08 베타 준비 분석 · A2b) — 성취 카드와 `반영된 일` 의 제목이다. */
+export const PLAIN_TITLE_MAX_CHARS = 80;
+
+/** `formatHandoffTitle` 이 알아보는 일곱 종류 접두어와 같다. */
+const TITLE_KIND_PREFIX = /^(feat|fix|refactor|style|docs|test|chore)(\([^()\r\n]+\))?!?:\s*/;
+/** `formatHandoffTitle` 이 끝에 붙이는 작성자 꼬리 ` (작성: 이름)`. */
+const TITLE_AUTHOR_TAIL = /\s*\(작성:[^)\r\n]*\)\s*$/;
+
+/**
+ * 요청 제목에서 도구가 붙인 종류 접두어(`feat(scope): `)와 작성자 꼬리(` (작성: 이름)`)를 뗀 사용자의 말 —
+ * `formatHandoffTitle` 의 거울이다(웹 `previewTitle` 과 같은 규칙). 첫 의미 줄만 쓰고 공백은 한 칸으로 접으며
+ * `PLAIN_TITLE_MAX_CHARS` 에서 말줄임으로 닫는다. 읽을 말이 없으면 null. 순수 함수 — 병합 기록의 제목이 이 말이다.
+ */
+export function plainHandoffTitle(raw: string | null | undefined): string | null {
+  const line =
+    (raw ?? "")
+      .split(/\r?\n/)
+      .find((part) => part.trim() !== "")
+      ?.trim() ?? "";
+  const plain = line
+    .replace(TITLE_AUTHOR_TAIL, "")
+    .replace(TITLE_KIND_PREFIX, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (plain === "") return null;
+  const chars = Array.from(plain);
+  if (chars.length <= PLAIN_TITLE_MAX_CHARS) return plain;
+  return `${chars
+    .slice(0, PLAIN_TITLE_MAX_CHARS - 1)
+    .join("")
+    .trimEnd()}…`;
 }

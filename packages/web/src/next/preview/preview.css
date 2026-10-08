@@ -661,6 +661,117 @@
     left: 105%;
   }
 }
+
+/* ---------- 라이브감 — AI 가 화면을 직접 눌러 보는 동안의 고리와 아래 가운데의 한 줄(2026-10-08 베타 준비 분석) ---------- */
+/* 둘 다 입력을 막지 않는다(`pointer-events: none`) — 표시만 하고 잠그지 않는다. 사람은 AI 가 누르는 동안에도 같은 화면을
+   보고, 겹치는 손길은 드라이버가 op 마다 요소의 지금 자리를 다시 재어 받는다. 고리는 찍기 고리(.nx-pvring)보다 옅고 숨을
+   쉰다 — 찍기가 켜지면 칸이 이 고리를 거둔다. */
+.nx-pvdrive {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  /* 안쪽 가장자리의 가는 선과 안으로 번지는 옅은 빛 — 화면 가운데는 비운다. */
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--accent) 72%, transparent),
+    inset 0 0 30px color-mix(in srgb, var(--accent) 26%, transparent);
+  animation:
+    nx-drive-in 0.25s backwards,
+    nx-drive-breathe 2.6s ease-in-out 0.25s infinite;
+}
+
+@keyframes nx-drive-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes nx-drive-breathe {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.nx-pvlive {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: calc(100% - 24px);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 13px 6px 11px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  box-shadow: var(--pop);
+  font-size: 12.5px;
+  color: var(--ink2);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: nx-live-in 0.2s backwards;
+}
+
+@keyframes nx-live-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(6px);
+  }
+}
+
+.nx-pvlive-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: nx-live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes nx-live-pulse {
+  50% {
+    opacity: 0.35;
+    transform: scale(0.8);
+  }
+}
+
+.nx-pvlive-txt {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 이름이 든 말 — 줄임표는 이름만 자르고 문장의 앞 · 끝(`고치는 중`)은 남는다. */
+.nx-pvlive-txt--named {
+  display: flex;
+}
+
+.nx-pvlive-pre,
+.nx-pvlive-post {
+  flex: none;
+  white-space: pre;
+}
+
+.nx-pvlive-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 옮겼어요는 끝난 일이고 사람이 알아야 할 일이다 — 포인트색 옅은 알약, 점은 숨 쉬지 않는다. 틴트는 불투명한 바탕 위에
+   겹친다(반투명 알약은 레포 화면의 사진 · 그림 위에서 글자가 녹는다). */
+.nx-pvlive--moved {
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.nx-pvlive--moved .nx-pvlive-dot {
+  animation: none;
+}
+
 /* ---------- 덮개 — 준비 · 다시 켜는 중 · 고치는 중 ---------- */
 .nx-over {
   position: absolute;
@@ -845,6 +956,11 @@
 /* 실패 덮개의 다시 시도 — 진행 막대 대신 문장과 손 하나. */
 .nx-prep-retry {
   margin-top: 14px;
+  /* 다시 시도 곁의 `담당자에게 보낼 내용 복사`(2026-10-07) — 좁은 칸에서는 아래줄로 감긴다. */
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
 }
 
 /* ---------- 찍기 알약 · 좁은 창의 보내기 알약 ---------- */
@@ -2012,6 +2128,22 @@
   color: var(--ink2);
 }
 
+/* 달라진 곳 표시(눌림 단추 하나짜리 분절)와 사진 복사 — 막대의 분절 · 소단추와 같은 결이다(2026-10-08 베타 준비 분석). */
+.nx .nx-diff-seg button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nx .nx-diff-copy {
+  gap: 6px;
+}
+
+.nx .nx-diff-copy[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 /* 몸 — 사진이 서는 자리. 굴러가지 않고, 사진은 칸 안에서 움직인다. */
 .nx-compare-body {
   flex: 1 1 auto;
@@ -2116,6 +2248,21 @@
   z-index: 1;
 }
 
+/* 달라진 곳 윤곽(2026-10-08) — 사진 위의 한 겹. 같은 z 에서 DOM 순서가 뒤라 겹쳐서의 위 겹 위에 서고, 사진과 같은 크기 ·
+   같은 변환을 입어 사진 위의 같은 자리에 선다(.nx-diff-svg 의 모양은 ui/photo-diff.css). 손은 사진 칸이 받는다. */
+.nx-cv-layer--outline {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.nx-diff-svg--stage {
+  inset: auto;
+  left: 50%;
+  top: 50%;
+  max-width: none;
+  transform-origin: center;
+}
+
 /* 단추 · 키로 움직일 때는 부드럽게, 손으로 끌 때는 손가락을 곧바로 따른다. */
 .nx-cv-stage:not(.is-dragging) .nx-cv-layer img {
   transition: transform var(--nx-t-touch) var(--drift);
@@ -2123,6 +2270,10 @@
 
 .nx-cv-stage:not(.is-dragging) .nx-cv-layer--clip {
   transition: clip-path var(--nx-t-touch) var(--drift);
+}
+
+.nx-cv-stage:not(.is-dragging) .nx-diff-svg--stage {
+  transition: transform var(--nx-t-touch) var(--drift);
 }
 
 /* 사진 위의 이름표 — 무슨 사진인지, 언제 찍은 것인지. */
@@ -2288,6 +2439,12 @@
   line-height: 1.5;
 }
 
+/* 켠 윤곽이 말하는 줄(2026-10-08) — 안내 줄의 모양 그대로, 곳 수와 요청 밖의 경고가 줄을 바꿔 이어진다. */
+.nx-diff-note {
+  flex-wrap: wrap;
+  gap: 2px 10px;
+}
+
 .nx-modal--frame .nx-mfoot--frame.nx-compare-foot {
   flex-wrap: wrap;
   justify-content: space-between;
@@ -2345,6 +2502,7 @@
 
   .nx-cv-stage .nx-cv-layer img,
   .nx-cv-stage .nx-cv-layer--clip,
+  .nx-cv-stage .nx-diff-svg--stage,
   .nx-cv-grip {
     transition: none;
   }

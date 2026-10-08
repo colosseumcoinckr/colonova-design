@@ -42,11 +42,19 @@ export function submitCopy(
     case "running":
       return { ...base, label: S.running, busy: "running", firstPoint: null, reason: S.running };
     case "retrying":
-      return { ...base, label: S.retrying, busy: "retrying", firstPoint: null, reason: S.retrying };
+      // 한도에 걸린 재시도는 막힘이 아니다 — 시간이 풀고, 잠금 이유만 그렇게 말한다(2026-10-07).
+      return {
+        ...base,
+        label: S.retrying,
+        busy: "retrying",
+        firstPoint: null,
+        reason: submit?.lastError === "limit" ? S.whyLimit : S.retrying,
+      };
     case "blocked":
-      // auth 는 사람의 손(새 초대 파일)이 풀고, network 는 연결이 돌아오면 저절로 풀리며, 그 밖의
-      // 막힘은 개발자가 푼다 — 모두 계속 만들 수 있고, 풀리면 도구가 다시 제출한다. 인터넷 문제를
-      // 담당자의 일로 읽히게 하지 않는다(2026-10-06 UX 점검).
+      // auth 는 사람의 손(새 초대 파일)이 풀고, permission 은 개발자가 코드의 권한을 고쳐야 풀리며(새 초대
+      // 파일이 아니다), network 는 연결이 돌아오면 저절로 풀리고, 그 밖의 막힘은 개발자가 푼다 — 모두
+      // 계속 만들 수 있고, 풀리면 도구가 다시 제출한다. 인터넷 문제를 담당자의 일로 읽히게 하지 않는다
+      // (2026-10-06 UX 점검). 403 을 전부 만료로 말하던 거짓 증상을 갈랐다(2026-10-07).
       return {
         ...base,
         label: S.failed,
@@ -55,9 +63,11 @@ export function submitCopy(
         reason:
           submit?.lastError === "auth"
             ? S.whyAuth
-            : submit?.lastError === "network"
-              ? S.whyNetwork
-              : S.whyBlocked,
+            : submit?.lastError === "permission"
+              ? S.whyPermission
+              : submit?.lastError === "network"
+                ? S.whyNetwork
+                : S.whyBlocked,
       };
     default:
       return { ...base, label: S.idle, busy: null, firstPoint: null, reason: null };

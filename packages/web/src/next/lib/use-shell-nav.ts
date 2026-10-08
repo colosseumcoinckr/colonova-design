@@ -4,19 +4,23 @@ import type { Daemon } from "../../lib/daemon-client";
 import type { LayoutSettings } from "../../lib/settings";
 import { L } from "../labels";
 import type { ShellNav } from "../slots";
-import { initialNav, type NavState, navReducer } from "./nav";
+import { initialNav, type NavState, navReducer, type ToastAction } from "./nav";
 import { isPreparing } from "./project-note";
+import { nextReady, type SeenView, sameList, stepFirstPrep } from "./ready-watch";
 
 /** 좁은 창의 문턱(U16) — 목업의 `@container win (max-width:900px)`. */
 const NARROW_QUERY = "(max-width: 900px)";
 
 /** 토스트가 머무는 시간 — 토스트의 줄어드는 막대가 같은 값으로 닳는다. */
 export const TOAST_MS = 2600;
+/** 단추가 달린 토스트는 읽고 누를 시간이 더 필요하다(2026-10-07 베타 준비 분석 · 첫 5분). */
+export const TOAST_ACTION_MS = 8000;
 
-/** 지금 떠 있는 토스트 — `seq` 가 달라지면 같은 문장도 새 알림이다. */
+/** 지금 떠 있는 토스트 — `seq` 가 달라지면 같은 문장도 새 알림이다. `action` 이 있으면 단추가 달리고 더 오래 머문다. */
 export interface ToastNote {
   text: string;
   seq: number;
+  action?: ToastAction;
 }
 
 /** 창이 900px 아래인가 — 목업은 창 폭의 컨테이너 질의, 앱은 창 자체다. */
@@ -42,6 +46,7 @@ export function useShellNav({
   sessions,
   collapsed,
   discardableInvitePath = null,
+  narrow = false,
   onLayoutChange,
   onOpenSettings,
 }: {
@@ -51,11 +56,15 @@ export function useShellNav({
   collapsed: boolean;
   /** 가져온 초대 파일의 위치(U11) — 셸 위쪽(NextShell)이 정하고 대화 칸이 읽는다. */
   discardableInvitePath?: string | null;
+  /** 좁은 창인가 — 서비스가 떴다는 소식은 화면 탭이 앞에 있어야 `보고 있는 것` 이다(`ready-watch.ts`). */
+  narrow?: boolean;
   onLayoutChange: (patch: Partial<LayoutSettings>) => void;
   onOpenSettings: () => void;
 }): {
   state: NavState;
   nav: ShellNav;
+  /** 첫 준비가 끝났는데 아직 그 화면을 보지 않은 프로젝트 — 홈의 `서비스가 떴어요` 줄이 읽는다. */
+  ready: string[];
   toast: ToastNote | null;
   /** 토스트를 곧바로 내린다 — 머무는 시간은 `Toast` 가 재고, 끝나거나 `×` 를 누르면 부른다. */
   dismissToast: () => void;
@@ -78,9 +87,9 @@ export function useShellNav({
   // 머무는 시간은 `Toast` 가 잰다(손이 얹히면 멈춰야 해서) — 여기는 지금 알림과 차례만 쥔다.
   const [toast, setToast] = useState<ToastNote | null>(null);
   const seqRef = useRef(0);
-  const showToast = useCallback((text: string) => {
+  const showToast = useCallback((text: string, action?: ToastAction) => {
     seqRef.current += 1;
-    setToast({ text, seq: seqRef.current });
+    setToast({ text, seq: seqRef.current, ...(action ? { action } : {}) });
   }, []);
   const dismissToast = useCallback(() => setToast(null), []);
 
@@ -93,7 +102,12 @@ export function useShellNav({
     dispatch({ type: "project-changed" });
   }, [daemon.activeSlug]);
 
-  const jump = useRef<{ slug: string; threadId?: string; fresh?: boolean } | null>(null);
+  const jump = useRef<{
+    slug: string;
+    threadId?: string;
+    fresh?: boolean;
+    screen?: boolean;
+  } | null>(null);
 
   /**
    * 이 프로젝트의 대화를 id 로 연다 — 목록이 빠른 길, 목록이 아직 모르는 살아
@@ -139,6 +153,7 @@ export function useShellNav({
     if (daemon.activeSlug !== pending.slug) return;
     if (pending.threadId) void openRef.current.openHere(pending.threadId);
     else if (pending.fresh) openRef.current.freshHere();
+    else if (pending.screen) dispatch({ type: "screen" });
   }, [daemon.activeSlug]);
 
   const toastSwitched = (slug: string) => {
@@ -158,14 +173,15 @@ export function useShellNav({
    */
   const activate = (
     slug: string,
-    then?: { threadId?: string; fresh?: boolean },
+    then?: { threadId?: string; fresh?: boolean; screen?: boolean },
     options?: { quiet?: boolean },
   ): Promise<boolean> => {
     // 기다리던 점프가 있어도 갈아끼운다 — 새 클릭이 사용자의 최신 뜻이다.
     jump.current = then ? { slug, ...then } : null;
     return daemon.api.projectActivate(slug).then(
       () => {
-        toastSwitched(slug);
+        // 서비스 화면으로 가는 길은 도착한 화면이 말한다 — `옮겼어요` 가 한 번 더 뜨지 않게.
+        if (!then?.screen) toastSwitched(slug);
         return true;
       },
       () => {
@@ -175,6 +191,11 @@ export function useShellNav({
       },
     );
   };
+
+  // 첫 준비가 끝났는데 아직 그 화면을 보지 않은 프로젝트(2026-10-07 베타 준비 분석 · 첫 5분) — 홈의 `서비스가 떴어요`
+  // 줄이 서 있는 동안이다. 그 프로젝트의 작업 화면을 보면(또는 줄을 닫으면) 거둔다.
+  const [ready, setReady] = useState<string[]>([]);
+  const dropReady = (slug: string) => setReady((list) => list.filter((entry) => entry !== slug));
 
   const nav: ShellNav = {
     openThread: (slug, threadId) => {
@@ -187,6 +208,13 @@ export function useShellNav({
     },
     goHome: () => dispatch({ type: "home" }),
     showThread: () => dispatch({ type: "thread" }),
+    showScreen: () => dispatch({ type: "screen" }),
+    openProjectScreen: (slug) => {
+      dropReady(slug);
+      if (slug === daemon.activeSlug) dispatch({ type: "screen" });
+      else void activate(slug, { screen: true });
+    },
+    dismissReady: dropReady,
     switchProject: (slug, options) => {
       dispatch({ type: "drawer", open: false });
       return slug === daemon.activeSlug
@@ -204,6 +232,8 @@ export function useShellNav({
   // 구독은 한 번 — 손(nav)과 연결(daemon)은 ref 가 늘 새것으로 쥔다.
   const latest = useRef({ nav, daemon });
   latest.current = { nav, daemon };
+  const readyRef = useRef(ready);
+  readyRef.current = ready;
   useEffect(() => {
     const bridge = window.colonovaDesignDesktop;
     if (!bridge?.onOpenSession) return;
@@ -228,10 +258,43 @@ export function useShellNav({
     if (!bridge?.onOpenProject) return;
     return bridge.onOpenProject((slug) => {
       const { nav: now, daemon: current } = latest.current;
-      if (slug === current.activeSlug) now.goHome();
+      // 서비스가 떴다는 알림이면 그 화면으로 — 보러 오라고 부른 알림이다. 그 밖의 소식은 홈의 받은 편지함에 선다.
+      if (readyRef.current.includes(slug)) now.openProjectScreen(slug);
+      else if (slug === current.activeSlug) now.goHome();
       else void now.switchProject(slug);
     });
   }, []);
+
+  // 첫 준비가 끝난 순간(2026-10-07 베타 준비 분석 · 첫 5분) — 그 프로젝트의 작업 화면을 보고 있지 않으면(홈이거나 다른
+  // 프로젝트) 앱 안에서 말한다: 토스트 한 번 + 홈의 줄. 데몬이 `firstPrep` 으로 첫 준비를 알려 주고(앱을 다시 켤 때의
+  // 준비는 말하지 않는다), 이 효과는 `ready` 로 바뀌는 순간만 본다. 판정은 `ready-watch.ts`.
+  const watchingPrep = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    const step = stepFirstPrep(watchingPrep.current, daemon.projects);
+    watchingPrep.current = step.watching;
+    const seen: SeenView = {
+      view: state.view,
+      tab: state.tab,
+      narrow,
+      activeSlug: daemon.activeSlug,
+    };
+    const next = nextReady({
+      ready: readyRef.current,
+      finished: step.finished,
+      up: daemon.projects
+        .filter((project) => project.phase === "ready")
+        .map((project) => project.slug),
+      seen,
+    });
+    if (!sameList(next.ready, readyRef.current)) setReady(next.ready);
+    for (const slug of next.announce) {
+      const name = daemon.projects.find((project) => project.slug === slug)?.name ?? slug;
+      showToast(L.firstReady.title(name), {
+        label: L.firstReady.see,
+        run: () => latest.current.nav.openProjectScreen(slug),
+      });
+    }
+  }, [daemon.projects, daemon.activeSlug, state.view, state.tab, narrow, showToast]);
 
   const setCollapsed = useCallback(
     (value: boolean) => {
@@ -242,5 +305,5 @@ export function useShellNav({
   );
   const setDrawer = useCallback((open: boolean) => dispatch({ type: "drawer", open }), []);
 
-  return { state, nav, toast, dismissToast, setCollapsed, setDrawer };
+  return { state, nav, ready, toast, dismissToast, setCollapsed, setDrawer };
 }

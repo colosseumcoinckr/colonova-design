@@ -476,3 +476,34 @@ test("Codex 처럼 캐시 쓰기를 모르는 usage 도 적중률이 선다 — 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("계정류 실패는 단계가 account 로 새겨진다 — 문장으로도, 오류 코드만으로도 (2026-10-07)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
+  try {
+    const stats_ = stats(dir);
+    const end = (extra: Record<string, unknown>) =>
+      ({
+        kind: "turn.end",
+        subtype: "error",
+        isError: true,
+        costUsd: null,
+        numTurns: null,
+        durationMs: 300,
+        ...extra,
+      }) as ChatEvent;
+    stats_.observe("s1", { kind: "user.echo", text: "고쳐 줘", images: 0 } as ChatEvent);
+    stats_.observe("s1", end({ resultText: "Credit balance is too low" }));
+    stats_.observe("s1", { kind: "user.echo", text: "또 고쳐 줘", images: 0 } as ChatEvent);
+    stats_.observe(
+      "s1",
+      end({ resultText: "a sentence this build never printed", errorCode: "account_on_hold" }),
+    );
+    const rows = (await untilRows(dir, 2)).filter((row) => row.kind === "user");
+    assert.deepEqual(
+      rows.map((row) => row.failure),
+      ["account", "account"],
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

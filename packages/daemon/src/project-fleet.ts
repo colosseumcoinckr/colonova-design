@@ -24,6 +24,7 @@ import { probeCommands } from "./agent/drivers/claude/session.js";
 import type { DriverRegistry } from "./agent/registry.js";
 import { AutoThreads } from "./auto-thread.js";
 import { type BringUpEpisode, nextBringUpBrief } from "./bring-up-briefs.js";
+import type { PlannedChange } from "./change-plan.js";
 import { captureTargets, readComments } from "./comments.js";
 import {
   COMMON_INSTRUCTIONS,
@@ -929,7 +930,10 @@ export class ProjectFleet {
    *
    * 커밋 제목은 그 턴을 연 말의 첫 줄(①): 메모 턴을 돌리면 턴마다 구독이 두
    * 배로 타므로, 여기서 절대 돌리지 않는다. 말이 없으면(기계가 연 턴)
-   * runSave 의 폴백(② machineMemo → ③ 기본 문구)에 맡긴다. 푸시는 백그라운드
+   * runSave 의 폴백(② machineMemo → ③ 기본 문구)에 맡긴다. `describe_changes`
+   * 로 적힌 보관 계획(2026-10-11 피드백)이 있으면 그 대로 변경마다 나눠
+   * 커밋한다 — 도구를 부른 턴의 제목은 요청 문장이 아니라 바뀐 결과가 된다.
+   * 푸시는 백그라운드
    * — 오프라인에서도 턴의 끝이 멈추지 않는다(실패는 제출이 기다려서 민다).
    * 커밋 게이트가 열리면 세션에 고침 브리프를 보내 화면 확인 게이트와 같은
    * 루프로 스스로 닫는다.
@@ -938,6 +942,7 @@ export class ProjectFleet {
     sessionId: string,
     screenRoutes?: string[],
     checked?: GateChecked,
+    plan?: PlannedChange[],
   ): Promise<{ sha: string; requestId: string | null } | undefined> {
     const workspaces = this.workspaceOfSession(sessionId);
     const session = this.deps.manager.get(sessionId);
@@ -959,9 +964,11 @@ export class ProjectFleet {
     await workspaces.repo.refreshPendingChanges().catch(() => undefined);
     if (workspaces.repo.pendingChanges === 0) return;
     try {
-      await workspaces.repo.save({
+      const saved = await workspaces.repo.save({
         ...subject,
         sessionId,
+        // describe_changes 가 적은 이번 턴의 보관 계획 — 변경마다 나눠 커밋한다.
+        ...(plan !== undefined && plan.length > 0 ? { plan } : {}),
         backgroundPush: true,
         onSessionTurn: (brief: string) => {
           this.deps.notice({
@@ -977,12 +984,15 @@ export class ProjectFleet {
           }
         },
       });
-      // 라우트↔파일 지도(2026-09-22): 커밋이 성공했을 때만 한 줄 — sha 와 그
-      // 커밋이 건드린 파일, 그리고 이 턴이 가리킨 화면. 정체 검색이 빈손인
+      // 라우트↔파일 지도(2026-09-22): 커밋이 성공했을 때만 한 줄 — sha 와 이
+      // 저장이 담은 파일, 그리고 이 턴이 가리킨 화면. 정체 검색이 빈손인
       // 핀의 마지막 길이 이 기록이다. 실패는 조용하다(지도는 판정이 아니다).
+      // 저장이 변경 단위로 여러 커밋에 나뉘면(2026-10-11) HEAD 의 파일은
+      // 마지막 변경의 것뿐이라, 상태가 싣는 이번 저장의 경로 전부를 쓴다.
       const head = await workspaces.repo.headCommitFiles().catch(() => null);
+      const files = saved.turnFiles ?? head?.files ?? [];
       if (screenRoutes !== undefined && screenRoutes.length > 0) {
-        if (head !== null && head.files.length > 0) {
+        if (head !== null && files.length > 0) {
           // 바뀐 화면(PLAN-UI U2)의 재료 — 경로와, 답변 링크가 붙인 제목.
           const previewUrl = workspaces.repo.repoCore().previewUrl;
           let origin: string | null = null;
@@ -997,7 +1007,7 @@ export class ProjectFleet {
             sessionId,
             ...(requestId ? { requestId } : {}),
             routes: screenRoutes,
-            files: head.files,
+            files,
             screens: screensOfTurn(screenRoutes, answer, origin),
             // 이 턴의 자동 확인이 문제 없이 지났다는 기록 — 제출의 `### 확인한 것` 이 센다(2026-10-07).
             ...(checked ? { checked } : {}),

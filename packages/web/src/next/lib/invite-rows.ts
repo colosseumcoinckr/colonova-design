@@ -50,7 +50,7 @@ export function inviteUpdateChanges(
 ): string[] {
   const changes: string[] = [];
   if (target && target.baseBranch !== undefined && target.baseBranch !== row.project.baseBranch) {
-    changes.push(words.inviteChange.baseBranch(target.baseBranch, row.project.baseBranch));
+    changes.push(words.inviteChange.baseBranch);
   }
   const want = row.project.reviewers ?? [];
   const have = target?.reviewers ?? [];

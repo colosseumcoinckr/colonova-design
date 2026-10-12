@@ -93,7 +93,7 @@ async function checkAgent(deps: OnboardingDeps): Promise<OnboardingStep> {
     if (!driver) {
       return fail(
         "claude",
-        `선택한 에이전트(${provider})를 이 데몬이 모릅니다 — 설정에서 다른 에이전트를 골라 주세요.`,
+        `선택한 에이전트(${provider})를 이 도구가 몰라요 — 설정에서 다른 에이전트를 골라 주세요.`,
       );
     }
     const label = driver.describe().label;
@@ -102,19 +102,19 @@ async function checkAgent(deps: OnboardingDeps): Promise<OnboardingStep> {
       return pass("claude", `${label} 준비됨${diag.version ? ` (${diag.version})` : ""}`);
     }
     if (!diag.executable) {
-      return fail("claude", `${label} CLI를 찾지 못했습니다 — 설치한 뒤 다시 확인해 주세요.`);
+      return fail("claude", `${label} CLI를 찾지 못했어요 — 설치한 뒤 다시 확인해 주세요.`);
     }
     if (diag.loggedIn === false) {
       return fail(
         "claude",
-        `${label} 로그인이 필요합니다 — 터미널에서 로그인한 뒤 다시 확인해 주세요.`,
+        `${label} 로그인이 필요해요 — 터미널에서 로그인한 뒤 다시 확인해 주세요.`,
       );
     }
-    return fail("claude", diag.reason ?? `${label} 실행 준비가 되지 않았습니다.`);
+    return fail("claude", diag.reason ?? `${label} 실행 준비가 되지 않았어요.`);
   }
   const executable = await resolveClaudeExecutable(deps.claudeExecutableOverride);
   if (!executable) {
-    return fail("claude", "Claude Code CLI를 찾지 못했습니다.", {
+    return fail("claude", "Claude Code CLI를 찾지 못했어요.", {
       kind: "install-claude",
       label: "Claude Code 설치",
     });
@@ -131,7 +131,7 @@ async function checkAgent(deps: OnboardingDeps): Promise<OnboardingStep> {
 
   const auth = await readAuthStatus(executable);
   if (!auth.loggedIn) {
-    return fail("claude", "Claude Code 로그인이 필요합니다 — 본인 구독으로 실행됩니다.", {
+    return fail("claude", "Claude Code 로그인이 필요해요 — 본인 구독으로 실행돼요.", {
       kind: "login-claude",
       label: "Claude Code 로그인",
     });
@@ -144,7 +144,7 @@ async function checkAgent(deps: OnboardingDeps): Promise<OnboardingStep> {
       id: "claude",
       status: "warn",
       detail:
-        "ANTHROPIC_API_KEY 환경변수가 설정되어 있어 구독 대신 이 키로 결제됩니다. 데몬 환경에서 키를 제거하고 다시 시작해 주세요.",
+        "ANTHROPIC_API_KEY 환경변수가 설정되어 있어 구독 대신 이 키로 결제돼요. 데몬 환경에서 키를 제거하고 다시 시작해 주세요.",
     };
   }
   const version = await readClaudeVersion(executable);
@@ -209,7 +209,7 @@ function gitMissing(): OnboardingStep {
   // darwin 은 이 도구가 설치 명령을 직접 띄운다(startGitInstall) — OS 의 설치
   // 대화상자가 곧 진행 표시다. 다른 플랫폼은 문장이 전부다.
   if (currentPlatform() === "darwin") {
-    return fail("git", "git이 없습니다 — 설치 버튼을 누르면 설치 창이 열립니다.", {
+    return fail("git", "git이 없어요 — 설치 버튼을 누르면 설치 창이 열려요.", {
       kind: "install-git",
       label: "git 설치",
     });
@@ -221,7 +221,7 @@ function gitMissing(): OnboardingStep {
 }
 
 function gitMissingGuidanceText(): string {
-  return `git이 없습니다 — 터미널에서 ${gitInstallGuidance().command} 로 설치한 뒤 다시 확인해 주세요.`;
+  return `git이 없어요 — 터미널에서 ${gitInstallGuidance().command} 로 설치한 뒤 다시 확인해 주세요.`;
 }
 
 // ---------------------------------------------------------------------------
@@ -254,8 +254,8 @@ export async function checkRuntime(
   if (!node || majorOf(node.version) < MIN_NODE_MAJOR) {
     problems.push(
       node
-        ? `Node.js ${MIN_NODE_MAJOR} 이상이 필요합니다 (지금: ${node.version})`
-        : `Node.js ${MIN_NODE_MAJOR} 이상이 필요합니다 (지금: 없음)`,
+        ? `Node.js ${MIN_NODE_MAJOR} 이상이 필요해요 (지금: ${node.version})`
+        : `Node.js ${MIN_NODE_MAJOR} 이상이 필요해요 (지금: 없음)`,
     );
     // A link, never an installer: picking a package manager on somebody's
     // machine is not this tool's call. The desktop app bundles its own
@@ -268,7 +268,7 @@ export async function checkRuntime(
     });
   }
   if (!pnpm) {
-    problems.push("pnpm이 없습니다");
+    problems.push("pnpm이 없어요");
     fixes.push({ kind: "install-pnpm", label: "pnpm 설치" });
   }
   if (problems.length === 0) {
@@ -307,7 +307,7 @@ async function checkGitHub(deps: OnboardingDeps): Promise<OnboardingStep> {
       id: "github",
       status: "warn",
       detail:
-        "연결 코드가 없습니다 — 개발자에게 받은 초대 파일을 놓으면 연결됩니다. 연결 전에는 만든 화면을 개발자에게 넘길 수 없습니다.",
+        "연결 코드가 없어요 — 개발자에게 받은 초대 파일을 놓으면 연결돼요. 연결 전에는 만든 화면을 개발자에게 넘길 수 없어요.",
     };
   }
   const me = await client.whoAmI();
@@ -335,7 +335,7 @@ async function checkGitHub(deps: OnboardingDeps): Promise<OnboardingStep> {
       id: "github",
       status: "warn",
       detail:
-        "개발자에게 받은 코드가 이 레포에 닿지 않습니다 — 개발자에게 새 초대 파일을 요청하세요.",
+        "개발자에게 받은 코드가 이 레포에 닿지 않아요 — 개발자에게 새 초대 파일을 요청해 주세요.",
     };
   }
   return pass(
@@ -389,7 +389,7 @@ export async function runPnpmInstall(
     const line = `${stdout}`.trim().split(/\r?\n/).find(Boolean);
     return {
       ok: true,
-      detail: line ? `corepack enable: ${line}` : "corepack enable 을 실행했습니다.",
+      detail: line ? `corepack enable: ${line}` : "corepack enable 을 실행했어요.",
     };
   } catch (error) {
     const failure = error as {
@@ -401,7 +401,7 @@ export async function runPnpmInstall(
     return {
       ok: false,
       detail:
-        `corepack enable 이 실패했습니다${text ? ` — ${text.split(/\r?\n/)[0]}` : ""}. ` +
+        `corepack enable 이 실패했어요${text ? ` — ${text.split(/\r?\n/)[0]}` : ""}. ` +
         "터미널에서 corepack enable 을 직접 실행하거나 npm i -g pnpm 으로 설치해 주세요.",
     };
   }
@@ -423,9 +423,8 @@ export interface AgentLoginEvents {
   onDone(ok: boolean, detail: string): void;
 }
 
-const LOGIN_GUIDANCE = "로그인을 시작했습니다 — 브라우저에서 로그인을 마치면 저절로 넘어갑니다.";
-const LOGIN_FAILED =
-  "로그인을 시작하지 못했습니다 — 에이전트 설치를 먼저 마치고 다시 시도해 주세요.";
+const LOGIN_GUIDANCE = "로그인을 시작했어요 — 브라우저에서 로그인을 마치면 저절로 넘어가요.";
+const LOGIN_FAILED = "로그인을 시작하지 못했어요 — 에이전트 설치를 먼저 마치고 다시 시도해 주세요.";
 
 export class AgentLogin {
   private child: ReturnType<SpawnLike> | null = null;
@@ -486,7 +485,7 @@ export class AgentLogin {
         if (generation !== this.generation) return;
         this.child = null;
         if (code === 0) {
-          events.onDone(true, "로그인이 완료되었습니다.");
+          events.onDone(true, "로그인이 끝났어요.");
           return;
         }
         // 실패의 이유는 자식의 마지막 말 — 프롬프트 잔상보다 정보가 있는 줄이다.
@@ -498,7 +497,7 @@ export class AgentLogin {
             .at(-1) ?? "";
         events.onDone(
           false,
-          last ? `로그인이 끝나지 않았습니다 — ${last.slice(0, 160)}` : LOGIN_FAILED,
+          last ? `로그인이 끝나지 않았어요 — ${last.slice(0, 160)}` : LOGIN_FAILED,
         );
       });
       return { started: true, guidance: LOGIN_GUIDANCE };
@@ -537,7 +536,7 @@ export function gitInstallGuidance(platform: Platform = currentPlatform()): {
     return {
       command: "xcode-select --install",
       guidance:
-        "터미널에 위 명령을 실행하면 Xcode 명령줄 도구 설치 창이 열립니다. 설치 후 다시 확인해 주세요.",
+        "터미널에 위 명령을 실행하면 Xcode 명령줄 도구 설치 창이 열려요. 설치 후 다시 확인해 주세요.",
     };
   }
   if (platform === "win32") {
@@ -549,7 +548,7 @@ export function gitInstallGuidance(platform: Platform = currentPlatform()): {
   return {
     command: "sudo apt install git",
     guidance:
-      "배포판의 패키지 매니저로 git을 설치해 주세요 — 위 명령은 데비안/우분투 기준입니다. 설치 후 다시 확인해 주세요.",
+      "배포판의 패키지 매니저로 git을 설치해 주세요 — 위 명령은 데비안/우분투 기준이에요. 설치 후 다시 확인해 주세요.",
   };
 }
 
@@ -568,7 +567,7 @@ export function startGitInstall(
       detach(spawnLike("xcode-select", ["--install"], { detached: true, stdio: "ignore" }));
       return {
         started: true,
-        guidance: "설치 창을 열었습니다 — 설치가 끝나면 이 단계를 다시 확인해 주세요.",
+        guidance: "설치 창을 열었어요 — 설치가 끝나면 이 단계를 다시 확인해 주세요.",
       };
     } catch {
       // 스폰에 실패한 세계는 아래 문장이 직접 실행할 길을 알려 준다.
@@ -577,7 +576,7 @@ export function startGitInstall(
   const guide = gitInstallGuidance(platform);
   return {
     started: false,
-    guidance: `git이 없습니다 — 터미널에 ${guide.command} 로 설치한 뒤 다시 확인해 주세요.`,
+    guidance: `git이 없어요 — 터미널에 ${guide.command} 로 설치한 뒤 다시 확인해 주세요.`,
   };
 }
 function pass(id: OnboardingStepId, detail: string): OnboardingStep {

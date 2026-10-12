@@ -37,14 +37,14 @@ const CLAUDE_INSTALL_PS1 = "https://claude.ai/install.ps1";
 /** Codex 의 최신 릴리스 — 설치와 업데이트 확인(agent-update.ts)이 같은 주소를 읽는다. */
 export const CODEX_RELEASE_API = "https://api.github.com/repos/openai/codex/releases/latest";
 
-const ALREADY_RUNNING = "설치가 이미 진행 중입니다 — 잠시만 기다려 주세요.";
-const CLAUDE_STARTED = "Claude Code 설치를 시작했습니다 — 진행 상황을 보여 드릴게요.";
-const CODEX_STARTED = "Codex 설치를 시작했습니다 — 진행 상황을 보여 드릴게요.";
+const ALREADY_RUNNING = "설치가 이미 진행 중이에요 — 잠시만 기다려 주세요.";
+const CLAUDE_STARTED = "Claude Code 설치를 시작했어요 — 진행 상황을 보여 드릴게요.";
+const CODEX_STARTED = "Codex 설치를 시작했어요 — 진행 상황을 보여 드릴게요.";
 const CLAUDE_UPDATE_STARTED = "Claude Code 업데이트를 시작했어요 — 진행 상황을 보여 드릴게요.";
 const CODEX_UPDATE_STARTED = "Codex 업데이트를 시작했어요 — 진행 상황을 보여 드릴게요.";
 const INSTALL_TIMEOUT_DETAIL =
-  "설치가 너무 오래 걸려 멈췄습니다 — 네트워크를 확인하고 다시 시도해 주세요.";
-const MISSING_EXECUTABLE = "설치가 끝났지만 실행 파일을 찾지 못했습니다 — 다시 시도해 주세요.";
+  "설치가 너무 오래 걸려 멈췄어요 — 네트워크를 확인하고 다시 시도해 주세요.";
+const MISSING_EXECUTABLE = "설치가 끝났지만 실행 파일을 찾지 못했어요 — 다시 시도해 주세요.";
 const NO_CODEX_ASSET = "이 컴퓨터에서는 Codex 를 설치할 수 없어요.";
 const DIGEST_MISMATCH = "내려받은 파일을 확인하지 못했어요 — 다시 시도해 주세요.";
 
@@ -145,7 +145,7 @@ const DISK_MARKERS = ["no space left", "not enough space", "enospc"];
 
 /** IT 담당자에게 그대로 보낼 복사용 한 줄 — policy 분류의 detail 뒤에 붙는다. */
 const POLICY_COPY_LINE =
-  "ColoNova Design 이 Claude Code 를 사용자 폴더에 설치하려고 합니다(https://claude.ai/install.ps1 또는 install.sh). 이 설치를 허용해 주세요.";
+  "ColoNova Design 이 Claude Code 를 사용자 폴더에 설치하려고 해요(https://claude.ai/install.ps1 또는 install.sh). 이 설치를 허용해 주세요.";
 
 /**
  * 설치 실패를 네 가지로 나눠 한국어 문장을 만든다. platform 은 curl 종료 코드의
@@ -494,7 +494,7 @@ export class AgentInstall {
             ok: true,
             detail: update
               ? "Claude Code 를 새 버전으로 바꿨어요."
-              : "Claude Code 설치가 완료되었습니다.",
+              : "Claude Code 설치가 끝났어요.",
             executable,
           }
         : { ok: false, detail: MISSING_EXECUTABLE };
@@ -567,7 +567,7 @@ export class AgentInstall {
       return executable
         ? {
             ok: true,
-            detail: update ? "Codex 를 새 버전으로 바꿨어요." : "Codex 설치가 완료되었습니다.",
+            detail: update ? "Codex 를 새 버전으로 바꿨어요." : "Codex 설치가 끝났어요.",
           }
         : { ok: false, detail: MISSING_EXECUTABLE };
     } finally {

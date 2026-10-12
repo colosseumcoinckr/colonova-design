@@ -15,6 +15,7 @@ import {
   waitForAnswer,
   waitForBudgetMs,
 } from "../dist/browser-tools.js";
+import { COMMIT_KINDS } from "../dist/change-plan.js";
 
 test("browserTools — submit_for_review 는 판정이 켜진 세션에만 실린다", () => {
   const full = browserTools(true);
@@ -286,13 +287,37 @@ test("BROWSER_TOOLS — 배열 인자는 모두 items 를 선언한다", () => {
   for (const tool of BROWSER_TOOLS) {
     for (const [name, property] of Object.entries(tool.properties)) {
       if (property.type !== "array") continue;
-      assert.equal(
-        property.items?.type,
-        "string",
+      const items = property.items;
+      assert.ok(
+        items,
         `${tool.name}.${name} — items 없는 배열은 OpenAI·Gemini 계열이 도구 전체를 거절한다`,
       );
+      if (items.type === "object") {
+        assert.ok(
+          items.properties && Object.keys(items.properties).length > 0,
+          `${tool.name}.${name} — 객체 items 는 안의 칸을 선언해야 한다`,
+        );
+      } else {
+        assert.equal(items.type, "string");
+      }
     }
   }
+});
+
+test("describe_changes — 종류의 목록은 도구와 계약이 같다", () => {
+  const tool = BROWSER_TOOLS.find((candidate) => candidate.name === "describe_changes");
+  assert.ok(tool, "도구가 계약에 있어야 한다");
+  const changes = tool.properties.changes;
+  assert.equal(changes.type, "array");
+  const items = changes.items;
+  assert.ok(items && items.type === "object");
+  const kind = items.properties.kind;
+  assert.deepEqual(kind.enum, [...COMMIT_KINDS]);
+  assert.ok(items.required?.includes("subject"));
+  assert.ok(items.required?.includes("files"));
+  // 쓰임새는 도구 설명 한 곳에 — 언제 부르는지와 제목의 말투가 설명에 있다.
+  assert.ok(tool.description.includes("답을 쓰기 전에"));
+  assert.ok(tool.description.includes("요청 문장"));
 });
 
 test("waitForBudgetMs — 드라이버와 같은 규칙으로 기본 5초 · 상한 30초를 계산한다", () => {

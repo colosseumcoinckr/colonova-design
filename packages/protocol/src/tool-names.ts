@@ -51,6 +51,8 @@ const NAMES: Record<string, string> = {
   browser_waitFor: "기다리기",
   browser_consoleLines: "오류 기록 보기",
   screen_check: "화면 확인",
+  // 바꾼 일을 보관 계획에 적는 도구 — 「커밋」 어휘는 사용자의 사전에 없다(2026-10-11).
+  describe_changes: "바꾼 일 적기",
   repo_diagnostics: "오류 검사",
   submit_for_review: "제출 요청",
   screen_files: "화면 파일 찾기",

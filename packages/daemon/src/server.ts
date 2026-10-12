@@ -45,6 +45,7 @@ import {
   submitNoteOf,
   waitForAnswer,
 } from "./browser-tools.js";
+import { normalizeDescribeChanges, type PlannedChange } from "./change-plan.js";
 import { CommandDedupe } from "./command-dedupe.js";
 import {
   type CredentialStore,
@@ -169,6 +170,7 @@ const BROWSER_OPS: Record<string, true> = {
   screenFiles: true,
   notifyDeveloper: true,
   repoDiagnostics: true,
+  describeChanges: true,
 };
 
 /** 요청 본문 한도 — evaluate 식·콘솔 요청 등을 다 담는 충분한 크기. */
@@ -1504,6 +1506,19 @@ export class DaemonServer {
    */
   private readonly gateChecked = new Map<string, GateChecked>();
 
+  /**
+   * 이번 턴의 보관 계획(2026-10-11 피드백) — 일하는 AI 가 `describe_changes` 로
+   * 적은 논리적 변경의 목록. `runAutoSave` 가 가져갈 때까지 여기 산다. 턴을
+   * 태그로 지우지 않는 대신, 소비할 때 그 턴의 requestId 인지 확인한다 —
+   * 가져가지 못한 계획(반영 저장 · 손 저장이 지나간 계획)은 다음 턴의 것이
+   * 될 수 없다. 소비하지 못하고 남은 계획은 새 턴의 보내기가 requestId 를
+   * 바꾸는 순간 버려진다.
+   */
+  private readonly changePlans = new Map<
+    string,
+    { requestId: string | null; changes: PlannedChange[] }
+  >();
+
   /** Gate eligibility comes from this request's content delta, never its wording or pins alone. */
   private async finishChangedTurn(sessionId: string, duration: number | undefined): Promise<void> {
     const baseline = this.turnBaselines.get(sessionId);
@@ -1710,12 +1725,22 @@ export class DaemonServer {
     // 이 턴의 확인 기록은 이 보관이 가져가고 — 보관이 없는 턴에서도 다음 턴으로 새지 않게 여기서 비운다.
     const checked = this.gateChecked.get(sessionId);
     this.gateChecked.delete(sessionId);
+    // 이 턴의 보관 계획도 같은 자리에서 간다 — 이 턴의 requestId 에 붙은 것만
+    // 유효하므로, 반영 저장 · 손 저장이 지나쳐 남은 옛 계획이 다음 턴의 보관을
+    // 물지 않는다.
+    const planEntry = this.changePlans.get(sessionId);
+    this.changePlans.delete(sessionId);
+    const session = this.manager.get(sessionId);
+    const plan =
+      planEntry && planEntry.requestId === (session?.lastRequestId ?? null)
+        ? planEntry.changes
+        : null;
     if (!this.autoSaveDue.delete(sessionId)) return;
     const workspaces = this.workspaceOfSession(sessionId);
     const source = routes ?? [...(this.drivers.pinnedThisTurn.get(sessionId)?.keys() ?? [])];
-    const answer = this.manager.get(sessionId)?.lastAssistantText ?? null;
+    const answer = session?.lastAssistantText ?? null;
     const saving = this.fleet
-      .autoSaveTurn(sessionId, source, checked)
+      .autoSaveTurn(sessionId, source, checked, plan ?? undefined)
       .then(async (saved) => {
         if (!workspaces || !saved?.requestId) return;
         const url = workspaces.repo.repoCore().previewUrl;
@@ -2034,6 +2059,44 @@ export class DaemonServer {
       );
       this.observeBrowserOp(sessionId, op, Date.now() - opStart);
       reply(200, { ok: true, result: diagnosticsAnswer(result, changed) });
+      return;
+    }
+    // describe_changes (2026-10-11 피드백) — pane 이 없다. 일하는 AI 가 적은
+    // 보관 계획을 이 턴의 것으로 여기 적는다. 레포의 지금 변경을 함께 읽어
+    // 계획에 없는 경로를 알려 주는 것까지가 도구의 대답이다 — 모델이 그 자리에서
+    // 고치게. 저장은 runAutoSave 의 소비 때 승인 경로와 한 번 더 골라내므로,
+    // 여기서의 안내는 정확을 위한 것일 뿐 집행의 문지기는 아니다.
+    if (op === "describeChanges") {
+      const parsed = normalizeDescribeChanges(params);
+      if (!parsed.ok) {
+        this.observeBrowserOp(sessionId, op, Date.now() - opStart, "other");
+        reply(200, { ok: false, error: parsed.error });
+        return;
+      }
+      const session = this.manager.get(sessionId);
+      this.changePlans.set(sessionId, {
+        requestId: session?.lastRequestId ?? null,
+        changes: parsed.changes,
+      });
+      const workspaces = this.workspaceOfSession(sessionId);
+      const changed =
+        workspaces === null
+          ? []
+          : await workspaces.repo
+              .diff()
+              .then((files) => files.map((file) => file.path))
+              .catch(() => [] as string[]);
+      const listed = new Set(parsed.changes.flatMap((change) => change.files));
+      const missing = changed.filter((path) => !listed.has(path));
+      this.observeBrowserOp(sessionId, op, Date.now() - opStart);
+      const answer =
+        parsed.changes.length === 0
+          ? "보관 계획에 남은 변경이 없다 — 저장 때는 이번 턴의 변경이 한 커밋으로 담긴다."
+          : `보관 계획에 변경 ${parsed.changes.length}건을 적었다 — 저장 때 변경마다 커밋한다.` +
+            (missing.length > 0
+              ? ` 레포의 지금 변경 중 계획에 없는 경로는 그 밖의 변경으로 함께 담긴다: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? " 외" : ""}`
+              : "");
+      reply(200, { ok: true, result: answer });
       return;
     }
     const factory = this.config.browserDriverFactory;

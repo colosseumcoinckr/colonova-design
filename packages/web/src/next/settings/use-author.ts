@@ -56,7 +56,7 @@ export function useAuthorName(daemon: Daemon): AuthorModel {
 
   const setDraft = useCallback((value: string) => {
     setDraftState(value);
-    // 낡은 「저장했어요」와 지난 실패는 새로 치는 순간 걷는다.
+    // 낡은 「적어 두었어요」와 지난 실패는 새로 치는 순간 걷는다.
     setPhase((now) => (now === "saved" || now === "failed" ? "idle" : now));
   }, []);
 

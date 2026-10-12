@@ -80,14 +80,23 @@ test("pickHandoffTitle — 초안이 있으면 초안을 쓴다", () => {
   );
 });
 
-test("pickHandoffTitle — 초안이 비면 첫 커밋 제목에 형식을 붙인다", () => {
+test("pickHandoffTitle — 초안이 비면 첫 커밋 제목을 형식 그대로 쓴다", () => {
   assert.equal(
     pickHandoffTitle({
       draftTitle: "", // handoffDraft 의 턴이 시간 안에 답하지 못한 모양
+      firstCommitSubject: "feat(members): 회원 목록 만들기",
+      fallback: "기본",
+    }),
+    "feat(members): 회원 목록 만들기",
+  );
+  // 형식이 없는 첫 커밋(계획 없이 보관된 턴)에 억지 접두를 붙이지 않는다(2026-10-11 피드백).
+  assert.equal(
+    pickHandoffTitle({
+      draftTitle: "",
       firstCommitSubject: "회원 목록 만들기",
       fallback: "기본",
     }),
-    "chore: 회원 목록 만들기",
+    "회원 목록 만들기",
   );
 });
 
@@ -98,7 +107,7 @@ test("pickHandoffTitle — 커밋 제목마저 없으면 기본 제목", () => {
       firstCommitSubject: null,
       fallback: "ColoNova Design 화면 전달",
     }),
-    "chore: ColoNova Design 화면 전달",
+    "ColoNova Design 화면 전달",
   );
 });
 
@@ -634,9 +643,10 @@ test("buildChecksSection — 타입 검사 한 줄: 화면 확인 문단과 레�
 });
 
 test("plainHandoffTitle — 도구가 붙인 종류 접두어와 작성자 꼬리를 뗀 사용자의 말(2026-10-08 · 반영된 일)", () => {
-  // formatHandoffTitle 의 거울 — 만든 제목이 그대로 되돌아온다.
+  // formatHandoffTitle 의 거울 — 만든 제목이 그대로 되돌아온다. 형식이 없는
+  // 말에 억지 접두를 붙이지 않는다(2026-10-11 피드백).
   const made = formatHandoffTitle("회원 목록에 이름 검색을 넣었어요", "김기획");
-  assert.equal(made, "chore: 회원 목록에 이름 검색을 넣었어요 (작성: 김기획)");
+  assert.equal(made, "회원 목록에 이름 검색을 넣었어요 (작성: 김기획)");
   assert.equal(plainHandoffTitle(made), "회원 목록에 이름 검색을 넣었어요");
   assert.equal(plainHandoffTitle("fix(submit)!: 중복 제출 방지"), "중복 제출 방지");
   assert.equal(plainHandoffTitle("feat(members): 검색  창\n본문은 읽지 않는다"), "검색 창");

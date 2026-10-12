@@ -414,7 +414,7 @@ export function FirstRun({
 
             {/* 로그인이 실패로 끝났다 — 다시 여는 길. 진행판이 살아 있는 동안은 숨는다. */}
             <Fold open={agentState === "idle" && Boolean(loginFailed)}>
-              <p className="nx-ob-d nx-ob-d--red">{loginFailed}</p>
+              <LoginFailLine detail={loginFailed ?? ""} />
               {agentFix && (
                 <div className="nx-ob-acts">
                   <button
@@ -602,6 +602,36 @@ function splitInstallDetail(detail: string): { body: string; itLine: string | nu
   if (lines.length < 2) return { body: detail, itLine: null };
   const itLine = lines[lines.length - 1] ?? null;
   return { body: lines.slice(0, -1).join("\n"), itLine };
+}
+
+/** 로그인 실패 문장을 `한국어 머리 — 날 원문` 으로 가른다(F4, 2026-10-10 UX 조사) —
+ *  데몬이 낡은 문장부터 쓰는 구분자 ` — ` 하나로 잡는다. */
+function splitLoginDetail(detail: string): { head: string; tail: string | null } {
+  const at = detail.indexOf(" — ");
+  if (at === -1) return { head: detail, tail: null };
+  return { head: detail.slice(0, at), tail: detail.slice(at + 3) };
+}
+
+/** 로그인 실패 줄(F4) — 한국어 머리만 붉게 세우고 날 원문(주로 영어)은 자세히 접힘으로
+ *  내려 사용자가 영어를 읽고 멈추지 않게 한다. 원문은 담당자 전달을 위해 남긴다. */
+function LoginFailLine({ detail }: { detail: string }) {
+  const { head, tail } = splitLoginDetail(detail);
+  return (
+    <>
+      <p className="nx-ob-d nx-ob-d--red">{head}</p>
+      {tail !== null && (
+        <details className="nx-ob-help">
+          <summary>
+            <Caret />
+            {L.onboarding.loginRawDetail}
+          </summary>
+          <div className="nx-ob-help-b">
+            <p className="nx-ob-d">{tail}</p>
+          </div>
+        </details>
+      )}
+    </>
+  );
 }
 
 /** 로그인 코드 붙여넣기 — 데몬이 자식의 stdin 으로 흘려 보낸다. */

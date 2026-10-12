@@ -89,8 +89,8 @@ test("제출 — 네 단계가 한 번에 서고 의도가 지워진다", async 
     const handoff = scene.core.openHandoff;
     assert.ok(handoff, "레지스트리에 넘긴 요청이 적혀야 한다");
     assert.equal(handoff.state, "open");
-    // 초안이 없어도 자동 제목은 commit 형식을 쓴다.
-    assert.equal(scene.github.pull(handoff.number)?.title, "chore: 회원 목록 화면");
+    // 초안이 없어도 자동 제목은 첫 커밋의 제목이다 — 형식을 억지로 붙이지 않는다(2026-10-11 피드백).
+    assert.equal(scene.github.pull(handoff.number)?.title, "회원 목록 화면");
     const body = scene.github.pull(handoff.number)?.body ?? "";
     assert.ok(body.includes("colonova-design:start"), "본문에 도구 구간이 있어야 한다");
     assert.ok(body.includes("바뀐 파일"), "본문에 바뀐 파일 절이 있어야 한다");
@@ -219,7 +219,7 @@ test("개발자가 구간 밖에 쓴 글과 제목은 다시 제출해도 그대
     await scene.supervisor.settled();
     const number = scene.core.openHandoff?.number;
     assert.ok(number);
-    assert.equal(scene.github.pull(number)?.title, "chore: 회원 목록 화면 (작성: 김기획)");
+    assert.equal(scene.github.pull(number)?.title, "회원 목록 화면 (작성: 김기획)");
 
     // 개발자가 본문의 도구 구간 밖에 글을 쓰고 제목도 고친다.
     const before = scene.github.pull(number)?.body ?? "";

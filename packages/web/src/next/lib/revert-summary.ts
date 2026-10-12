@@ -6,9 +6,17 @@
  * `entries` 는 `repo.history` 그대로 — 최신이 앞(0번이 지금 서 있는 곳)이다.
  */
 
-/** 차례의 제목 — 보관의 첫 줄(=그 차례를 연 사용자의 말). */
+/** 보관 제목의 종류 접두(`feat(members): `) — `handoff-preview.ts` 의 KIND_PREFIX 와 같은 모양이다. */
+const COMMIT_KIND_PREFIX =
+  /^(feat|fix|perf|refactor|style|docs|test|build|ci|chore)(\([^()\r\n]+\))?!?:\s*/;
+
+/**
+ * 차례의 제목 — 보관의 첫 줄에서 도구가 붙인 종류 접두를 벗긴 것이다(2026-10-11
+ * 피드백: 보관이 변경 단위가 되면서 커밋 제목에 `feat: …` 접두가 실린다 —
+ * 개발자 어휘는 사용자의 작업 기록에 오르지 않는다).
+ */
 export function entryTitle(message: string): string {
-  return (message.split("\n")[0] ?? "").trim();
+  return (message.split("\n")[0] ?? "").trim().replace(COMMIT_KIND_PREFIX, "").trim();
 }
 
 /**

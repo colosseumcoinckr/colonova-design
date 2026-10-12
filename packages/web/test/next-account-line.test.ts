@@ -52,11 +52,11 @@ test("accountLine: 모르는 요금제 이름은 원문 그대로 보인다", ()
   assert.equal(accountText(line, L), "kim@회사.kr · claude_future_plan 로 연결됨");
 });
 
-test("accountLine: API 키 방식은 `API 키로 연결됨` — 요금제도 이메일도 말하지 않는다", () => {
+test("accountLine: API 키 방식은 `IT가 연결해 둔 계정이에요` — 요금제도 이메일도 말하지 않는다", () => {
   for (const authMethod of ["api_key", "api_key_helper"]) {
     const line = accountLine(facts({ authMethod, email: null, subscriptionType: null }));
     assert.deepEqual(line, { kind: "api-key" }, authMethod);
-    assert.equal(accountText(line, L), "API 키로 연결됨");
+    assert.equal(accountText(line, L), "IT가 연결해 둔 계정이에요");
   }
 });
 

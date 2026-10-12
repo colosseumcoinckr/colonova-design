@@ -415,6 +415,13 @@ export interface DiffStatus {
    * name is still theirs to read). Present once `stage === "published"`.
    */
   message?: string | null;
+  /**
+   * 이번 저장이 실제로 담은 경로 전부 — 보관이 변경 단위로 여러 커밋에
+   * 나뉘어도(2026-10-11 피드백) 턴의 변경은 전부다. 라우트↔파일 지도가
+   * HEAD 커밋만 읽으면 마지막 변경의 파일만 남는다. 계획 없는 저장은
+   * 승인 경로 전부 — 그 커밋의 파일과 같다.
+   */
+  turnFiles?: string[] | null;
   /** The pull request, once `stage === "handed-off"`. */
   handoff?: HandoffStatus | null;
 }

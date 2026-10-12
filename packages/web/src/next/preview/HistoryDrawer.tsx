@@ -827,9 +827,11 @@ function RevertCard({
           <li className="nx-hchip nx-hchip--warn">{L.history.chipComments}</li>
         )}
       </ul>
-      <p className="nx-hconfirm-names">
-        {names.length > 0 ? L.history.affected(names.join(" · ")) : L.history.affectedUnknown}
-      </p>
+      {names.length > 0 && (
+        <p className="nx-hconfirm-names">{L.history.affected(names.join(" · "))}</p>
+      )}
+      {/* 이름을 알 때도 전체 되감음을 함께 말한다(F15) — 다른 대화의 변경도 되돌아간다. */}
+      <p className="nx-hconfirm-names">{L.history.affectedAll}</p>
       <p className="nx-hconfirm-safe">
         <ShieldCheck
           className="nx-i nx-hconfirm-ic"

@@ -8,6 +8,7 @@
  * 모두 isError 텍스트로 내려가 턴을 죽이는 대신 모델이 읽고 고치게 한다.
  */
 import { BROWSER_MCP_SERVER_NAME } from "./browser-launch.js";
+import { COMMIT_KINDS } from "./change-plan.js";
 
 /** 느슨한 와이어 형태 — 줄 단위 JSON을 그대로 다룬다. */
 export type Wire = Record<string, unknown>;
@@ -20,6 +21,16 @@ export interface ToolOutcome {
   isError?: boolean;
 }
 
+/** 인자 칸 하나 — 도구 인자와 객체 items 의 안칸이 같은 모양이다(`items` 는 문자열 목록과 객체 목록을 안다). */
+export interface ToolProperty {
+  type: string;
+  description: string;
+  items?:
+    | { type: "string" }
+    | { type: "object"; properties: Record<string, ToolProperty>; required?: string[] };
+  enum?: string[];
+}
+
 /** 도구 하나 = 이름·설명·중계할 op·인자 스키마. 인자는 데몬으로 그대로 간다. */
 export interface ToolDef {
   name: string;
@@ -29,12 +40,11 @@ export interface ToolDef {
    * 인자 스키마. 배열 인자는 `items` 를, 고른 칸은 `enum` 을 선언한다 —
    * OpenAI 계열(숫자만 있는 배열을 거절)과 Gemini 계열의 함수 스키마가
    * 이 두 칸을 요구하고, 정의 하나가 거절되면 그 세션의 브라우저 도구
-   * 목록 전체가 막힌다. 시험이 이 계약을 지킨다.
+   * 목록 전체가 막힌다. `items` 는 문자열 목록(`{ type: "string" }`)과
+   * 객체 목록(`describe_changes` 의 변경 — `properties` · `required` 를
+   * 안에 선언한다) 둘을 안다. 시험이 이 계약을 지킨다.
    */
-  properties: Record<
-    string,
-    { type: string; description: string; items?: { type: string }; enum?: string[] }
-  >;
+  properties: Record<string, ToolProperty>;
   required?: string[];
 }
 
@@ -45,14 +55,15 @@ export interface BrowserRelay {
 }
 
 /**
- * 계약의 23개 도구. 이름·인자는 도구셋 계약 그대로 — `browser_fill`이
- * op `type`으로, `browser_wait`가 op `waitFor`로, `browser_console`이 op
+ * 계약의 24개 도구. 이름·인자는 도구셋 계약 그대로 — `browser_fill`이
+ * op `type`으로, `browser_wait`가 op `waitFor`로, `browser_console`가 op
  * `consoleLines`로 걸리는 것만 이름 차이다. `browser_find`는 op 가 아니라
  * 스냅샷의 거름이고(PLAN-MCP §3.C), `browser_inspect`는 핀의 정체 조사를
  * 핀 없이 돌리는 op(§3.E-1)다. `screen_check`는 op `screenCheck`로 게이트와
  * 같은 판정을 턴 안에서 앞당겨 본다. pane 이 필요한 도구는 화면의 페이지를
  * 겨누고(pane 은 프로젝트당 페이지 하나라 탭 주소는 없다),
- * `screen_files` · `notify_developer` · `repo_diagnostics` 는 pane 없이 데몬만으로 답한다.
+ * `screen_files` · `notify_developer` · `repo_diagnostics` · `describe_changes` 는
+ * pane 없이 데몬만으로 답한다 — 마지막 것은 저장(보관)의 계획을 세션에 적는다.
  */
 export const BROWSER_TOOLS: ToolDef[] = [
   {
@@ -272,6 +283,53 @@ export const BROWSER_TOOLS: ToolDef[] = [
         description: "true 면 문제가 있는 화면의 그림(긴 변 640)을 돌려준다.",
       },
     },
+  },
+  {
+    name: "describe_changes",
+    op: "describeChanges",
+    description:
+      "이번 턴에 바꾼 일을 논리적 변경 단위로 적어 보관 계획에 올린다 — 저장할 때 파일을 " +
+      "변경마다 나눠 커밋하므로 개발자가 받는 요청의 커밋들이 한눈에 읽힌다. 파일을 고치거나 " +
+      "지운 턴은 답을 쓰기 전에 부른다. 서로 다른 일은 하나로 묻지 않고 변경마다 하나씩 적는다. " +
+      "kind 는 변경의 종류 하나고(feat 기능 · fix 오류 · perf 속도 · refactor 구조 · style 코드 서식 · " +
+      "docs 문서 · test 시험 · build 빌드 · ci 검사 · chore 그 밖 — 화면의 기능이나 배치를 바꿨으면 feat 이다), " +
+      "subject 는 무엇이 어떻게 달라지는지를 명사로 끝맺은 한 줄이다 — `~해 줘` 같은 요청 문장, " +
+      "파일 이름 나열, 따옴표를 쓰지 않는다(예: 회원 목록에 이름 검색 추가). files 는 그 변경이 " +
+      "건드린 경로로 클론 루트 기준이고, 폴더를 적으면 그 아래 전부가 담긴다. 지운 파일도 경로로 적는다. " +
+      "여러 번 부르면 마지막 판이 이번 턴의 계획이다. 파일을 고치지 않은 턴(답만 한 턴)에는 부르지 않는다.",
+    properties: {
+      changes: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            kind: {
+              type: "string",
+              enum: [...COMMIT_KINDS],
+              description:
+                "변경의 종류 — feat · fix · perf · refactor · style · docs · test · build · ci · chore 중 하나.",
+            },
+            subject: {
+              type: "string",
+              description:
+                "변경 한 줄 — 무엇이 어떻게 달라지는지. `회원 목록에 이름 검색 추가` 처럼 명사로 끝맺는다.",
+            },
+            body: {
+              type: "string",
+              description: "이유나 확인할 점(선택) — 한 단락.",
+            },
+            files: {
+              type: "array",
+              items: { type: "string" },
+              description: "그 변경에 담일 경로 — 클론 루트 기준 상대 경로. 폴더면 그 아래 전부.",
+            },
+          },
+          required: ["kind", "subject", "files"],
+        },
+        description: "변경의 목록 — 하나가 커밋 하나다.",
+      },
+    },
+    required: ["changes"],
   },
   {
     name: "repo_diagnostics",

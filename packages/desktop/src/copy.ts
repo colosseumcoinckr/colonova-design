@@ -65,7 +65,7 @@ export const NOTICE = {
     // 웹 L.chat.closed 와 같은 말.
     closed: {
       tail: "요청 닫힘",
-      body: "개발자가 이번 요청을 닫았어요 — 작업은 새 요청으로 옮겨 두었어요.",
+      body: "개발자가 이번 요청을 닫았어요 — 작업은 새 요청으로 옮겨 두었어요. 다시 만든 뒤 제출을 누르면 새 요청으로 가요",
     },
     changes_requested: {
       tail: "코멘트가 왔어요",
@@ -202,7 +202,7 @@ export const MENU = {
   help: "도움말",
   /** 개발 실행에서만 서는 항목 — 사용자의 메뉴에는 없다. */
   devTools: "개발자 도구",
-  helpGuide: "사용 설명서 열기",
+  helpGuide: "사용 설명서 열기 (GitHub)",
   helpReport: "문제가 생겼어요 — 진단 복사",
   helpLogs: "기록 폴더 열기",
 };

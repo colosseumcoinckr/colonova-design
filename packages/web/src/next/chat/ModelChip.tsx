@@ -441,8 +441,14 @@ export function ModelChip({
                   const name = usageRowName(row, L);
                   const heat = usageHeat(row.pct);
                   const when = row.resetsAt ? refillWhen(row.resetsAt, now, L) : null;
+                  // 5시간 창의 이름은 맨줄이든 모델 곁이든 같은 말을 쓴다(F21) — 툴팁으로 창의 길이를 말한다.
+                  const tip = name.includes(L.chat.usageFiveHour) ? L.chat.usageFiveHourTip : null;
                   return (
-                    <div key={name} className={`nx-usage-row nx-usage-row--${heat}`}>
+                    <div
+                      key={name}
+                      className={`nx-usage-row nx-usage-row--${heat}`}
+                      title={tip ?? undefined}
+                    >
                       <div className="nx-usage-row-head">
                         <span className="nx-usage-row-name">{name}</span>
                         <span className="nx-usage-row-pct">{L.chat.usageUsed(row.pct)}</span>

@@ -47,7 +47,7 @@ export const INSTALL_MARKER = "colonova-design-install-hash";
 export const READY_TIMEOUT_MS = Number(process.env.COLONOVA_DESIGN_READY_TIMEOUT_MS) || 120_000;
 const DETAIL_THROTTLE_MS = 200;
 /** Commit message when the planner approves without writing one. */
-export const DEFAULT_COMMIT_MESSAGE = "ColoNova Design 화면 변경";
+export const DEFAULT_COMMIT_MESSAGE = "chore: 화면 변경";
 /** PR title when the planner sends the handoff without editing it. */
 export const DEFAULT_HANDOFF_TITLE = "ColoNova Design 화면 전달";
 /** D56: where a handoff's screen captures are committed, relative to the root. */

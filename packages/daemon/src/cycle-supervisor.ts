@@ -140,6 +140,13 @@ const CLONE_RESTORE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** 푸시가 성공하면 거두는 알림 — 밀림 · 인증 · 권한(2026-10-07). */
 const PUSH_NOTICE_KEYS = ["push:behind", "push:auth", "push:permission"] as const;
 
+/**
+ * 자동 보관이 놓친 변경(실패 · 중단된 턴, 제출 전의 잔여)을 데몬이 대신 보관할
+ * 때의 커밋 제목 — 계획이 없어 문장을 지어낼 수 없는 자리다(2026-10-11 피드백:
+ * 제품 이름 · 기계의 말투가 드러나는 제목은 걷는다).
+ */
+const LEFTOVER_COMMIT_MESSAGE = "chore: 남은 변경 마무리";
+
 /** 알림 키 → 사용자가 읽는 한국어 한 문장. */
 const NOTICE_TEXT: Record<string, string> = {
   "push:behind": "보관한 작업을 1시간 넘게 올리지 못하고 있습니다",
@@ -946,7 +953,7 @@ export class CycleSupervisor {
         // 더 읽는다.
         if ((await core.diff()).length === 0) return true;
         const saved = await this.deps.workspace.save({
-          message: "작업 이어 보관",
+          message: LEFTOVER_COMMIT_MESSAGE,
           backgroundPush: true,
         });
         if (saved.stage === "published") return true;
@@ -1768,7 +1775,7 @@ export class CycleSupervisor {
     const dirty = (await core.git(["status", "--porcelain"]).catch(() => "?")).trim() !== "";
     if (dirty) {
       const saved = await this.deps.workspace.save({
-        message: "작업 이어 보관",
+        message: LEFTOVER_COMMIT_MESSAGE,
         backgroundPush: true,
         // 보관의 게이트 브리프 — save 의 이 문은 동기라 기다리지 못한다. 열기 ·
         // 보내기의 실패는 여기서 삼킨다(처리되지 않은 거절이 데몬을 넘어뜨리지 않게).

@@ -67,7 +67,7 @@ test("inviteRowsCopy: 바뀜 행은 무엇이 바뀌는지까지 한 줄에", ()
   const { rows } = inviteRowsCopy([row], L, [MEMBER, SETTLE]);
   assert.equal(rows[0]?.chip, "바뀜");
   assert.equal(rows[0]?.name, "회원 관리");
-  assert.equal(rows[0]?.detail, "기본 가지 main → develop · 받을 개발자 명단이 바뀌어요");
+  assert.equal(rows[0]?.detail, "프로젝트의 기준이 바뀌어요 · 받을 개발자 명단이 바뀌어요");
 });
 
 test("inviteRowsCopy: 바뀐 것이 없으면 그대로 행, 판 전체는 연결 코드만", () => {
@@ -151,7 +151,7 @@ test("inviteUpdateChanges: 명령 허용이 새로 켜지면 문장이 더해진
     currentName: "정산",
   } as const;
   const changes = inviteUpdateChanges(row, L, { ...SETTLE, commandsApproved: false });
-  assert.deepEqual(changes, ["명령 실행이 미리 허용됐어요"]);
+  assert.deepEqual(changes, ["개발자가 미리 허락해 둔 작업이 있어요"]);
 });
 
 test("inviteRowsCopy: 빈 초대장은 그대로도 아니다", () => {

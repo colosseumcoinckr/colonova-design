@@ -126,6 +126,16 @@ test("entryTitle — 첫 줄만", () => {
   assert.equal(entryTitle(""), "");
 });
 
+test("entryTitle — 보관의 종류 접두는 벗기고 종류가 아닌 콜론은 그대로 둔다(2026-10-11)", () => {
+  assert.equal(
+    entryTitle("feat(members): 회원 목록에 이름 검색 추가"),
+    "회원 목록에 이름 검색 추가",
+  );
+  assert.equal(entryTitle("fix: 중복 제출 방지\n\n본문은 읽지 않는다"), "중복 제출 방지");
+  assert.equal(entryTitle("chore: 남은 변경 마무리"), "남은 변경 마무리");
+  assert.equal(entryTitle("안내: 문구 정리"), "안내: 문구 정리");
+});
+
 test("historyRows — 제출은 그보다 오래된 첫 차례 위에 선다", () => {
   const rows = historyRows(ENTRIES, ["2026-09-25T02:30:00Z"]);
   assert.deepEqual(rows, [

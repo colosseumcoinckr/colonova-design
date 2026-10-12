@@ -22,6 +22,10 @@ test("previewTitle: 종류 접두어와 작성자 꼬리를 뗀다", () => {
   );
   assert.equal(previewTitle("fix: 중복 제출 방지"), "중복 제출 방지");
   assert.equal(previewTitle("chore!: 설정 정리"), "설정 정리");
+  assert.equal(
+    previewTitle("perf: 목록 첫 그리기가 두 배 빨라진다"),
+    "목록 첫 그리기가 두 배 빨라진다",
+  );
 });
 
 test("previewTitle: 종류가 아닌 앞말은 건드리지 않는다 — 문장의 콜론을 접두어로 읽지 않는다", () => {

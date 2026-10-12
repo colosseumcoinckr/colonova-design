@@ -241,7 +241,7 @@ test("성공 판정: exit 0 + 실행 파일 있음 → ok", async () => {
     resolveClaude: async () => "/opt/homebrew/bin/claude",
   });
   assert.equal(result.ok, true);
-  assert.equal(result.detail, "Claude Code 설치가 완료되었습니다.");
+  assert.equal(result.detail, "Claude Code 설치가 끝났어요.");
 });
 
 test("성공 판정: exit 0 인데 실행 파일이 없으면 실패 문장", async () => {
@@ -250,7 +250,7 @@ test("성공 판정: exit 0 인데 실행 파일이 없으면 실패 문장", as
     resolveClaude: async () => null,
   });
   assert.equal(result.ok, false);
-  assert.equal(result.detail, "설치가 끝났지만 실행 파일을 찾지 못했습니다 — 다시 시도해 주세요.");
+  assert.equal(result.detail, "설치가 끝났지만 실행 파일을 찾지 못했어요 — 다시 시도해 주세요.");
 });
 
 test("성공 판정: exit 7 은 네트워크 실패로 분류된다", async () => {
@@ -274,7 +274,7 @@ test("시간 상한: 넘으면 자식을 끊고 실패 문장으로 끝난다", 
   assert.equal(result.ok, false);
   assert.equal(
     result.detail,
-    "설치가 너무 오래 걸려 멈췄습니다 — 네트워크를 확인하고 다시 시도해 주세요.",
+    "설치가 너무 오래 걸려 멈췄어요 — 네트워크를 확인하고 다시 시도해 주세요.",
   );
 });
 
@@ -287,7 +287,7 @@ test("종류마다 하나씩: 도는 중의 두 번째 시작은 거절된다", 
   const second = installer.start("install-claude", { onProgress: () => {}, onDone: () => {} });
   assert.equal(first.started, true);
   assert.equal(second.started, false);
-  assert.equal(second.guidance, "설치가 이미 진행 중입니다 — 잠시만 기다려 주세요.");
+  assert.equal(second.guidance, "설치가 이미 진행 중이에요 — 잠시만 기다려 주세요.");
   installer.stop();
 });
 
@@ -375,7 +375,7 @@ test("install-claude: 설치는 대상을 건네지 않는다 — 스크립트�
     resolveClaude: async () => "/usr/local/bin/claude",
   });
   assert.equal(result.ok, true, result.detail);
-  assert.equal(result.detail, "Claude Code 설치가 완료되었습니다.");
+  assert.equal(result.detail, "Claude Code 설치가 끝났어요.");
 });
 
 test("update-codex: 로컬 릴리스 서버의 자산을 받아 확인하고 tools/bin 에 바꿔 둔다", async () => {

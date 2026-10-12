@@ -26,8 +26,9 @@ export interface HandoffPreview {
   scopeRisk?: boolean;
 }
 
-/** 데몬이 제목에 붙이는 종류 접두어 — `formatHandoffTitle` 이 알아보는 것과 같은 일곱이다. */
-const KIND_PREFIX = /^(feat|fix|refactor|style|docs|test|chore)(\([^()\r\n]+\))?!?:\s*/;
+/** 데몬이 제목에 붙이는 종류 접두어 — 보관 계약의 COMMIT_KINDS 와 같은 목록이다(2026-10-11). */
+const KIND_PREFIX =
+  /^(feat|fix|perf|refactor|style|docs|test|build|ci|chore)(\([^()\r\n]+\))?!?:\s*/;
 /**
  * 데몬이 제목 끝에 붙이는 작성자 꼬리 ` (작성: 이름)`. 한글 리터럴 린트가 정규식을 읽지 못하고 따옴표 · 역따옴표를
  * 문자열의 시작으로 오해하므로, `작성` 은 `\uC791\uC131` 으로, 역따옴표는 `\u0060` 으로 적는다.

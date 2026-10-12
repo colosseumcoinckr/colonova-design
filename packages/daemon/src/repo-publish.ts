@@ -15,6 +15,7 @@ import {
   markTurn,
 } from "@colonova-design/protocol";
 import { isOwnAppComment } from "./app-comment.js";
+import { type PlannedChange, partitionApproved } from "./change-plan.js";
 import { readComments } from "./comments.js";
 import { replyFooter } from "./developer-replies.js";
 import {
@@ -186,6 +187,12 @@ export class PublishCycle {
     /** hero-synthesis D1: the conversation this save belongs to. */
     sessionId?: string;
     /**
+     * 이번 턴의 보관 계획(2026-10-11 피드백) — `describe_changes` 가 적은
+     * 논리적 변경의 목록. 있으면 승인 경로를 변경마다 나눠 커밋하고, 계획에
+     * 없던 경로는 폴백 메모의 한 커밋에 담는다.
+     */
+    plan?: PlannedChange[];
+    /**
      * P2-1 자동 저장의 푸시 — 백그라운드(실패 무시). 커밋은 로컬에 끝난 것으로
      * 저장이 성립하고, 푸시는 조용히 따라간다: 오프라인에서도 턴의 끝이 멈추지
      * 않게. 밀린 커밋은 제출(넘기기)이 기다렸다 민다 — 푸시 실패를 게이트로
@@ -312,11 +319,18 @@ export class PublishCycle {
     // the published status, so nothing is written in their name unseen.
     // A push retry writes no commit, so it asks for no memo turn: `null`
     // is what "nothing to commit here" means below.
+    // 2026-10-11 피드백: `describe_changes` 계획이 있으면 승인 경로를 변경마다
+    // 가라 — 폴백 메모는 계획이 다루지 않은 경로(그 밖의 변경)에만 필요하므로,
+    // 계획이 전부를 다루는 턴은 메모 턴조차 돌리지 않는다.
+    const { groups, leftover } = partitionApproved(approved, options.plan ?? null);
+    const fallbackNeeded = groups.length === 0 || leftover.length > 0;
     const memo = retryPush
       ? null
-      : options.message?.trim() ||
-        (await this.deps.machineMemo(saveable).catch(() => null)) ||
-        DEFAULT_COMMIT_MESSAGE;
+      : !fallbackNeeded
+        ? null
+        : options.message?.trim() ||
+          (await this.deps.machineMemo(saveable).catch(() => null)) ||
+          DEFAULT_COMMIT_MESSAGE;
 
     // Commit exactly the paths the planner approved — never `git add -A`, so
     // unreviewed output cannot ride along in the save.
@@ -326,7 +340,14 @@ export class PublishCycle {
     let branch: string;
     try {
       branch = await this.ensureCycleBranch();
-      if (memo !== null) await this.commitApproved(memo, approved);
+      if (memo !== null) {
+        if (groups.length > 0) {
+          for (const group of groups) await this.commitApproved(group.message, group.paths);
+          if (leftover.length > 0) await this.commitApproved(memo, leftover);
+        } else {
+          await this.commitApproved(memo, approved);
+        }
+      }
     } catch (error) {
       return this.failGate("commit", error, options.onSessionTurn);
     }
@@ -353,9 +374,20 @@ export class PublishCycle {
     const commit = (await this.core.git(["rev-parse", "HEAD"])).trim();
     // The worktree is clean now; the chip moves off unsaved on this.
     await this.core.refreshPendingChanges();
+    // 계획으로 나눠 커밋한 저장은 첫 변경의 제목이 이 저장의 말이 된다 —
+    // 계획이 전부를 다뤘으면 memo 는 null 이므로 log 에서 읽을 필요도 없다.
     const message =
-      memo ?? (await this.core.git(["log", "-1", "--pretty=%s"]).catch(() => "")).trim();
-    const status = this.core.setDiff({ stage: "published", commit, message });
+      groups[0]?.subject ??
+      memo ??
+      (await this.core.git(["log", "-1", "--pretty=%s"]).catch(() => "")).trim();
+    const status = this.core.setDiff({
+      stage: "published",
+      commit,
+      message,
+      // 이번 저장이 담은 경로 전부 — 라우트↔파일 지도가 HEAD 커밋만 읽으면
+      // 변경 단위로 나뉜 커밋 중 마지막 것의 파일만 남는다(2026-10-11).
+      turnFiles: approved.length > 0 ? approved : retryFiles,
+    });
     // hero-synthesis D1: the save lands on the session tape — a reloaded
     // window replays the quiet marker instead of losing it with `diffStatus`.
     this.core.lane.outside(() =>

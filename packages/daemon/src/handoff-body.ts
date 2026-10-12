@@ -504,8 +504,9 @@ function escapeRegExp(text: string): string {
 /**
  * PR 제목은 생성할 때만 정한다 (PLAN L6) — 순수 함수. 초안(handoffDraft 의
  * 8초 안에 나온 제목)이 없으면 첫 커밋 제목, 그마저 없으면 도구의 기본
- * 제목을 쓴다. 모든 자동 제목은 같은 형식이다. 입양 · 다시 제출에서는 이 함수를
- * 부르지 않는다 — 제목은 개발자의 것이다.
+ * 제목을 쓴다. 형식은 이미 붙은 것만 존중하고 새로 붙이지 않는다 — 보관이
+ * 변경 단위가 된 뒤(2026-10-11 피드백) 첫 커밋의 `feat: …` 제목이 곧 요청의
+ * 제목이다. 입양 · 다시 제출에서는 이 함수를 부르지 않는다 — 제목은 개발자의 것이다.
  */
 export function pickHandoffTitle(input: {
   draftTitle: string | null;
@@ -518,22 +519,19 @@ export function pickHandoffTitle(input: {
   return formatHandoffTitle(draft || subject || input.fallback, input.authorName);
 }
 
-/** 형식 없는 초안 · 폴백은 타입을 추측하지 않고 chore로 둔다. */
+/** 형식 없는 초안 · 폴백은 그대로 둔다 — 억지로 붙인 `chore:` 가 기계가 쓴 제목의 첫 신호다(2026-10-11 피드백). */
 export function formatHandoffTitle(title: string, authorName?: string | null): string {
   const line =
     title
       .split(/\r?\n/)
       .find((part) => part.trim() !== "")
       ?.trim() ?? "";
-  const conventional = /^(feat|fix|refactor|style|docs|test|chore)(\([^()\r\n]+\))?!?:\s*\S/.test(
-    line,
-  );
   // 2026-10-06 사용자 요청: 작성자는 도구가 붙인다. 긴 이름도 변경 제목의 자리를 남긴다.
   const author = Array.from((authorName ?? "").replace(/\s+/g, " ").trim());
   const name = author.length > 32 ? `${author.slice(0, 31).join("")}…` : author.join("");
   const suffix = name ? ` (작성: ${name})` : "";
   return (
-    Array.from(conventional ? line : `chore: ${line}`)
+    Array.from(line)
       .slice(0, HANDOFF_TITLE_MAX_CHARS - Array.from(suffix).length)
       .join("")
       .trimEnd() + suffix
@@ -543,8 +541,9 @@ export function formatHandoffTitle(title: string, authorName?: string | null): s
 /** 사용자의 말로 다시 읽은 요청 제목의 상한 (2026-10-08 베타 준비 분석 · A2b) — 성취 카드와 `반영된 일` 의 제목이다. */
 export const PLAIN_TITLE_MAX_CHARS = 80;
 
-/** `formatHandoffTitle` 이 알아보는 일곱 종류 접두어와 같다. */
-const TITLE_KIND_PREFIX = /^(feat|fix|refactor|style|docs|test|chore)(\([^()\r\n]+\))?!?:\s*/;
+/** `formatHandoffTitle` 이 존중하는(벗기는) 종류 접두 — `change-plan.ts` 의 COMMIT_KINDS 와 같다. */
+const TITLE_KIND_PREFIX =
+  /^(feat|fix|perf|refactor|style|docs|test|build|ci|chore)(\([^()\r\n]+\))?!?:\s*/;
 /** `formatHandoffTitle` 이 끝에 붙이는 작성자 꼬리 ` (작성: 이름)`. */
 const TITLE_AUTHOR_TAIL = /\s*\(작성:[^)\r\n]*\)\s*$/;
 

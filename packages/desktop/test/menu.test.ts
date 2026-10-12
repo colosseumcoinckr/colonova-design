@@ -47,7 +47,7 @@ test("도움말 메뉴: 사용 설명서 · 진단 복사 · 기록 폴더 — �
   assert.equal(help?.role, "help");
   const items = submenu(help);
   assert.deepEqual(labelsOf(items), [
-    "사용 설명서 열기",
+    "사용 설명서 열기 (GitHub)",
     "문제가 생겼어요 — 진단 복사",
     "기록 폴더 열기",
   ]);

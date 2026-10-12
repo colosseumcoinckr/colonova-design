@@ -314,7 +314,7 @@ test("5행 커밋 안 된 변경 — 턴이 없으면 보관하고, 도는 중�
     writeFileSync(join(scene.clone.path, "src/pending.ts"), "보관할 변경\n");
     await scene.supervisor.tick("manual");
     const log = await scene.git(["log", "--format=%s", "-1"]);
-    assert.ok(log.includes("작업 이어 보관"), "커밋 안 된 변경이 보관됐어야 한다");
+    assert.ok(log.includes("chore: 남은 변경 마무리"), "커밋 안 된 변경이 보관됐어야 한다");
     assert.equal(
       (await scene.git(["status", "--porcelain"])).trim(),
       "",

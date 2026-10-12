@@ -291,17 +291,17 @@ export const L = {
   slot: {
     previewWaiting: "미리보기가 여기에 떠요",
   },
-  /** 전환기 머리의 이름을 누르면 뜨는 프로젝트 카드(U7) — 저장소 · 미리보기 · 지켜 줄 것. */
+  /** 전환기 머리의 이름을 누르면 뜨는 프로젝트 카드(U7) — 원본 · 미리보기 · 지켜 줄 것. */
   projInfo: {
-    openRepo: "저장소 열기",
+    openRepo: "만든 화면의 원본 보기",
     openPreview: "미리보기 열기",
     openInvite: "초대 파일 열기…",
     guide: "지켜 줄 것",
     guideHelp: "이 프로젝트에서 AI가 늘 따랐으면 하는 규칙이에요. Claude 프로젝트의 ‘지침’과 같아요.",
     guidePlaceholder: "예) 버튼은 항상 화면 오른쪽 위에 둬 주세요",
     guideNote: "새로 시작하는 대화부터 적용돼요. 비우면 규칙도 사라져요.",
-    guideSavedToast: "저장했어요 — 새로 시작하는 대화부터 적용돼요",
-    guideSaveFailed: "지켜 줄 것을 저장하지 못했어요",
+    guideSavedToast: "적어 두었어요 — 새로 시작하는 대화부터 적용돼요",
+    guideSaveFailed: "지켜 줄 것을 적어 두지 못했어요",
     /** 데몬의 `project.remove` 는 파일을 지우지 않는다 — 대화와 작업 파일은 이 컴퓨터에 남는다. 그래서 「삭제」가 아니라 「빼기」다(2026-10-06 겹판 조사). */
     remove: "목록에서 빼기",
     removeTitle: (name: string) => `‘${name}’ 프로젝트를 목록에서 뺄까요?`,
@@ -419,7 +419,7 @@ export const L = {
     costOther: "사용량이 더 빨리 닳아요",
     blocked: {
       creditsGone: "빠르게에 쓰는 남은 양이 다 떨어져 보통 속도로 답해요",
-      credits: "빠르게에 쓰는 남은 양을 켜 두어야 빠르게를 쓸 수 있어요 — claude.ai 설정 → 사용량",
+      credits: "빠르게에 쓰는 남은 양을 켜 두어야 빠르게를 쓸 수 있어요 — AI 계정 설정 → 사용량",
       org: "조직 설정이 빠르게를 막아 두었어요",
       orgModels: "조직이 허용한 모델에 빠르게 모델이 없어요",
       network: "연결 문제로 지금은 빠르게를 쓸 수 없어요",
@@ -591,7 +591,8 @@ export const L = {
     diagnosticsTool: "오류 확인 기능",
     elementReference: "화면 요소",
     fileReference: "작업 파일",
-    closed: "개발자가 이번 요청을 닫았어요 — 작업은 새 요청으로 옮겨 두었어요",
+    closed:
+      "개발자가 이번 요청을 닫았어요 — 작업은 새 요청으로 옮겨 두었어요. 다시 만든 뒤 제출을 누르면 새 요청으로 가요",
     gateSummary: (step: string) => `${step}에서 문제를 찾아 AI에게 맡겼어요.`,
     errorSummary: "화면에 오류가 나서 AI에게 맡겼어요.",
     lookSummary: "보여 준 화면을 AI가 살펴보고 있어요.",
@@ -606,7 +607,9 @@ export const L = {
     /** 사용량 칸의 한 줄(창 하나) — 이름 · 쓴 비율 · 다시 차는 때. */
     usageUsed: (pct: number) => `${pct}% 썼어요`,
     usageRefill: (when: string) => `${when}에 다시 차요`,
-    usageFiveHour: "이번 5시간",
+    usageFiveHour: "지금 시간대",
+    /** 5시간 창의 툴팁(F21) — 줄에 마우스를 올리면 창의 길이를 말한다. */
+    usageFiveHourTip: "방금 지난 5시간 동안의 사용량이에요",
     usageWeek: "이번 주",
     usageMonth: "이번 달",
     /** 모델마다 따로 있는 창 — `Fable · 이번 주`. */
@@ -758,7 +761,7 @@ export const L = {
     bubble: "핀 메모",
     /** 아래는 게스트 안 오버레이가 입는 말 — 선로(colonova-overlay:mode)로 건너간다. */
     unnamed: "이름 없음",
-    hint: "클릭은 요소, 끌면 영역을 가리켜요. 여러 개 찍고 한 번에 말하세요.",
+    hint: "클릭은 요소, 끌면 영역을 가리켜요. 여러 개 찍고 한 번에 말해 주세요.",
     badgeWord: "핀",
     badgeSentMark: "(보냄)",
     badgeDoneMark: "(고침)",
@@ -859,7 +862,7 @@ export const L = {
   },
   history: {
     title: "작업 기록",
-    sub: "AI가 한 차례 답할 때마다 저절로 보관돼요.\n따로 저장할 필요가 없어요.",
+    sub: "AI가 한 차례 답할 때마다 저절로 보관돼요.\n따로 누를 것은 없어요.",
     foot: "이번 작업이 반영될 때까지 남아요",
     emptyMerged:
       "반영된 작업의 기록은 여기서 사라져요.\n합쳐진 것은 거슬러 갈 수 없어서예요.\n다음에 만드는 것부터 다시 쌓여요.",
@@ -876,7 +879,7 @@ export const L = {
     compareScreen: (title: string) => `${title} 전·후 보기`,
     affected: (names: string) => `되돌리면 바뀌는 화면 · ${names}`,
     working: "AI 작업이 끝난 뒤 되돌릴 수 있어요.",
-    affectedUnknown: "화면과 함께 이 프로젝트의 이후 변경 내용도 되돌아가요",
+    affectedAll: "이 시점 이후의 모든 변경(다른 대화 포함)이 되돌아가요",
     cancel: "그만두기",
     revertedToast: (time: string) => `${time} 시점으로 되돌렸어요 — 되돌리기도 기록에 남아요`,
     /** 코멘트 반영 차례의 제목 머리(U9 · U14) — `revertSummary` 가 이것으로 센다. */
@@ -1075,6 +1078,8 @@ export const L = {
     loginReopen: "브라우저 다시 열기",
     loginFallback: "브라우저가 열리지 않았나요?",
     loginFallbackBody: "아래 주소를 브라우저에 붙여넣고, 받은 코드를 여기에 넣어 주세요.",
+    /** 로그인 실패의 날 원문(F4) — 붉은 머리 줄 아래 이 접힘으로 내려간다. */
+    loginRawDetail: "자세히",
     loginCode: "받은 코드 붙여넣기",
     confirm: "확인",
     invite: "초대 파일",
@@ -1136,7 +1141,7 @@ export const L = {
     connectedAs: (who: string) => `${who} 로 연결됨`,
     /** 이메일도 요금제도 말할 수 없을 때(구독 코드 · 다른 서비스로 이어진 계정). */
     connected: "연결됨",
-    apiKey: "API 키로 연결됨",
+    apiKey: "IT가 연결해 둔 계정이에요",
     /**
      * 요금제가 필요하다는 말 — 로그인 전에 먼저 알려 헛걸음을 막는다. 소개 페이지 · README 의 같은 문장과 뜻이 같다
      * (Anthropic 공식 문서: Claude Code 는 Pro · Max · Team · Enterprise 구독, Console, 클라우드 공급자로 쓴다).
@@ -1269,9 +1274,10 @@ export const L = {
   },
   /** 바뀜 행의 무엇이 바뀌었는가(U11) — 짝의 지금 값과 비교해 만든 한 줄. */
   inviteChange: {
-    baseBranch: (from: string, to: string) => `기본 가지 ${from} → ${to}`,
+    /** 값(브랜치 이름)은 개발 어휘라 문장에 싣지 않는다(F21, 2026-10-10 UX 조사). */
+    baseBranch: "프로젝트의 기준이 바뀌어요",
     reviewers: "받을 개발자 명단이 바뀌어요",
-    approve: "명령 실행이 미리 허용됐어요",
+    approve: "개발자가 미리 허락해 둔 작업이 있어요",
     defaults: "기본 모델 · 생각 시간이 바뀌어요",
     lifecycle: "작업 규칙이 바뀌어요",
   },
@@ -1359,8 +1365,8 @@ export const L = {
     installBusy: "설치하는 중…",
     loginBusy: "로그인하는 중…",
     codeSending: "보내는 중…",
-    // 2026-10-04 ux-review: 작업에 적을 이름의 저장 한 줄 — 실제로 바뀐 저장에만 선다.
-    saved: "저장했어요",
+    // 2026-10-04 ux-review: 작업에 적을 이름의 한 줄 — 실제로 바뀐 값에만 선다. 저장이라는 말은 없다(GUIDE 29 · F22).
+    saved: "적어 두었어요",
     // 2026-10-06 설정 손질(S2): AI 카드 안의 설치 · 로그인 진행과 실패, 고른 AI 의 말, 빈 목록.
     aiInstallFailed: "설치하지 못했어요",
     aiLoginFailed: "로그인을 마치지 못했어요",
@@ -1373,8 +1379,8 @@ export const L = {
     aiLoading: "AI 목록을 불러오는 중이에요",
     aiNone: "쓸 수 있는 AI가 아직 없어요 — 설치하면 여기에 나타나요",
     // 2026-10-06 설정 손질(S0 · S3 · S4 · S5 · S6): 이름 저장 · 알림 기준 · 초기화 규모 · 테마 · 글자 크기.
-    nameSaving: "이름을 저장하는 중…",
-    nameSaveFailed: "이름을 저장하지 못했어요 — 다시 시도해 주세요",
+    nameSaving: "이름을 적어 두는 중…",
+    nameSaveFailed: "이름을 적어 두지 못했어요 — 다시 시도해 주세요",
     authorPlaceholder: "비워 둘 수도 있어요",
     notifyOffNote: "끝났다는 알림은 없어요 — 내가 봐야 할 일과 개발자 쪽 소식은 계속 와요",
     notifyLongNote: (minutes: number) => `${minutes}분 넘게 걸린 답만 알려요`,
@@ -1409,7 +1415,7 @@ export const L = {
     /** 홈의 `방금 있던 일` 한 줄 — 데몬이 AI 프로그램을 새 버전으로 바꿨다. */
     doneEvent: (name: string, version: string) => `${name} 를 ${version} 으로 업데이트했어요`,
     appRestart: "곧 새 버전으로 다시 열려요",
-    releasesLink: "릴리스 페이지에서 설치 파일 내려받기",
+    releasesLink: "설치 파일 내려받기",
     retry: "다시 시도",
     useNextTime: "새 버전은 다음 새 대화부터 써요",
     current: (version: string) => `현재 ${version}`,

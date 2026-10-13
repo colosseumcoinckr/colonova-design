@@ -169,7 +169,7 @@ const ledgerOf = (handedAt: string | null) => ({
 const handoff = (state: "open" | "merged") => ({
   number: 7,
   url: "https://example.com/pull/7",
-  title: "feat(members): 회원 목록에 이름 검색 추가 (작성: 정인권)",
+  title: "feat(members): 회원 목록에 이름 검색 추가 (작성자: 정인권)",
   state,
   branch: "colonova-design/20261006-1",
   reviewers: ["dev1"],
@@ -472,7 +472,8 @@ function Row({ spec }: { spec: Case }) {
                       extras: { commentsSection: null, filesSection: null, shotCount: 0 },
                     }
                   : {
-                      title: "feat(members): 회원 목록에 이름으로 찾는 검색창 추가 (작성: 정인권)",
+                      title:
+                        "feat(members): 회원 목록에 이름으로 찾는 검색창 추가 (작성자: 정인권)",
                       body:
                         DRAFT === "long"
                           ? "회원 목록 맨 위에 검색창을 넣고 이름 일부만 쳐도 결과가 바로 걸러지게 했습니다. 결과가 없을 때는 안내 문구를 보여 주고, 휴대폰 폭에서도 검색창이 옆으로 밀리지 않도록 폭을 맞췄습니다. 검색어를 지우면 전체 목록으로 돌아오고, 목록의 정렬은 그대로 유지됩니다. 접근성을 위해 검색창에 이름표를 달았고 키보드만으로도 조작할 수 있습니다."

@@ -57,7 +57,7 @@ export interface DeveloperNoticeDeps {
   repoSlug(slug: string): { owner: string; repo: string } | null;
   /** 프로젝트의 문맥 — 본문의 이름, 이슈의 담당자, 열린 PR 의 번호. */
   project(slug: string): { name: string; reviewers: string[]; openPr: number | null } | null;
-  /** 넘긴 요청 본문의 `> 작성:` 줄과 같은 이름. */
+  /** 넘긴 요청 본문의 `> 작성자:` 줄과 같은 이름. */
   authorName(): string | null;
   /** Slack 보조 경로 — 없으면 그 길은 닫혀 있다. */
   slack: Escalation;

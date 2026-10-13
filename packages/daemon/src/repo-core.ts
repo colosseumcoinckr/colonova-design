@@ -81,8 +81,12 @@ export const SHELF_REF = "refs/colonova-design/shelf";
 
 /** How long the save-time memo turn may take before the default message. */
 export const MEMO_TIMEOUT_MS = 8_000;
-/** How long the 넘기기 draft's turn may take before the browser's proposal wins. */
-export const HANDOFF_DRAFT_TIMEOUT_MS = 8_000;
+/**
+ * How long the 넘기기 draft's turn may take before the browser's proposal wins.
+ * 8초 → 15초(2026-10-13): 레포의 PR 템플릿을 채우는 본문은 섹션이 넷 이상이라 8초에 못 들어왔다. 웹은
+ * 120초를 기다리고(`daemon-client` 의 handoffDraft), 제출은 꼭지별 캐시를 다시 쓴다.
+ */
+export const HANDOFF_DRAFT_TIMEOUT_MS = 15_000;
 
 /**
  * The planner's own word for each gate — the step as the planner's own
@@ -288,7 +292,7 @@ export interface RepoWorkspaceOptions {
   machineTurn?: MachineTurn;
   /**
    * 넘긴 요청에 적을 작성자 이름(P1-3) — 온보딩이 machine.json 에 저장한 값.
-   * 새 PR 제목과 본문의 `> 작성:` 줄이 읽는다. 없으면 작성자를 생략한다.
+   * 새 PR 제목과 본문의 `> 작성자:` 줄이 읽는다. 없으면 작성자를 생략한다.
    * 커밋 작성자는 이 이름과 별개로 연결 코드의 GitHub 계정을 쓴다.
    */
   authorName?: () => string | null;

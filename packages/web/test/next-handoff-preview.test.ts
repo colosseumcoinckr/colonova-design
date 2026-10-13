@@ -17,7 +17,7 @@ import {
 
 test("previewTitle: 종류 접두어와 작성자 꼬리를 뗀다", () => {
   assert.equal(
-    previewTitle("feat(members): 회원 목록에 이름 검색 추가 (작성: 김기획)"),
+    previewTitle("feat(members): 회원 목록에 이름 검색 추가 (작성자: 김기획)"),
     "회원 목록에 이름 검색 추가",
   );
   assert.equal(previewTitle("fix: 중복 제출 방지"), "중복 제출 방지");
@@ -41,7 +41,12 @@ test("previewTitle: 첫 의미 줄만 쓰고, 빈 글은 빈 글이다", () => {
 });
 
 test("previewTitle: 작성자 꼬리는 끝에 있을 때만 뗀다", () => {
-  assert.equal(previewTitle("feat: 괄호 (작성: 이름) 가운데"), "괄호 (작성: 이름) 가운데");
+  assert.equal(previewTitle("feat: 괄호 (작성자: 이름) 가운데"), "괄호 (작성자: 이름) 가운데");
+  assert.equal(
+    previewTitle("feat: 괄호 (작성: 이름) 가운데"),
+    "괄호 (작성: 이름) 가운데",
+    "옛 표기도 꼬리 모양만 본다",
+  );
 });
 
 test("previewSummary: 첫 문단만, 마크다운 기호는 걷는다", () => {
@@ -63,11 +68,34 @@ test("previewSummary: 항목만 있는 문단은 항목을 이어 붙인다", ()
   );
 });
 
-test("previewSummary: 링크는 글자만, 제목 기호는 걷는다", () => {
+test("previewSummary: 링크는 글자만, 제목 줄은 건너뛴다", () => {
   assert.equal(
     previewSummary("## 변경\n[회원 목록](http://127.0.0.1:5173/members) 을 고쳤다"),
-    "변경 회원 목록 을 고쳤다",
+    "회원 목록 을 고쳤다",
   );
+});
+
+test("previewSummary: 레포 템플릿의 제목 줄 · 링크 자리 · 주석은 건너뛰고 첫 글 문단을 고른다(2026-10-13)", () => {
+  const body = [
+    "## 🎫 Context",
+    "<!-- 관련된 Jira 링크를 붙여넣어 주세요 -->",
+    "- Jira link: -",
+    "- Figma:",
+    "",
+    "## 🧩 Background",
+    "- 운영 전환이 끝난 기능 플래그 분기를 제거해 신규 동작으로 고정",
+    "",
+    "## ✨ What's Changed",
+    "- 출고신청 탭의 재고 분배 버튼을 항상 노출",
+  ].join("\n");
+  assert.equal(
+    previewSummary(body),
+    "운영 전환이 끝난 기능 플래그 분기를 제거해 신규 동작으로 고정",
+  );
+  // 라벨 뒤에 값이 있으면 글이다.
+  assert.equal(previewSummary("## Context\n- 정책: 수동, 변경 없음"), "정책: 수동, 변경 없음");
+  // 제목 줄과 링크 자리뿐이면 읽을 글이 없다.
+  assert.equal(previewSummary("## Context\n- Jira: -\n\n## Changes"), null);
 });
 
 test("previewSummary: 읽을 글이 없으면 null", () => {
@@ -105,7 +133,7 @@ test("firstSubjectOf: 기록은 새것부터라 맨 끝이 첫 보관이다 — 
 test("handoffPreviewOf: 초안의 제목과 설명과 사진 수를 한 모습으로 모은다", () => {
   const preview = handoffPreviewOf(
     {
-      title: "feat(members): 회원 목록에 이름 검색 추가 (작성: 김기획)",
+      title: "feat(members): 회원 목록에 이름 검색 추가 (작성자: 김기획)",
       body: "회원 목록에서 이름으로 찾을 수 있다.\n\n- 세부",
       extras: {
         commentsSection: null,

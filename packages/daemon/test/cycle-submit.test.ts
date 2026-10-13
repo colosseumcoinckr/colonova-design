@@ -64,7 +64,7 @@ test("직접 제출도 작성자를 제외하고 실패한 리뷰 요청은 같�
     assert.equal((await scene.publish.runHandoff({})).stage, "failed");
     const number = scene.core.openHandoff?.number;
     assert.ok(number);
-    assert.ok(scene.github.pull(number)?.title.endsWith(" (작성: 김기획)"));
+    assert.ok(scene.github.pull(number)?.title.endsWith(" (작성자: 김기획)"));
     scene.github.editPull(number, { title: "개발자가 고친 제목" });
     fail = false;
     const status = await scene.publish.runHandoff({});

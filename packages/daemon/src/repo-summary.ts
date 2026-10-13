@@ -1,7 +1,7 @@
 // The 넘기기-draft and save-memo voices: one machine turn the daemon's
 // machine provider runs (machine-provider.ts), cached against the cycle tip
 // the turn answered for.
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DiffFile, RepoHandoffDraft } from "@colonova-design/protocol";
 import { readComments } from "./comments.js";
@@ -30,6 +30,46 @@ import {
  */
 export function summaryDirOf(cloneRoot: string): string {
   return join(dirname(cloneRoot), "summary");
+}
+
+/**
+ * 연결 레포의 PR 템플릿 자리 — GitHub 이 사람의 PR 에 자동으로 넣어 주는 세 자리(`.github/` · 루트 · `docs/`)와
+ * 두 가지 대소문자를 같은 차례로 본다. 여러 템플릿 폴더(`.github/PULL_REQUEST_TEMPLATE/`)는 GitHub 도 손으로
+ * 고르는 것이라 보지 않는다.
+ */
+export const PR_TEMPLATE_PATHS = [
+  ".github/PULL_REQUEST_TEMPLATE.md",
+  ".github/pull_request_template.md",
+  "PULL_REQUEST_TEMPLATE.md",
+  "pull_request_template.md",
+  "docs/PULL_REQUEST_TEMPLATE.md",
+  "docs/pull_request_template.md",
+] as const;
+
+/**
+ * 연결 레포의 PR 템플릿 글 — API 로 여는 PR 에는 GitHub 이 템플릿을 넣어 주지 않으므로 초안이 직접 그 틀을 채운다
+ * (2026-10-13 조직 레포 분석: 레포마다 틀이 다르다). 없거나 비었거나 못 읽으면 null — 초안은 조직 공통 뼈대로 간다.
+ */
+export function readPullRequestTemplate(root: string): string | null {
+  for (const rel of PR_TEMPLATE_PATHS) {
+    const path = join(root, rel);
+    try {
+      if (!statSync(path).isFile()) continue;
+      const text = readFileSync(path, "utf8").trim();
+      if (text !== "") return text;
+    } catch {
+      // 없거나 못 읽는 자리는 다음 자리.
+    }
+  }
+  return null;
+}
+
+/** 본문을 상한에서 닫되 문단 경계에서 — 문장 중간에서 잘린 섹션은 없느니만 못하다(2026-10-13). */
+function clipBody(body: string): string {
+  if (body.length <= HANDOFF_BODY_MAX_CHARS) return body;
+  const head = body.slice(0, HANDOFF_BODY_MAX_CHARS);
+  const cut = head.lastIndexOf("\n\n");
+  return (cut > HANDOFF_BODY_MAX_CHARS / 2 ? head.slice(0, cut) : head).trimEnd();
 }
 
 export class RepoSummarizer {
@@ -102,7 +142,10 @@ export class RepoSummarizer {
         ])
         .catch(() => ""),
     );
-    const draft = (await this.machineHandoffDraft(memos, files, diff).catch(() => null)) ?? empty;
+    // 레포의 PR 템플릿 — 조직 레포의 PR 과 같은 모양이 되게 초안이 그 틀을 채운다(2026-10-13).
+    const template = readPullRequestTemplate(this.core.root);
+    const draft =
+      (await this.machineHandoffDraft(memos, files, diff, template).catch(() => null)) ?? empty;
     this.handoffDraftCache = { tip, draft };
     return { ...draft, extras };
   }
@@ -167,8 +210,12 @@ export class RepoSummarizer {
     memos: string[],
     files: string[],
     diff: DiffFile[],
+    template: string | null = null,
   ): Promise<RepoHandoffDraft | null> {
-    const answer = await this.oneTurn(handoffPrompt(memos, files, diff), HANDOFF_DRAFT_TIMEOUT_MS);
+    const answer = await this.oneTurn(
+      handoffPrompt(memos, files, diff, template),
+      HANDOFF_DRAFT_TIMEOUT_MS,
+    );
     const lines = (answer ?? "").split(/\r?\n/).map((line) => line.trimEnd());
     const first = lines.findIndex((line) => line.trim() !== "");
     if (first === -1) return null;
@@ -179,12 +226,13 @@ export class RepoSummarizer {
       .replace(/^["'`]+|["'`]+$/g, "")
       .trim();
     if (!title) return null;
-    const body = lines
-      .slice(first + 1)
-      .join("\n")
-      .replace(/^(내용|body)\s*[:：]\s*/i, "")
-      .trim()
-      .slice(0, HANDOFF_BODY_MAX_CHARS);
+    const body = clipBody(
+      lines
+        .slice(first + 1)
+        .join("\n")
+        .replace(/^(내용|body)\s*[:：]\s*/i, "")
+        .trim(),
+    );
     return { title: formatHandoffTitle(title), body, source: "machine" };
   }
 

@@ -219,7 +219,7 @@ test("개발자가 구간 밖에 쓴 글과 제목은 다시 제출해도 그대
     await scene.supervisor.settled();
     const number = scene.core.openHandoff?.number;
     assert.ok(number);
-    assert.equal(scene.github.pull(number)?.title, "회원 목록 화면 (작성: 김기획)");
+    assert.equal(scene.github.pull(number)?.title, "회원 목록 화면 (작성자: 김기획)");
 
     // 개발자가 본문의 도구 구간 밖에 글을 쓰고 제목도 고친다.
     const before = scene.github.pull(number)?.body ?? "";
@@ -386,7 +386,7 @@ test("한마디 — 작성자 줄 바로 아래 `> 한마디:`, 영수증 사건
     assert.ok(number);
     const body = scene.github.pull(number)?.body ?? "";
     assert.ok(
-      body.includes("> 작성: 기획자\n> 한마디: 검색은 이름만 돼요"),
+      body.includes("> 작성자: 기획자\n> 한마디: 검색은 이름만 돼요"),
       `한마디는 작성자 줄 바로 아래 — ${body}`,
     );
     const handed = scene.chatEvents.find((event) => event.kind === "cycle.handed");

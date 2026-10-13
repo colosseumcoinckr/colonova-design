@@ -25,7 +25,7 @@ import {
   TOOL_BLOCK_START,
 } from "../dist/handoff-body.js";
 
-const BLOCK = "> 작성: 기획자\n\n### 바뀐 파일\n\n- a.ts (+1 −0)";
+const BLOCK = "> 작성자: 기획자\n\n### 바뀐 파일\n\n- a.ts (+1 −0)";
 const wrap = (body: string) => `${TOOL_BLOCK_START}\n${body}\n${TOOL_BLOCK_END}`;
 
 test("mergeToolBlock — 구간이 없으면 본문 끝에 붙인다", () => {
@@ -125,11 +125,11 @@ test("자동 제목 — 기존 타입 · scope · breaking 표식은 보존하�
 test("자동 제목 — 작성자 자리를 남겨 72자로 제한하고 이름은 한 줄로 표시한다", () => {
   const title = formatHandoffTitle(`feat: ${"😀".repeat(100)}`, "  김기획\n 운영  ");
   assert.equal(Array.from(title).length, 72);
-  assert.ok(title.endsWith("😀 (작성: 김기획 운영)"));
+  assert.ok(title.endsWith("😀 (작성자: 김기획 운영)"));
   assert.equal(formatHandoffTitle("fix: 검색 오류", " \n "), "fix: 검색 오류");
   const longName = formatHandoffTitle(`feat: ${"화면".repeat(100)}`, "😀".repeat(80));
   assert.equal(Array.from(longName).length, 72);
-  assert.ok(longName.endsWith(` (작성: ${"😀".repeat(31)}…)`));
+  assert.ok(longName.endsWith(` (작성자: ${"😀".repeat(31)}…)`));
 });
 
 test("mergeToolBlock — 이미 표식으로 싸인 구간은 두 겹으로 싸지 않는다", () => {
@@ -150,7 +150,7 @@ test("noteLine — 한마디는 인용 한 줄, 여러 줄은 같은 인용 안�
 });
 
 test("readToolNote — 구간의 지난 한마디를 되읽는다(작성자 줄 바로 아래)", () => {
-  const block = `> 작성: 기획자\n${noteLine("첫 줄\n둘째 줄")}\n\n### 바뀐 파일\n\n- a.ts`;
+  const block = `> 작성자: 기획자\n${noteLine("첫 줄\n둘째 줄")}\n\n### 바뀐 파일\n\n- a.ts`;
   const body = `개발자 글.\n\n${wrap(block)}`;
   assert.equal(readToolNote(body), "첫 줄\n둘째 줄");
   assert.equal(readToolNote(`개발자 글.\n\n${wrap(BLOCK)}`), null, "한마디가 없던 구간");
@@ -573,7 +573,7 @@ test("aiKindsOf — 작업마다 공급자를 알 때만 종류를 말한다", (
 });
 
 test("AI 작성 줄은 한마디의 인용 밖에 선다 — 지난 한마디를 되읽을 때 섞이지 않는다", () => {
-  const block = `> 작성: 기획자\n${noteLine("검색은 이름만 돼요")}\n\n${buildAiLine(["Claude Code"])}\n\n### 범위\n\n이번 변경의 범위 — 파일 1개`;
+  const block = `> 작성자: 기획자\n${noteLine("검색은 이름만 돼요")}\n\n${buildAiLine(["Claude Code"])}\n\n### 범위\n\n이번 변경의 범위 — 파일 1개`;
   assert.equal(readToolNote(`개발자 글.\n\n${wrap(block)}`), "검색은 이름만 돼요");
 });
 
@@ -646,7 +646,7 @@ test("plainHandoffTitle — 도구가 붙인 종류 접두어와 작성자 꼬�
   // formatHandoffTitle 의 거울 — 만든 제목이 그대로 되돌아온다. 형식이 없는
   // 말에 억지 접두를 붙이지 않는다(2026-10-11 피드백).
   const made = formatHandoffTitle("회원 목록에 이름 검색을 넣었어요", "김기획");
-  assert.equal(made, "회원 목록에 이름 검색을 넣었어요 (작성: 김기획)");
+  assert.equal(made, "회원 목록에 이름 검색을 넣었어요 (작성자: 김기획)");
   assert.equal(plainHandoffTitle(made), "회원 목록에 이름 검색을 넣었어요");
   assert.equal(plainHandoffTitle("fix(submit)!: 중복 제출 방지"), "중복 제출 방지");
   assert.equal(plainHandoffTitle("feat(members): 검색  창\n본문은 읽지 않는다"), "검색 창");
@@ -660,7 +660,12 @@ test("plainHandoffTitle — 읽을 말이 없으면 null, 긴 말은 80자에서
   assert.equal(plainHandoffTitle(null), null);
   assert.equal(plainHandoffTitle(undefined), null);
   assert.equal(plainHandoffTitle("   \n  "), null);
-  assert.equal(plainHandoffTitle("chore: (작성: 김기획)"), null, "말이 없는 제목은 없다");
+  assert.equal(plainHandoffTitle("chore: (작성자: 김기획)"), null, "말이 없는 제목은 없다");
+  assert.equal(
+    plainHandoffTitle("feat: 검색 (작성: 김기획)"),
+    "검색",
+    "옛 (작성:) 표기의 꼬리도 벗긴다",
+  );
   const long = plainHandoffTitle(`chore: ${"가".repeat(120)}`) ?? "";
   assert.equal(Array.from(long).length, PLAIN_TITLE_MAX_CHARS);
   assert.ok(long.endsWith("…"));

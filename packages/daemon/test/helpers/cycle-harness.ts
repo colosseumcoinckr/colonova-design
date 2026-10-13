@@ -950,7 +950,7 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
   const github = new MemoryGitHub(remote);
   process.env.COLONOVA_DESIGN_GITHUB_SLUG ??= "colonova-design/harness";
   const urlChanges: Array<string | null> = [];
-  // PR 본문의 `> 작성:` 줄 — 장면의 authorName 을 워크스페이스도 읽는다.
+  // PR 본문의 `> 작성자:` 줄 — 장면의 authorName 을 워크스페이스도 읽는다.
   let authorOf: () => string | null = () => null;
   // PR 본문의 `### 확인한 것` — 장면의 cycleScreens 를 fleet 의 cycleView 처럼 읽는다(부르는 순간에 묻는다).
   let screensOf: () => RepoStatus["cycleScreens"] = () => undefined;

@@ -63,6 +63,30 @@ test("normalizeDescribeChanges — 72자에서 제목을 닫고 changes 는 10�
   assert.equal(many.changes.length, 10);
 });
 
+test("normalizeDescribeChanges — 조직 commitlint 밖의 종류는 chore 로, 제목의 줄표는 콜론으로, 본문은 50자에서 줄을 나눈다(2026-10-13 조직 레포 분석)", () => {
+  const parsed = normalizeDescribeChanges({
+    changes: [
+      {
+        kind: "perf",
+        subject: "목록 첫 그리기 — 두 배 빠르게 (1–3초)",
+        body: `${"가".repeat(30)} ${"나".repeat(30)} 끝\n\n${"다".repeat(60)}`,
+        files: ["a.ts"],
+      },
+    ],
+  });
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  const change = parsed.changes[0];
+  assert.equal(change?.kind, "chore");
+  assert.equal(change?.subject, "목록 첫 그리기: 두 배 빠르게 (1–3초)");
+  assert.deepEqual(change?.body?.split("\n"), [
+    "가".repeat(30),
+    `${"나".repeat(30)} 끝`,
+    "",
+    "다".repeat(60),
+  ]);
+});
+
 test("normalizeDescribeChanges — changes 가 배열이 아니면 한국어 오류 한 문장", () => {
   const parsed = normalizeDescribeChanges({ changes: "feat: 목록" });
   assert.equal(parsed.ok, false);

@@ -11,7 +11,7 @@ import type { RepoHandoffDraft } from "@colonova-design/protocol";
 export interface HandoffPreview {
   /** 개발자가 처음 읽는 한 줄 — 종류 접두어와 작성자 꼬리를 뗀 문장. */
   title: string;
-  /** AI 가 쓴 설명의 첫 대목 — 마크다운 기호를 걷은 한 덩이. 없으면 null. */
+  /** AI 가 쓴 설명에서 사람이 읽을 첫 대목 — 마크다운 기호를 걷은 한 덩이. 없으면 null. */
   summary: string | null;
   /** 함께 가는 화면 사진의 수. */
   photos: number;
@@ -26,19 +26,32 @@ export interface HandoffPreview {
   scopeRisk?: boolean;
 }
 
-/** 데몬이 제목에 붙이는 종류 접두어 — 보관 계약의 COMMIT_KINDS 와 같은 목록이다(2026-10-11). */
+/**
+ * 데몬이 제목에 붙이는 종류 접두어 — 보관 계약의 COMMIT_KINDS(2026-10-13 조직 commitlint 에 맞춰 feat · fix · refactor ·
+ * style · docs · test · chore)에 옛 제목이 쓰던 perf · build · ci 를 더한 읽기용 목록이다. 읽는 쪽은 너그럽다.
+ */
 const KIND_PREFIX =
   /^(feat|fix|perf|refactor|style|docs|test|build|ci|chore)(\([^()\r\n]+\))?!?:\s*/;
 /**
- * 데몬이 제목 끝에 붙이는 작성자 꼬리 ` (작성: 이름)`. 한글 리터럴 린트가 정규식을 읽지 못하고 따옴표 · 역따옴표를
- * 문자열의 시작으로 오해하므로, `작성` 은 `\uC791\uC131` 으로, 역따옴표는 `\u0060` 으로 적는다.
+ * 데몬이 제목 끝에 붙이는 작성자 꼬리 ` (작성자: 이름)`. 옛 표기 ` (작성: 이름)` 도 읽는다. 한글 리터럴 린트는 src 의
+ * 한글 글자와 따옴표 · 역따옴표를 보고, 유니코드 이스케이프는 biome 이 글자로 되돌리므로(2026-10-13), 한글 낱말과
+ * 역따옴표는 코드 번호로 만든다.
  */
-const AUTHOR_TAIL = /\s*\(\uC791\uC131:[^)\r\n]*\)\s*$/;
+const AUTHOR_LABEL = String.fromCharCode(0xc791, 0xc131);
+const AUTHOR_JA = String.fromCharCode(0xc790);
+const AUTHOR_TAIL = new RegExp(`\\s*\\(${AUTHOR_LABEL}(?:${AUTHOR_JA})?:[^)\\r\\n]*\\)\\s*$`);
 /** 설명을 한 덩이로 보이는 글자 수의 상한 — 넘으면 말줄임으로 닫는다. */
 export const SUMMARY_MAX_CHARS = 220;
+/** 코드 따옴표(역따옴표) 한 쌍 — 위와 같은 이유로 코드 번호로 만든다. */
+const BACKTICK = String.fromCharCode(96);
+const CODE_SPAN = new RegExp(`${BACKTICK}([^${BACKTICK}]*)${BACKTICK}`, "g");
+/** 제목 줄 — `## Context` 처럼 머리만 있는 줄은 글이 아니다. */
+const HEADING_LINE = /^\s*#+(\s|$)/;
+/** 레포 템플릿의 링크 자리 — `Jira: -` · `Figma:` 처럼 라벨만 있는 줄은 글이 아니다(2026-10-13 조직 템플릿 대응). */
+const SLOT_LINE = /^[^:：]{1,24}[:：]\s*-?\s*$/;
 
 /**
- * 제목의 종류 접두어(`feat(members): `)와 작성자 꼬리(` (작성: 이름)`)를 뗀다 — 두 가지 모두 개발자 쪽 형식이고
+ * 제목의 종류 접두어(`feat(members): `)와 작성자 꼬리(` (작성자: 이름)`)를 뗀다 — 두 가지 모두 개발자 쪽 형식이고
  * 사용자가 읽는 것은 문장이다. 첫 의미 줄만 쓴다.
  */
 export function previewTitle(raw: string): string {
@@ -51,32 +64,38 @@ export function previewTitle(raw: string): string {
 }
 
 /**
- * 설명의 첫 문단을 한 덩이 글로 — 목록 기호 · 제목 기호 · 강조 · 코드 따옴표 · 링크 주소를 걷는다. 항목만 있는
- * 문단은 항목을 이어 붙인다. 읽을 글이 없으면 null.
+ * 설명에서 사람이 읽을 첫 문단을 한 덩이 글로 — 목록 기호 · 강조 · 코드 따옴표 · 링크 주소를 걷는다. 제목 줄과
+ * 라벨만 있는 줄(레포 템플릿의 링크 자리)과 HTML 주석은 글이 아니라 건너뛰고(2026-10-13: 초안이 레포의 PR 템플릿을
+ * 채우면서 첫 문단이 `## Context` 와 `Jira: -` 가 됐다), 항목만 있는 문단은 항목을 이어 붙인다. 읽을 글이 없으면 null.
  */
 export function previewSummary(body: string): string | null {
-  const first = body
+  const paragraphs = body
+    .replace(/<!--[\s\S]*?-->/g, "")
     .split(/\r?\n\s*\r?\n/)
     .map((paragraph) => paragraph.trim())
-    .find((paragraph) => paragraph !== "");
-  if (first === undefined) return null;
-  const plain = first
-    .split(/\r?\n/)
-    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, "").replace(/^\s*#+\s*/, ""))
-    .join(" ")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/\*\*([^*]*)\*\*/g, "$1")
-    .replace(/\u0060([^\u0060]*)\u0060/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (plain === "") return null;
-  const chars = Array.from(plain);
-  if (chars.length <= SUMMARY_MAX_CHARS) return plain;
-  const cut = chars
-    .slice(0, SUMMARY_MAX_CHARS - 1)
-    .join("")
-    .trimEnd();
-  return `${cut}…`;
+    .filter((paragraph) => paragraph !== "");
+  for (const paragraph of paragraphs) {
+    const plain = paragraph
+      .split(/\r?\n/)
+      .filter((line) => !HEADING_LINE.test(line))
+      .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, ""))
+      .filter((line) => !SLOT_LINE.test(line.trim()))
+      .join(" ")
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+      .replace(/\*\*([^*]*)\*\*/g, "$1")
+      .replace(CODE_SPAN, "$1")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (plain === "") continue;
+    const chars = Array.from(plain);
+    if (chars.length <= SUMMARY_MAX_CHARS) return plain;
+    const cut = chars
+      .slice(0, SUMMARY_MAX_CHARS - 1)
+      .join("")
+      .trimEnd();
+    return `${cut}…`;
+  }
+  return null;
 }
 
 /** 사이클의 첫 보관 제목 — 기록은 새것부터라 맨 끝이 첫 것이다. 데몬의 제목 고르기(`pickHandoffTitle`)와 같은 자리. */

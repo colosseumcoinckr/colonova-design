@@ -503,7 +503,7 @@ function escapeRegExp(text: string): string {
 
 /**
  * PR 제목은 생성할 때만 정한다 (PLAN L6) — 순수 함수. 초안(handoffDraft 의
- * 8초 안에 나온 제목)이 없으면 첫 커밋 제목, 그마저 없으면 도구의 기본
+ * 15초 안에 나온 제목)이 없으면 첫 커밋 제목, 그마저 없으면 도구의 기본
  * 제목을 쓴다. 형식은 이미 붙은 것만 존중하고 새로 붙이지 않는다 — 보관이
  * 변경 단위가 된 뒤(2026-10-11 피드백) 첫 커밋의 `feat: …` 제목이 곧 요청의
  * 제목이다. 입양 · 다시 제출에서는 이 함수를 부르지 않는다 — 제목은 개발자의 것이다.
@@ -529,7 +529,7 @@ export function formatHandoffTitle(title: string, authorName?: string | null): s
   // 2026-10-06 사용자 요청: 작성자는 도구가 붙인다. 긴 이름도 변경 제목의 자리를 남긴다.
   const author = Array.from((authorName ?? "").replace(/\s+/g, " ").trim());
   const name = author.length > 32 ? `${author.slice(0, 31).join("")}…` : author.join("");
-  const suffix = name ? ` (작성: ${name})` : "";
+  const suffix = name ? ` (작성자: ${name})` : "";
   return (
     Array.from(line)
       .slice(0, HANDOFF_TITLE_MAX_CHARS - Array.from(suffix).length)
@@ -541,14 +541,17 @@ export function formatHandoffTitle(title: string, authorName?: string | null): s
 /** 사용자의 말로 다시 읽은 요청 제목의 상한 (2026-10-08 베타 준비 분석 · A2b) — 성취 카드와 `반영된 일` 의 제목이다. */
 export const PLAIN_TITLE_MAX_CHARS = 80;
 
-/** `formatHandoffTitle` 이 존중하는(벗기는) 종류 접두 — `change-plan.ts` 의 COMMIT_KINDS 와 같다. */
+/**
+ * `formatHandoffTitle` 이 존중하는(벗기는) 종류 접두 — `change-plan.ts` 의 COMMIT_KINDS(2026-10-13 조직 commitlint 에
+ * 맞춰 일곱)에 옛 제목이 쓰던 perf · build · ci 를 더한 읽기용 목록이다. 읽는 쪽은 너그럽다.
+ */
 const TITLE_KIND_PREFIX =
   /^(feat|fix|perf|refactor|style|docs|test|build|ci|chore)(\([^()\r\n]+\))?!?:\s*/;
-/** `formatHandoffTitle` 이 끝에 붙이는 작성자 꼬리 ` (작성: 이름)`. */
-const TITLE_AUTHOR_TAIL = /\s*\(작성:[^)\r\n]*\)\s*$/;
+/** `formatHandoffTitle` 이 끝에 붙이는 작성자 꼬리 ` (작성자: 이름)`. 옛 표기 ` (작성: 이름)` 도 읽는다. */
+const TITLE_AUTHOR_TAIL = /\s*\(작성자?:[^)\r\n]*\)\s*$/;
 
 /**
- * 요청 제목에서 도구가 붙인 종류 접두어(`feat(scope): `)와 작성자 꼬리(` (작성: 이름)`)를 뗀 사용자의 말 —
+ * 요청 제목에서 도구가 붙인 종류 접두어(`feat(scope): `)와 작성자 꼬리(` (작성자: 이름)`)를 뗀 사용자의 말 —
  * `formatHandoffTitle` 의 거울이다(웹 `previewTitle` 과 같은 규칙). 첫 의미 줄만 쓰고 공백은 한 칸으로 접으며
  * `PLAIN_TITLE_MAX_CHARS` 에서 말줄임으로 닫는다. 읽을 말이 없으면 null. 순수 함수 — 병합 기록의 제목이 이 말이다.
  */

@@ -318,6 +318,18 @@ test("describe_changes — 종류의 목록은 도구와 계약이 같다", () =
   // 쓰임새는 도구 설명 한 곳에 — 언제 부르는지와 제목의 말투가 설명에 있다.
   assert.ok(tool.description.includes("답을 쓰기 전에"));
   assert.ok(tool.description.includes("요청 문장"));
+  // 2026-10-13 실사용자 피드백 — 커밋이 atomic 하게 나뉘고 본문이 사람이 쓴 것처럼 읽히는 규칙도 설명에 있다.
+  assert.ok(tool.description.includes("변경 하나가 커밋 하나다"));
+  assert.ok(tool.description.includes("하나로 묶지 않으며"));
+  assert.ok(tool.description.includes("파일별로 쪼개지도 않는다"));
+  assert.ok(tool.description.includes("자기 언급"));
+  assert.ok(items.properties.body.description.includes("커밋 본문"));
+  // 2026-10-13 조직 레포 분석 — 종류는 조직 commitlint 의 것(perf · build · ci 없음), 제목은 명사형 40자 안팎.
+  assert.deepEqual(kind.enum, ["feat", "fix", "refactor", "style", "docs", "test", "chore"]);
+  assert.ok(!tool.description.includes("perf"));
+  assert.ok(tool.description.includes("명사형으로 끝맺은"));
+  assert.ok(tool.description.includes("40자 안팎"));
+  assert.ok(tool.description.includes("다 · 게 · 요 로 끝나면 고친다"));
 });
 
 test("waitForBudgetMs — 드라이버와 같은 규칙으로 기본 5초 · 상한 30초를 계산한다", () => {

@@ -11,28 +11,21 @@
  * 저장은 종전의 한 커밋으로 흘러가므로, 도구를 부르지 않은 턴도 잃는 것이 없다.
  */
 
-/** 커밋 종류 — 연결 레포가 알아 보는 관습적 접두의 종류다(scope 는 티켓이므로 AI 가 지어내지 않는다). */
-export const COMMIT_KINDS = [
-  "feat",
-  "fix",
-  "perf",
-  "refactor",
-  "style",
-  "docs",
-  "test",
-  "build",
-  "ci",
-  "chore",
-] as const;
+/**
+ * 커밋 종류 — 조직 레포의 commitlint `type-enum`(feat · refactor · fix · test · docs · chore · style ·
+ * revert · hotfix: 2026-10-13 조직 레포 분석, 프론트 레포 7곳이 같은 목록)에서 사람만 쓰는 revert · hotfix 를
+ * 뺀 것. scope 괄호는 티켓 자리라 AI 가 지어내지 않는다(Jira 는 사용자 결정으로 제외).
+ */
+export const COMMIT_KINDS = ["feat", "fix", "refactor", "style", "docs", "test", "chore"] as const;
 
 export type CommitKind = (typeof COMMIT_KINDS)[number];
 
 /** 계획의 변경 하나 — 커밋 하나가 된다. */
 export interface PlannedChange {
   kind: CommitKind;
-  /** 무엇이 어떻게 달라지는지 — 명사로 끝맺은 한 줄. */
+  /** 바뀐 결과 — 명사형으로 끝맺은 한 줄. */
   subject: string;
-  /** 이유 · 확인할 점(선택) — 커밋 본문 한 단락. */
+  /** 왜 바꿨는지 한두 문장(선택) — 커밋 본문. 한 줄 50자에서 도구가 나눈다. */
   body?: string;
   /** 이 변경에 담일 경로 — 클론 루트 기준. 폴더면 그 아래 전부. */
   files: string[];
@@ -40,10 +33,12 @@ export interface PlannedChange {
 
 /** 계획의 변경 수 상한 — 한 턴의 논리적 변경이 이보다 많다는 말은 계획이 틀렸다는 뜻이다. */
 export const PLAN_MAX_CHANGES = 10;
-/** 커밋 제목의 길이 상한 — 저장 메모(80자)와 같은 어울림의 72자. */
+/** 커밋 제목의 길이 상한 — 저장 메모(80자)와 같은 어울림의 72자(조직 관습은 40자 안팎, 설명이 권한다). */
 export const PLAN_SUBJECT_MAX_CHARS = 72;
-/** 커밋 본문의 길이 상한 — 이유를 말하는 한 단락이면 충분하다. */
-export const PLAN_BODY_MAX_CHARS = 1_000;
+/** 커밋 본문의 길이 상한 — 왜를 말하는 한두 문장이면 충분하다(조직 규칙: 두 줄을 넘는 설명은 PR 본문의 몫). */
+export const PLAN_BODY_MAX_CHARS = 300;
+/** 커밋 본문 한 줄의 상한 — 조직 프론트 레포의 commitlint `body-max-line-length: 50`(코드 유닛 기준, 2026-10-13). */
+export const PLAN_BODY_LINE_MAX = 50;
 
 /** 커밋 종류의 자리표 — `BROWSER_OPS` 의 같은 모양이다. */
 const KIND_BY_NAME: Record<string, true> = Object.fromEntries(
@@ -75,6 +70,8 @@ function cleanSubject(raw: string): string {
     subject = subject.slice(prefixed[0].length).trim();
   }
   subject = subject
+    // 조직 글쓰기 규칙(2026-10-13): 제목 뒤 설명의 줄표는 콜론이다. 낱말 사이의 줄표만 — 숫자 범위(1–3)는 그대로.
+    .replace(/\s+[—–]\s+/g, ": ")
     .replace(/\s+/g, " ")
     .replace(/[.。]+$/, "")
     .trim();
@@ -86,7 +83,7 @@ function cleanSubject(raw: string): string {
   ).trim();
 }
 
-/** 본문 한 단락으로 — 소속 표식 줄은 버리고 1000자에서 닫는다. */
+/** 본문 한 단락으로 — 소속 표식 줄은 버리고 300자에서 닫은 뒤, 한 줄을 50자(코드 유닛)에서 띄어쓰기 자리로 나눈다. */
 function cleanBody(raw: string): string | null {
   const body = raw
     .split(/\r?\n/)
@@ -95,7 +92,31 @@ function cleanBody(raw: string): string | null {
     .trim()
     .slice(0, PLAN_BODY_MAX_CHARS)
     .trimEnd();
-  return body === "" ? null : body;
+  if (body === "") return null;
+  return body
+    .split("\n")
+    .flatMap((line) => wrapLine(line.trim(), PLAN_BODY_LINE_MAX))
+    .join("\n");
+}
+
+/**
+ * 한 줄을 `max` 코드 유닛 안으로 — commitlint 가 세는 단위(`.length`)와 같다. 띄어쓰기 자리에서만 나누고,
+ * 그보다 긴 낱말 하나는 그대로 둔다(끊긴 낱말은 50자 위반보다 읽기 나쁘다). 빈 줄은 빈 줄로 남는다.
+ */
+export function wrapLine(line: string, max: number): string[] {
+  if (line.length <= max) return [line];
+  const out: string[] = [];
+  let current = "";
+  for (const word of line.split(/\s+/)) {
+    if (word === "") continue;
+    if (current === "") current = word;
+    else if (`${current} ${word}`.length > max) {
+      out.push(current);
+      current = word;
+    } else current = `${current} ${word}`;
+  }
+  if (current !== "") out.push(current);
+  return out;
 }
 
 /**

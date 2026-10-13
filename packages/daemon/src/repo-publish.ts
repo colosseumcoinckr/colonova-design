@@ -487,7 +487,7 @@ export class PublishCycle {
     // P1-3: 작성자 줄 — 요청은 봇 계정으로 열리므로 이름이 없으면 개발자가 누구
     // 작업인지 모른다. 본문 서두 다음, `### 바뀐 파일` 절보다 앞에 인용문 한 줄로.
     const author = this.core.authorName?.();
-    if (author) body = `${body.replace(/\n*$/, "")}\n\n> 작성: ${author}`;
+    if (author) body = `${body.replace(/\n*$/, "")}\n\n> 작성자: ${author}`;
     // developer reads the scale before opening the Files tab, and the
     // preview card shows this same string so nothing is promised that does
     // not ship. A range that will not diff costs only the section.
@@ -633,7 +633,7 @@ export class PublishCycle {
     // P1-3: 작성자 줄 — 요청은 봇 계정으로 열리므로 이름이 없으면 개발자가 누구
     // 작업인지 모른다. 한마디(P3)는 같은 인용 안의 다음 줄이다.
     const author = this.core.authorName?.();
-    const byline = [author ? `> 작성: ${author}` : null, noteLine(options.note)]
+    const byline = [author ? `> 작성자: ${author}` : null, noteLine(options.note)]
       .filter((line): line is string => line !== null)
       .join("\n");
     if (byline) sections.push(byline);

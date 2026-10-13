@@ -541,7 +541,7 @@ const receiptOld = oneReceipt("ro", {
 const openRequest = (reviewers: string[]) => ({
   number: 12,
   url: "https://example.com/pull/12",
-  title: "feat(members): 회원 목록에 검색창 추가 (작성: 정인권)",
+  title: "feat(members): 회원 목록에 검색창 추가 (작성자: 정인권)",
   state: "open" as const,
   branch: "colonova-design/20261006-1",
   reviewers,

@@ -134,6 +134,8 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 | `COLONOVA_DESIGN_PORT` | 임시 포트 | 데몬이 들 포트 — 포트가 막혔을 때 데몬의 안내 문구도 이 이름을 말한다 |
 | `COLONOVA_DESIGN_DEV_SERVER` | unset | 데스크톱 HMR 고리(`pnpm dev:desktop`)가 여는 vite 주소 — 패키징된 앱은 보지 않는다 |
 | `COLONOVA_DESIGN_BENCH_ENDPOINT` | unset | 개발 실행의 데스크톱이 재생 벤치의 접속 파일(ws 주소 · pid)을 적는 자리 — 패키징된 앱은 절대 보지 않는다 |
+| `COLONOVA_DESIGN_DESKTOP_UNIT` | unset | 데스크톱 단위 시험이 `1` 로 켠다 — 한 인스턴스 잠금과 앱 입구의 단선(open-file · argv · 데몬 기동)을 건너뛴다. 미리보기 드라이버 시험이 이 모듈을 임포트해 `createPreviewDriverFactory` 까지 닿는 길이다 |
+| `COLONOVA_DESIGN_DESKTOP_SMOKE` | unset | 스모크 시험(Playwright)이 `userData` 를 이 경로로 옮긴다 — 개발자의 실제 자격 증명으로 켜져 「깨끗한 기계 → 첫 화면」 확인이 죽는 것을 막는다. 값이 있으면 잠금 건너뛰기(유닛 모드)도 함께 켠다 |
 | `COLONOVA_DESIGN_GIT_BIN` | 자동 탐지 | git 바이너리를 이 경로로 고정한다 — 탐색을 통째로 건너뛴다(테스트는 스텁을 겨눈다) |
 | `COLONOVA_DESIGN_GIT_GUARD_DIR` | `~/.colonova-design/tools/git-guard` | git 쓰기 가드(hooks)의 설치 자리 — AI 의 git 쓰기를 막는다 |
 | `COLONOVA_DESIGN_LANE_STRICT` | unset(경고) | `1` 이면 차선 밖 git 쓰기를 경고 대신 던진다(시험·개발) |

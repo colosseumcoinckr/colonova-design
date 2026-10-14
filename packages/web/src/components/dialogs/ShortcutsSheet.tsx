@@ -22,7 +22,7 @@ import { ModalBody, ModalFoot, ModalFrame, ModalHead } from "../../next/ui/Modal
  */
 const LAYOUT = [
   { key: "app", ids: ["find", "new-session", "settings", "sidebar", "shortcuts"] },
-  { key: "composer", ids: ["recall"] },
+  { key: "composer", ids: ["recall", "command", "mention"] },
   { key: "pin", ids: ["pin", "pin-mode"] },
   {
     key: "preview",

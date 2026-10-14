@@ -98,3 +98,30 @@ export function codexBrowserMcpServer(entry: BrowserMcpEntry): {
 } {
   return { command: entry.command, args: entry.args, env: { ...entry.env } };
 }
+
+/**
+ * 브라우저 MCP 자식이 못 떴는가 — claude 의 init 메시지(`mcp_servers` 의 상태)를 읽는다.
+ * 자식이 죽으면 세션은 도구 상자 없이 조용히 돈다(2026-10-14 MCP 점검 — init 의 서버
+ * 상태를 아무도 읽지 않았다). `pending` 은 아직 모르는 것이라 아니다 — init 은 턴마다
+ * 오므로 다음 턴이 다시 말한다. 이 서버를 싣지 않은 세션(목록에 없음)도 아니다.
+ */
+export function claudeBrowserMcpDown(message: unknown): boolean {
+  const m = message as { type?: unknown; subtype?: unknown; mcp_servers?: unknown };
+  if (m?.type !== "system" || m.subtype !== "init" || !Array.isArray(m.mcp_servers)) return false;
+  const server = m.mcp_servers.find(
+    (row: { name?: unknown }) => row?.name === BROWSER_MCP_SERVER_NAME,
+  ) as { status?: unknown } | undefined;
+  if (server === undefined) return false;
+  return server.status !== "connected" && server.status !== "pending";
+}
+
+/**
+ * 같은 판정의 codex 판 — `mcpServer/startupStatus/updated` 알림의 params 를 읽는다.
+ * `failed` 만 본다: `cancelled` 는 스레드를 닫을 때도 오고, `starting` 은 아직 모르는 것이다.
+ * threadId 가 있으면 이 스레드의 것만 본다.
+ */
+export function codexBrowserMcpDown(params: unknown, threadId: string | null): boolean {
+  const p = params as { name?: unknown; status?: unknown; threadId?: unknown };
+  if (p?.name !== BROWSER_MCP_SERVER_NAME || p.status !== "failed") return false;
+  return typeof p.threadId !== "string" || threadId === null || p.threadId === threadId;
+}

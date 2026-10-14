@@ -448,17 +448,9 @@ async function bootApp(): Promise<void> {
   // main 의 globalThis 는 렌더러에서 보이지 않으니 제품 면에는 나오지 않는다.
   const suiteHandle = globalThis as Record<string, unknown>;
   suiteHandle.colonovaDesignPlannerPreview = plannerPreview;
-  await window.loadURL(url);
-  // The pane outlives the window — on mac ⌘W destroys it and the dock
-  // icon builds another (createWindow's closure follows `host.window`).
-  // Its guests die with the old window and the registry forgets them
-  // (`destroyed`), so all the new page needs is the park itself.
-  // host 가 들고 reopen 이 만드는 창에도 같은 정리가 닿는다.
-  host.onClosed = () => {
-    plannerPreview.unmount();
-  };
-  registerCloseGuard(window);
-
+  // 다리는 loadURL 이전에 단다 — 부팅 중인 렌더러(main.tsx 모듈 톱레벨)가
+  // `desktop:last-renderer-crash` 를 부르는데, loadURL 의 resolve 는
+  // did-finish-load 뒤라 늦게 달면 호출이 먼저 닿는다.
   registerDesktopBridge({
     updates,
     notices,
@@ -485,6 +477,17 @@ async function bootApp(): Promise<void> {
       return { restarting: true };
     },
   });
+  await window.loadURL(url);
+  // The pane outlives the window — on mac ⌘W destroys it and the dock
+  // icon builds another (createWindow's closure follows `host.window`).
+  // Its guests die with the old window and the registry forgets them
+  // (`destroyed`), so all the new page needs is the park itself.
+  // host 가 들고 reopen 이 만드는 창에도 같은 정리가 닿는다.
+  host.onClosed = () => {
+    plannerPreview.unmount();
+  };
+  registerCloseGuard(window);
+
   void updates.reportSwapResult();
   updates.schedule();
   app.on("activate", () => {

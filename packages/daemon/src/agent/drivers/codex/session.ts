@@ -7,7 +7,11 @@ import type {
   SessionCommand,
   SessionModelInfo,
 } from "@colonova-design/protocol";
-import { BROWSER_MCP_SERVER_NAME, codexBrowserMcpServer } from "../../../browser-launch.js";
+import {
+  BROWSER_MCP_SERVER_NAME,
+  codexBrowserMcpDown,
+  codexBrowserMcpServer,
+} from "../../../browser-launch.js";
 import { ensureGitGuardHooks, gitGuardEnv } from "../../../git-guard.js";
 import { composeTurnText, prepareAttachments } from "../../attachments.js";
 import type {
@@ -859,6 +863,10 @@ export class CodexAgentSession implements AgentSession {
       }
       case "thread/compacted":
         this.hooks.onEvent({ kind: "compact", trigger: "auto" });
+        break;
+      // 브라우저 MCP 자식이 못 떴다 — 스레드는 도구 상자 없이 계속 돈다(2026-10-14 MCP 점검).
+      case "mcpServer/startupStatus/updated":
+        if (codexBrowserMcpDown(p, this.threadId)) this.hooks.onBrowserToolsDown?.();
         break;
       default:
         break;

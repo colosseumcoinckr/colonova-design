@@ -223,6 +223,12 @@ export interface DriverHooks {
   ): Promise<PermissionVerdict>;
   /** The provider reported its own fast-mode state (Claude: fast_mode_state). */
   onFastMode?(on: boolean, blocked: string | null): void;
+  /**
+   * 이 세션에 실은 브라우저 MCP 서버가 뜨지 못했다(Claude: init 의 mcp_servers ·
+   * Codex: mcpServer/startupStatus/updated). 세션은 도구 상자 없이 계속 돈다 —
+   * 알리는 것은 받는 쪽(Session)의 몫이다. 같은 세션에서 여러 번 올 수 있다.
+   */
+  onBrowserToolsDown?(): void;
 }
 
 /**

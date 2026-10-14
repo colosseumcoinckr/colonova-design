@@ -921,6 +921,12 @@ export class DaemonServer {
         onTurnFailed: (sessionId, resultText) => {
           void this.router?.noteTurnFailed(sessionId, resultText);
         },
+        // 브라우저 MCP 자식이 뜨지 못했다(2026-10-14 MCP 점검) — 대화의 경고는
+        // 세션이 냈다. 여기는 진단의 한 줄만 — 오류 문장은 경로를 싣기 쉬워 남기지 않는다.
+        onBrowserToolsDown: (sessionId) => {
+          const provider = this.manager.get(sessionId)?.provider ?? null;
+          this.logger.warn("[browser] mcp down", { provider });
+        },
       },
       this.agentDrivers,
       // 세션별 브라우저 MCP 명세(3단계): 팩토리가 없으면(브라우저 개발 경로)

@@ -469,6 +469,9 @@ export function ChatColumn({
         ? L.composer.placeholderMerged
         : L.composer.placeholder;
   const contextFull = sessions.usage !== null && Math.round(sessions.usage.percentage) >= 85;
+  // 다음 말 제안(2026-10-14 사용자 요청) — 준비 중과 반영 뒤의 자리 표시는 지금 할 일을 말하니 제안이
+  // 대신하지 않는다. 핀이 담겼을 때와 일하는 중에 물러나는 것은 입력창이 안다.
+  const nextSay = preparing || cycleMerged ? null : (active?.suggestion ?? null);
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: 칸 전체가 파일을 놓는 자리다 — 드롭은 포인터의 일이고, 키보드는 입력창의 첨부 단추로 닿는다.
@@ -672,6 +675,7 @@ export function ChatColumn({
           running={sessions.running}
           onStop={stop}
           stopping={stopping}
+          suggestion={nextSay}
           prefill={prefill}
           listenPinsSend
           registerHandle={registerHandle}

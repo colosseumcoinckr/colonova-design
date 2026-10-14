@@ -78,6 +78,12 @@ git, 그리고 Claude 를
 일하는 AI 가 턴의 변경을 논리적 변경 단위로 적어 올리면 저장이 그대로 파일을
 나눠 커밋한다(아래 「자동 보관」).
 
+상자는 세션마다 띄우는 stdio 자식(`browser-mcp.js`) 하나라, 자식이 못 뜨면 도구 전부가 함께 빠진다.
+그때 세션은 대화에 경고 한 줄(`warn`)을 한 번 내려놓고 데몬 로그에 `[browser] mcp down` 을 종류(프로바이더)만으로
+남긴다 — 오류 문장은 경로를 싣기 쉬워 남기지 않는다. 판정은 Claude 가 턴마다 보내는 init 의 서버 상태
+(`connected` · `pending` 밖이면 빠짐)와 Codex 의 `mcpServer/startupStatus/updated`(`failed` 만)다. 턴 끝의
+게이트는 데몬이 따로 돌리므로 상자가 빠져도 그대로다(2026-10-14 MCP 점검).
+
 ## 도구가 기계에 남기는 것
 
 도구가 쓰는 모든 것은 홈의 숨은 폴더 하나 `~/.colonova-design/` 에 산다.
@@ -213,6 +219,59 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 보내므로 저장된 파일도 줄어든 것이다. docx · hwp 같은 읽을 수 없는 문서는 이번 범위 밖이다 — 지금은 바이너리와 같이
 `첨부 파일이 이 경로에 저장됐습니다 — 파일 도구로 읽어 주세요` 한 줄이 가고(AI 에게만 보이는 말), 사용자에게 읽지
 못했다고 알리는 고정 문장은 없다 — AI 가 제 말로 밝힌다(추정, 베타에서 확인).
+
+### 입력창의 `/` · `@`
+
+입력창에서 `/` 와 `@` 가 목록을 연다(2026-10-14 사용자 요청 — 아래 「전체 구조」 에 적힌 옛 결정을 뒤집었다).
+선로는 이미 있던 것만 쓴다 — 프로토콜 · 데몬은 바뀌지 않았다.
+
+- **`/` — 명령어.** 말의 맨 앞(앞 빈칸은 걷는다)에서만 연다. 데몬의 보던 화면 꼬리(`viewing-line.ts`)와 AI 가 슬래시
+  명령으로 읽는 자리와 같다. 목록은 `useSessions` 의 `commands` 다 — 열린 대화가 있으면 `session.commands`(Claude 는
+  SDK 의 `supportedCommands()`, Codex 는 `skills/list`), 없으면 `cli.commands`(데몬의 probe). 거르는 차례는 이름의
+  앞 → 다른 이름(aliases)의 앞 → 이름 가운데다. 설명은 CLI 가 준 그대로라 영어일 수 있다. Codex 는 `skills/list`
+  의 이름을 `/이름` 으로 넣고 드라이버는 말을 그대로 넘긴다(`composeTurnText`) — Codex 가 스킬을 부르는 제 표기는
+  `$이름` 이라, `/이름` 이 스킬로 도는지는 아직 확인하지 않았다(베타에서 확인).
+- **핀이 붙으면 `/` 는 열지 않는다.** 핀과 함께 가는 말은 `pinsToTurn` 이 표식 있는 글로 감싼다 — 맨 앞의 `/` 가
+  명령으로 읽히지 않는다.
+- **`@` — 파일 · 폴더.** 말의 맨 앞이나 빈칸 뒤에서만 연다(`a@b.com` 은 열지 않는다). 목록은 `repo.files` →
+  `listFiles`(git ls-files — `.gitignore` 를 따른다) → `browseFiles` 다. 빈 말은 클론 뿌리의 자식, `dir/` 은 그 폴더의
+  자식(폴더가 먼저, 점으로 시작하는 것은 뺀다), 그 밖은 이름에 맞은 것이 먼저인 부분 일치. 웹은 글자를 치는 동안
+  120ms 기다렸다 묻고(폴더를 열 때는 곧바로) 한 번에 50줄을 받는다. 폴더를 고르면 `@dir/` 이 들어가 그 안이 이어
+  서고, 파일을 고르면 `@dir/file ` 이 들어간다.
+- **넣는 것은 글자뿐이다.** `@…` 를 파일 내용으로 펼치지 않는다 — AI 가 그 이름을 보고 직접 연다. 데몬은 `repo.files`
+  의 거르는 말을 로그에 남기지 않는다(실패해도 요청의 종류만).
+- **키.** 목록이 열려 있으면 ↑ ↓ 가 걷고 ↵ · ⇥ 가 넣는다 — ↵ 는 보내지 않는다. esc 는 그 조각의 목록만 닫는다(조각을
+  지울 때까지 다시 열지 않는다). 한글 조합 중의 키는 먼저 거른다(`composing`). 초점은 입력칸에 남는다 — 콤보박스
+  모양(`aria-activedescendant`)이라 초점을 가져가는 `ui/Popover`(role=menu) 대신 입력창 안의 판이다
+  (`chat/ComposerSuggest.tsx`). 판정은 `next/lib/composer-suggest.ts`(순수, `next-composer-suggest.test.ts`).
+- **단축키 시트.** `APP_SHORTCUTS` 의 `command` · `mention` 두 줄이 시트의 `입력창` 묶음에 선다 — 가속키가 없어
+  데스크톱 메뉴는 읽지 않는다.
+
+### 입력창의 다음 말 제안
+
+AI 가 답을 마치면 이어 물어볼 만한 말 한 문장이 빈 입력창에 옅게 뜬다(2026-10-14 사용자 요청 — Claude Code 의 다음
+입력 추천과 같은 손맛). 프로토콜 · 데몬은 바뀌지 않았다 — 길은 이미 있었고(PLAN D99) 그리는 쪽만 없었다.
+
+- **길.** Claude 세션이 `promptSuggestions: true` 로 뜬다(`claude/session.ts`) → SDK 가 턴이 끝난 뒤 `prompt_suggestion`
+  을 한 번 보낸다(`result` 뒤라 consume 루프가 스트림을 계속 읽어야 받는다) → `event-mapper.ts` 가
+  `{ kind: "suggestion", text }` 로 바꾼다 → `daemon-client` 의 `SessionView.suggestion` 이 들고 있다가 다음 말의
+  `user.echo` 에 비운다 → `ChatColumn` 이 `Composer` 의 `suggestion` 으로 넘긴다. 홈의 입력창에는 넘기지 않는다
+  (이어 갈 답이 없다). Codex 에는 같은 길이 없어 뜨지 않는다.
+- **언제 뜨나.** 판정은 `next/lib/next-say.ts` 의 `ghostText`(순수, `next-say.test.ts`) — 입력창에 글 · 첨부 · 핀이
+  없고, AI 가 일하지 않고, 연결이 살아 있을 때만. `ChatColumn` 은 준비 중과 반영 뒤에도 비운다 — 그때의 자리 표시는
+  지금 할 일을 말한다.
+- **어떻게 뜨나.** 옅은 글자는 `textarea` 의 `placeholder` 가 맡는다 — 겹침 층이 없어 글꼴 · 줄바꿈이 입력과 같고,
+  글이 한 글자라도 생기면 브라우저가 알아서 거둔다. 오른쪽 끝의 `Tab` 칩(`.nx-cmp-ghostkey`)은 Tab 을 모르는 손을
+  위한 눈에 보이는 길이다 — 초점은 입력창에 남는다(`tabIndex={-1}` · mousedown 의 `preventDefault`).
+- **키.** Tab 이 제안을 입력창에 넣고(보내지 않는다) 커서는 끝에 선다(`pendingSelect` 의 길). esc 가 접는다 — 접으면
+  Tab 은 다시 초점의 것이다(키보드 함정을 만들지 않는다). ⇧Tab · ⌥/⌃/⌘ 가 붙은 Tab 은 지나간다(`isAcceptKey`).
+  `/` · `@` 목록(`suggest.key`)이 열려 있으면 그쪽이 먼저 받는데, 목록은 글이 있을 때만 열려 둘은 겹치지 않는다.
+- **다시 뜨지 않게.** esc 로 접거나 무엇이든 보내면 그 말은 `dismissed` 에 남아 다시 뜨지 않는다. 데몬 쪽 값은 에코가
+  와야 비워지므로, 보낸 말이 지워진 입력창에 같은 제안이 잠깐 되돌아오는 깜빡임을 이것이 막는다. 데몬이 제안을 비우면
+  (`suggestion` 이 null) `dismissed` 도 접는다 — 다음 답이 같은 말(`제출해 줘` 같은)을 내놓아도 다시 뜬다.
+- **SDK 가 안 줄 때.** 대화의 첫 턴 · API 오류 뒤 · 계획 모드 · 사용 한도 가까이에서는 SDK 가 보내지 않는다. 사용자의
+  Claude 설정(`promptSuggestionEnabled: false`)이나 환경 변수 `CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false` 도 끈다
+  (환경 변수가 이긴다) — 세션은 `settingSources` 로 사용자 설정을 읽는다.
 
 ### 자동 보관 · 제출 · 반영됨
 
@@ -1738,7 +1797,8 @@ v19 에서 더한 것(PLAN-UI 3 · 8): `repo.submit { sessionId?, note? }` 와 �
 `vocab-sweep.test.ts`(`src/**` 전체의 한글 문장 — 면제는 이유와 함께 그 파일에).
 
 ⌘K 팔레트는 대화 · 프로젝트 전환이라 실사용에서도 그대로 있다. 옛 입력창의 `/` 슬래시
-자동완성은 옛 셸과 함께 걷혔다 — CLI 의 슬래시 명령은 터미널의 어휘다.
+자동완성은 옛 셸과 함께 걷혔다가(CLI 의 슬래시 명령은 터미널의 어휘라는 판단) 2026-10-14 사용자 요청으로
+`@` 파일 · 폴더 목록과 함께 다시 섰다 — 위 「입력창의 `/` · `@`」.
 
 ## 데스크톱 패키징
 

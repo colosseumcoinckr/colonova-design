@@ -63,6 +63,10 @@ export const APP_SHORTCUTS: AppShortcut[] = [
   // 말을 하나씩 거슬러 불러온다. 맨 화살표는 커서의 것이라 ⌥ 와 함께다.
   // 동작은 2026-10-04 ux-plan PR 2 에서 만들었다.
   { id: "recall", label: "보낸 말 다시 불러오기", keys: "⌥↑ · ⌥↓" },
+  // 입력창의 목록(Composer 의 ComposerSuggest) — 글자 자체가 여는 것이라 가속키가 없다.
+  // `/` 는 말의 맨 앞에서만 연다(2026-10-14 사용자 요청).
+  { id: "command", label: "명령어 고르기 · 말의 맨 앞에서", keys: "/" },
+  { id: "mention", label: "파일 · 폴더 고르기", keys: "@" },
   // 시트 자신의 행 — 가속키가 없다: ⌘/ 는 웹(Workspace keydown)이 혼자
   // 처리하고, 데스크톱 메뉴에는 앉지 않는다(메뉴가 읽어도 click 이 없는
   // 항목이 되니 일부러 밖에 둔다). 처리기는 2026-10-04 ux-plan PR 2 의 몫.

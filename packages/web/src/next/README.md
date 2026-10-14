@@ -94,7 +94,7 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
     ├ status/StatusLine  제목 · 만드는 중 · 여정 세 점 · 제출(SubmitPopover) · 이번 작업(WorkPopover)
     ├ status/ProblemLine 문제 문장 셋 · 초대 파일 휴지통에 넣기 줄 — 대화와 미리보기에 걸친 한 줄
     ├ (좁은 창) 대화 | 화면 · <이름> 탭
-    ├ chat/ChatColumn     대화록(Thread) · 카드 · 진행 줄(RunLine) · 입력창(Composer · ModelChip — 칩의 주인 subject: next · session)
+    ├ chat/ChatColumn     대화록(Thread) · 카드 · 진행 줄(RunLine) · 입력창(Composer · ModelChip — 칩의 주인 subject: next · session · ComposerSuggest — `/` · `@` 목록)
     └ preview/PreviewColumn 막대 · 무대(PreviewHost) · 라이브 층(LiveLayer) · 말풍선 · 준비 화면 · 작업 기록 서랍
 ```
 
@@ -201,6 +201,9 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
   `browser.driving` 의 붙들기를 맡고, 마크업은 `preview/LiveLayer.tsx`(견본이 같은 것을 그린다). 이름 앞 · 뒤의 말을 둘로 나눈 문장(`L.live`)
   은 줄임표가 이름만 자르게 한 것이다.
 - `shortcut-sheet.ts` — 단축키 시트의 묶음 · 키캡 조각(`keyHint` 로 이 컴퓨터에 맞춘 표기를 받아 쪼갠다).
+- `composer-suggest.ts` — 입력창의 `/` · `@` 목록(2026-10-14): `triggerAt(text, caret)` 이 커서 앞에서 고르는 중인 조각을
+  찾고(`/` 는 말의 맨 앞, `@` 는 맨 앞이나 빈칸 뒤), `completeAt` 이 고른 것을 그 자리에 넣고(폴더는 빈칸 없이 이어 간다),
+  `matchCommands` 가 명령어를 거른다. 훅과 판은 `chat/ComposerSuggest.tsx` — 초점은 입력칸에 남는 콤보박스라 `ui/Popover` 를 쓰지 않는다.
 - `problem.ts` · `invite-rows.ts` · `revert-summary.ts` · `thread.ts` · `nav.ts` ·
   `preview-geometry.ts` — 문제 문장 · 초대 확인판의 행(`inviteRows` · `inviteTitle` · `inviteReadError`) ·
   되돌리기 문구(와 서랍의 날 묶음 · 반영 차례 접힘 `historyDays`) · 대화록 · 이동 · 말풍선 좌표의 판정.

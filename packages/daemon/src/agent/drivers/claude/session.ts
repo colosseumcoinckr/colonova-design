@@ -16,7 +16,11 @@ import type {
   SessionModelInfo,
 } from "@colonova-design/protocol";
 import { withoutSelfUpdate } from "../../../agent-env.js";
-import { BROWSER_MCP_SERVER_NAME, claudeBrowserMcpServer } from "../../../browser-launch.js";
+import {
+  BROWSER_MCP_SERVER_NAME,
+  claudeBrowserMcpDown,
+  claudeBrowserMcpServer,
+} from "../../../browser-launch.js";
 import { sanitizeRepoAgentSettings } from "../../../claude-trust.js";
 import { ensureGitGuardHooks, gitGuardEnv } from "../../../git-guard.js";
 import {
@@ -293,6 +297,9 @@ export class ClaudeAgentSession implements AgentSession {
         // 쉬는 중 - 켜 달라는 뜻은 살아 있으나 지금 도는 것은 보통 속도라,
         // 켜짐으로 세지 않는다.
         this.readFastMode(message);
+        // 브라우저 MCP 자식이 못 떴으면 init 이 그 상태를 싣는다 — 번역은 서버
+        // 상태를 옮기지 않으므로 여기서 읽어 알린다(2026-10-14 MCP 점검).
+        if (claudeBrowserMcpDown(message)) this.hooks.onBrowserToolsDown?.();
         for (const event of this.translator.translate(message)) {
           if (event.kind === "shutdown") {
             // 예고된 종료는 고장이 아니다: 스트림 끝이 이 깃발을 읽고 다른

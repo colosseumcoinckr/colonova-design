@@ -4,7 +4,11 @@ import assert from "node:assert/strict";
 import { type ChildProcess, spawn } from "node:child_process";
 import { join } from "node:path";
 import { test } from "node:test";
-import { browserMcpEntry } from "../dist/browser-launch.js";
+import {
+  browserMcpEntry,
+  claudeBrowserMcpDown,
+  codexBrowserMcpDown,
+} from "../dist/browser-launch.js";
 import {
   BROWSER_TOOLS,
   browserTools,
@@ -371,4 +375,57 @@ test("browserMcpEntry — 앱 버전을 COLONOVA_APP_VERSION 으로 싣는다(�
     undefined,
     "버전을 모르면 env 도 없다 — 자식은 0 으로 산다",
   );
+});
+
+test("claudeBrowserMcpDown — init 의 서버 상태가 connected · pending 이 아니면 빠진 것이다", () => {
+  const init = (status: string) => ({
+    type: "system",
+    subtype: "init",
+    mcp_servers: [
+      { name: "other", status: "failed" },
+      { name: "colonova-browser", status },
+    ],
+  });
+  assert.equal(claudeBrowserMcpDown(init("failed")), true);
+  assert.equal(claudeBrowserMcpDown(init("needs-auth")), true);
+  assert.equal(claudeBrowserMcpDown(init("disabled")), true);
+  assert.equal(claudeBrowserMcpDown(init("connected")), false);
+  assert.equal(
+    claudeBrowserMcpDown(init("pending")),
+    false,
+    "아직 모르는 것 — 다음 턴의 init 이 말한다",
+  );
+  assert.equal(
+    claudeBrowserMcpDown({
+      type: "system",
+      subtype: "init",
+      mcp_servers: [{ name: "other", status: "failed" }],
+    }),
+    false,
+    "이 서버를 싣지 않은 세션 — 다른 서버의 실패는 우리 일이 아니다",
+  );
+  assert.equal(claudeBrowserMcpDown({ type: "assistant", mcp_servers: [] }), false);
+  assert.equal(claudeBrowserMcpDown(null), false);
+});
+
+test("codexBrowserMcpDown — 이 스레드의 failed 만 빠진 것이다", () => {
+  const note = (status: string, threadId: string | null = "t1") => ({
+    threadId,
+    name: "colonova-browser",
+    status,
+    error: "spawn failed",
+    failureReason: null,
+  });
+  assert.equal(codexBrowserMcpDown(note("failed"), "t1"), true);
+  assert.equal(
+    codexBrowserMcpDown(note("failed", null), "t1"),
+    true,
+    "스레드를 모르는 알림도 본다",
+  );
+  assert.equal(codexBrowserMcpDown(note("failed"), null), true, "스레드가 아직 없을 때 온 알림");
+  assert.equal(codexBrowserMcpDown(note("failed", "t2"), "t1"), false, "다른 스레드의 것");
+  assert.equal(codexBrowserMcpDown(note("cancelled"), "t1"), false, "닫을 때도 온다");
+  assert.equal(codexBrowserMcpDown(note("starting"), "t1"), false);
+  assert.equal(codexBrowserMcpDown(note("ready"), "t1"), false);
+  assert.equal(codexBrowserMcpDown({ ...note("failed"), name: "other" }, "t1"), false);
 });

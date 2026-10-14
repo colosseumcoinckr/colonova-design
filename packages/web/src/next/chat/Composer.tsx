@@ -10,7 +10,9 @@ import { composing } from "../../lib/ime";
 import { isInviteFile, offerInviteFile } from "../../lib/invite-bus";
 import { L } from "../labels";
 import { keyHint } from "../lib/key-hint";
+import { ghostText, isAcceptKey } from "../lib/next-say";
 import { fastChip, fastCost, fastTipWords, fastToast, sizeText } from "../lib/thread";
+import { SuggestList, useComposerSuggest } from "./ComposerSuggest";
 import { BoltIcon, ClipIcon, FileIcon, ImageIcon, PinIcon, StopIcon, UpIcon, XIcon } from "./icons";
 import { ModelChip } from "./ModelChip";
 
@@ -170,6 +172,7 @@ export function Composer({
   running = false,
   onStop,
   stopping = false,
+  suggestion = null,
   prefill = null,
   listenPinsSend = false,
   registerHandle,
@@ -210,6 +213,11 @@ export function Composer({
   running?: boolean;
   onStop?: () => void;
   stopping?: boolean;
+  /**
+   * AI 가 답을 마치고 내놓은 다음 말 제안(2026-10-14 사용자 요청) — 입력창이 비어 있는 동안 옅게 뜨고
+   * Tab 이 입력창에 넣는다. 대화 칸만 준다(홈에는 이어 갈 답이 없다).
+   */
+  suggestion?: string | null;
   /** 밖에서 채워 넣는 말(고쳐서 다시 보내기) — `nonce` 가 오르면 한 번 집는다. */
   prefill?: {
     text: string;
@@ -248,6 +256,19 @@ export function Composer({
   const recallIndex = useRef<number | null>(null);
   // 밖에서 채운 말 속에 골라 둘 자리 — 값이 그려진 직후의 layout effect 가 쓰고 거둔다.
   const pendingSelect = useRef<{ text: string; range: [number, number] } | null>(null);
+  // `/` · `@` 목록(2026-10-14 사용자 요청) — 고른 것은 그 자리에 들어가고 커서는 그 뒤에 선다.
+  // 핀이 붙은 말은 표식 있는 글로 감싸져 명령으로 읽히지 않으니 `/` 는 열지 않는다.
+  const suggest = useComposerSuggest({
+    api: daemon.api,
+    commands: sessions.commands,
+    text: editor.text,
+    commandsOn: pins.length === 0,
+    apply: (next) => {
+      recallIndex.current = null;
+      pendingSelect.current = { text: next.text, range: [next.caret, next.caret] };
+      setEditor((prev) => ({ ...prev, text: next.text }));
+    },
+  });
 
   // 바뀔 때마다 지도(대화 전환)와 저장소(새로 고침)에 적는다.
   useEffect(() => {
@@ -372,6 +393,30 @@ export function Composer({
     contentChange.current?.(hasContent);
   }, [hasContent]);
 
+  // 다음 말 제안(2026-10-14 사용자 요청) — 빈 입력창에 옅게 뜨고 Tab 이 넣는다. `esc` 로 접거나 무엇이든
+  // 보내면 그 말은 다시 뜨지 않는다(데몬 쪽 보기는 에코가 올 때야 비운다 — 그 사이에 깜빡이지 않게).
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  // 데몬이 제안을 비우면(다음 말의 에코) 접어 둔 기억도 접는다 — 다음 답이 같은 말을 내놓아도 다시 뜬다.
+  useEffect(() => {
+    if (suggestion === null) setDismissed(null);
+  }, [suggestion]);
+  const ghost = ghostText({
+    suggestion,
+    text: editor.text,
+    attachments: editor.attachments.length,
+    pins: pins.length,
+    running,
+    locked,
+    dismissed,
+  });
+  const acceptGhost = () => {
+    if (ghost === null) return;
+    // 손으로 넣은 말이다 — 걷기는 끝나고, 커서는 끝에 서서 바로 이어 고칠 수 있다.
+    recallIndex.current = null;
+    pendingSelect.current = { text: ghost, range: [ghost.length, ghost.length] };
+    setEditor((prev) => ({ ...prev, text: ghost }));
+  };
+
   const submit = () => {
     if (sendingRef.current || locked) return;
     const text = editor.text.trim();
@@ -385,6 +430,7 @@ export function Composer({
     sendingRef.current = true;
     setSending(true);
     setNotice(null);
+    setDismissed(suggestion?.trim() || null);
     const sentKey = keyRef.current;
     const sentEditor = editor;
     const sentScreens = shownScreens.current.take(sentKey);
@@ -577,6 +623,22 @@ export function Composer({
     // 조합 중인 Enter 는 한글의 마침이다 — 반쯤 쓴 말을 보내지 않는다. ⌥ 화살표도
     // 같다 — 조합 중의 화살표는 후보 창의 것이므로 여기서 먼저 거른다.
     if (composing(event)) return;
+    // 목록이 열려 있으면 ↑ ↓ ↵ ⇥ esc 는 목록의 것이다 — ↵ 는 보내지 않고 고른다.
+    if (suggest.key(event)) return;
+    // 옅게 뜬 다음 말 — Tab 이 입력창에 넣고 esc 가 접는다. 글이 있으면 제안은 서지 않으니 위 목록과
+    // 겹치지 않는다. ⇧Tab 은 지나가 초점이 거꾸로 가고, esc 로 접으면 Tab 은 다시 초점의 것이다.
+    if (ghost !== null) {
+      if (isAcceptKey(event)) {
+        event.preventDefault();
+        acceptGhost();
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setDismissed(ghost);
+        return;
+      }
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submit();
@@ -596,7 +658,9 @@ export function Composer({
 
   return (
     // 끌어다 놓기는 칸 전체의 몫이다 — 대화 칸은 ChatColumn, 홈은 HomeView 가 받아 `registerHandle` 로 넘긴다.
-    <div className={`nx-composer${variant === "home" ? " nx-composer--home" : ""}`}>
+    <div
+      className={`nx-composer${variant === "home" ? " nx-composer--home" : ""}${ghost !== null ? " nx-composer--ghost" : ""}`}
+    >
       {pins.length > 0 && (
         <div className="nx-pinrows">
           {pins.map((pin, index) => (
@@ -678,16 +742,27 @@ export function Composer({
         ref={area}
         rows={variant === "home" ? 2 : 1}
         value={editor.text}
-        placeholder={placeholder}
+        // 옅은 글자는 placeholder 가 맡는다 — 제안이 서 있으면 그 말이 자리 표시를 대신한다.
+        placeholder={ghost ?? placeholder}
         // 접근 이름은 고정으로 — placeholder 는 상태마다 바뀌어도 이름이
         // 흔들리지 않게 하고, 바뀌는 자리 표시는 힌트로 묶는다(2026-10-04 ux-review).
         aria-label={L.composer.message}
         aria-describedby={hintId}
+        aria-autocomplete="list"
+        aria-controls={suggest.open ? suggest.listId : undefined}
+        aria-activedescendant={
+          suggest.open && suggest.open.active >= 0
+            ? suggest.optionId(suggest.open.active)
+            : undefined
+        }
         onChange={(event) => {
           // 손으로 고쳤으면 걷기는 끝난다 — 다음 ⌥↑ 는 빈 입력창의 규칙을 다시 따른다.
           recallIndex.current = null;
           setEditor((prev) => ({ ...prev, text: event.target.value }));
+          suggest.track(event.target);
         }}
+        onSelect={(event) => suggest.track(event.currentTarget)}
+        onBlur={suggest.close}
         onKeyDown={onKeyDown}
         onPaste={(event) => {
           const files = [...event.clipboardData.files];
@@ -696,8 +771,23 @@ export function Composer({
           void readFiles(files);
         }}
       />
+      <SuggestList suggest={suggest} up={variant === "thread"} />
+      {ghost !== null && (
+        <button
+          type="button"
+          className="nx-cmp-ghostkey"
+          // 초점은 입력창에 남는다 — 키보드는 Tab 이 같은 일을 하니 이 단추는 누르는 손을 위한 것이다.
+          tabIndex={-1}
+          title={L.composer.ghost.tip}
+          aria-label={L.composer.ghost.tip}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={acceptGhost}
+        >
+          {L.composer.ghost.key}
+        </button>
+      )}
       <span id={hintId} className="nx-sr">
-        {placeholder}
+        {ghost !== null ? L.composer.ghost.hint(ghost) : placeholder}
       </span>
       {(notice || lockReason) && (
         <div

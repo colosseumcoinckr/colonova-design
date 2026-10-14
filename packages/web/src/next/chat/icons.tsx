@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Eye,
   FileText,
+  Folder,
   GitFork,
   History,
   Image,
@@ -63,6 +64,9 @@ export const ExtIcon = make(ExternalLink, 12);
 export const EditIcon = make(Pencil, 12);
 export const ClockIcon = make(Clock, 13);
 export const FileIcon = make(FileText, 16);
+/** 입력창 `@` 목록의 줄(2026-10-14) — 파일 · 폴더. 줄 높이에 맞춰 한 단계 작다. */
+export const FileSmIcon = make(FileText, 14);
+export const FolderIcon = make(Folder, 14);
 export const ImageIcon = make(Image, 16);
 export const SparkIcon = make(Sparkle, 13);
 export const CheckIcon = make(Check, 13, 2.2);

@@ -1873,6 +1873,40 @@
   background: transparent;
 }
 
+/* 다음 말 제안(2026-10-14) — 옅은 글자는 빈 입력창의 placeholder 가 그대로 맡는다. 오른쪽 끝의
+   Tab 칩은 넣는 길을 눈에 보이게 하고(누르면 같은 일), 글이 그 밑으로 깔리지 않게 자리를 비운다.
+   제안이 서려면 입력창이 비어 있어야 하니 칩은 늘 첫 줄 높이에 얹힌다. */
+.nx-composer--ghost textarea {
+  padding-right: 52px;
+  /* 긴 제안은 한 줄에 두고 오른쪽 끝을 서서히 지운다 — 입력창은 한 줄 높이라 둘째 줄은 보이지 않고,
+     글자가 반쯤 잘려 보이는 것보다 낫다. 제안은 입력창이 비어 있을 때만 서므로 칠 글자가 지워질 일은
+     없다. Tab 으로 넣으면 글 전체가 들어간다. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 84px), transparent calc(100% - 52px));
+}
+
+.nx-composer--ghost textarea::placeholder {
+  white-space: nowrap;
+}
+
+/* `.nx button`(next.css)의 초기화가 한 단계 위라 같은 높이로 맞춘다. */
+.nx .nx-cmp-ghostkey {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  color: var(--ink3);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.nx .nx-cmp-ghostkey:hover {
+  background: var(--nx-hover);
+  color: var(--ink2);
+}
+
 .nx-cmp-tools {
   display: flex;
   align-items: center;
@@ -1912,6 +1946,123 @@
 
 .nx-cmp-note--danger {
   color: var(--red);
+}
+
+/* `/` · `@` 목록(2026-10-14 사용자 요청) — 대화 칸에서는 입력창 위로, 홈에서는 아래로 붙는 판.
+   겉모양은 팝(.nx-pop)의 토큰이고, 걷는 바탕은 찾기(.nx-pal-row)를 따른다. 초점은 입력칸에
+   남는다(ComposerSuggest). 채움은 backwards 만 — 남는 transform 이 쌓임 맥락을 만들지 않게. */
+.nx-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: var(--nx-z-pop);
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: var(--pop);
+  padding: 6px;
+  transform-origin: top center;
+  animation: nx-pop 0.16s var(--drift) backwards;
+}
+
+.nx-suggest--up {
+  top: auto;
+  bottom: calc(100% + 6px);
+  transform-origin: bottom center;
+  animation-name: nx-pop-up;
+}
+
+.nx-suggest-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  padding: 4px 10px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink3);
+}
+
+/* 들어간 폴더 — 길면 앞이 아니라 끝을 줄인다. */
+.nx-suggest-where {
+  min-width: 0;
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-suggest-list {
+  max-height: min(296px, 40vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.nx-suggest-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 5px 10px;
+  border-radius: var(--r);
+  font-size: 13px;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.nx-suggest-row--on {
+  background: var(--nx-selected);
+}
+
+.nx-suggest-ic {
+  flex: none;
+  display: inline-flex;
+  color: var(--ink3);
+}
+
+.nx-suggest-name {
+  flex: none;
+  max-width: 60%;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-suggest-hint {
+  font-weight: 400;
+  color: var(--ink3);
+}
+
+.nx-suggest-sub {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-suggest-row--on .nx-suggest-sub {
+  color: var(--ink2);
+}
+
+.nx-suggest-empty {
+  padding: 6px 10px 8px;
+  font-size: 12.5px;
+  color: var(--ink3);
+}
+
+.nx-suggest-keys {
+  margin-top: 4px;
+  padding: 6px 10px 2px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink3);
 }
 
 .nx .nx-tbtn {

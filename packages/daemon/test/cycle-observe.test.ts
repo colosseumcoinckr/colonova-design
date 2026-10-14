@@ -370,6 +370,69 @@ test("새 코멘트 — newReviews · pendingReviews, 원장의 known 에 있는
   }
 });
 
+test("AI 리뷰어 — 줄 코멘트의 첫 글만 pendingAiReviews 로, 도착 사건 · 코멘트 수 · 사람의 목록에는 없다 (2026-10-14)", async () => {
+  const scene = await makeScene();
+  try {
+    const number = await openCycle(scene, [[{ "screen.txt": "사이클\n" }, "사이클 첫 커밋"]]);
+    const codex = scene.github.addComment(number, {
+      kind: "pull",
+      login: "chatgpt-codex-connector[bot]",
+      path: "src/a.tsx",
+      body: "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  문구를 맞추세요**\n\nUseful? React with 👍 / 👎.",
+    });
+    // Codex 의 리뷰 본문 · 요약 코멘트, AI 리뷰어의 답글, 표에 없는 봇은 지나지 않는다.
+    scene.github.addComment(number, {
+      kind: "review",
+      login: "chatgpt-codex-connector[bot]",
+      body: "### 💡 Codex Review",
+    });
+    scene.github.addComment(number, {
+      kind: "issue",
+      login: "chatgpt-codex-connector[bot]",
+      body: "<!-- codex-pull-request-review-summary -->",
+    });
+    scene.github.addComment(number, {
+      kind: "pull",
+      login: "claude[bot]",
+      path: "src/a.tsx",
+      body: "답글입니다",
+      replyTo: codex,
+    });
+    scene.github.addComment(number, { kind: "pull", login: "github-actions[bot]", body: "lint" });
+    const snap = await scene.observe({});
+    assert.deepEqual(snap.newReviews, []);
+    assert.deepEqual(snap.pendingReviews, []);
+    assert.equal(snap.reviewCount, 0, "AI 의견은 코멘트 수에 들지 않는다");
+    assert.deepEqual(
+      snap.pendingAiReviews.map((r) => ({
+        id: r.id,
+        author: r.author,
+        body: r.body,
+        path: r.path,
+        line: r.line,
+        source: r.source,
+      })),
+      [
+        {
+          id: codex,
+          author: "Codex",
+          body: "[P2] 문구를 맞추세요",
+          path: "src/a.tsx",
+          line: undefined,
+          source: "ai",
+        },
+      ],
+    );
+    const decision = nextCycleAction(snap, emptyLedger());
+    assert.equal(decision.action.kind, "briefReviews");
+    // 장부가 브리프한 id 는 다시 나오지 않는다.
+    const again = await scene.observe({ ledger: decision.ledger });
+    assert.deepEqual(again.pendingAiReviews, []);
+  } finally {
+    scene.dispose();
+  }
+});
+
 // ————— 승인 · 토큰 주인의 코멘트 · 자동 검사 (2026-10-07 베타 준비 분석 · W6) —————
 
 test("승인 — 본문 있는 APPROVED 는 피드백이 아니다: 반영 턴도 라운드도 없고 pr.approved 로만 나른다", async () => {

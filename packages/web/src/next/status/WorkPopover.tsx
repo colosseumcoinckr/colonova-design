@@ -12,6 +12,7 @@ import { handoffOpen } from "../lib/thread";
 import { useCopied } from "../lib/use-copied";
 import type { CycleScreen } from "../lib/work-ledger";
 import { commentRows, cycleStart, outgoingScreens, submitLogLines } from "../lib/work-ledger";
+import { InlineConfirm } from "../ui/InlineConfirm";
 import { Spin } from "../ui/icons";
 import { Popover } from "../ui/Popover";
 import { NoteBox } from "./NoteBox";
@@ -44,6 +45,9 @@ const SCREEN_LIMIT = 4;
  * 2026-10-06 겹판 손질 — 읽는 팝이자 가는 팝이다: 화면 줄은 눌러서 그 화면으로 가고, 코멘트는 읽는 중 ·
  * 읽지 못함을 정직하게 말하고(`아직 없어요` 라는 거짓 빈 상태가 아니라), 한마디는 쓰던 글이 안 날아가고,
  * 제출이 막혔으면 담당자에게 건넬 글을 복사할 수 있다. 머리 · 여정 · 바닥은 서 있고 몸만 굴러간다.
+ *
+ * 2026-10-14 사용자 요청 — 열린 요청은 여기서 `제출 취소` 로 닫는다(인라인 확인 한 칸). 만든 화면은 남고 다음
+ * 제출은 새 요청이다. AI 가 도는 중 · 제출이 도는 중에는 확인이 잠기고 까닭이 선다(데몬도 같은 때 거절한다).
  */
 export function WorkPopover({
   anchor,
@@ -56,6 +60,7 @@ export function WorkPopover({
   noteDraft,
   onNoteDraft,
   onNote,
+  onWithdraw,
   onOpenScreen,
   onToast,
   onClose,
@@ -74,6 +79,8 @@ export function WorkPopover({
   onNoteDraft: (text: string) => void;
   /** 영수증의 `한마디 더` 와 같은 상자(U20) — 영수증이 멀리 올라간 뒤의 자리. */
   onNote: (text: string) => Promise<void>;
+  /** 제출 취소 — 열린 요청을 닫는다. 던지면 실패다(까닭은 말하지 않고 한 문장으로 알린다). */
+  onWithdraw: () => Promise<void>;
   /** 화면 줄을 눌렀다 — 미리보기를 그 화면으로 옮긴다. */
   onOpenScreen: (screen: CycleScreen) => void;
   onToast: (text: string) => void;
@@ -121,6 +128,29 @@ export function WorkPopover({
     handoff?.reviewers && handoff.reviewers.length > 0
       ? handoff.reviewers
       : (project?.reviewers ?? []);
+  // 제출 취소 — 확인 한 칸. 접히면 초점은 같은 자리에 다시 선 단추로 돌아간다.
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [withdrawing, setWithdrawing] = useState(false);
+  const withdrawButton = useRef<HTMLButtonElement>(null);
+  const submitPhase = repo?.submit?.phase ?? "idle";
+  const withdrawWhy = journey.making
+    ? L.work.withdrawWhyRunning
+    : submitPhase !== "idle"
+      ? L.work.withdrawWhySubmitting
+      : undefined;
+  const withdraw = async () => {
+    if (withdrawing) return;
+    setWithdrawing(true);
+    try {
+      await onWithdraw();
+      onToast(L.work.withdrawDone);
+      // 요청이 닫혀 이번 작업이 새 작업으로 돌아갔다 — 팝을 걷는다(남은 줄이 옛 요청을 말하지 않게).
+      onClose();
+    } catch {
+      setWithdrawing(false);
+      onToast(L.work.withdrawFailed);
+    }
+  };
   // 원장의 제출 기록은 병합 뒤 새 draft 로 이월된다 — 경계 앞의 옛 사이클
   // 줄은 가린다(2026-10-04 ux-plan PR 3, 결함 6). draft 의 경계는 마지막
   // 넘김이고, review · merged 는 마지막 제출(since) 뒤만 본다(comments 칸의
@@ -320,6 +350,32 @@ export function WorkPopover({
                   <SentIcon />
                   <span>{L.work.noteSent(noteSentAt)}</span>
                 </div>
+              )}
+            </div>
+          )}
+          {noteOk && (
+            <div className="nx-wp-withdraw">
+              {withdrawOpen ? (
+                <InlineConfirm
+                  title={L.work.withdrawTitle}
+                  body={L.work.withdrawBody}
+                  confirmLabel={withdrawing ? L.work.withdrawing : L.work.withdraw}
+                  cancelLabel={L.work.withdrawCancel}
+                  busy={withdrawing}
+                  busyWhy={withdrawing ? undefined : withdrawWhy}
+                  onConfirm={() => void withdraw()}
+                  onCancel={() => setWithdrawOpen(false)}
+                  returnRef={withdrawButton}
+                />
+              ) : (
+                <button
+                  ref={withdrawButton}
+                  type="button"
+                  className="nx-btn nx-btn--ghost nx-btn--sm"
+                  onClick={() => setWithdrawOpen(true)}
+                >
+                  {L.work.withdraw}
+                </button>
               )}
             </div>
           )}

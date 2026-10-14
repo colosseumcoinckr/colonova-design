@@ -177,6 +177,8 @@ export type Block =
       title?: string;
       days?: number;
       screens?: number;
+      /** `closed` 만: 개발자가 아니라 내가 앱에서 거둔 요청(2026-10-14 제출 취소). 없으면 반려다. */
+      withdrawn?: true;
     }
   | {
       /** 개발자 코멘트 도착 (review.arrived): 하나의 이벤트에 달려온 리뷰들을
@@ -470,6 +472,7 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
           subtype: "closed",
           at: event.at,
           pr: event.pr,
+          ...(event.withdrawn ? { withdrawn: true as const } : {}),
         },
       ];
 
@@ -902,6 +905,8 @@ interface DaemonApi {
   replyToReview: (id: number, body: string) => Promise<{ ok: true }>;
   /** 한마디 더(U20): a note added to the OPEN request, no comment id. */
   noteToDeveloper: (text: string) => Promise<{ ok: true }>;
+  /** 제출 취소(2026-10-14): the planner closes their own OPEN request; the work stays and moves on. */
+  withdrawSubmission: () => Promise<{ ok: true }>;
   /**
    * 기능 제안 접수 (PLAN-FEEDBACK) — `commandId` 는 재시도가 같은 접수를 두 번
    * 만들지 않게 하는 안정된 멱등 키다: 응답을 못 받은 재전송은 같은 id 로,
@@ -2058,6 +2063,8 @@ export function useDaemon(url: string | null): Daemon {
       replyToReview: (id: number, body: string) =>
         call<{ ok: true }>({ type: "comments.reply", reviewId: id, body }, 60_000),
       noteToDeveloper: (text: string) => call<{ ok: true }>({ type: "repo.note", text }, 60_000),
+      // 제출 취소(2026-10-14) — 데몬이 요청을 닫고 착지 틱까지 돈 뒤 답한다.
+      withdrawSubmission: () => call<{ ok: true }>({ type: "repo.withdraw" }, 60_000),
       // 대화 분기: 답을 하나도 보내지 않는다 — 포크의 악수(절단 재개)만
       // 기다린다.
       branch: (sessionId, turn) =>

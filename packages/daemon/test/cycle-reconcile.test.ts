@@ -37,6 +37,7 @@ function snap(over: Partial<CycleSnapshot> = {}): CycleSnapshot {
     handoffState: null,
     newReviews: [],
     pendingReviews: [],
+    pendingAiReviews: [],
     reviewCount: null,
     installStale: false,
     hygieneDue: false,
@@ -258,6 +259,27 @@ test("9행 — 닫힌 PR 을 랜딩하고 남은 커밋을 이월 표시한다",
     headSha: "abc1234",
     carry: true,
   });
+});
+
+test("제출 취소 — 표식이 있는 닫힘은 알림 없이 withdrawn 사건 하나, 착지는 반려와 같다(2026-10-14)", () => {
+  const pr = { number: 12, state: "closed" as const, headSha: "abc1234", mergeableState: null };
+  const at = iso(NOW - 1000);
+  const out = nextCycleAction(
+    snap({ pr, handoffState: "open" }),
+    led({ withdrawn: { pr: 12, at } }),
+  );
+  assert.deepEqual(out.tapeEvents, [{ kind: "cycle.closed", pr: 12, withdrawn: true }]);
+  assert.deepEqual(out.handoffEvents, [], "스스로 한 일은 알림 · 사이드바 소식이 아니다");
+  assert.equal(out.action.kind, "land");
+  assert.deepEqual(out.ledger.withdrawn, { pr: 12, at }, "표식은 착지가 지운다 — 판정은 두고 간다");
+
+  // 다른 요청의 표식은 듣지 않는다 — 그 닫힘은 반려다.
+  const other = nextCycleAction(
+    snap({ pr, handoffState: "open" }),
+    led({ withdrawn: { pr: 9, at } }),
+  );
+  assert.deepEqual(other.tapeEvents, [{ kind: "cycle.closed", pr: 12 }]);
+  assert.deepEqual(other.handoffEvents, [{ state: "closed", pr: 12 }]);
 });
 
 test("8행 — 인증이 만료된 GitHub 의 PR 은 믿지 않고 다시 연결을 말한다", () => {
@@ -1116,4 +1138,113 @@ test("14c행 — 순수하다: 입력 원장은 바뀌지 않고, 장부는 PR �
   const keys = Object.keys(ledger.ci ?? {}).map(Number);
   assert.equal(keys.length, 20);
   assert.equal(Math.min(...keys), 106, "가장 오래된 PR 의 기억부터 잊는다");
+});
+
+// ————— 14d행 — AI 리뷰어의 줄 코멘트 (2026-10-14) —————
+
+/** 시험용 AI 리뷰어 의견 — 관찰이 pendingAiReviews 에 싣는 모양. */
+const aiRev = (id: number): DeveloperReview => ({
+  id,
+  kind: "inline",
+  author: "Codex",
+  body: `[P2] 의견 ${id}`,
+  pr: 12,
+  path: "src/a.tsx",
+  at: iso(NOW),
+  source: "ai",
+});
+
+test("14d행 — AI 리뷰어의 의견을 반영 브리프로 보내고 장부에 적는다, 도착 사건 · 코멘트 수는 없다", () => {
+  const pending = [aiRev(7), aiRev(8)];
+  const out = nextCycleAction(ciSnap({ pendingAiReviews: pending }), led());
+  assert.deepEqual(out.action, { kind: "briefReviews", pr: 12, reviews: pending });
+  assert.equal(out.aiFixing, true);
+  assert.equal(out.attention, "ai-fixing");
+  assert.deepEqual(out.ledger.reviews["12"], { known: [7, 8], briefed: [7, 8], rounds: 0 });
+  assert.equal(out.ledger.budgets["ai-review:12"]?.spent, 1);
+  assert.equal(out.ledger.budgets["review:12"], undefined, "사람의 라운드를 쓰지 않는다");
+  assert.deepEqual(out.tapeEvents, []);
+  assert.deepEqual(out.handoffEvents, []);
+});
+
+test("14d행 — 사람의 말이 먼저다: 개발자 코멘트가 있으면 14행만 그것을 싣는다", () => {
+  const out = nextCycleAction(
+    ciSnap({ pendingReviews: [rev(1)], pendingAiReviews: [aiRev(7)] }),
+    led(),
+  );
+  assert.deepEqual(out.action, { kind: "briefReviews", pr: 12, reviews: [rev(1)] });
+  // 14행의 라운드가 다해 사람의 코멘트가 남아 있어도 AI 의견은 서지 않는다 — 개발자가 확인할 차례다.
+  const spent = led({
+    budgets: { "review:12": { spent: 5, firstAt: iso(NOW), lastAt: iso(NOW), escalated: true } },
+  });
+  const held = nextCycleAction(
+    ciSnap({ pendingReviews: [rev(1)], pendingAiReviews: [aiRev(7)] }),
+    spent,
+  );
+  assert.equal(kindOf(held), "none");
+  assert.equal(held.ledger.budgets["ai-review:12"], undefined);
+});
+
+test("14d행 — 턴이 도는 중이거나 자동 검사를 고치는 중이면 기다린다", () => {
+  const running = nextCycleAction(
+    ciSnap({ turnRunning: true, pendingAiReviews: [aiRev(7)] }),
+    led(),
+  );
+  assert.equal(kindOf(running), "none");
+  assert.equal(running.ledger.reviews["12"], undefined, "기다리는 동안 장부를 건드리지 않는다");
+  // 자동 검사가 실패하면 14c행이 먼저 브리프한다.
+  const ci = nextCycleAction(
+    ciSnap({ pendingAiReviews: [aiRev(7)] }, { checks: failingChecks() }),
+    led(),
+  );
+  assert.equal(kindOf(ci), "briefCiFailure");
+  // 그 고침이 올라갔지만 GitHub 의 head 가 아직 따라오지 않았다 — 14c행은 aiFixing 만 세우고 돌아오지 않는다.
+  // AI 의견은 그 고침이 끝나기를 기다린다.
+  const fixing = nextCycleAction(
+    ciSnap(
+      { pendingAiReviews: [aiRev(7)], remoteBranchSha: "f".repeat(40) },
+      { checks: failingChecks() },
+    ),
+    ci.ledger,
+  );
+  assert.equal(kindOf(fixing), "none");
+  assert.equal(fixing.aiFixingKey, "ci");
+  assert.equal(fixing.ledger.budgets["ai-review:12"], undefined);
+});
+
+test("14d행 — 남은 AI 의견은 14c행을 막지 않는다", () => {
+  const out = nextCycleAction(
+    ciSnap({ pendingAiReviews: [aiRev(7)] }, { checks: failingChecks() }),
+    led(),
+  );
+  assert.equal(kindOf(out), "briefCiFailure");
+});
+
+test("14d행 — PR 당 2 라운드: 셋째 의견은 브리프 없이 읽은 것으로 적고 개발자에게 알리지 않는다", () => {
+  assert.deepEqual(BUDGETS.aiReviewRounds, { max: 2, windowMs: null });
+  let ledger = led();
+  for (const id of [7, 8]) {
+    const out = nextCycleAction(ciSnap({ pendingAiReviews: [aiRev(id)] }), ledger);
+    assert.equal(kindOf(out), "briefReviews");
+    ledger = out.ledger;
+  }
+  const third = nextCycleAction(ciSnap({ pendingAiReviews: [aiRev(9)] }), ledger);
+  assert.equal(kindOf(third), "none");
+  assert.deepEqual(third.notices, []);
+  assert.equal(third.attention, null);
+  assert.equal(third.aiFixing, false);
+  assert.ok(
+    third.ledger.reviews["12"]?.briefed.includes(9),
+    "다시 판정하지 않게 읽은 것으로 적는다",
+  );
+  // 사람의 라운드는 그대로 남아 있다 — 다음 개발자 코멘트는 반영된다.
+  const human = nextCycleAction(ciSnap({ pendingReviews: [rev(1)] }), third.ledger);
+  assert.equal(kindOf(human), "briefReviews");
+});
+
+test("14d행 — 닫혔거나 합쳐진 요청에는 서지 않는다", () => {
+  for (const state of ["merged", "closed"] as const) {
+    const out = nextCycleAction(ciSnap({ pendingAiReviews: [aiRev(7)] }, { state }), led());
+    assert.notEqual(kindOf(out), "briefReviews");
+  }
 });

@@ -80,7 +80,7 @@ import {
   nextCycleAction,
 } from "./cycle-reconcile.js";
 import { isScreenQuietKey } from "./developer-notice.js";
-import { extractDeveloperReplies, replyFooter } from "./developer-replies.js";
+import { extractDeveloperReplies, replyFooter, withoutMentions } from "./developer-replies.js";
 import { COLONOVA_DESIGN_DATA_DIR } from "./environment.js";
 import type { GitHubClient, PullRequestRef } from "./github.js";
 import {
@@ -106,6 +106,7 @@ import {
   classifySubmitError,
   deriveSubmitPhase,
   SUBMIT_LOG_MAX,
+  SUBMIT_LOG_TEXT,
   type SubmitBlockReason,
 } from "./submit-state.js";
 
@@ -129,6 +130,11 @@ const INACTIVE_FETCH_MS = 10 * 60 * 1000;
 const NOTICE_REPEAT_MS = 10 * 60 * 1000;
 /** 반려 이유로 읽는 창 — 닫힘 시각 이전 7일 (PLAN L9). */
 const REJECTION_REASON_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/** 제출 취소 뒤 요청에 남는 한 줄(2026-10-14) — 개발자가 할 일이 없다는 것까지 말한다. 끝에 대리 표기가 붙는다. */
+const WITHDRAW_NOTE =
+  "작성자가 이 요청을 거뒀습니다. 따로 하실 일은 없습니다. 다시 제출하면 새 요청으로 옵니다.";
+/** 제출 취소가 착지 틱을 기다리는 상한 — 넘으면 닫힌 채로 답하고 착지는 그 틱이 마저 한다. */
+const WITHDRAW_LAND_WAIT_MS = 20_000;
 /**
  * clone:restore 알림이 저절로 풀리는 기한 — 되살리기에 실패한 프로젝트도
  * 7일이면 개발자가 충분히 볼 수 있다. 그 전이라도 제출이 한 번 성공하면
@@ -496,6 +502,72 @@ export class CycleSupervisor {
     writeLedger(this.ledgerPath, this.ledger);
     this.syncSubmitTrail();
     void this.tick("manual");
+  }
+
+  /**
+   * 제출 취소(2026-10-14 사용자 요청) — 제출한 사람이 열린 요청을 앱에서 닫는다. 표식(원장 `withdrawn`)을 GitHub 보다
+   * 먼저 적어 재시작을 넘기고, 닫힌 요청을 본 틱이 반려와 가른다: 착지는 반려와 같이 작업 전체를 새 사이클로 옮기되
+   * 개발자에게 이유를 묻지 않고 반영 턴도 열지 않는다. 닫은 뒤 요청에 한 줄을 남긴다 — 토큰 주인의 이름으로 닫히므로
+   * 누가 왜 닫았는지 개발자가 알 수 있게(실패는 삼킨다). 도는 제출 · 턴이 있으면 거절한다: 제출 단계가 닫힌 요청을
+   * 다시 고쳐 쓰거나, 착지가 턴 뒤로 밀려 화면이 한동안 옛 요청을 말한다. 제출 칸에 서서 도는 틱 뒤에 선다.
+   */
+  async withdraw(): Promise<void> {
+    const core = this.deps.core;
+    await core.lane.run("submit", async () => {
+      const handoff = core.openHandoff;
+      if (handoff === null || handoff.state === "merged" || handoff.state === "closed") {
+        throw new Error("열린 요청이 없어요 — 이미 닫혔거나 반영됐어요");
+      }
+      if (this.ledger.submit !== null)
+        throw new Error("제출하는 중이에요 — 끝난 뒤에 취소할 수 있어요");
+      if (this.deps.busy()) throw new Error("AI가 고치는 중이에요 — 끝난 뒤에 취소할 수 있어요");
+      const client = this.deps.github();
+      const slug = this.deps.slug();
+      if (client === null || slug === null) {
+        throw new Error("GitHub 에 닿을 수 없어요 — 연결 코드를 확인해 주세요");
+      }
+      const pr = handoff.number;
+      this.ledger = { ...this.ledger, withdrawn: { pr, at: new Date(this.now()).toISOString() } };
+      writeLedger(this.ledgerPath, this.ledger);
+      try {
+        await client.closePullRequest({ ...slug, number: pr });
+      } catch (error) {
+        // 응답만 잃은 닫기가 있다 — 다시 읽어 닫혔으면 표식을 둔다(지우면 그 닫힘이 반려로 읽혀 개발자에게 이유를 묻는다).
+        const now = await client
+          .getPullRequest({ ...slug, number: pr })
+          .then((detail) => detail.state)
+          .catch(() => null);
+        if (now !== "closed") {
+          const { withdrawn: _dropped, ...rest } = this.ledger;
+          this.ledger = rest;
+          writeLedger(this.ledgerPath, this.ledger);
+          this.log(`제출 취소 실패(PR #${pr}): ${detailOf(error, core.pat)}`);
+          throw new Error(
+            now === "merged"
+              ? "개발자가 이미 반영한 요청이에요"
+              : "제출을 취소하지 못했어요 — 잠시 뒤 다시 시도해 주세요",
+          );
+        }
+      }
+      const body = sanitizeText(
+        `${WITHDRAW_NOTE}\n\n${replyFooter(this.deps.authorName?.() ?? null)}`,
+      );
+      await client.commentOnIssue({ ...slug, number: pr, body }).catch((error) => {
+        this.log(`제출 취소 코멘트 실패(삼킴): ${detailOf(error, core.pat)}`);
+      });
+      this.appendSubmitLog(SUBMIT_LOG_TEXT.withdrawn);
+      this.log(`제출 취소: PR #${pr}`);
+    });
+    // 착지는 틱의 몫이다 — 곧바로 돌려 화면이 옛 요청을 말하는 틈을 줄인다(manual 은 fetch 해 닫힘을 읽는다).
+    // 기다림에는 상한을 둔다: 요청은 이미 닫혔으니 느린 틱이 웹의 60초 목줄을 넘겨 실패로 읽히면 안 된다.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    await Promise.race([
+      this.tick("manual"),
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, WITHDRAW_LAND_WAIT_MS);
+      }),
+    ]);
+    clearTimeout(timer);
   }
 
   private submitPhase() {
@@ -868,7 +940,12 @@ export class CycleSupervisor {
               ...(event.screens === undefined ? {} : { screens: event.screens }),
             }
           : event.kind === "cycle.closed"
-            ? { kind: "cycle.closed", at, pr: event.pr }
+            ? {
+                kind: "cycle.closed",
+                at,
+                pr: event.pr,
+                ...(event.withdrawn ? { withdrawn: true } : {}),
+              }
             : event.kind === "cycle.carried"
               ? {
                   kind: "cycle.carried",
@@ -1422,9 +1499,17 @@ export class CycleSupervisor {
       };
       core.lane.outside(() => this.deps.cycleEvent?.(event));
     }
+    // 제출 취소의 표식은 그 요청의 착지와 함께 다한다(2026-10-14).
+    const withdrawn = this.ledger.withdrawn?.pr === land.pr;
+    if (this.ledger.withdrawn !== undefined) {
+      const { withdrawn: _done, ...rest } = this.ledger;
+      this.ledger = rest;
+      writeLedger(this.ledgerPath, this.ledger);
+    }
     // 반려의 착지 — 닫힘 이유를 반영 턴으로 넘긴다(PLAN L4 · L9). 병합에는
     // 이유가 없다. 턴은 원장에 적힌 뒤 14b행이 보낸다 — 착지는 다시 오지 않는다.
-    if (land.outcome === "closed") await this.briefRejection(land.pr);
+    // 사용자가 거둔 요청에는 물을 이유가 없다 — 청구 코멘트도 반영 턴도 없다.
+    if (land.outcome === "closed" && !withdrawn) await this.briefRejection(land.pr);
   }
 
   /** 새 브랜치에 실제로 있는 커밋 수 — 빈 커밋 버림(--empty=drop)을 셈에
@@ -1493,7 +1578,8 @@ export class CycleSupervisor {
           : commit !== null
             ? `반영했습니다 · ${commit.slice(0, 7)}`
             : "확인했고 바꾼 것은 없습니다";
-      const withFooter = sanitizeText(`${body}\n\n${footer}`);
+      // @멘션은 걷는다(2026-10-14) — git 쓰기는 데몬의 차선만 지난다(withoutMentions).
+      const withFooter = withoutMentions(sanitizeText(`${body}\n\n${footer}`));
       try {
         if (review.kind === "inline") {
           await client.replyToPullComment({ ...slug, number: pr, commentId: id, body: withFooter });

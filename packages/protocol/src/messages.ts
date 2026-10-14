@@ -822,6 +822,12 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     text: z.string().min(1).max(2000),
   }),
   /**
+   * 제출 취소(2026-10-14 사용자 요청): 제출한 사람이 열린 요청을 앱에서 닫는다.
+   * 작업은 지우지 않는다 — 감독자의 반려 착지가 새 사이클로 옮기고, 개발자에게
+   * 이유를 묻지 않는다. `id` 는 멱등 키라 재전송이 두 번 닫지 않는다(command-dedupe).
+   */
+  z.object({ ...withId, type: z.literal("repo.withdraw") }),
+  /**
    * 기능 제안 접수 (PLAN-FEEDBACK) — 앱 전체 기능이다: 프로젝트·레포·세션을
    * 전혀 건드리지 않고 데몬이 RELEASES_REPO 에 이슈로 올린다. 입력 검증은
    * `featureRequestInputSchema` 를 그대로 펼친 것(공백 정리·길이 상한의 한 곳),

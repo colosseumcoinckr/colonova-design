@@ -450,6 +450,9 @@ export function StatusLine({
             onNote={async (text) => {
               await daemon.api.noteToDeveloper(text);
             }}
+            onWithdraw={async () => {
+              await daemon.api.withdrawSubmission();
+            }}
             onOpenScreen={openScreen}
             onToast={nav.toast}
             onClose={() => setWorkOpen(false)}

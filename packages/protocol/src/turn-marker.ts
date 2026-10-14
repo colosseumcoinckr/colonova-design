@@ -172,6 +172,8 @@ interface ReviewMarker {
    * 패널에서 각자 답한다). 옛 턴에는 없다 — 카드는 답하기 없이 읽는 자리.
    */
   id?: number;
+  /** `ai` 면 AI 리뷰어의 코멘트 묶음이다(2026-10-14) — 카드가 개발자 대신 AI 검토라고 말하고 답하기를 두지 않는다. */
+  source?: "ai";
 }
 
 /**
@@ -287,6 +289,7 @@ function hydrate(kind: TurnMarkerKind, data: Record<string, unknown>): TurnMarke
         author: str(data.author),
         ...(data.path ? { path: str(data.path) } : {}),
         ...(Number.isFinite(Number(data.id)) ? { id: Number(data.id) } : {}),
+        ...(data.source === "ai" ? { source: "ai" as const } : {}),
       };
       return marker;
     }
@@ -345,19 +348,26 @@ export function readTurn(text: string): MarkedTurn {
  * PLAN L9: 목록마다 코멘트 id (#<n>) 를 붙이고, 답변 끝의 `개발자에게 (#<id>):`
  * 줄을 부탁한다 — 데몬이 그 줄을 뽑아 스레드에 올린다(developer-replies.ts).
  * opts.intro 는 반려(briefRejection)가 같은 표식의 앞 문장을 바꾸는 길이다.
+ *
+ * AI 리뷰어의 묶음(모두 `source: "ai"`, 2026-10-14)은 앞 문장과 끝의 기준이 다르다 — 도구가 단 의견은 틀릴 수
+ * 있으니 맞는지 먼저 따져 보고 맞는 것만 고치게 한다. 감독자는 사람과 AI 를 한 묶음에 섞지 않는다.
  */
 export function reviewToTurn(reviews: DeveloperReview[], opts: { intro?: string } = {}): string {
   const first = reviews[0];
+  const ai = reviews.length > 0 && reviews.every((review) => review.source === "ai");
   const marker: TurnMarker = {
     kind: "review",
     pr: first?.pr ?? 0,
     author: first?.author ?? "",
     ...(first?.path ? { path: first.path } : {}),
     ...(first ? { id: first.id } : {}),
+    ...(ai ? { source: "ai" as const } : {}),
   };
   const lines = [
     opts.intro ??
-      `개발자 코멘트 ${reviews.length}건에 답합니다 — 아래 코멘트를 반영해 화면을 고쳐 주세요.`,
+      (ai
+        ? `AI 리뷰어의 코드 리뷰 의견 ${reviews.length}건입니다 — 사람이 아니라 도구가 단 의견이라 틀릴 수 있습니다. 의견마다 지금 코드에서 실제로 맞는지 먼저 확인하고, 맞는 것만 그 자리를 고쳐 주세요.`
+        : `개발자 코멘트 ${reviews.length}건에 답합니다 — 아래 코멘트를 반영해 화면을 고쳐 주세요.`),
     "",
     "답변 끝에 코멘트마다 `개발자에게 (#<id>):` 로 시작하는 한두 문장을 남겨 주세요 — 무엇을 바꿨는지, 바꾸지 않았다면 왜인지. 도구가 그 줄을 해당 스레드에 올립니다 (PLAN L9).",
     "",
@@ -369,7 +379,7 @@ export function reviewToTurn(reviews: DeveloperReview[], opts: { intro?: string 
     "",
     // 끝의 기준(2026-10-02, claude.dev 「Opus 5.5」) — 코멘트마다 답이 있는 것. 범위는 코멘트가
     // 가리킨 자리로 묶는다 — 반영 턴이 요청에 없던 정리를 함께 싣는 일을 막는다.
-    REVIEW_FINISH_LINE,
+    ai ? AI_REVIEW_FINISH_LINE : REVIEW_FINISH_LINE,
   ];
   return markTurn(marker, lines.join("\n"));
 }
@@ -377,3 +387,7 @@ export function reviewToTurn(reviews: DeveloperReview[], opts: { intro?: string 
 /** 코멘트 반영 턴의 끝의 기준 — reviewToTurn 이 마지막 줄로 싣는다. */
 export const REVIEW_FINISH_LINE =
   "끝의 기준: 코멘트마다 반영했거나 반영하지 않은 이유가 답변 끝의 `개발자에게 (#<id>):` 줄에 있는 것입니다 — 코멘트가 가리키지 않은 화면과 파일은 손대지 마세요.";
+
+/** AI 리뷰어 의견 반영 턴의 끝의 기준(2026-10-14) — 맞지 않는 의견은 고치지 않는 것까지가 끝이다. */
+export const AI_REVIEW_FINISH_LINE =
+  "끝의 기준: 의견마다 고쳤거나 고치지 않은 이유가 답변 끝의 `개발자에게 (#<id>):` 줄에 있는 것입니다 — 맞지 않는 의견은 고치지 말고, 의견이 가리키지 않은 화면과 파일은 손대지 마세요.";

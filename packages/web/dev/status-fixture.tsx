@@ -493,6 +493,10 @@ function Row({ spec }: { spec: Case }) {
       noteToDeveloper: async () => {
         await later(300);
       },
+      withdrawSubmission: async () => {
+        await later(600);
+        return { ok: true as const };
+      },
       submit: async () => {
         await later(900);
         if (SUBMIT === "sendfail") throw new Error("network");

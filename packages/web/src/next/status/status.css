@@ -1021,6 +1021,11 @@
   margin-top: 8px;
 }
 
+/** 제출 취소의 자리(2026-10-14) — 한마디 더 아래의 단추와 인라인 확인. */
+.nx-wp-withdraw {
+  margin-top: 8px;
+}
+
 .nx-slog div {
   display: flex;
   gap: 8px;

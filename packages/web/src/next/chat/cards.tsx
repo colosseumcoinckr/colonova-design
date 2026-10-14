@@ -252,6 +252,8 @@ export function ReplyBox({
  * 개발자 코멘트 카드(U14) — 사람 · 글 · 상태(`AI가 반영하는 중` → `반영해 같은
  * 요청에 다시 제출했어요`) · `답하기`. 코멘트는 AI 가 바로 반영한다(L9) — 카드는
  * 할 일을 만들지 않고 알린다. 화면 이름은 선로가 아직 싣지 않아 비운다.
+ * `ai` 면 AI 리뷰어(Codex · Claude …)의 의견이다(2026-10-14) — 이름 옆에 `AI 검토` 가 서고
+ * 답하기는 없다: 답을 받을 사람이 없다.
  */
 export function ReviewCard({
   author,
@@ -259,6 +261,7 @@ export function ReviewCard({
   texts,
   replyId,
   fixing,
+  ai = false,
   body = "",
   onReply,
   onToast,
@@ -269,6 +272,7 @@ export function ReviewCard({
   /** 답하기가 갈 스레드 — 없으면 답하기 없이 읽는 자리. */
   replyId: number | null;
   fixing: boolean;
+  ai?: boolean;
   /** AI 가 받은 글(반영 턴) — 있으면 한 겹 접혀 선다. */
   body?: string;
   onReply: (id: number, text: string) => Promise<void>;
@@ -282,7 +286,7 @@ export function ReviewCard({
       <div className="nx-ch">
         <span className="nx-avt">{name.slice(0, 1)}</span>
         <b>{name}</b>
-        <span className="nx-muted">{L.cards.developer}</span>
+        <span className="nx-muted">{ai ? L.cards.aiReviewer : L.cards.developer}</span>
         {at && <span className="nx-time">{clockOf(at)}</span>}
       </div>
       {texts.map((row) => (

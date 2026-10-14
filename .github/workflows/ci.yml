@@ -126,6 +126,7 @@ jobs:
           packages/daemon/test/github-reviewers.test.ts
           packages/daemon/test/feedback.test.ts
           packages/daemon/test/agent-attachments.test.ts
+          packages/daemon/test/ai-review.test.ts
           packages/daemon/test/app-comment.test.ts
           packages/daemon/test/child-hide.test.ts
           packages/daemon/test/child-shell.test.ts

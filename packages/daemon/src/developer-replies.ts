@@ -54,3 +54,12 @@ export function extractDeveloperReplies(text: string, ids: number[]): Map<number
 export function replyFooter(authorName: string | null): string {
   return `— ColoNova Design 이 ${authorName ?? "사용자"} 님 대신 남김`;
 }
+
+/**
+ * 답장 본문의 @멘션을 걷는다(2026-10-14) — `@이름` 의 `@` 만 지워 부름이 되지 않게 한다. AI 리뷰어의 스레드에도
+ * 답장이 가고, `@codex …` · `@claude …` 같은 부름은 그 봇이 요청에 직접 커밋하게 한다. 메일 주소는 앞의 `@` 가
+ * 글자에 붙어 있어 건드리지 않는다.
+ */
+export function withoutMentions(text: string): string {
+  return text.replace(/(?<![\w.@])@(?=[A-Za-z0-9])/g, "");
+}

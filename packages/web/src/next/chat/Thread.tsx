@@ -311,13 +311,15 @@ export function Thread(props: ThreadProps) {
         if (marker?.kind === "notice") return <NoticeCard marker={marker} body={body} />;
         if (marker?.kind === "ci") return <CiCard marker={marker} body={body} fixing={running} />;
         if (marker?.kind === "review") {
+          const ai = marker.source === "ai";
           return (
             <ReviewCard
               author={marker.author}
               at={null}
-              texts={[{ key: "brief", text: L.chat.reviewText }]}
-              replyId={marker.id ?? null}
+              texts={[{ key: "brief", text: ai ? L.chat.aiReviewText : L.chat.reviewText }]}
+              replyId={ai ? null : (marker.id ?? null)}
               fixing={running}
+              ai={ai}
               body={body}
               onReply={props.onReply}
               onToast={props.onToast}
@@ -696,12 +698,19 @@ export function Thread(props: ThreadProps) {
             />
           );
         }
+        // 내가 거둔 요청(2026-10-14 제출 취소)은 반려가 아니다 — 빨간 줄 대신 보통 줄이 그 사실만 말한다.
         return (
-          <div className={`nx-mile${block.subtype === "closed" ? " nx-mile--red" : ""}`}>
+          <div
+            className={`nx-mile${block.subtype === "closed" && !block.withdrawn ? " nx-mile--red" : ""}`}
+          >
             <span />
             <b>
               <CheckIcon />
-              {block.subtype === "merged" ? L.cards.milestoneMerged : L.chat.closed}
+              {block.subtype === "merged"
+                ? L.cards.milestoneMerged
+                : block.withdrawn
+                  ? L.chat.withdrawn
+                  : L.chat.closed}
             </b>
             <span />
           </div>

@@ -330,9 +330,10 @@ export type ChatEvent =
     }
   /**
    * 넘긴 요청이 병합 없이 닫혔다(반려, PLAN L4) — 작업은 새 사이클 브랜치로
-   * 이월됐으므로 대화록은 한 줄로 그 사실만 말한다.
+   * 이월됐으므로 대화록은 한 줄로 그 사실만 말한다. `withdrawn` 이면 개발자가
+   * 아니라 제출한 사람이 앱에서 거둔 것이다(`repo.withdraw`, 2026-10-14) — 없으면 반려다.
    */
-  | { kind: "cycle.closed"; at: string; pr: number }
+  | { kind: "cycle.closed"; at: string; pr: number; withdrawn?: true }
   /**
    * 끝난 요청의 남은 커밋이 새 사이클 브랜치로 옮겨졌다(PLAN L4 이월) —
    * from 은 끝난 브랜치, to 는 새 브랜치, commits 는 옮긴 커밋 수. 대화록은

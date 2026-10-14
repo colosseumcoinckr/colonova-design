@@ -8,7 +8,7 @@
  *
  * Endpoints used (cite in every fixture):
  *   POST  /repos/{owner}/{repo}/pulls/{number}/requested_reviewers — ask for reviews (E4)
- *   PATCH /repos/{owner}/{repo}/pulls/{number}                 — retitle/rewrite a standing one
+ *   PATCH /repos/{owner}/{repo}/pulls/{number}                 — retitle/rewrite a standing one · 제출 취소(state: closed)
  *   GET   /repos/{owner}/{repo}/pulls/{number}                 — state + merged flag
  *   GET   /repos/{owner}/{repo}/pulls/{number}/reviews         — latest verdict per reviewer
  *   GET   /repos/{owner}/{repo}                                — permissions.push probe · repo inspection
@@ -19,6 +19,7 @@
  *   GET   /repos/{owner}/{repo}/check-runs/{id}/annotations       — 실패한 검사의 줄 단위 안내
  */
 import type { GitHubRepo, GitHubRepoInspection } from "@colonova-design/protocol";
+import { aiReviewerOf } from "./ai-review.js";
 import { markAppComment } from "./app-comment.js";
 import { FixtureTransport, loadFixturePairs, type RestTransport } from "./rest-transport.js";
 import { classifyGitHubFailure } from "./submit-state.js";
@@ -138,7 +139,8 @@ const REPO_PAGE_CAP = 5;
 /**
  * 봇 행 판정 (PLAN L9) — user.type 이 "Bot" 이거나 로그인이 "[bot]" 으로
  * 끝나면 기계의 말이다. CI 봇의 코멘트에 AI 가 반응하지 않게 목록 읽기가
- * 거른다.
+ * 거른다. 예외는 감독자가 청한 AI 리뷰어의 줄 코멘트 하나다(`ai-review.ts`,
+ * 2026-10-14).
  */
 export function isBotRow(row: Record<string, any>): boolean {
   return String(row.user?.type ?? "") === "Bot" || String(row.user?.login ?? "").endsWith("[bot]");
@@ -494,22 +496,39 @@ export class GitHubClient {
   }
 
   /**
+   * 제출 취소(2026-10-14) — 열린 요청을 닫는다. 이슈 길(`updateIssue`)이 아니라 요청 길이다: 연결 코드에는
+   * `Pull requests: Read and write` 가 있고 `Issues` 쓰기는 없을 수 있다. 브랜치는 건드리지 않는다.
+   */
+  async closePullRequest(input: { owner: string; repo: string; number: number }): Promise<void> {
+    await this.sendJson(
+      "PATCH",
+      `/repos/${input.owner}/${input.repo}/pulls/${input.number}`,
+      { state: "closed" },
+      "제출 취소",
+    );
+  }
+
+  /**
    * D88 · PLAN L9: 개발자의 인라인 코멘트 — 목록을 페이지 끝까지 읽고
    * (nextLink, 상한 COMMENT_PAGE_CAP) 봇 행은 거른다. 거절된 부름은 빈
    * 목록으로 흘린다: 상태 확인은 읽기 표면이고, 닿지 않는 코멘트 API 가
-   * 전체 상태 읽기를 실패하게 해서는 안 된다.
+   * 전체 상태 읽기를 실패하게 해서는 안 된다. `aiReviewers` 면 AI 리뷰어의
+   * 첫 글(`aiReviewerOf`)도 남긴다 — 감독자의 관찰만 청한다(2026-10-14).
    */
   async listPullComments(input: {
     owner: string;
     repo: string;
     number: number;
+    aiReviewers?: boolean;
   }): Promise<Array<Record<string, any>>> {
     try {
       const rows = await this.listPages(
         `/repos/${input.owner}/${input.repo}/pulls/${input.number}/comments?per_page=50`,
         "개발자 코멘트 읽기",
       );
-      return rows.filter((row) => !isBotRow(row));
+      return rows.filter(
+        (row) => !isBotRow(row) || (input.aiReviewers === true && aiReviewerOf(row) !== null),
+      );
     } catch {
       return [];
     }

@@ -1001,6 +1001,11 @@ export class RequestRouter {
       await activeWs.repo.noteToDeveloper(message.text);
       return { ok: true as const };
     },
+    // 제출 취소(2026-10-14) — 활성 프로젝트의 열린 요청을 닫는다. 감독자가 표식을 적고 닫은 뒤 착지 틱까지 돈다.
+    "repo.withdraw": async () => {
+      await this.requireActive().supervisor.withdraw();
+      return { ok: true as const };
+    },
     // --- 되돌리기와 넘기기 (PLAN D52 · D53) ------------------------------
     "repo.handoffDraft": async () => {
       const active = this.requireActive();

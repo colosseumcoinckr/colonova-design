@@ -191,6 +191,12 @@ export interface CycleLedger {
    */
   landed?: LandedWork[];
   /**
+   * 제출 취소의 표식(2026-10-14 사용자 요청) — 제출한 사람이 앱에서 닫은 요청의 번호와 시각. GitHub 을 닫기 **전에** 적어
+   * 재시작을 넘긴다: 닫힌 요청을 본 틱이 반려와 가르는 유일한 잣대다(토큰 주인이 개발자일 수 있어 GitHub 의 말로는 못 가른다).
+   * 번호가 같은 요청에만 듣고, 착지가 끝나면 지운다. 옛 원장에는 없고, 없으면 필드 자체가 없다.
+   */
+  withdrawn?: { pr: number; at: string };
+  /**
    * 서 있는 개발자 알림(L11) — raise 의 중복 억제 잣체. 조정자가 올리고 지운다.
    * 주의(developer-notified)의 재료이므로 실제 알림이 아닌 표식은 두지 않는다.
    */
@@ -324,6 +330,13 @@ function parseEnded(raw: unknown): CycleLedger["ended"] {
   if (state !== "merged" && state !== "closed") return null;
   if (headSha === null || seenAt === null) return null;
   return { pr, state, headSha, seenAt };
+}
+function parseWithdrawn(raw: unknown): CycleLedger["withdrawn"] | null {
+  const record = asRecord(raw);
+  if (record === null) return null;
+  const pr = asInt(record.pr);
+  const at = asString(record.at);
+  return pr === null || pr <= 0 || at === null ? null : { pr, at };
 }
 function parseLastPr(raw: unknown): CycleLedger["lastPr"] {
   const record = asRecord(raw);
@@ -715,6 +728,7 @@ export function parseLedger(raw: unknown): CycleLedger {
   const submitTrail = parseSubmitTrail(record.submitTrail);
   const ci = parseCi(record.ci);
   const landed = parseLanded(record.landed);
+  const withdrawn = parseWithdrawn(record.withdrawn);
   return {
     v: 1,
     ended: parseEnded(record.ended),
@@ -727,6 +741,7 @@ export function parseLedger(raw: unknown): CycleLedger {
     budgets: parseBudgets(record.budgets),
     ...(ci === null ? {} : { ci }),
     ...(landed === null ? {} : { landed }),
+    ...(withdrawn === null ? {} : { withdrawn }),
     notices,
     branches: parseBranches(record.branches),
     salvages: parseSalvages(record.salvages),

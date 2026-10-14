@@ -19,10 +19,10 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.13",
-    "concurrently": "^10.0.5",
-    "lefthook": "^2.1.12",
-    "typescript": "^5.9.2"
+    "@biomejs/biome": "^2.5.15",
+    "concurrently": "^10.0.6",
+    "lefthook": "^2.2.1",
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@11.20.0"
 }

@@ -191,6 +191,10 @@ interface MemComment {
   type: string;
   /** 만든 시각(ISO) — 반려 이유의 7일 창이 읽는다 (PLAN L9). */
   at: string;
+  /** 인라인 코멘트의 파일 자리 — 없으면 싣지 않는다. */
+  path?: string;
+  /** 스레드 답글이면 첫 글의 id — GitHub 의 in_reply_to_id (AI 리뷰어 거르기의 재료, 2026-10-14). */
+  replyTo?: number;
 }
 
 /**
@@ -203,6 +207,8 @@ export class MemoryGitHub implements RestTransport {
   private expired = false;
   /** PR 생성 실패의 모양 — true 면 500, 문자열이면 그 문장으로 던진다(네트워크 끊김 흉내). */
   private pullCreatesFail: boolean | string = false;
+  /** PR 닫기(제출 취소)를 500 으로 거절하는가. */
+  pullClosesFail = false;
   /** 저장소가 옮겨진 뒤의 이름 — 없으면 물은 이름 그대로 답한다. */
   private movedTo: string | null = null;
   private nextNumber = 1;
@@ -341,6 +347,11 @@ export class MemoryGitHub implements RestTransport {
             const payload = JSON.parse(new TextDecoder().decode(input.body ?? new Uint8Array()));
             if (typeof payload.title === "string") pull.title = payload.title;
             if (typeof payload.body === "string") pull.body = payload.body;
+            // 제출 취소(2026-10-14) — 닫기. 실패 흉내가 켜져 있으면 닫지 않고 거절한다.
+            if (payload.state === "closed") {
+              if (this.pullClosesFail) return json(500, { message: "close failed" });
+              this.close(number);
+            }
             return json(200, this.pullJson(pull));
           }
         }
@@ -387,6 +398,7 @@ export class MemoryGitHub implements RestTransport {
             body: String(payload.body ?? ""),
             type: "User",
             at: new Date().toISOString(),
+            replyTo: Number(rest[3]),
           };
           this.pullComments.set(number, [...(this.pullComments.get(number) ?? []), row]);
           return json(201, this.commentJson([row])[0]);
@@ -533,6 +545,8 @@ export class MemoryGitHub implements RestTransport {
       user: { login: row.login, type: row.type },
       body: row.body,
       created_at: row.at,
+      ...(row.path === undefined ? {} : { path: row.path, line: null }),
+      ...(row.replyTo === undefined ? {} : { in_reply_to_id: row.replyTo }),
     }));
   }
 
@@ -685,6 +699,8 @@ export class MemoryGitHub implements RestTransport {
       body?: string;
       state?: string;
       bot?: boolean;
+      path?: string;
+      replyTo?: number;
     } = {},
   ): number {
     const id = this.nextCommentId++;
@@ -695,6 +711,8 @@ export class MemoryGitHub implements RestTransport {
       body: opts.body ?? "이 부분 고쳐 주세요",
       type: opts.bot === true || login.endsWith("[bot]") ? "Bot" : "User",
       at: new Date().toISOString(),
+      ...(opts.path === undefined ? {} : { path: opts.path }),
+      ...(opts.replyTo === undefined ? {} : { replyTo: opts.replyTo }),
     };
     const kind = opts.kind ?? "issue";
     if (kind === "pull") {

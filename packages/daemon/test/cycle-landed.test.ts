@@ -48,6 +48,7 @@ function snap(over: Partial<CycleSnapshot> = {}): CycleSnapshot {
     handoffState: null,
     newReviews: [],
     pendingReviews: [],
+    pendingAiReviews: [],
     reviewCount: null,
     installStale: false,
     hygieneDue: false,

@@ -651,6 +651,7 @@ export class ProjectFleet {
         slug: workspaces.slug,
         pr,
         reviews: reviews.length,
+        source: reviews[0]?.source ?? "developer",
       });
       return true;
     } catch {

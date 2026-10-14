@@ -507,6 +507,8 @@ export const L = {
     gateBody: "AI가 확인한 자세한 내용",
     screenCheck: "화면 확인",
     developer: "개발자",
+    /** AI 리뷰어(Codex · Claude …)의 의견 카드 — 사람 대신 이 말이 이름 옆에 선다(2026-10-14). */
+    aiReviewer: "AI 검토",
     reviewDone: "반영해 같은 요청에 다시 제출했어요",
     reviewFixing: "AI가 반영하는 중",
     reply: "답하기",
@@ -614,6 +616,8 @@ export const L = {
     fileReference: "작업 파일",
     closed:
       "개발자가 이번 요청을 닫았어요 — 작업은 새 요청으로 옮겨 두었어요. 다시 만든 뒤 제출을 누르면 새 요청으로 가요",
+    /** 제출 취소(2026-10-14) — 같은 닫힘이지만 내가 한 일이라 빨간 줄이 아니다. */
+    withdrawn: "제출을 취소했어요 — 만든 화면은 그대로 있어요. 다시 제출하면 새 요청으로 가요",
     gateSummary: (step: string) => `${step}에서 문제를 찾아 AI에게 맡겼어요.`,
     errorSummary: "화면에 오류가 나서 AI에게 맡겼어요.",
     lookSummary: "보여 준 화면을 AI가 살펴보고 있어요.",
@@ -623,6 +627,7 @@ export const L = {
     briefRefresh: "개발자가 반영한 내용을 받아왔어요",
     briefConventions: "이 서비스의 규칙을 다시 읽었어요",
     reviewText: "코멘트를 남겼어요",
+    aiReviewText: "코드를 살펴보고 의견을 남겼어요",
     reviewAuthor: "개발자",
     usageWord: (pct: number) => `사용량 ${pct}%`,
     /** 사용량 칸의 한 줄(창 하나) — 이름 · 쓴 비율 · 다시 차는 때. */
@@ -1074,6 +1079,17 @@ export const L = {
     loading: "기록을 읽는 중…",
     readFailed: "코멘트를 읽지 못했어요",
     moreScreens: (n: number) => `바뀐 화면 ${n}개 더 보기`,
+    // 2026-10-14 사용자 요청 — 제출한 사람이 열린 요청을 앱에서 닫는다. 만든 화면은 남고 다음 제출은 새 요청이다.
+    withdraw: "제출 취소",
+    withdrawTitle: "제출을 취소할까요?",
+    withdrawBody: "개발자에게 간 요청이 닫혀요. 만든 화면은 그대로 남고, 다시 제출하면 새 요청으로 가요.",
+    withdrawCancel: "그만두기",
+    withdrawing: "취소하는 중…",
+    /** 확인이 잠긴 이유 — 데몬도 같은 때 거절한다(도는 제출 · 턴이 닫힌 요청을 다시 건드리지 않게). */
+    withdrawWhyRunning: "AI가 고치는 중 — 끝나면 취소할 수 있어요",
+    withdrawWhySubmitting: "제출하는 중 — 끝나면 취소할 수 있어요",
+    withdrawDone: "제출을 취소했어요 · 만든 화면은 그대로예요",
+    withdrawFailed: "제출을 취소하지 못했어요 · 잠시 뒤 다시 시도해 주세요",
   },
 
 

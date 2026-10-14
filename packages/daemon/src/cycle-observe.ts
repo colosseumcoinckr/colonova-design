@@ -14,6 +14,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { DeveloperReview } from "@colonova-design/protocol";
+import { aiReviewerOf, aiReviewText } from "./ai-review.js";
 import { isOwnAppComment } from "./app-comment.js";
 import { CI_LIMITS, type CiChecks, classifyCheckRuns, summarizeCheckRuns } from "./ci-checks.js";
 import { probeCorruption } from "./clone-salvage.js";
@@ -135,13 +136,21 @@ async function countAfterPrHead(
  * 새 개발자 코멘트(L9) — 세 목록(인라인 · 리뷰 본문 · 요청 코멘트)에서 앱이 쓴 글(토큰 주인이
  * 쓴 앱의 표식 글)과 원장이 아는 id 를 뺀다. 승인 · 철회된 판정 · 초안은 말이 아니다(2026-10-07).
  * 페이지네이션 · 봇 거르기 · whoAmI 캐시는 읽는 쪽(github.ts)이 이미 하고 있다(PLAN 단계 7).
+ *
+ * AI 리뷰어의 줄 코멘트(2026-10-14)는 따로 `pendingAi` 로 나온다 — 개발자의 말이 아니라서 도착 사건 ·
+ * 코멘트 수(`total`)에 들지 않고, 판정의 14d행이 사람의 말 뒤에 따로 브리프한다.
  */
 async function collectNewReviews(
   client: GitHubClient,
   slug: { owner: string; repo: string },
   number: number,
   ledger: CycleLedger,
-): Promise<{ arrived: DeveloperReview[]; pending: DeveloperReview[]; total: number }> {
+): Promise<{
+  arrived: DeveloperReview[];
+  pending: DeveloperReview[];
+  pendingAi: DeveloperReview[];
+  total: number;
+}> {
   const entry = ledger.reviews[String(number)];
   const known = new Set(entry?.known ?? []);
   const briefed = new Set(entry?.briefed ?? []);
@@ -156,8 +165,32 @@ async function collectNewReviews(
   // 그대로 실어 나른다. 필터 규칙도 같다: 본문 없는 리뷰 · 빈 요청 코멘트는
   // 개발자의 말이 아니다.
   const reviews: DeveloperReview[] = [];
-  for (const row of await client.listPullComments({ owner: slug.owner, repo: slug.repo, number })) {
+  const ai: DeveloperReview[] = [];
+  for (const row of await client.listPullComments({
+    owner: slug.owner,
+    repo: slug.repo,
+    number,
+    aiReviewers: true,
+  })) {
     if (own(row)) continue;
+    const reviewer = aiReviewerOf(row);
+    if (reviewer !== null) {
+      const text = aiReviewText(String(row.body ?? ""));
+      if (text === "") continue;
+      ai.push({
+        id: Number(row.id),
+        kind: "inline",
+        author: reviewer,
+        body: text,
+        pr: number,
+        ...(row.path ? { path: String(row.path) } : {}),
+        // 지난 커밋을 가리키는 코멘트는 line 이 null 이다 — 0 줄로 읽지 않는다.
+        ...(typeof row.line === "number" ? { line: row.line } : {}),
+        at: String(row.created_at ?? ""),
+        source: "ai",
+      });
+      continue;
+    }
     reviews.push({
       id: Number(row.id),
       kind: "inline",
@@ -207,7 +240,8 @@ async function collectNewReviews(
   // 틱의 재관찰이 브리프 대상을 잃지 않는다(옛 폴러의 briefedReviewIds 판정).
   const arrived = reviews.filter((r) => fresh(r) && !known.has(r.id)).sort((a, b) => a.id - b.id);
   const pending = reviews.filter((r) => fresh(r) && !briefed.has(r.id)).sort((a, b) => a.id - b.id);
-  return { arrived, pending, total: reviews.length };
+  const pendingAi = ai.filter((r) => fresh(r) && !briefed.has(r.id)).sort((a, b) => a.id - b.id);
+  return { arrived, pending, pendingAi, total: reviews.length };
 }
 
 /**
@@ -279,6 +313,7 @@ function corruptSnapshot(
     commitsAfterPrHead: null,
     newReviews: [],
     pendingReviews: [],
+    pendingAiReviews: [],
     reviewCount: null,
     installStale: false,
     hygieneDue: false,
@@ -421,6 +456,7 @@ export async function observeCycle(
   }
   let newReviews: DeveloperReview[] = [];
   let pendingReviews: DeveloperReview[] = [];
+  let pendingAiReviews: DeveloperReview[] = [];
   let reviewCount: number | null = null;
   if (
     pr !== null &&
@@ -438,6 +474,7 @@ export async function observeCycle(
     if (collected !== null) {
       newReviews = collected.arrived;
       pendingReviews = collected.pending;
+      pendingAiReviews = collected.pendingAi;
       reviewCount = collected.total;
     }
     // 자동 검사 — 읽지 못하면 pr.checks 가 없는 채로 간다(상태를 모른다).
@@ -474,6 +511,7 @@ export async function observeCycle(
     commitsAfterPrHead,
     newReviews,
     pendingReviews,
+    pendingAiReviews,
     reviewCount,
     installStale: deps.installStale(),
     hygieneDue: hygieneDue(ledger, opts.now),

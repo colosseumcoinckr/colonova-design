@@ -330,6 +330,22 @@ AI 가 답을 마치면 이어 물어볼 만한 말 한 문장이 빈 입력창�
   제출 확인 창은 **첫 제출에만** 이 제목과 AI 설명을 `개발자에게는 이렇게 보여요` 상자로 미리 보인다(2026-10-07 UX 점검 3단계). 재료는 `repo.handoffDraft`(짧은 AI 한 번, 15초 목줄(2026-10-13, 레포 템플릿을 채우는 본문의 분량), 보관의 끝 표식별 캐시 — 제출 때 감독자가 다시 불러도 같은 글이다. 확인 창 없이 바로 가는 제출은 초안을 그 자리에서 쓰므로 PR 이 열리기까지 최대 15초가 더 걸릴 수 있다)이고, 웹의 `lib/handoff-preview.ts` 가 종류 접두어 · 작성자 꼬리를 떼고 마크다운 기호를 걷어 한 덩이 글로 만든다. 읽기는 `useHandoffDraft` 가 따로 하므로 제출을 붙잡지 않고, 못 읽으면 상자가 서지 않는다. AI 가 제목을 못 쓴 초안은 데몬의 `pickHandoffTitle` 처럼 첫 보관의 제목을 대신 쓰고 그 사실을 말한다. 이미 열린 요청에 더하는 제출은 초안을 읽지 않고 `repo.handoff.title` 만 보인다(제목과 설명은 개발자의 것). 미리 본 글이 제출 때의 글과 같다는 보증은 캐시에 기댄다 — 데몬을 다시 켜면 초안이 다시 쓰여 낱말이 달라질 수 있다.
   영수증의 `보낸 화면`(2026-10-07 UX 점검 3단계)은 사용자가 제출을 누를 때 확인 창이 보인 목록이다 — `repo.submit.sent`(`screens` 1~999 · `titles` 많아야 셋, 각 60자; 선로가 막는다) → 원장의 제출 의도 `submit.sent`(`parseSent` 가 깨진 값을 버린다 — 재시작 뒤의 이어받기도 같은 영수증을 낸다) → 사건 `cycle.handed.sent` → 대화록의 영수증. 데몬은 최종 변경의 귀속(`finalOutgoingChanges`)을 몰라 웹이 정해 건넨다. 확인 창이 없는 대화 제출(`submit_for_review`)에는 이 값이 없고 영수증은 그 줄을 말하지 않는다. 도는 제출에 다시 누르면 의도는 하나 그대로 `sent` 만 새것으로 바뀐다. 막힌 제출이 길어져 그 사이 화면이 더 쌓이면 영수증은 누른 때의 목록을 말한다(실제로는 더 실렸을 수 있다). 기다림이 보이게(2026-10-07 UX 점검 3단계): 요청이 열린 때는 GitHub 의 `created_at` 이 `HandoffStatus.since`(선택 필드, ISO)로 서고 — `refOf`(읽히지 않는 값은 버린다) → 감독자가 요청을 만들 때 · 입양할 때의 `HandoffStatus` → 레지스트리(`projects.ts` 의 `parseHandoff` 가 왕복시킨다) → 선로. 이 변경 전에 열린 요청처럼 `since` 를 모르는 기록은 다음 관찰 틱이 `getPullRequest` 의 값으로 채운다(알고 있는 값은 건드리지 않는다). 웹의 `lib/waiting.ts` 가 `daysSince`(달력으로 센 날수 — 오늘이면 0, `startOfDay` 로 시간대와 서머타임을 따른다)를 계산하고, 오늘의 자정은 `useToday` 가 갈아 끼워 자정을 넘기면 숫자가 저절로 는다. 상태 줄은 `deriveJourney` 의 `waitingDays` 로 받아 **코멘트가 없고 요청이 `open` 일 때만** `· N일째`(N = 날수 + 1, 제출한 날은 붙이지 않는다)를 붙인다 — 코멘트가 오면 그 수가 더 급한 말이고(코멘트 수는 장부에 쌓여 줄지 않으므로 한 번이라도 코멘트가 온 요청은 날수를 말하지 않는다), `changes_requested` 는 공이 우리 쪽이다. 그래서 날수는 요청을 연 뒤 한 번도 말이 없던 기다림, 곧 요청의 나이가 기다린 시간과 같은 경우에만 선다. 홈은 `waitingRows` 가 `open` 인 프로젝트를 오래 기다린 순으로 `지금 진행 중` 에 한 줄씩 세운다(때를 모르면 날수 없이) — 눌러서 가는 줄이라 사용자의 손이 필요한 수(`waitCount` · 사이드바 배지)에는 세지 않는다. 견본: `home-fixture` 의 `?case=g,h`, `status-fixture` 의 `?case=q`.
   받을 개발자를 확인하지 못했다는 줄(`receiptFacts.nobody`)은 첫 제출의 영수증이 **지금의 요청**을 알고 `reviewers` 가 빈 배열일 때만 선다. 데몬이 아는 것은 요청을 만들 때 응답의 `requested_reviewers`(와 도구가 직접 요청한 리뷰어)뿐이고 이후 틱은 이 값을 새로 읽지 않는다 — 리뷰를 마친 개발자는 GitHub 이 이 목록에서 빼므로 새로 읽으면 「받은 사람이 없다」 로 바뀌기 때문이다. 팀 단위 코드 소유자(`requested_teams`)나 늦게 채워지는 지정은 닿지 않을 수 있어 문장은 「없다」 가 아니라 「확인하지 못했다」 를 말하고, 모르는 값(`undefined`)이나 옛 영수증에는 말하지 않는다.
+- **제출 취소**(2026-10-14 사용자 요청 — 제출한 사람이 앱에서 PR 을 닫을 길이 없었다) — `이번 작업` 팝의
+  `제출 취소` → 인라인 확인 → `repo.withdraw` → 감독자의 `withdraw()`. 제출 칸(`lane.run("submit")`)에 서서 도는
+  틱 뒤에 서고, 열린 요청이 없거나 · 제출 의도(`ledger.submit`)가 있거나 · 턴이 돌면 거절한다(웹도 같은 때 확인을
+  잠근다 — `withdrawWhyRunning` · `withdrawWhySubmitting`). 순서는 이렇다: 원장에 표식 `withdrawn: { pr, at }` 을
+  **먼저** 적고 → `closePullRequest`(`PATCH /pulls/{n}` `state: closed` — 이슈 길은 연결 코드에 `Issues` 쓰기가
+  없을 수 있어 쓰지 않는다) → 닫힌 PR 에 `작성자가 이 요청을 거뒀습니다 …` 한 줄과 대리 표기(실패는 삼킨다 —
+  토큰 주인의 이름으로 닫히므로 누가 닫았는지 개발자가 알게) → 제출 기록 `제출을 취소했어요` → `tick("manual")`(최대 20초
+  기다린다 — `WITHDRAW_LAND_WAIT_MS`. 요청은 이미 닫혔으니 느린 착지가 웹의 60초 목줄을 넘겨 실패로 읽히지 않게).
+  닫기가 거절되면 PR 을 다시 읽어 닫혔으면(응답만 잃었다) 표식을 두고, 아니면 지우고 던진다. 표식이 유일한
+  잣대다 — 토큰 주인이 개발자일 수 있어 GitHub 의 말로는 사용자의 닫음과 반려를 가르지 못하고, 표식은 재시작을
+  넘는다. 닫힌 요청을 본 판정(`nextCycleAction`)은 표식의 번호가 같으면 `handoffEvents` 를 내지 않고(OS 알림 ·
+  사이드바 소식 없음 — 스스로 한 일이다) 대화록 사건만 `cycle.closed` 에 선택 필드 `withdrawn: true` 를 실어
+  낸다. 착지는 반려와 같다(작업 전체를 새 사이클 브랜치로 옮기고 옛 원격 브랜치는 원장에 남긴다). `completeLand`
+  가 표식을 지우고, 표식이 있던 착지는 `briefRejection` 을 건너뛴다 — 이유 청구 코멘트 · 반영 턴 · `review:<pr>:rejection`
+  알림이 없다. 웹은 그 사건을 빨간 반려 줄이 아닌 보통 줄 `L.chat.withdrawn` 으로 그린다(`cycle-supervisor.test.ts` ·
+  `cycle-reconcile.test.ts` 의 `제출 취소` 시험).
 - **반영됨** — 병합이다. 클론이 베이스 브랜치로 돌아오고, 다음 커밋이 새 사이클을 시작한다. 병합된 작업 브랜치는 기본적으로 자동 삭제하며, `lifecycle.deleteMergedBranches: false`이면 원격 브랜치를 남긴다. 이월할 커밋이 있으면 새 작업 브랜치의 푸시가 성공한 뒤 옛 원격 브랜치를 정리한다.
 
 **반영된 일**(2026-10-08 베타 준비 분석 · 성취). 병합은 이 도구가 사용자에게 주는 가장 큰 보상(`내 말이 서비스가 됐다`)인데, 병합 뒤 사이클이 새로
@@ -395,10 +411,10 @@ URL · 경로 · `owner/branch` · `owner:branch` · 공백 없는 따옴표 안
 그 명령을 아는 이유는 둘이다: Bash 한 줄을 `레포 검사` 로 이름 붙이기 위해서, 그리고
 그 이름이 확인 카드의 머리줄이 되기 위해서다.
 
-### 제출 뒤의 시야 — 자동 검사 · 승인 · 앱의 코멘트
+### 제출 뒤의 시야 — 자동 검사 · 승인 · 앱의 코멘트 · AI 리뷰어
 
 2026-10-07 베타 준비 분석(A2a). 감독자는 제출한 요청의 **자동 검사(CI) · 승인 · 코멘트의 주인**을 읽고, 자동 검사가 통과하지
-못하면 AI 가 스스로 고치게 한다. 틀은 코멘트 반영(조정 표 14행)과 같다 — 관찰(`cycle-observe`) → 조정 표(`cycle-reconcile`,
+못하면 AI 가 스스로 고치게 한다. AI 리뷰어(Codex · Claude …)의 줄 코멘트도 반영한다(14d행, 2026-10-14 — 이 절의 끝). 틀은 코멘트 반영(조정 표 14행)과 같다 — 관찰(`cycle-observe`) → 조정 표(`cycle-reconcile`,
 순수) → 조치(`cycle-supervisor`). 새 폴러도 새 상태 기계도 없다.
 
 **읽기와 권한.** `GitHubClient.listCheckRuns`(`GET /commits/{head}/check-runs`, 쪽당 100 · 3쪽까지)와 `listCheckAnnotations`
@@ -446,6 +462,7 @@ AI 가 읽지 않아요**(`LGTM, 단 이름 바꿔 주세요` 는 조용히 사�
 | 코멘트 자동 답장(`settleReviewReplies`) | 인라인 스레드 답글 · PR 코멘트 | 〃 |
 | 사용자의 `답하기` · `한마디 더`(`replyToReview` · `noteToDeveloper`) | 〃 | 〃 |
 | 반려 이유 청구(`askRejectionReason`) | 닫힌 PR 의 코멘트 | 〃 |
+| 제출 취소의 한 줄(`withdraw` 의 `WITHDRAW_NOTE`) | 사용자가 닫은 PR 의 코멘트 | 〃 |
 
 표식은 본문 끝의 숨은 한 줄 `<!-- colonova-design:app -->`(`app-comment.ts`)이고, 코멘트를 쓰는 문 셋(`commentOnIssue` ·
 `replyToPullComment` · `updateIssueComment`)이 한 곳에서 단다 — 이미 있으면 다시 달지 않고, 앞으로 코멘트를 쓰는 곳이 늘어도 빠지지
@@ -497,6 +514,35 @@ test · build)을 돌려 확인해 주세요 — 검사와 무관한 변경은 �
 견본: `status-fixture` 의 `?case=r,s,t,u,v`(여정을 눌러 팝을 연다) · `?case=w,x`(제출이 막힘 — 연결 코드의 권한 부족 · GitHub 한도 재시도), `thread-fixture` 의 `?scene=ci|ci-live|ci-one`.
 시험: 순수 `ci-checks.test.ts` · `app-comment.test.ts` · `github-ci.test.ts` · `cycle-reconcile.test.ts`(14c행) · 웹 `next-journey` ·
 `next-problem` · `next-ci-line`, 로컬 `cycle-observe.test.ts` · `cycle-supervisor.test.ts`.
+
+**AI 리뷰어의 코멘트(조정 표 14d행, 2026-10-14 사용자 결정).** 조직 레포에는 Codex(`chatgpt-codex-connector[bot]`)와
+Claude(`claude[bot]`)가 요청마다 자동 리뷰를 단다. 옛 감독자는 봇의 글을 모두 걸렀다(PLAN L9 — CI 봇의 말에 AI 가 반응하지 않게).
+이제 `ai-review.ts` 의 표에 있는 로그인(Codex · Claude · Copilot · CodeRabbit · Cursor · Gemini)이 단 **줄 코멘트의 첫 글**만
+그 거름을 지난다. 감독자의 관찰만 `listPullComments({ aiReviewers: true })` 로 청한다. 상태 확인의 코멘트 목록(`withReviews`)과 반려 이유
+읽기는 그대로 사람의 글만 읽는다. 무엇을 받는지는 조직 레포의 실제 모양을 보고 정했다. Codex 의 리뷰 본문 · 요약 코멘트
+(`codex-pull-request-review-summary`)는 정해진 안내 문구다. Claude 의 리뷰 본문 · 요청 코멘트는 줄 코멘트를 다시 요약한 글이다. 그래서
+리뷰 본문 · 요청 코멘트는 받지 않는다. 스레드의 답글(`in_reply_to_id`)도 받지 않는다 — 우리 답장에 AI 가 다시 답하면 고리가 된다.
+글은 `aiReviewText` 가 정리한다. 배지 그림은 `[P2]` 로 줄이고, 꾸밈 태그(`<sub>` · `<details>` · `<summary>` · `<br>` ·
+`<relative-time>`) · 굵은 글씨 표시 · `Useful? React with 👍 / 👎.` 줄은 걷는다. 첫 글이 커밋 제목(`코멘트 반영 — …`)이 되기 때문이다.
+다른 `<…>` 는 그대로 둔다 — 코드의 타입 인자(`Promise<void>`)와 JSX(`<Button />`)가 사라지면 의견이 코드를 잘못 말한다. `DeveloperReview` 는 `source: "ai"`(선택 필드)와 사람이 읽는 이름(`author: "Codex"`)을 싣는다.
+
+관찰은 이 글을 `pendingAiReviews` 로 따로 낸다. 개발자의 말이 아니라서 도착 사건(`review.arrived`) · 코멘트 수(`reviewCount` → OS 알림 ·
+`코멘트 N`) · 홈의 소식에 들지 않는다. 14d행은 14c행 뒤에 선다. 조건은 아직 브리프하지 않은 AI 의견이 있음, 아직 브리프하지 않은 개발자
+코멘트가 없음(사람의 말이 먼저 — 14행이 라운드를 다해도 서지 않는다), 다른 고침이 진행 중이 아님(`aiFixing` — 14c행의 검사 고침이
+올라가는 중이면 기다린다), 턴이 돌지 않음, 열린 PR 이다. 사람의 코멘트와 한 목록에 섞지 않는 이유는 14c행의 「사람의 말이 먼저」
+조건 때문이다. 섞으면 라운드를 다해 남은 AI 의견이 검사 고침을 영영 막는다. 고침의 길은 14행과 같다(`briefReviews` → 반영 턴 → 자동 보관 →
+푸시 → 답장). `reviewToTurn` 은 묶음이 모두 `source: "ai"` 면 앞 문장과 끝의 기준을 바꾼다. 앞 문장은 「사람이 아니라 도구가 단 의견이라
+틀릴 수 있습니다. 실제로 맞는지 먼저 확인하고, 맞는 것만 고쳐 주세요」이고, 끝의 기준은 「맞지 않는 의견은 고치지 말고」다. 표식도
+`source: "ai"` 를 싣는다.
+
+예산은 사람의 것(`review:<pr>`, 5라운드)과 따로인 `ai-review:<pr>` 의 2라운드다(`BUDGETS.aiReviewRounds`). Codex 는 새 커밋마다 다시
+리뷰한다(요약 표의 `Review trigger: New commits`). 그래서 고침 → 푸시 → 새 의견의 고리를 이 예산이 끊는다. 다하면 남은 의견은 장부에
+읽은 것(`briefed`)으로 적고 넘긴다. 개발자에게 알리지 않는다 — 개발자는 요청에서 그 의견을 직접 본다. 장부에 기준선이 따로 없어서,
+이 변경이 들어간 뒤 첫 관찰은 이미 열려 있던 요청에 달려 있던 AI 의견도 한 번 브리프한다(한 라운드). 자동 답장(`settleReviewReplies`)은
+AI 리뷰어의 스레드에도 간다. 이때 모든 답장의 `@멘션` 을 걷는다(`withoutMentions`). `@codex address that feedback` 같은 부름은 그 봇이
+요청에 직접 커밋하게 하고, git 쓰기는 데몬의 차선만 지나야 한다. 웹의 카드(`ReviewCard`)는 표식의 `source` 를 읽는다. 이름 옆에 `개발자`
+대신 `AI 검토` 를 세우고, 글은 `코드를 살펴보고 의견을 남겼어요` 이며, `답하기` 는 없다.
+시험: 순수 `ai-review.test.ts` · `cycle-reconcile.test.ts`(14d행), 로컬 `cycle-observe.test.ts` · `cycle-supervisor.test.ts`.
 
 ### 레포 최신화
 

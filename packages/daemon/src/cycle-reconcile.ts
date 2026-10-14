@@ -96,6 +96,11 @@ export interface CycleSnapshot {
   newReviews: DeveloperReview[];
   /** 아직 브리프하지 않은 개발자 코멘트 — 14행의 대상(옛 폴러의 unseen 판정). */
   pendingReviews: DeveloperReview[];
+  /**
+   * 아직 브리프하지 않은 AI 리뷰어의 줄 코멘트(2026-10-14) — 14d행의 대상. 사람의 코멘트와 따로 산다: 섞으면
+   * 라운드를 다해 남은 AI 의견이 14c행(「사람의 말이 먼저」)을 영영 막는다.
+   */
+  pendingAiReviews: DeveloperReview[];
   /** 열린 PR 의 코멘트 총수 — 읽기 실패는 null(모름)이며 원장의 지난 수를 지킨다. */
   reviewCount: number | null;
   installStale: boolean;
@@ -166,7 +171,7 @@ export interface CycleDecision {
    */
   tapeEvents: Array<
     | { kind: "cycle.merged"; pr: number; title?: string; days?: number; screens?: number }
-    | { kind: "cycle.closed"; pr: number }
+    | { kind: "cycle.closed"; pr: number; withdrawn?: true }
     | { kind: "cycle.carried"; from: string; to: string; commits: number }
     | { kind: "review.arrived"; reviews: DeveloperReview[] }
   >;
@@ -358,8 +363,13 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
         seenAt: new Date(now).toISOString(),
       };
     } else if (pr.state === "closed" && seen !== "closed" && !alreadyEnded) {
-      handoffEvents.push({ state: "closed", pr: pr.number });
-      tapeEvents.push({ kind: "cycle.closed", pr: pr.number });
+      // 제출한 사람이 앱에서 거둔 요청(2026-10-14) — 스스로 한 일이라 알림 · 사이드바 소식은 없고, 대화록의 한 줄만 반려와 다르게 말한다.
+      if (ledger.withdrawn?.pr === pr.number) {
+        tapeEvents.push({ kind: "cycle.closed", pr: pr.number, withdrawn: true });
+      } else {
+        handoffEvents.push({ state: "closed", pr: pr.number });
+        tapeEvents.push({ kind: "cycle.closed", pr: pr.number });
+      }
       ended = {
         pr: pr.number,
         state: "closed",
@@ -874,6 +884,41 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
           }
         }
       }
+    }
+  }
+
+  // ————— 14d 행 — AI 리뷰어의 줄 코멘트 (2026-10-14 사용자 결정) —————
+  // Codex · Claude 같은 AI 리뷰어의 의견도 14행과 같은 길(briefReviews → 반영 턴 → 자동 보관 → 푸시 → 답장)로
+  // 반영한다. 사람의 말이 먼저다 — 아직 브리프하지 않은 개발자 코멘트가 있으면 서지 않고, 다른 고침(14c행의 자동
+  // 검사)이 진행 중이어도 기다린다. 「턴 중 아니요」. 예산은 사람의 것과 따로인 ai-review:<pr> 다 — Codex 는 새
+  // 커밋마다 다시 리뷰하므로(조직 레포의 요약 표 `New commits`) 고침 → 푸시 → 새 의견의 고리를 이 예산이 끊는다.
+  // 다하면 남은 의견은 읽은 것으로 적고 넘긴다: 개발자에게 알리지 않는다 — 개발자는 요청에서 그 의견을 직접 본다.
+  if (
+    snapshot.pendingAiReviews.length > 0 &&
+    snapshot.pendingReviews.length === 0 &&
+    !turnRunning &&
+    !aiFixing &&
+    pr !== null &&
+    (pr.state === "open" || pr.state === "changes_requested")
+  ) {
+    const key = `ai-review:${pr.number}`;
+    const round = spend(budgets, key, BUDGETS.aiReviewRounds, now);
+    budgets = round.ledger;
+    // 브리프하든 넘기든 장부에 먼저 적는다 — 같은 의견이 두 번 나가지 않게(I5). 사람의 라운드 수(rounds)는 두지 않는다.
+    const entryKey = String(pr.number);
+    const prev = reviews[entryKey] ?? { known: [], briefed: [], rounds: 0 };
+    const ids = snapshot.pendingAiReviews.map((review) => review.id);
+    reviews = {
+      ...reviews,
+      [entryKey]: {
+        ...prev,
+        known: [...new Set([...prev.known, ...ids])],
+        briefed: [...new Set([...prev.briefed, ...ids])],
+      },
+    };
+    if (round.allowed) {
+      aiFixing = true;
+      return decide({ kind: "briefReviews", pr: pr.number, reviews: snapshot.pendingAiReviews });
     }
   }
 

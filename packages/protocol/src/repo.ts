@@ -317,6 +317,11 @@ export interface DeveloperReview {
   path?: string;
   line?: number;
   at: string;
+  /**
+   * `ai` 면 사람이 아니라 AI 리뷰어(Codex · Claude …)가 단 줄 코멘트다(2026-10-14) — `author` 는 그 이름이다.
+   * 감독자의 반영 턴에만 실린다: 코멘트 도착 · 코멘트 수 · 상태 확인의 목록은 사람의 말만 센다. 없으면 사람이다.
+   */
+  source?: "ai";
 }
 
 /** `repo.handoffStatus` — the pull request plus the developer's comments. */

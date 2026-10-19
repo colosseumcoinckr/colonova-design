@@ -9,7 +9,6 @@ import { SparkIcon } from "../ui/icons";
 import { HomeComposer } from "./HomeComposer";
 import { HomeInbox } from "./HomeInbox";
 import { HomeReady } from "./HomeReady";
-import { useFirstLook } from "./use-first-look";
 
 /** 끌고 온 것에 파일이 들었는가 — 글이나 링크를 끄는 손에는 덮개를 펴지 않는다. */
 function carriesFiles(event: React.DragEvent): boolean {
@@ -40,10 +39,6 @@ export function HomeView({
 }) {
   const active = daemon.projects.find((project) => project.slug === daemon.activeSlug) ?? null;
   const author = daemon.status?.authorName?.trim();
-  // 서비스가 떴어요 줄의 사진 — 지금 프로젝트의 줄이 서 있을 때만 숨은 창에 한 장을 부탁한다(2026-10-07).
-  const lookSlug = active !== null && ready.includes(active.slug) ? active.slug : null;
-  const lookUrl = useFirstLook(daemon, lookSlug);
-
   const composer = useRef<ComposerHandle | null>(null);
   const registerHandle = useCallback((handle: ComposerHandle | null) => {
     composer.current = handle;
@@ -94,7 +89,7 @@ export function HomeView({
         <HomeReady
           projects={daemon.projects}
           ready={ready}
-          photo={lookSlug !== null && lookUrl !== null ? { slug: lookSlug, url: lookUrl } : null}
+          photo={null}
           onSee={nav.openProjectScreen}
           onDismiss={nav.dismissReady}
         />

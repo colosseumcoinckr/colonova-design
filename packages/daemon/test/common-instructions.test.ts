@@ -8,10 +8,11 @@ import { COMMON_INSTRUCTIONS, stripCommonInstructions } from "../src/common-inst
 test("공통 지침은 도구의 쓰임새를 되풀이하지 않는다 — 인자 · 언제 부르는지는 도구 설명의 몫이다", () => {
   // claude.dev 「context engineering for Claude 5」(2026-10-02): 도구 사용법은 도구 설명 한 곳에만.
   // 지침은 화면 확인의 고리(screen_check)와 락파일의 길(notify_developer)만 이름으로 가리킨다.
-  for (const name of ["screen_check", "notify_developer"]) {
+  for (const name of ["notify_developer"]) {
     assert.ok(COMMON_INSTRUCTIONS.includes(name), `지침이 ${name} 을 언급한다`);
   }
   for (const name of [
+    "screen_check",
     "browser_find",
     "browser_inspect",
     "browser_snapshot",

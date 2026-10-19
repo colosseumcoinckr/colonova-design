@@ -25,7 +25,6 @@ import type { DriverRegistry } from "./agent/registry.js";
 import { AutoThreads } from "./auto-thread.js";
 import { type BringUpEpisode, nextBringUpBrief } from "./bring-up-briefs.js";
 import type { PlannedChange } from "./change-plan.js";
-import { captureTargets, readComments } from "./comments.js";
 import {
   COMMON_INSTRUCTIONS,
   commentReflectionSubject,
@@ -379,17 +378,8 @@ export class ProjectFleet {
       // L6 제출 — PR 본문의 재료와 이름.
       projectName: () => this.deps.registry.get(slug)?.name ?? slug,
       commentsFile: () => join(paths.root, "comments.json"),
-      captureShots: async () => {
-        const commentsFile = join(paths.root, "comments.json");
-        const anchor = await workspaces.repo.cycleAnchor().catch(() => null);
-        return await this.deps.previewDrivers.captureHandoffShots(
-          captureTargets(
-            readComments(commentsFile),
-            anchor,
-            workspaces.repo.repoCore().snapshot().cycleScreens,
-          ),
-        );
-      },
+      // 2026-10-20 사용자 요청: 제출은 화면 촬영 없이 진행한다.
+      captureShots: async () => [],
       logger: this.deps.logger,
     });
     this.workspaces.set(slug, workspaces);

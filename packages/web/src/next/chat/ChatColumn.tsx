@@ -152,6 +152,7 @@ export function ChatColumn({
     attachments: Attachment[],
     sent: PinAttachment[],
     shown: Array<{ screen: string }>,
+    onTarget?: (id: string) => void,
   ) => {
     // 핀의 크롭은 그림으로 함께 간다 — 맨 앞에 세운다(데몬이 앞 여섯 장을 카드 썸네일로 쓴다).
     const pinImages: Attachment[] = sent.slice(0, PIN_SHOT_MAX).flatMap((pin) =>
@@ -206,6 +207,9 @@ export function ChatColumn({
             )?.title ?? undefined);
     setEditHint(false);
     try {
+      pinned.current = true;
+      setUnpinned(false);
+      setHasNew(false);
       await sessions.submit(
         live
           ? rewordPinTurn(live.turn, text)
@@ -213,7 +217,7 @@ export function ChatColumn({
             ? pinsToTurn(sent, text, () => null)
             : text,
         [...pinImages, ...replayShots, ...attachments],
-        { name },
+        { name, onTarget },
         dedupeScreens([
           ...(live?.screens ?? []),
           ...sent.map((pin) => ({ screen: pin.screen })),
@@ -384,7 +388,7 @@ export function ChatColumn({
   useEffect(() => {
     if (pinned.current) toBottom();
     else setHasNew(true);
-  }, [blocks, pending.length]);
+  }, [blocks, pending.length, sessions.outgoing.length]);
   // 입력창이 커져 대화가 줄어들 때도 바닥에 붙어 있으면 그 자리를 지킨다 —
   // 여러 줄 · 핀 줄 · 첨부가 늘어나도 마지막 말이 가려지지 않게.
   useEffect(() => {
@@ -412,7 +416,11 @@ export function ChatColumn({
   // 대화를 밀어내지 않게.
   const clockMounted = sessions.running || awaiting !== null;
   const showClock = clockMounted && !tailLive;
-  const empty = blocks.length === 0 && sessions.queue.length === 0 && !clockMounted;
+  const empty =
+    blocks.length === 0 &&
+    sessions.queue.length === 0 &&
+    sessions.outgoing.length === 0 &&
+    !clockMounted;
   // 줄의 말 — 지금 도는 도구의 묶음이 말을 고르고(`화면 파일을 고치는 중`), 이 턴에 AI 가 할 일 목록을 냈을 때만
   // `k/n 단계` 가 붙는다. 말은 1.5초 이상 산다(상태 줄의 알약과 같은 규칙).
   const runPhase = useHeldPhase(clockMounted ? makingPhase(blocks) : null, clockMounted);
@@ -531,6 +539,7 @@ export function ChatColumn({
             projectWorking={project?.working === true}
             canBranch={canBranch}
             queue={sessions.queue}
+            outgoing={sessions.outgoing}
             preparing={preparing}
             dropped={sessions.dropped}
             onFork={fork}

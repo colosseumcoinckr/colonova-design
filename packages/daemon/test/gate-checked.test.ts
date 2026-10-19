@@ -83,7 +83,7 @@ test("runGate: 열지 못한 화면은 열어 본 수에 들지 않는다 — �
   }
 });
 
-/** 서버 몸통의 두 걸음만 꺼내 돌린다 — 판정이 난 순간(startGate)과 보관이 선 순간(runAutoSave). */
+/** 보관이 선 순간을 돌려 과거 확인 기록과 사진 없는 새 결과를 함께 검증한다. */
 function stub(root: string) {
   const events: unknown[] = [];
   const saves: string[] = [];
@@ -123,71 +123,6 @@ function stub(root: string) {
   });
   return { server, events, saves };
 }
-
-test("startGate: 통과한 판정은 보관이 서기 전에 기록이 되어 runAutoSave 로 넘어간다", async () => {
-  const { server } = stub("/tmp/unused");
-  let seen: unknown;
-  server.drivers.runGate = async () => ({ status: "ok", kept: 2, opened: 2, phone: true });
-  server.runAutoSave = () => {
-    seen = server.gateChecked.get("s");
-  };
-  server.startGate("s", 1000);
-  await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.deepEqual(seen, { screens: 2, phone: true });
-});
-
-test("startGate: 타입 검사가 돌고 오류가 없었다면 기록에 그 사실이 실리고, 돌지 않았으면 칸이 없다(2026-10-07)", async () => {
-  const cases: Array<[Record<string, unknown>, unknown]> = [
-    // 돌았고 오류가 없었다 — 게이트는 0 도 싣는다.
-    [
-      { typeErrors: 0, typeMs: 900 },
-      { screens: 2, phone: true, types: true },
-    ],
-    // 바꾼 TypeScript 파일이 없었거나 시간 안에 끝나지 않아 돌지 않았다 — 통과라고 하지 않는다.
-    [{}, { screens: 2, phone: true }],
-    // 오류가 있으면 게이트가 선다(ok 가 아니다) — 그래도 이 칸이 참이 되지는 않는다.
-    [
-      { typeErrors: 3, typeMs: 900 },
-      { screens: 2, phone: true },
-    ],
-  ];
-  for (const [typeFields, expected] of cases) {
-    const { server } = stub("/tmp/unused");
-    let seen: unknown;
-    server.drivers.runGate = async () => ({
-      status: "ok",
-      kept: 2,
-      opened: 2,
-      phone: true,
-      ...typeFields,
-    });
-    server.runAutoSave = () => {
-      seen = server.gateChecked.get("s");
-    };
-    server.startGate("s", 1000);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    assert.deepEqual(seen, expected, JSON.stringify(typeFields));
-  }
-});
-
-test("startGate: 문제를 찾았거나 하나도 못 연 판정은 기록을 남기지 않는다", async () => {
-  for (const outcome of [
-    { status: "trouble", kept: 1, troubles: [] },
-    { status: "ok", kept: 1, opened: 0, phone: false },
-    { status: "broken" },
-    { status: "skipped", reason: "no-screens" },
-  ]) {
-    const { server } = stub("/tmp/unused");
-    let seen: unknown = "unset";
-    server.drivers.runGate = async () => outcome;
-    server.runAutoSave = () => {
-      seen = server.gateChecked.get("s");
-    };
-    server.startGate("s", 1000);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    assert.equal(seen, undefined, `${outcome.status} 은 기록이 없다`);
-  }
-});
 
 test("runAutoSave: 기록은 screens.saved 와 대화록에 실리고 다음 턴으로 새지 않는다", async () => {
   const root = mkdtempSync(join(tmpdir(), "colonova-checked-"));
@@ -231,4 +166,33 @@ test("runAutoSave: 보관이 없는 턴에서도 기록은 비워진다 — 다�
   server.gateChecked.set("s", { screens: 1, phone: false });
   server.runAutoSave("s");
   assert.equal(server.gateChecked.has("s"), false);
+});
+
+test("사진 없는 새 화면도 답변 링크로 보관하며 확인 통과 기록은 만들지 않는다", async () => {
+  const root = mkdtempSync(join(tmpdir(), "colonova-no-shot-"));
+  try {
+    const { server, events } = stub(root);
+    server.drivers.pinnedThisTurn.clear();
+    server.manager.get = () => ({
+      lastAssistantText: "[새 화면](http://127.0.0.1:5174/new)",
+    });
+    let routes: unknown;
+    server.fleet.autoSaveTurn = async (_sessionId: string, source: string[]) => {
+      routes = source;
+      return { sha: "sha-new", requestId: "req-new" };
+    };
+    server.comparisons.finish = () => {
+      throw new Error("보관은 사진을 찍지 않는다");
+    };
+    server.runAutoSave("s");
+    await server.comparisonSaves.get("p");
+    assert.deepEqual(routes, ["/new"]);
+    const saved = events.find(
+      (message: any) => message.event?.kind === "screens.saved",
+    ) as any;
+    assert.deepEqual(saved.event.screens, [{ route: "/new", title: "새 화면" }]);
+    assert.equal(saved.event.checked, undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

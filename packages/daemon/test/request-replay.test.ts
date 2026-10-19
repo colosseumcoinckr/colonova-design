@@ -3,6 +3,57 @@ import { test } from "node:test";
 import type { ChatEvent } from "@colonova-design/protocol";
 import { spliceTape } from "../dist/session-tape.js";
 
+test("전달 전 조회 없이 남긴 같은 요청도 과거 기록과 구분하고 완료 시간을 복원한다", () => {
+  const user = (): ChatEvent => ({ kind: "user.echo", text: "same", images: 0 });
+  const end = (): ChatEvent => ({
+    kind: "turn.end",
+    subtype: "success",
+    isError: false,
+    costUsd: null,
+    numTurns: null,
+    durationMs: 5000,
+    resultText: null,
+  });
+  const rows = [
+    {
+      sessionId: "s",
+      afterTurn: 0,
+      matchByText: true,
+      durationMs: 10000,
+      event: { ...user(), requestId: "first" } as ChatEvent,
+    },
+    {
+      sessionId: "s",
+      afterTurn: 0,
+      matchByText: true,
+      durationMs: 12000,
+      event: { ...user(), requestId: "second" } as ChatEvent,
+    },
+    {
+      sessionId: "s",
+      afterTurn: 0,
+      matchByText: true,
+      event: {
+        ...user(),
+        requestId: "first",
+        changedScreens: [{ route: "/", title: "Home" }],
+      } as ChatEvent,
+    },
+  ];
+  const replay = spliceTape([user(), end(), user(), end(), user(), end(), user()], rows);
+  assert.deepEqual(
+    replay.filter((event) => event.kind === "user.echo").map((event) => event.requestId),
+    [undefined, "first", "second", undefined],
+  );
+  assert.deepEqual(
+    replay.filter((event) => event.kind === "turn.end").map((event) => event.durationMs),
+    [5000, 10000, 12000],
+  );
+  assert.deepEqual((replay[2] as Extract<ChatEvent, { kind: "user.echo" }>).changedScreens, [
+    { route: "/", title: "Home" },
+  ]);
+});
+
 test("reopening a conversation preserves request/photo identity, including repeated identical prompts", () => {
   const user = (text: string): ChatEvent => ({ kind: "user.echo", text, images: 0 });
   const rows = [

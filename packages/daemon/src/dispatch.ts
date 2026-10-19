@@ -12,7 +12,7 @@ import {
 import type { DriverRegistry } from "./agent/registry.js";
 import type { AgentInstall } from "./agent-install.js";
 import type { AgentUpdates } from "./agent-update.js";
-import { captureTargets, readComments, recordComments } from "./comments.js";
+import { recordComments } from "./comments.js";
 import type { DeveloperNotice } from "./developer-notice.js";
 import { describeProblem } from "./developer-notice.js";
 import { collectDiagnostics } from "./diagnostics.js";
@@ -30,7 +30,6 @@ import {
   startGitInstall,
 } from "./onboarding.js";
 import { realpathBestEffort } from "./paths.js";
-import { enrichCommentsTurn } from "./pin-files.js";
 import type { PlanTracker } from "./plan-tracker.js";
 import type { PreviewDrivers } from "./preview-drivers.js";
 import type { ProjectFleet, ProjectWorkspaces } from "./project-fleet.js";
@@ -359,47 +358,17 @@ export class RequestRouter {
       // 재개(resume)가 새 CLI 에서 대화를 이어받아 지금의 말을 전달한다.
       // Refusals answer through the dispatch-wide Korean boundary above.
       const carrier = target.sendable ? target : await this.resurrectSession(target);
-      // 최신화는 사람의 몫이 아니게 됐다(E1): 말이 나가기 전에 도구가
-      // 스스로 받아 온다 — 감독자의 틱이 fetch·병합·착지를 치르고, 충돌은
-      // 원장에 적혀 브리프 턴이 된다. 그 브리프 턴이 먼저 열리면 지금의
-      // 말은 대기 줄로 물러나고, 정리가 끝난 뒤 실행된다 — 세션이 도는
-      // 턴에 온 말을 held 로 미뤄두는 기존 질서가 순서를 잡는다. 실패·
-      // 20초 경과는 말을 막지 않는다: 틱은 조용히 이어된다.
-      // PLAN-UI U8: 처음 여는 프로젝트의 준비가 끝나지 않았으면 말은 대기 줄에서
-      // 기다린다 — 받아올 것도 없으니 최신화도 건너뛴다.
+      // 2026-10-20 응답 지연 개선: 준비 중인 프로젝트만 대기 줄에 둔다.
+      // 최신화는 감독자의 관찰 주기에서, 핀의 코드 탐색은 AI가 맡는다.
       this.deps.fleet.holdIfPreparing(carrier.id);
-      if (!carrier.preparing) await this.pullBeforeSend(message.sessionId);
-      // 빠른 수정: 핀 턴의 정체(pinHints)로 클론을 훑어 `파일 후보:` 줄을
-      // 얹는다 — 에이전트가 첫 tool call로 반복할 검색을 데몬이 대신한다.
-      // 여기서(intake) 얹으므로 대기 줄·복원 모두 강화된 텍스트를 물고
-      // 간다. 실패는 조용하다(원문 그대로).
-      let text = message.text;
-      if (message.pinHints !== undefined && message.pinHints.length > 0) {
-        const scanStart = Date.now();
-        // 빠른 수정: 핀 턴의 정체(pinHints)로 클론을 훑어 `파일 후보:` 줄을
-        // 얹는다 — 에이전트가 첫 tool call로 반복할 검색을 데몬이 대신한다.
-        // 여기서(intake) 얹으므로 대기 줄·복원 모두 강화된 텍스트를 물고
-        // 간다. 정체가 빈손이면 핀의 화면을 고친 커밋의 관찰 지도가 마지막
-        // 길이다(그 세션의 프로젝트 폴더에 산다). 실패는 조용하다(원문 그대로).
-        const workspaces = this.workspaceOfSession(message.sessionId);
-        const enriched = await enrichCommentsTurn(
-          message.text,
-          message.pinHints,
-          carrier.cwd,
-          workspaces ? { projectRoot: workspaces.paths.root } : null,
-        ).catch(() => null);
-        text = enriched?.text ?? message.text;
-        // 측정: 강화가 보내기 문에서 얼마나 걸렸는지 — 턴 행의 scanMs 로
-        // 내려앉는다(모델이 시작되기 전의 시간이다). 후보는 절대경로로 물려
-        // 준다 — 에이전트의 편집 경로(pinHit)와 비교하는 잣자리다.
-        this.deps.stats.noteScan(message.sessionId, Date.now() - scanStart, {
-          cwd: carrier.cwd,
-          ...(enriched && enriched.candidates.length > 0
-            ? { candidates: enriched.candidates.map((file) => join(carrier.cwd, file)) }
-            : {}),
-        });
-      }
-      carrier.send(text, message.attachments, message.pins, message.mode, message.viewing);
+      carrier.send(
+        message.text,
+        message.attachments,
+        message.pins,
+        message.mode,
+        message.viewing,
+        message.sentAt,
+      );
       return { ok: true };
     },
     "session.interrupt": async (message) => {
@@ -854,21 +823,10 @@ export class RequestRouter {
     },
     "repo.handoff": async (message) => {
       const active = this.requireActive();
-      // The captures come first, while the preview server is still the one
-      // serving — the build gate inside the handoff may not leave it up.
-      // 핀 주도 (브리지 폐지): 이 사이클에 사람이 핀으로 가리킨 화면·상태만이
-      // "보낸 화면"이다 — 선언된 목록은 더 이상 없다.
       const commentsFile = join(active.paths.root, "comments.json");
-      const targets = captureTargets(
-        readComments(commentsFile),
-        await active.repo.cycleAnchor(),
-        active.repo.repoCore().snapshot().cycleScreens,
-      );
-      const shots = await this.deps.previewDrivers.captureHandoffShots(targets);
       return await active.repo.handoff({
         title: message.title ?? this.deps.registry.get(active.slug)?.name ?? undefined,
         body: message.body ?? DEFAULT_HANDOFF_BODY,
-        ...(shots.length > 0 ? { shots } : {}),
         // D93: the comment store — the PR body's `### 수정 요청` section is
         // the daemon's to build.
         commentsFile,
@@ -1010,17 +968,9 @@ export class RequestRouter {
     "repo.handoffDraft": async () => {
       const active = this.requireActive();
       const commentsFile = join(active.paths.root, "comments.json");
-      // The dialog's shot count reads the same pin-driven targets the
-      // handoff itself will capture — the preview never promises a number
-      // the handoff then fails to deliver.
-      const targets = captureTargets(
-        readComments(commentsFile),
-        await active.repo.cycleAnchor(),
-        active.repo.repoCore().snapshot().cycleScreens,
-      );
       return await active.repo.handoffDraft({
         commentsFile,
-        shotCount: await this.deps.previewDrivers.handoffShotCount(targets),
+        shotCount: 0,
       });
     },
     "repo.comparison": async (message) => {
@@ -1062,7 +1012,7 @@ export class RequestRouter {
       const active = this.requireActive();
       const found = this.deps.fleet.firstScreenOf(active.slug)?.path.split(/[?#]/, 1)[0] ?? "/";
       const route = found.startsWith("/") && !found.startsWith("//") ? found : "/";
-      return { route, image: await this.deps.previewDrivers.captureFirstLook(route) };
+      return { route, image: null };
     },
     "repo.submitPreview": async () => {
       const active = this.requireActive();
@@ -1450,20 +1400,6 @@ export class RequestRouter {
     }
   }
 
-  /**
-   * E1: 말이 나가기 전의 조용한 최신화 — 감독자의 틱이 fetch·병합·착지를
-   * 한 번에 치른다(PLAN L2 흡수표). 20초를 넘기면 기다림을 포기하고 말을
-   * 먼저 보낸다: 틱은 차선(supervise 칸)에서 뒤로 이어되고, 최신화가
-   * 사용자의 말을 지연시켜서는 안 되기 때문이다.
-   */
-  private async pullBeforeSend(sessionId: string): Promise<void> {
-    const supervisor = this.workspaceOfSession(sessionId)?.supervisor;
-    if (!supervisor) return;
-    const work = supervisor.tick("before-send").catch(() => undefined);
-    const { promise: cap, resolve: capped } = Promise.withResolvers<void>();
-    setTimeout(capped, 20_000);
-    await Promise.race([work, cap]);
-  }
   /**
    * The thread a failing gate briefs when none is (or none living one is)
    * open. One per run: a planner who presses 저장 twice with no thread open

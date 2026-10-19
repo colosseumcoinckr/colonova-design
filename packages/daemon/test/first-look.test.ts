@@ -157,7 +157,7 @@ test("시간(8초)을 넘기면 사진 없이 가고 숨은 창을 닫는다 —
   assert.equal(calls.destroyed, 1);
 });
 
-test("repo.firstLook: 읽어 둔 첫 화면의 주소를 열고, 모르면 루트 · 이상한 주소는 루트로", async () => {
+test("repo.firstLook: 주소만 돌려주고 자동 촬영하지 않는다", async () => {
   const opened: string[] = [];
   const answerFor = (path: string | null) =>
     new RequestRouter({
@@ -176,7 +176,7 @@ test("repo.firstLook: 읽어 둔 첫 화면의 주소를 열고, 모르면 루�
   const first = await answerFor("/dashboard").dispatch({ id: "a", type: "repo.firstLook" });
   assert.deepEqual(first, {
     route: "/dashboard",
-    image: { at: "2026-10-07T00:00:00.000Z", mediaType: "image/png", data: "QUJD" },
+    image: null,
   });
   assert.equal(
     (await answerFor(null).dispatch({ id: "b", type: "repo.firstLook" })) !== null,
@@ -184,5 +184,5 @@ test("repo.firstLook: 읽어 둔 첫 화면의 주소를 열고, 모르면 루�
   );
   await answerFor("//evil.example/x").dispatch({ id: "c", type: "repo.firstLook" });
   await answerFor("/members?tab=2#top").dispatch({ id: "d", type: "repo.firstLook" });
-  assert.deepEqual(opened, ["/dashboard", "/", "/", "/members"]);
+  assert.deepEqual(opened, []);
 });

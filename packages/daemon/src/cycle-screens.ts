@@ -96,6 +96,7 @@ export function screensOfTurn(
   routes: readonly string[],
   answer: string | null,
   origin: string | null,
+  includeAnswerLinks = false,
 ): Array<{ route: string; title: string }> {
   const titles = new Map<string, string>();
   for (const match of (answer ?? "").matchAll(MD_LINK)) {
@@ -105,7 +106,10 @@ export function screensOfTurn(
   }
   const out: Array<{ route: string; title: string }> = [];
   const seen = new Set<string>();
-  for (const raw of routes) {
+  // 2026-10-20 사용자 요청: 브라우저 확인 없이도 답변의 화면 연결을 기록한다.
+  // 확인 기록과는 별개다. 과거 호출은 관찰한 화면만 읽는다.
+  const source = includeAnswerLinks ? [...routes, ...titles.keys()] : routes;
+  for (const raw of source) {
     const route = screenPathOf(raw, origin);
     if (route === null || seen.has(route)) continue;
     seen.add(route);

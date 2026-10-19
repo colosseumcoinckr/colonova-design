@@ -114,7 +114,9 @@ export const BROWSER_TOOLS: ToolDef[] = [
   {
     name: "browser_screenshot",
     op: "screenshot",
-    description: "페이지(또는 ref 하나)의 화면을 캡처한다.",
+    description:
+      "페이지(또는 ref 하나)의 화면을 캡처한다. 배치 · 색상 · 잘림처럼 그림으로 판단해야 할 때만 쓴다. " +
+      "단순 문구 수정이나 완료 기록을 위해 찍지 않는다.",
     properties: {
       ref: { type: "string", description: "요소 하나만 찍을 때 그 ref." },
       longEdge: { type: "number", description: "긴 변 픽셀 — 생략하면 기본값." },
@@ -251,7 +253,7 @@ export const BROWSER_TOOLS: ToolDef[] = [
       "colorScheme 으로 다크 모드도 본다. " +
       "capture 면 문제가 있는 화면의 그림만 돌려준다. " +
       "화면이 로그인 화면으로 이동했으면 `loginWall` 한 문장만 돌려준다 — 그 화면은 확인한 것이 아니다. " +
-      "스냅샷은 없다. 화면을 고친 뒤 답하기 전에 부른다 — 미리보기 안의 화면 경로만 받는다.",
+      "스냅샷은 없다. 화면 오류 재현 · 동작 확인이나 사용자가 화면 확인을 요청했을 때만 부른다. 매 수정 뒤 의무로 호출하지 않는다. 모바일 · 접근성 · 다크 모드 검사는 해당 변경에 필요할 때만 켠다. capture 는 기본 끔이며 텍스트로 원인을 판단하기 어려울 때만 켠다 — 미리보기 안의 화면 경로만 받는다.",
     properties: {
       route: {
         type: "string",
@@ -344,8 +346,8 @@ export const BROWSER_TOOLS: ToolDef[] = [
     op: "repoDiagnostics",
     description:
       "레포의 타입 검사를 돌려 이번에 바뀐 파일의 오류부터 돌려준다 — 두 번째부터는 바뀐 곳만 다시 보므로 " +
-      "몇 초 안에 끝난다. 편집 사이사이의 확인은 이것으로 하고, 레포의 검사 명령 전체는 답하기 전에 한 번만 " +
-      "돌린다. 미리보기가 없어도 돈다.",
+      "몇 초 안에 끝난다. 타입 관련 변경이나 오류를 확인할 때 쓴다. 변경과 관련된 검사만 고르고, " +
+      "같은 변경을 반복 검사하거나 매번 전체 검사 · 빌드를 돌리지 않는다. 미리보기가 없어도 돈다.",
     properties: {},
   },
   {

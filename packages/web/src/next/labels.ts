@@ -470,9 +470,6 @@ export const L = {
     shotLabel: "고친 화면",
     shotGo: "미리보기에서 보기",
     shotCaptured: "수정 후 모습",
-    shotLoading: "화면 사진 불러오는 중",
-    shotNoPhoto: "사진이 없는 화면이에요",
-    shotFailed: "사진을 불러오지 못했어요",
     took: (secs: string) => `${secs} 걸렸어요`,
     /** 걸린 시간을 모르는 답의 마감 한 줄 — 정산 줄의 초록 체크 곁에 선다(2026-10-06). */
     done: "끝났어요",
@@ -577,6 +574,7 @@ export const L = {
     images: (n: number) => `그림 ${n}장`,
     attachRemove: "첨부 빼기",
     sendFailed: "AI에게 말을 전하지 못했어요 — 잠시 뒤 다시 보내 주세요",
+    sending: "보내는 중…",
     somethingWrong: "잠시 문제가 있었어요 — 다시 해 주세요",
     dismiss: "닫기",
     offline: "연결이 끊겼어요",

@@ -93,13 +93,15 @@ export interface SessionPin {
  * 입력이 사라진다(실사 결함 — 대기 줄의 핀이 영구 미검증).
  */
 interface HeldSend {
+  /** 창에서 누른 시각. 대기 줄의 메모리 안에서만 들고 간다. */
+  sentAt?: number;
   id: string;
   text: string;
   attachments: Array<{ name: string; mediaType: string; data: string }>;
   pins: SessionPin[];
   /**
-   * 보낸 순간 사용자가 보던 미리보기 경로 — 수정 전 사진의 재료일 뿐 게이트 입력이 아니다(2026-10-06).
-   * 대기 방의 디스크 판에는 싣지 않는다 — 재시작을 건너면 사진 한 장의 단서를 잃을 뿐이다.
+   * 보낸 순간 사용자가 보던 미리보기 경로. 핀 없는 요청의 화면 맥락이다.
+   * 대기 방의 디스크 판에는 싣지 않는다.
    */
   viewing?: { path: string };
   /**
@@ -479,7 +481,7 @@ export class Session {
    * 아니라 이 시계가 기준인 이유: waiting_permission 도 도는 턴이고, 그 사이에
    * 쓴 말도 똑같이 다음 턴으로 접혀 들어간다. 같은 이유로 시계는 카드를
    * 기다리는 동안에도 계속 센다 — 사람이 기다린 시간도 그 요청의 시간이다.
-   * 대기 줄이 연 다음 턴은 새 시계를 받는다.
+   * 창의 보내기 시각을 받으면 대기 줄에서 보낸 시간도 포함한다(2026-10-20 응답 지연 개선).
    *
    * 알림의 `걸렸습니다` 시계(server.ts)와는 다른 질문에 답한다 — 그쪽은 대기
    * 뒤 재개마다 다시 놓아 "그때의 일"만 재고, 이쪽은 요청 하나가 시작한 시각을
@@ -614,6 +616,9 @@ export class Session {
   // -------------------------------------------------------------------------
 
   private handleDriverEvent(event: ChatEvent): void {
+    if (event.kind === "turn.end" && this.turnStartedAt !== null) {
+      event = { ...event, durationMs: Math.max(0, Date.now() - this.turnStartedAt) };
+    }
     this.lastActivity = Date.now();
     if (event.kind === "init") {
       this.model = event.model;
@@ -1047,8 +1052,8 @@ export class Session {
     const [item] = this.held.splice(0, 1);
     if (!item) return;
     this.disk?.saveHeld(this.held);
-    // 대기 줄이 여는 턴은 새 요청이다 — 새 시계를 받는다.
-    this.turnStartedAt = Date.now();
+    // 창이 알려 준 보내기 시각은 대기 줄에서 보낸 시간도 포함한다.
+    this.turnStartedAt = item.sentAt ?? Date.now();
     // 새 턴의 답변 문장은 여기서 시작한다 (PLAN L9).
     this.lastAssistantText = null;
     // 지난 턴의 화면 목록은 여기서 비워진다 — 한 턴에 한 번이면 충분하다.
@@ -1488,6 +1493,7 @@ export class Session {
     pins?: SessionPin[],
     mode: "queue" | "steer" = "queue",
     viewing?: { path: string },
+    sentAt?: number,
   ): void {
     if (this.closed) throw new Error("닫힌 대화입니다 — 목록에서 다시 열면 이어갑니다.");
     if (this.aborted)
@@ -1501,6 +1507,9 @@ export class Session {
     this.lastActivity = Date.now();
     const item: HeldSend = {
       id: randomUUID(),
+      ...(sentAt !== undefined && sentAt >= Date.now() - 86_400_000
+        ? { sentAt: Math.min(Date.now(), sentAt) }
+        : {}),
       text,
       attachments: attachments ?? [],
       pins: pins ?? [],
@@ -1537,7 +1546,7 @@ export class Session {
       this.announceHeld();
       return;
     }
-    this.turnStartedAt = Date.now();
+    this.turnStartedAt = item.sentAt ?? Date.now();
     // 새 턴의 답변 문장은 여기서 시작한다 (PLAN L9).
     this.lastAssistantText = null;
     // 턴의 시작 — 지난 턴이 가리킨 화면 목록은 여기서 비워진다(onPinned 보다 먼저).

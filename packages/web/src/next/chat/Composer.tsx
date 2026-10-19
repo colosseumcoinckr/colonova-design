@@ -29,7 +29,7 @@ const RESIZABLE: Record<string, true> = {
 /** 입력창의 초안은 옛 입력창과 같은 열쇠를 쓴다 — 두 셸이 같은 대화의 같은 초안을 본다. */
 import { appendScreenDraft, DraftScreenHints } from "../lib/draft-screens";
 import { pinsBeyondShots, pinsWordless } from "../lib/pin-words";
-import { clearSentDraft } from "../lib/sent-draft";
+import { clearSentDraft, restoreRejectedDraft } from "../lib/sent-draft";
 
 const DRAFT_PREFIX = "colonova-design.draft.";
 
@@ -238,6 +238,7 @@ export function Composer({
     attachments: Attachment[],
     pins: PinAttachment[],
     screens: Array<{ screen: string }>,
+    onTarget?: (id: string) => void,
   ) => Promise<void>;
 }) {
   const [editor, setEditor] = useState<Editor>(() => ({
@@ -251,6 +252,7 @@ export function Composer({
   const area = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const drafts = useRef(new Map<string, Editor>());
+  const sendFailures = useRef(new Map<string, string>());
   const keyRef = useRef(draftKey);
   // 보낸 말 걷기의 자리 — null 은 걷지 않는 중. 0 이 가장 최신(2026-10-04 ux-plan PR 2).
   const recallIndex = useRef<number | null>(null);
@@ -305,7 +307,8 @@ export function Composer({
     recallIndex.current = null;
     pendingSelect.current = null;
     setEditor(carry ? prevEditor : (incoming ?? { text: storedDraft(draftKey), attachments: [] }));
-    setNotice(null);
+    const failure = sendFailures.current.get(draftKey);
+    setNotice(failure ? { tone: "danger", text: failure } : null);
   }, [draftKey]);
 
   // 열자마자 칠 수 있게 — 사용자가 말을 쓰는 자리는 이 칸 하나뿐이다. 홈이 열릴 때와 대화가
@@ -432,10 +435,22 @@ export function Composer({
     setNotice(null);
     setDismissed(suggestion?.trim() || null);
     const sentKey = keyRef.current;
+    sendFailures.current.delete(sentKey);
     const sentEditor = editor;
+    let restoreKey = sentKey;
+    // 대화 칸은 누른 순간 비운다. 홈은 성공 뒤 화면을 옮기는 기존 흐름을 따른다.
+    const cleared = variant === "thread";
+    if (cleared) {
+      drafts.current.set(sentKey, EMPTY);
+      saveDraft(sentKey, "");
+      setEditor(EMPTY);
+    }
     const sentScreens = shownScreens.current.take(sentKey);
-    void onSend(text, editor.attachments, pins, sentScreens)
+    void onSend(text, editor.attachments, pins, sentScreens, (id) => {
+      restoreKey = id;
+    })
       .then(() => {
+        if (cleared) return;
         clearSentDraft(sentKey, sentEditor.text);
         // 보내는 동안 다른 대화로 옮겼으면 비우는 것은 보낸 쪽의 초안뿐이다.
         if (keyRef.current !== sentKey) {
@@ -450,10 +465,25 @@ export function Composer({
         );
       })
       .catch((error: unknown) => {
-        shownScreens.current.add(sentKey, sentScreens);
+        shownScreens.current.add(restoreKey, sentScreens);
+        if (cleared) {
+          if (keyRef.current === restoreKey) {
+            setEditor((current) => restoreRejectedDraft(sentEditor, current));
+          } else {
+            const current = drafts.current.get(restoreKey) ?? {
+              text: storedDraft(restoreKey),
+              attachments: [],
+            };
+            const restored = restoreRejectedDraft(sentEditor, current);
+            drafts.current.set(restoreKey, restored);
+            saveDraft(restoreKey, restored.text);
+          }
+        }
         // 데몬의 거절 문장은 한국어이고 고치는 길을 싣는다 — 있으면 그대로, 없으면 한 줄.
         const raw = error instanceof Error ? (error.message.split("\n")[0] ?? "").trim() : "";
-        setNotice({ tone: "danger", text: koreanNoticeWords(raw) ? raw : L.chat.sendFailed });
+        const failure = koreanNoticeWords(raw) ? raw : L.chat.sendFailed;
+        sendFailures.current.set(restoreKey, failure);
+        if (keyRef.current === restoreKey) setNotice({ tone: "danger", text: failure });
       })
       .finally(() => {
         sendingRef.current = false;

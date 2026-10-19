@@ -19,6 +19,7 @@ import { type TurnScreen, withoutTrailingScreenLinks } from "../../lib/turn-scre
 import { L } from "../labels";
 import { assistantDisplay } from "../lib/assistant-display";
 import { hasLandedFacts, landedIsFresh } from "../lib/landed";
+import type { OutgoingSend } from "../lib/outgoing-send";
 import { shownPinLabel } from "../lib/pin-name";
 import { requestResults } from "../lib/request-results";
 import {
@@ -104,6 +105,7 @@ export interface ThreadProps {
   /** 갈래를 낼 수 있는 AI 인가 — 여기서 새 대화 · 고쳐서 다시 보내기(2번째 말부터). */
   canBranch: boolean;
   queue: QueuedSend[];
+  outgoing: OutgoingSend[];
   /** 준비 중에 보낸 말인가 — 대기 줄의 한 줄이 달라진다(U8). */
   preparing: boolean;
   /** 이 대화가 잃은 말(데몬의 회복 방) — 실패 카드가 된다(W8). */
@@ -277,7 +279,7 @@ export function Thread(props: ThreadProps) {
   // 한 사람 말 뒤의 첫 AI 답에만 얼굴이 선다 — 이어지는 조각은 그 아래로 줄을 맞춘다.
   let aiOpened = false;
 
-  const render = (row: Row, index: number): ReactNode => {
+  const render = (row: Row, index: number, sending = false): ReactNode => {
     if (row.kind === "activity") {
       return (
         <div className="nx-m-work">
@@ -332,7 +334,8 @@ export function Thread(props: ThreadProps) {
         // 핀 묶음도 고쳐서 보내기의 길에 선다 — 문장만 입력창에서 고치고 몫은
         // 원래 턴에서 온다(2026-10-04 ux-plan PR1).
         const own = marker === null || marker.kind === "comments";
-        const canResend = own && block.text.trim() !== "" && (prompt === 1 || props.canBranch);
+        const canResend =
+          !sending && own && block.text.trim() !== "" && (prompt === 1 || props.canBranch);
         const thumbs = marker?.kind === "comments" ? alignThumbs(marker.items, block.thumbs) : [];
         return (
           <div className="nx-m-user">
@@ -379,6 +382,12 @@ export function Thread(props: ThreadProps) {
                 marker.note && <div className="nx-btxt">{marker.note}</div>
               ) : (
                 <div className="nx-btxt">{block.text}</div>
+              )}
+              {sending && (
+                <div className="nx-bq" role="status">
+                  <ClockIcon />
+                  {L.chat.sending}
+                </div>
               )}
               {/* 고쳐서 다시 보내기 — 말풍선의 왼쪽 아래 옆자리에 매달려 세로 자리를 먹지 않는다.
                   이름은 aria-label 이, 뜻(새 대화로 갈라서 고친다 · 화면은 그대로)은 툴팁이 맡는다. */}
@@ -788,6 +797,11 @@ export function Thread(props: ThreadProps) {
             )}
           </div>
         </div>
+      ))}
+      {props.outgoing.map((send) => (
+        <Fragment key={send.block.id}>
+          {render({ kind: "block", block: send.block }, rows.length, true)}
+        </Fragment>
       ))}
     </div>
   );

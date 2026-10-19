@@ -15,6 +15,17 @@ import {
 
 const ORIGIN = "http://127.0.0.1:5274";
 
+test("브라우저 확인 없이 답변의 화면을 기록하되 외부 링크는 제외한다", () => {
+  const answer = `[회원 목록](${ORIGIN}/members) · [문서](https://example.com/docs)`;
+  assert.deepEqual(screensOfTurn([], answer, ORIGIN), []);
+  assert.deepEqual(screensOfTurn([], answer, ORIGIN, true), [
+    { route: "/members", title: "회원 목록" },
+  ]);
+  assert.deepEqual(screensOfTurn(["/members"], answer, ORIGIN, true), [
+    { route: "/members", title: "회원 목록" },
+  ]);
+});
+
 test("screenPathOf — 미리보기의 주소와 핀의 화면 id 를 같은 경로로", () => {
   assert.equal(screenPathOf(`${ORIGIN}/member/list/`, ORIGIN), "/member/list");
   assert.equal(screenPathOf(`${ORIGIN}/member/list?tab=2#x`, ORIGIN), "/member/list?tab=2");

@@ -149,45 +149,6 @@ test("runGate: 벽이 없으면 loginWall 칸이 없다 — 통계 행도 그대
   assert.deepEqual(gateOutcomeStats(outcome), { screens: 1 });
 });
 
-/** 서버 몸통에서 게이트가 판정한 순간(startGate)만 꺼내 돌린다 — gate-checked.test.ts 와 같은 길. */
-function serverWith(preview: PreviewDrivers) {
-  const checks: unknown[] = [];
-  const server = Object.create(DaemonServer.prototype) as any;
-  Object.assign(server, {
-    gateChecked: new Map(),
-    gateFallbackCount: new Map(),
-    screenMapDue: new Map(),
-    autoSaveDue: new Set(["s"]),
-    stats: { noteGateCheck: (_id: string, row: unknown) => checks.push(row) },
-    drivers: preview,
-    runAutoSave: () => {},
-  });
-  return { server, checks };
-}
-
-test("startGate: 벽 화면은 확인한 화면 기록(GateChecked)에 세지 않는다", async () => {
-  const preview = gateDrivers(["/b"]);
-  preview.notePinned("s", "/a");
-  preview.notePinned("s", "/b");
-  const { server, checks } = serverWith(preview);
-  server.startGate("s", 1000);
-  await until(() => checks.length > 0);
-  assert.deepEqual(server.gateChecked.get("s"), { screens: 1, phone: true }, "벽을 뺀 한 곳만");
-  assert.equal((checks[0] as { loginWall?: number }).loginWall, 1, "통계에는 횟수만");
-});
-
-test("startGate: 열어 본 화면이 전부 벽이면 기록이 없다 — 「확인했어요」 가 서지 않는다", async () => {
-  const preview = gateDrivers(["/a", "/b"]);
-  preview.notePinned("s", "/a");
-  preview.notePinned("s", "/b");
-  const { server, checks } = serverWith(preview);
-  server.startGate("s", 1000);
-  await until(() => checks.length > 0);
-  assert.equal(server.gateChecked.has("s"), false);
-  assert.equal((checks[0] as { loginWall?: number }).loginWall, 2);
-  assert.equal(JSON.stringify(checks).includes("/a"), false, "통계에 경로를 남기지 않는다");
-});
-
 test("runGate: 한 화면에 문제가 있고 다른 화면이 벽이면 문제만 고침 턴으로 가고 재검증은 벽을 뺀다", async () => {
   const preview = gateDrivers(["/b"], ["/a"]);
   preview.notePinned("s", "/a");

@@ -25,6 +25,10 @@ export interface TapeRow {
   /** How many prompts the transcript held when the daemon learned this. */
   afterTurn: number;
   event: ChatEvent;
+  /** 2026-10-20: 보내기 전 대화록 조회 없이 남긴 요청은 재생 때 뒤에서부터 맞춘다. */
+  matchByText?: boolean;
+  /** 공급자 처리 시간 대신 사용자가 요청한 뒤 답이 끝날 때까지의 시간. */
+  durationMs?: number | null;
 }
 
 function tapeFile(projectRoot: string): string {
@@ -93,10 +97,50 @@ export function dropTape(projectRoot: string, sessionId: string): void {
  */
 export function spliceTape(events: ChatEvent[], rows: TapeRow[]): ChatEvent[] {
   if (rows.length === 0) return events;
-  const prompts = rows.filter((row) => row.event.kind === "user.echo" && row.event.requestId);
+  const recorded = new Map<string, TapeRow>();
+  for (const row of rows) {
+    if (row.event.kind !== "user.echo" || !row.event.requestId) continue;
+    const previous = recorded.get(row.event.requestId);
+    recorded.set(row.event.requestId, {
+      ...previous,
+      ...row,
+      durationMs: row.durationMs ?? previous?.durationMs,
+      event: { ...previous?.event, ...row.event } as ChatEvent,
+    });
+  }
+  const completed: Array<{ text: string; afterTurn: number }> = [];
+  let ordinal = 0;
+  let current: { text: string; afterTurn: number } | null = null;
+  for (const event of events) {
+    if (event.kind === "user.echo") current = { text: event.text, afterTurn: ++ordinal };
+    if (event.kind === "turn.end" && current) {
+      completed.push(current);
+      current = null;
+    }
+  }
+  const prompts: TapeRow[] = [];
+  let before = Number.POSITIVE_INFINITY;
+  for (const row of [...recorded.values()].reverse()) {
+    if (!row.matchByText) {
+      prompts.push(row);
+      before = Math.min(before, row.afterTurn);
+      continue;
+    }
+    const match = completed.findLast(
+      (prompt) =>
+        prompt.afterTurn < before &&
+        row.event.kind === "user.echo" &&
+        prompt.text === row.event.text,
+    );
+    if (match) {
+      prompts.push({ ...row, afterTurn: match.afterTurn });
+      before = match.afterTurn;
+    }
+  }
   rows = rows.filter((row) => row.event.kind !== "user.echo");
   const out: ChatEvent[] = [];
   let echoes = 0;
+  let durationMs: number | null | undefined;
   let cursor = 0;
   const flush = (afterTurn: number): void => {
     while (cursor < rows.length) {
@@ -120,6 +164,7 @@ export function spliceTape(events: ChatEvent[], rows: TapeRow[]): ChatEvent[] {
             row.event.kind === "user.echo" &&
             row.event.text === event.text,
         );
+      durationMs = match?.durationMs;
       out.push(
         match
           ? {
@@ -132,6 +177,9 @@ export function spliceTape(events: ChatEvent[], rows: TapeRow[]): ChatEvent[] {
             }
           : event,
       );
+    } else if (event.kind === "turn.end" && durationMs != null) {
+      out.push({ ...event, durationMs });
+      durationMs = undefined;
     } else out.push(event);
   }
   flush(Number.MAX_SAFE_INTEGER);

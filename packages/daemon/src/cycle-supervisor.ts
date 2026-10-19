@@ -402,7 +402,12 @@ export class CycleSupervisor {
       this.againReason = reason;
       return this.running;
     }
-    const run = this.runLoop(reason);
+    // 틱은 부른 자리의 차선 문맥을 물려받지 않고 자기 supervise 칸에 선다. dispatch 의
+    // repo.submit 은 "submit" 칸 안에서 submit() 을 부르는데, 문맥을 물려받은 틱은 재진입으로
+    // 줄을 건너뛰고 그 칸이 끝난 뒤 차선 밖에서 push · 자산 올리기를 돌렸다
+    // (2026-10-19 Windows 실측 — "차선 밖 git 쓰기" ×13). 틱을 기다리는 호출자는 모두
+    // 차선 밖에서 기다리므로(철회 · 활성화 · 보내기 전 최신화) 줄에 서도 교착하지 않는다.
+    const run = this.deps.core.lane.outside(() => this.runLoop(reason));
     this.running = run;
     return run;
   }

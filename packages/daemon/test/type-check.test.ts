@@ -388,7 +388,12 @@ test("TypeChecker — 진짜 tsc: 오류를 돌려주고 빌드 정보 파일은
     );
     writeFileSync(join(repoRoot, "a.ts"), 'const x: number = "문자";\n');
     mkdirSync(join(repoRoot, "node_modules"), { recursive: true });
-    symlinkSync(TYPESCRIPT_INSTALL, join(repoRoot, "node_modules", "typescript"), "dir");
+    // Windows 는 접합점 — 폴더 심볼릭 링크는 권한이 없으면 EPERM 이다(2026-10-19 Windows 시험, handoff-preview 와 같다).
+    symlinkSync(
+      TYPESCRIPT_INSTALL,
+      join(repoRoot, "node_modules", "typescript"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
 
     const checker = new TypeChecker();
     const env = repoCommandEnv(process.env);

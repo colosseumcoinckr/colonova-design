@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 
 /**
  * 데스크톱의 `preload.ts` 가 렌더러에 내놓는 `onXxx: subscribe(…)` 채널마다 웹에 받는 곳이 있어야 한다
@@ -10,7 +11,7 @@ import { test } from "node:test";
  * 초록이어도 받는 쪽이 비어 있으면 아무도 모른다. 이 시험은 그 구멍의 종류를 막는다.
  */
 const desktopPreload = new URL("../../desktop/src/preload.ts", import.meta.url);
-const webSrc = new URL("../src/", import.meta.url).pathname;
+const webSrc = fileURLToPath(new URL("../src/", import.meta.url));
 
 /** 알려진 빈 구독 — 고치면 이 명단에서 지운다(아래 시험이 지우라고 말한다). */
 const KNOWN_UNHEARD: Record<string, string> = {

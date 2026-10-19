@@ -144,9 +144,12 @@ test("앱 폴더 안의 심볼릭 링크가 가리키는 외부 프로젝트·�
   try {
     const outside = join(f.paths.home, "my-other-project");
     f.put(join(outside, "screen.tsx"));
-    symlinkSync(outside, join(f.paths.dataDir, "projects", "external"), "dir");
+    // Windows 는 접합점 — 폴더 심볼릭 링크는 권한이 없으면 EPERM 이고, 권한 없이 만드는 폴더 링크는
+    // 접합점이다. 초기화는 접합점 너머도 지우지 않아야 한다(2026-10-19 Windows 시험).
+    const type = process.platform === "win32" ? "junction" : "dir";
+    symlinkSync(outside, join(f.paths.dataDir, "projects", "external"), type);
     mkdirSync(join(f.paths.dataDir, "projects", "linked-clone"));
-    symlinkSync(outside, join(f.paths.dataDir, "projects", "linked-clone", "repo"), "dir");
+    symlinkSync(outside, join(f.paths.dataDir, "projects", "linked-clone", "repo"), type);
     const erased: string[] = [];
     requestAppReset(f.paths, {});
     await finishPendingAppReset(

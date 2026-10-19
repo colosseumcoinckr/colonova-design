@@ -37,7 +37,9 @@ interface World {
 }
 
 function world(): World {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "claude-delete-all-")));
+  // native — SDK 와 제품(fs/promises 의 realpath)이 쓰는 디스크의 철자다. JS realpath 는
+  // Windows 임시 폴더의 8.3 짧은 이름(DEVELO~1)을 지켜 대화 폴더 이름이 갈린다(2026-10-19).
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "claude-delete-all-")));
   const config = join(root, "claude-config");
   const before = process.env.CLAUDE_CONFIG_DIR;
   process.env.CLAUDE_CONFIG_DIR = config;
@@ -46,7 +48,7 @@ function world(): World {
     clone(slug) {
       const path = join(root, "home", ".colonova-design", "projects", slug, "repo");
       mkdirSync(path, { recursive: true });
-      return realpathSync(path);
+      return realpathSync.native(path);
     },
     talk(cwd, text) {
       const id = randomUUID();

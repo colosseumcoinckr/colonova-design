@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
 // 순수 모듈 — src 에서 곧장 읽는다(next-pin-name.test.ts 와 같은 모양).
 import { PREVIEW_CSP, PREVIEW_MAX_CHARS, previewDoc } from "../src/next/lib/ask-preview.ts";
+import { sourcePath } from "./helpers/source-path.ts";
 
 /**
  * 질문 카드의 시안(2026-10-08 베타 준비 분석 C1 · PLAN D96) — AI 가 쓴 HTML 을 iframe `srcDoc` 으로
@@ -509,10 +510,10 @@ test("소스 계약: 시안 문서(srcDoc)를 만드는 곳은 하나다 — 다
   const owners: string[] = [];
   for (const file of sourceFiles(SRC)) {
     const source = uncommented(readFileSync(file, "utf8"));
-    if (/srcDoc|srcdoc/.test(source)) owners.push(relative(SRC, file));
+    if (/srcDoc|srcdoc/.test(source)) owners.push(sourcePath(SRC, file));
     if (
       /dangerouslySetInnerHTML/.test(source) &&
-      relative(SRC, file) === "next/chat/AskPreview.tsx"
+      sourcePath(SRC, file) === "next/chat/AskPreview.tsx"
     ) {
       assert.fail("시안을 innerHTML 로 그리지 않는다");
     }

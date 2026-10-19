@@ -134,7 +134,9 @@ function withExpiryFixture(headerValue: string, run: () => Promise<void>) {
 }
 
 test("브리지 — 첫 응답에서 만료 시각을 알고, 같은 값의 둘째 응답은 다시 알리지 않는다", async () => {
-  await withExpiryFixture(githubStamp(12 * DAY), async () => {
+  // 머리글 값은 한 번만 만든다 — 두 번 만들면 그 사이 초 경계를 넘을 때 1초 어긋난다(2026-10-19).
+  const stamp = githubStamp(12 * DAY);
+  await withExpiryFixture(stamp, async () => {
     const seen: Array<string | null> = [];
     const credentials = new MemoryCredentialStore();
     await credentials.save(REPO_PAT_ITEM, "t");
@@ -145,7 +147,7 @@ test("브리지 — 첫 응답에서 만료 시각을 알고, 같은 값의 둘�
       onExpiryChange: (iso) => seen.push(iso),
     });
     await bridge.load();
-    const iso = new Date(githubStamp(12 * DAY)).toISOString();
+    const iso = new Date(stamp).toISOString();
     // 첫 응답 — 관찰의 첫 틱에서 추가 요청 없이 만료 시각을 안다.
     await bridge.client()?.whoAmI();
     assert.equal(bridge.tokenExpiresAt, iso);

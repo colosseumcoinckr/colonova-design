@@ -391,6 +391,21 @@ export function armGitNetworkWatchdog(args: string[]): {
   };
 }
 
+/**
+ * Windows 에서 RepoCore 의 git 에 얹는 설정(2026-10-19, Windows 호환성).
+ * 긴 클론 경로도 체크아웃한다(core.longpaths). 사용자 · 시스템 설정은 바꾸지 않는다.
+ * 제품이 새로 받는 클론은 줄바꿈을 바꾸지 않는다(core.autocrlf=false). Git for
+ * Windows 는 시스템 설정에 autocrlf=true 를 둔다. 그대로 받으면 작업 폴더가 CRLF 가
+ * 돼 `.sh` 스크립트가 깨지고, 구해 둔 변경이 바이트 그대로 돌아오지 않는다. macOS 의
+ * 기본(변환 없음)과 같게 맞춘다. clone 뒤의 `-c` 는 새 클론의 설정에 남고 첫
+ * 체크아웃부터 듣는다. 이미 받은 클론의 설정은 바꾸지 않는다 — 파일이 고친 것처럼 보인다.
+ */
+export function windowsGitArgs(argv: string[]): string[] {
+  const own =
+    argv[0] === "clone" ? ["clone", "-c", "core.autocrlf=false", ...argv.slice(1)] : argv;
+  return ["-c", "core.longpaths=true", ...own];
+}
+
 export class RepoCore {
   readonly root: string;
 
@@ -1464,7 +1479,8 @@ export class RepoCore {
           ...env,
         },
       },
-      argv,
+      // Windows 의 긴 경로 · 새 클론의 줄바꿈 — windowsGitArgs 의 주석.
+      windows ? windowsGitArgs(argv) : argv,
       stallMs,
       binary,
     );

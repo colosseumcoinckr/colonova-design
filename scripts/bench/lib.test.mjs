@@ -5,8 +5,9 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   collectRows,
   compareResults,
@@ -24,7 +25,7 @@ import {
   validateScenarios,
 } from "./lib.mjs";
 
-const HERE = new URL(".", import.meta.url).pathname;
+const HERE = fileURLToPath(new URL(".", import.meta.url));
 const turn = (over = {}) => ({
   at: "2026-09-28T01:00:00.000Z",
   sessionId: "s1",
@@ -168,7 +169,7 @@ test("행 모으기 — 이틀 치를 시간 순으로, 남의 것과 깨진 줄
 
   const files = statsFiles("/logs", new Date("2026-09-28T12:00:00.000Z"));
   assert.deepEqual(
-    files.map((file) => file.split("/").pop()),
+    files.map((file) => basename(file)),
     ["turn-stats-2026-09-28.jsonl", "turn-stats-2026-09-27.jsonl"],
   );
 });

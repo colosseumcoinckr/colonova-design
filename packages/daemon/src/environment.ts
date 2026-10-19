@@ -98,8 +98,9 @@ export interface BundledToolEnv {
  *   — PATH 맨 앞이 그 둘을 함께 보증한다. 또한 `/usr/bin/git` 이 CLT 설치
  *   대화상자를 여는 가짜인 mac 에서, AI 의 git 명령조차 대화상자를 부르지
  *   않게 한다.
- * - win32: MinGit 의 `usr/bin/bash.exe` 를 `CLAUDE_CODE_GIT_BASH_PATH` 로
- *   알린다 — Claude CLI 는 bash.exe 만 찾고 못 찾으면 BashTool 를 내놓지
+ * - win32: MinGit 의 `cmd` 를 PATH 앞에 둔다 — 설치 스크립트·AI도 이름으로 git을 찾는다.
+ *   `usr/bin/bash.exe` 는 `CLAUDE_CODE_GIT_BASH_PATH` 로 알린다.
+ *   Claude CLI 는 bash.exe 만 찾고 못 찾으면 BashTool 를 내놓지
  *   않는다. 사용자가 이미 정한 값은 존중해 건드리지 않는다.
  * - 번들이 없으면 아무것도 안 한다(브라우저 개발 경로).
  *
@@ -121,14 +122,14 @@ export function bundledToolEnv(
       },
     };
   }
-  if (
-    platform === "win32" &&
-    !env.CLAUDE_CODE_GIT_BASH_PATH &&
-    exists(join(resourcesBin, "usr", "bin", "bash.exe"))
-  ) {
+  if (platform === "win32") {
+    const cmd = join(resourcesBin, "cmd");
+    const bash = join(resourcesBin, "usr", "bin", "bash.exe");
     return {
-      pathPrefixes: [],
-      env: { CLAUDE_CODE_GIT_BASH_PATH: join(resourcesBin, "usr", "bin", "bash.exe") },
+      // bash 지정과 독립이다. usr/bin은 cmd와 동명인 도구가 있어 PATH에 넣지 않는다.
+      pathPrefixes: exists(join(cmd, "git.exe")) ? [cmd] : [],
+      env:
+        !env.CLAUDE_CODE_GIT_BASH_PATH && exists(bash) ? { CLAUDE_CODE_GIT_BASH_PATH: bash } : {},
     };
   }
   return { pathPrefixes: [], env: {} };

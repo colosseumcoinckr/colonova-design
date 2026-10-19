@@ -26,11 +26,43 @@ import type {
   DiagnosticsTurnStats,
   TurnFailureStage,
 } from "@colonova-design/protocol";
-import { type BrowserFailKind, isBrowserToolName } from "./browser-tools.js";
 import { daemonLogDir } from "./log.js";
 import { STATS_EDIT_TOOLS, STATS_EXEC_TOOLS, STATS_READ_TOOLS } from "./tool-names.js";
 import { editPathsOf } from "./tool-paths.js";
 import { classifyFailure } from "./turn-retry.js";
+
+/** 옛 내장 도구의 통계를 읽는 이름이다(2026-10-20 내장 MCP 제거). */
+const LEGACY_BROWSER_TOOLS = new Set([
+  "browser_navigate",
+  "browser_snapshot",
+  "browser_find",
+  "browser_inspect",
+  "browser_screenshot",
+  "browser_click",
+  "browser_fill",
+  "browser_type",
+  "browser_press",
+  "browser_scroll",
+  "browser_hover",
+  "browser_select",
+  "browser_drag",
+  "browser_wait",
+  "browser_console",
+  "browser_evaluate",
+  "browser_back",
+  "browser_forward",
+  "screen_check",
+  "describe_changes",
+  "repo_diagnostics",
+  "submit_for_review",
+  "screen_files",
+  "notify_developer",
+]);
+function isBrowserToolName(name: string): boolean {
+  const plain = name.replace(/^mcp__colonova-browser__|^colonova-browser\//, "");
+  return LEGACY_BROWSER_TOOLS.has(plain);
+}
+type BrowserFailKind = "stale-ref" | "timeout" | "refused" | "no-pane" | "other";
 
 /**
  * 핀 적중 비교의 열쇠 — 후보와 도구 경로를 같은 정규화로 견준다(2026-10-19, Windows 호환성).

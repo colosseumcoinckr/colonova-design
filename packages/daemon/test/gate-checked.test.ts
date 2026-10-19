@@ -187,9 +187,7 @@ test("사진 없는 새 화면도 답변 링크로 보관하며 확인 통과 �
     server.runAutoSave("s");
     await server.comparisonSaves.get("p");
     assert.deepEqual(routes, ["/new"]);
-    const saved = events.find(
-      (message: any) => message.event?.kind === "screens.saved",
-    ) as any;
+    const saved = events.find((message: any) => message.event?.kind === "screens.saved") as any;
     assert.deepEqual(saved.event.screens, [{ route: "/new", title: "새 화면" }]);
     assert.equal(saved.event.checked, undefined);
   } finally {

@@ -4,13 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { buildChecksSection } from "../dist/handoff-body.js";
+import { handoffDraftTimeoutMs } from "../dist/repo-core.js";
 import {
   DEFAULT_PR_SKELETON,
   HANDOFF_TEMPLATE_MAX_CHARS,
   handoffPrompt,
   memoPrompt,
 } from "../dist/repo-prompts.js";
-import { handoffDraftTimeoutMs } from "../dist/repo-core.js";
 import { RepoSummarizer, readPullRequestTemplate } from "../dist/repo-summary.js";
 import { makeScene } from "./helpers/cycle-harness.ts";
 

@@ -1,11 +1,10 @@
 export { daemonOwnedPorts } from "./preview-claim.js";
 
-import { randomBytes, timingSafeEqual } from "node:crypto";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import { arch, homedir, release } from "node:os";
 import {
   type ClientMessage,
-  type ColoNovaDesignCommentTarget,
   composeAttention,
   type GateChecked,
   PROTOCOL_VERSION,
@@ -13,7 +12,6 @@ import {
   parseClientMessage,
   readTurn,
   type ServerMessage,
-  type SessionPinHint,
   type SessionState,
 } from "@colonova-design/protocol";
 import { type WebSocket, WebSocketServer } from "ws";
@@ -23,29 +21,6 @@ import { CodexDriver } from "./agent/drivers/codex/driver.js";
 import { DriverRegistry } from "./agent/registry.js";
 import { AgentInstall } from "./agent-install.js";
 import { AgentUpdates } from "./agent-update.js";
-import { browserMcpEntry } from "./browser-launch.js";
-import {
-  type FindRender,
-  findInSnapshot,
-  focusLineOf,
-  isWholeSnapshot,
-  renderIdentity,
-  renderSnapshot,
-  type SnapshotRender,
-  snapshotLines,
-  summarizeAction,
-} from "./browser-snapshot.js";
-import {
-  type BrowserFailKind,
-  classifyBrowserFailure,
-  normalizeNotifyArgs,
-  notifyDeveloperAnswer,
-  screenFilesAnswer,
-  shortHash,
-  submitNoteOf,
-  waitForAnswer,
-} from "./browser-tools.js";
-import { normalizeDescribeChanges, type PlannedChange } from "./change-plan.js";
 import { CommandDedupe } from "./command-dedupe.js";
 import {
   type CredentialStore,
@@ -54,7 +29,7 @@ import {
   migrateProjectPats,
 } from "./credentials.js";
 import { screensOfTurn } from "./cycle-screens.js";
-import { AGENT_NOTICE_KEY_PREFIX, DeveloperNotice, describeProblem } from "./developer-notice.js";
+import { DeveloperNotice, describeProblem } from "./developer-notice.js";
 import { startupLogFields } from "./diagnostics.js";
 import { RequestRouter } from "./dispatch.js";
 import { EditAnnouncer } from "./edit-screens.js";
@@ -66,43 +41,27 @@ import { GitHubBridge } from "./github-bridge.js";
 import { expiryJudgement, expiryNoticeStep } from "./github-expiry.js";
 import { HandoffPreviews } from "./handoff-preview.js";
 import { createFileLogger, type DaemonLogger } from "./log.js";
-import { LOGIN_WALL_NOTICE } from "./login-wall.js";
 import { MachineTurns } from "./machine-provider.js";
 import { MachineSetting } from "./machine-setting.js";
 import { type DaemonNotice, noticeForState } from "./notices.js";
 import { AgentLogin } from "./onboarding.js";
 import { realpathBestEffort } from "./paths.js";
-import { enrichIdentity, huntPinFiles, type IdentityFiles } from "./pin-files.js";
 import { PlanTracker } from "./plan-tracker.js";
 import { daemonOwnedPorts } from "./preview-claim.js";
-import type {
-  BrowserActionReport,
-  BrowserDriver,
-  BrowserDriverFactory,
-  PreviewCapture,
-  PreviewDriverFactory,
-} from "./preview-driver.js";
+import type { PreviewDriverFactory } from "./preview-driver.js";
 import { PreviewDrivers } from "./preview-drivers.js";
 import { ProjectFleet, type ProjectWorkspaces } from "./project-fleet.js";
 import { ProjectRegistry } from "./projects.js";
 import { QueueStore } from "./queue-store.js";
 import { repoSettingsWarning, sanitizeRepoAgentSettings, trustWorkspace } from "./repo.js";
-import { repoCommandEnv } from "./repo-bringup.js";
 import { scopeOf } from "./repo-config.js";
-import { filesForRoute, routesForFiles } from "./route-index.js";
-import {
-  a11yLines,
-  judgeScreen,
-  normalizeScreenCheckArgs,
-  type ScreenOverflow,
-} from "./screen-gate.js";
-import { observedFilesFor, readScreenMap } from "./screen-map.js";
+import { routesForFiles } from "./route-index.js";
+import { readScreenMap } from "./screen-map.js";
 import { asPlannerFacingError, NEW_SESSION_TITLE } from "./session.js";
 import { SessionManager } from "./session-manager.js";
 import { appendTape, readTape } from "./session-tape.js";
 import { TurnActivity } from "./turn-activity.js";
 import { TurnStats } from "./turn-stats.js";
-import { diagnosticsAnswer, TypeChecker } from "./type-check.js";
 import { serveWeb } from "./web-static.js";
 
 // The host's notice type (notices.ts) — re-exported so
@@ -135,205 +94,6 @@ export type {
  * 병합에서 늦게 도착하는 일은 이제 사용자 경험의 문제였다.
  */
 const HANDOFF_POLL_MS = 2 * 60_000;
-/**
- * /internal/browser가 받는 op의 화이트리스트. 와이어에 노출하지 않는 것:
- * destroy(세션 수명에 귀속 — 와이어에서 찌르면 사용자 페이지가 망가진다).
- * `screenCheck` 는 pane 이 아니라 검증 창(forIsolated)에서 돈다 — 게이트의
- * 판정을 턴 안에서 앞당겨 보는 길이다. `submitForReview` (PLAN L6) 는 pane
- * 없이 감독자에 의도만 적는다 — 브라우저가 없는 세계에서도 대화로 제출은
- * 된다(도구 실림은 lifecycle.submitFromChat 이 정한다). `screenFiles` ·
- * `notifyDeveloper` (PLAN-MCP §3.E) 도 pane 이 없다 — 전자는 관찰 지도와
- * 클론 사냥만, 후자는 DeveloperNotice 의 기존 길만 쓴다. `repoDiagnostics`
- * (PLAN-HARNESS §3.C) 도 마찬가지로 클론에서만 돈다.
- */
-const BROWSER_OPS: Record<string, true> = {
-  navigate: true,
-  back: true,
-  forward: true,
-  snapshot: true,
-  find: true,
-  inspect: true,
-  screenshot: true,
-  click: true,
-  type: true,
-  press: true,
-  scroll: true,
-  hover: true,
-  select: true,
-  drag: true,
-  consoleLines: true,
-  evaluate: true,
-  waitFor: true,
-  screenCheck: true,
-  submitForReview: true,
-  screenFiles: true,
-  notifyDeveloper: true,
-  repoDiagnostics: true,
-  describeChanges: true,
-};
-
-/** 요청 본문 한도 — evaluate 식·콘솔 요청 등을 다 담는 충분한 크기. */
-const BROWSER_BODY_LIMIT = 1_000_000;
-
-/**
- * op 하나가 데몬을 붙들 수 있는 상한 — evaluate 의 awaitPromise 가 영원히
- * 이행하지 않는 Promise 를 만나도 세션의 브라우저가 죽지 않게 한다. MCP
- * 자식의 60s 유예보다 길게 둔다(자식이 먼저 포기하는 게 정상 경로).
- */
-const BROWSER_OP_TIMEOUT_MS = 90_000;
-
-/**
- * 읽기 전용 op — 이것들은 "브라우저 조작 중" 표시를 켜지 않는다(조작이
- * 아니라 관찰이다).
- */
-const BROWSER_QUIET_OPS: Record<string, true> = {
-  snapshot: true,
-  find: true,
-  inspect: true,
-  screenshot: true,
-  consoleLines: true,
-  waitFor: true,
-  screenCheck: true,
-  // pane 을 겨누지 않는 도구도 관찰이다 — 쪽지(쓰기)는 GitHub 으로 가고, 타입
-  // 검사는 클론에서만 돈다. 사용자의 미리보기 화면은 건드리지 않는다.
-  screenFiles: true,
-  notifyDeveloper: true,
-  repoDiagnostics: true,
-};
-
-/**
- * 액션 11개 (PLAN-MCP M-3) — 답을 요약으로 줄이는 op. 드라이버는 전체
- * 스냅샷을 돌려주지만 모델에게 내리는 것은 주소 · 제목 · 포커스 · 바뀐 줄이다.
- */
-const BROWSER_SUMMARIZE_OPS: Record<string, true> = {
-  navigate: true,
-  back: true,
-  forward: true,
-  click: true,
-  type: true,
-  press: true,
-  scroll: true,
-  hover: true,
-  select: true,
-  drag: true,
-};
-
-/**
- * 권한 카드 유예 — MCP 자식이 포기하는 60s 유예 직전까지. 답이 없으면
- * 거절로 정산된다(무응답 = 안 함).
- */
-const BROWSER_ASK_TIMEOUT_MS = 55_000;
-
-/**
- * 이동(navigate·back·forward)이 레포 바깥에 내려앉았을 때 스냅샷 대신
- * 내리는 안내 — 이동 자체는 카드 없이 허용하지만, 착지한 화면의 내용은
- * 권한 카드를 지나야 읽힌다.
- */
-const BROWSER_EXTERNAL_NOTE =
-  "레포 바깥 화면에 내려앉았다 — 내용은 권한 없이 읽지 않는다. 필요하면 browser_snapshot 을 다시 부르면 권한 카드가 온다.";
-
-/** 와이어의 JSON 값을 시그니처 형태로 좁힌다 — 엔드포인트는 임의 JSON이 닿는 경계라 믿지 않는다. */
-function asString(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
-}
-
-/**
- * inspect 답의 화면 id — 페이지(pageContext)와 같은 판정: 앞 슬래시 없는
- * 경로, 루트는 `index`. 못 읽는 주소는 undefined (관찰 지도의 열쇠가 아니다).
- */
-function screenIdOf(url: string): string | undefined {
-  try {
-    const id = new URL(url).pathname.replace(/^\/+/, "");
-    return id === "" ? "index" : id;
-  } catch {
-    return undefined;
-  }
-}
-
-function asNumber(value: unknown): number | undefined {
-  return typeof value === "number" ? value : undefined;
-}
-
-/**
- * 와이어의 flat 인자(params)를 BrowserDriver의 위치 인자로 풀어 부른다 —
- * MCP 자식은 하나의 params 객체만 알고, 호출 규약은 드라이버 소유다.
- * snapshot · find 는 이 자리에서 한 줄 표기로 줄인다(PLAN-MCP M-2).
- */
-async function callBrowserOp(
-  driver: BrowserDriver,
-  op: string,
-  params: Record<string, unknown>,
-): Promise<unknown> {
-  switch (op) {
-    case "navigate":
-      return driver.navigate(String(params.url ?? ""));
-    case "back":
-      return driver.back();
-    case "forward":
-      return driver.forward();
-    case "snapshot": {
-      // 한 줄 표기로 렌더해 내린다 — 압축은 데몬의 몫이고 드라이버 계약은 그대로다.
-      return renderSnapshot(await driver.snapshot(), {
-        ref: asString(params.ref),
-        maxLines: asNumber(params.maxLines),
-      });
-    }
-    case "find": {
-      // 새 op 가 아니라 스냅샷의 거름 — 조건에 맞는 줄만 좁혀 내리므로
-      // 전체 읽기보다 토큰이 싸다.
-      return findInSnapshot(await driver.snapshot(), {
-        text: asString(params.text),
-        role: asString(params.role),
-        limit: asNumber(params.limit),
-      });
-    }
-    case "inspect":
-      return driver.inspect({ ref: String(params.ref ?? "") });
-    case "screenshot":
-      return driver.screenshot({
-        ref: asString(params.ref),
-        longEdge: asNumber(params.longEdge),
-      });
-    case "click":
-      return driver.click({ ref: String(params.ref ?? "") });
-    case "type":
-      return driver.type({
-        ref: asString(params.ref),
-        text: String(params.text ?? ""),
-        clear: params.clear !== false,
-      });
-    case "press":
-      return driver.press(String(params.key ?? ""));
-    case "scroll":
-      return driver.scroll({ ref: asString(params.ref), dy: asNumber(params.dy) ?? 0 });
-    case "hover":
-      return driver.hover({ ref: String(params.ref ?? "") });
-    case "select":
-      return driver.select({ ref: String(params.ref ?? ""), value: String(params.value ?? "") });
-    case "drag":
-      return driver.drag({
-        fromRef: String(params.fromRef ?? ""),
-        toRef: String(params.toRef ?? ""),
-      });
-    case "consoleLines":
-      return driver.consoleLines();
-    case "evaluate":
-      return driver.evaluate(String(params.fn ?? ""));
-    case "waitFor":
-      return driver.waitFor({
-        text: asString(params.text),
-        url: asString(params.url),
-        ms: asNumber(params.ms),
-      });
-    default:
-      throw new Error(`알 수 없는 브라우저 op: ${op}`);
-  }
-}
-
-// Session permission policy lives in Session itself: it pins the CLI to
-// `default` mode (so a user's own global defaultMode cannot widen hub
-// sessions) and answers edit-class tools in-process. See session.ts.
-
 export interface DaemonConfig {
   host: string;
   port: number;
@@ -375,20 +135,7 @@ export interface DaemonConfig {
    * exists.
    */
   previewDriverFactory?: PreviewDriverFactory;
-  /**
-   * The desktop's shared browser (인앱 브라우저): the driver the agent's
-   * browser tools will go through — the pane's page, the same one the user
-   * watches. The capture path rides the SAME instance so the page keeps a
-   * single debugger owner. The browser dev path injects nothing and the
-   * tools answer 404.
-   */
-  browserDriverFactory?: BrowserDriverFactory;
-  /**
-   * 앱 · 데몬의 버전 — 브라우저 MCP 자식이 serverInfo.version 으로 말한다
-   * (browserMcpEntry 가 COLONOVA_APP_VERSION env 로 싣는다). 데스크톱은
-   * app.getVersion() 을, 단독 실행은 데몬 package.json 의 version 을 넣는다.
-   * 없으면 자식은 "0" 으로 산다 — 버전을 모른다는 뜻일 뿐이다.
-   */
+  /** 앱 버전 — 진단과 사용자 의견에 싣는다. */
   appVersion?: string;
 }
 
@@ -497,24 +244,6 @@ export class DaemonServer {
   /** 이번 턴의 화면 연결. 브라우저 재검사 없이 모아 보관 성공 뒤 기록한다. */
   private readonly screenMapDue = new Map<string, string[]>();
   /**
-   * 브라우저 MCP 자식의 세션별 시크릿(3단계): Map<secret, {sessionId,
-   * issuedAt}>. 데몬의 config.token은 전역 공유라 자식에게 못 준다 — 세션마다
-   * 새 시크릿을 발급해 메모리에 매핑하면 자식이 타 세션의 RPC를 칠 수 없고,
-   * 세션이 닫히면(onState closed) 시크릿도 함께 간다.
-   */
-  private readonly browserSecrets = new Map<string, { sessionId: string; issuedAt: number }>();
-  /**
-   * 세션별 브라우저 op 직렬화 큐 — 같은 세션의 명령이 겹치면 pane 의 ref
-   * 세대가 경합한다. 값은 "지금까지의 꼬리"다.
-   */
-  private readonly browserOps = new Map<string, Promise<unknown>>();
-  /**
-   * 세션의 마지막 렌더 줄 (PLAN-MCP §3.C) — 액션 요약의 before. 데몬
-   * 메모리다: 재시작 뒤 첫 액션은 차이 없이 요약만(§6 O-5). 세션이 닫히거나
-   * 프로젝트가 바뀌면(pane 이 남의 페이지로 옮겨가면) 비운다.
-   */
-  private readonly browserLastRender = new Map<string, string[]>();
-  /**
    * Aborted the moment `stop()` begins. Unattended CLI probes ride it: a CLI
    * that never answers must not hold the process open for the probe's full
    * grace after the daemon is down — the offline suites each paid that grace
@@ -595,7 +324,6 @@ export class DaemonServer {
    * 증분 타입 검사 (PLAN-HARNESS §3.C) — `repo_diagnostics` 의 몸. 첫 턴의
    * prewarm 이 가장 느린 첫 검사를 AI 가 생각하는 동안 끝낸다.
    */
-  private readonly typeChecker = new TypeChecker();
 
   constructor(private readonly config: DaemonConfig) {
     this.credentials = config.credentialStore ?? createCredentialStore();
@@ -827,13 +555,6 @@ export class DaemonServer {
             this.changedTurnFiles.delete(sessionId);
             this.gateRequests.delete(sessionId);
             this.turnEnds.delete(sessionId);
-            // 브라우저 시크릿도 세션과 함께 간다(3단계) — 남은 자식의 비밀로
-            // 닫힌 세션의 브라우저를 몰 수 없게.
-            for (const [secret, candidate] of this.browserSecrets) {
-              if (candidate.sessionId === sessionId) this.browserSecrets.delete(secret);
-            }
-            this.browserOps.delete(sessionId);
-            this.browserLastRender.delete(sessionId);
             // 수명 규칙: the worktree build's life is
             // tied to the conversation that opened it — its close reaps the
             // worktree and the port. The store ignores strangers itself.
@@ -874,41 +595,8 @@ export class DaemonServer {
         onTurnFailed: (sessionId, resultText) => {
           void this.router?.noteTurnFailed(sessionId, resultText);
         },
-        // 브라우저 MCP 자식이 뜨지 못했다(2026-10-14 MCP 점검) — 대화의 경고는
-        // 세션이 냈다. 여기는 진단의 한 줄만 — 오류 문장은 경로를 싣기 쉬워 남기지 않는다.
-        onBrowserToolsDown: (sessionId) => {
-          const provider = this.manager.get(sessionId)?.provider ?? null;
-          this.logger.warn("[browser] mcp down", { provider });
-        },
       },
       this.agentDrivers,
-      // 세션별 브라우저 MCP 명세(3단계): 팩토리가 없으면(브라우저 개발 경로)
-      // 시크릿도 발급하지 않는다. URL은 루프백 고정 — 자식은 같은 호스트의
-      // 프로세스라 바인딩 호스트가 무엇이든 127.0.0.1로 닿는다. submit_for_review
-      // 는 그 세션이 사는 프로젝트의 lifecycle.submitFromChat(PLAN L6)이
-      // 켜져 있을 때만 env 플래그로 실린다 — 워크스페이스를 모르면 기본(켬).
-      (sessionId, cwd) => {
-        if (this.config.browserDriverFactory === undefined || !this.http) return null;
-        const slug = this.fleet.workspacesForCwd(cwd)?.slug ?? null;
-        const submitFromChat =
-          slug !== null && (this.registry.get(slug)?.lifecycle?.submitFromChat ?? true);
-        const secret = this.issueBrowserSecret(sessionId);
-        return browserMcpEntry(
-          true,
-          `http://127.0.0.1:${this.address().port}`,
-          secret,
-          submitFromChat,
-          this.config.appVersion,
-        );
-      },
-      // createSession 이 던지면 발급된 시크릿을 회수한다 — 못 열린 세션의
-      // 자격이 맵에 남는 일을 막는다.
-      (sessionId) => {
-        for (const [secret, candidate] of this.browserSecrets) {
-          if (candidate.sessionId === sessionId) this.browserSecrets.delete(secret);
-        }
-        this.browserLastRender.delete(sessionId);
-      },
     );
     // One cwd for both probe readers — plan limits and the session-less
     // model catalog — so the two cannot disagree about where a probe runs.
@@ -1076,8 +764,6 @@ export class DaemonServer {
       registry: this.registry,
       escalation: this.escalation,
       logger: this.logger,
-      // 프로젝트 전환 직후 — 세션의 브라우저 요약 기억을 비운다(§3.C).
-      afterProjectSwitch: () => this.browserLastRender.clear(),
       broadcast: (m) => this.broadcast(m),
       notice: (n) => this.config.onNotice?.(n),
       claudeExecutable: () => this.claudeExecutable,
@@ -1182,12 +868,6 @@ export class DaemonServer {
       if (req.url === "/health") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, protocolVersion: PROTOCOL_VERSION }));
-        return;
-      }
-      // 브라우저 MCP 자식의 중계 엔드포인트(3단계) — 인증은 세션별 시크릿.
-      // 정적 서빙이 이 요청을 삼키지 않게 /health 다음에 둔다.
-      if (req.url === "/internal/browser") {
-        void this.onInternalBrowser(req, res);
         return;
       }
       if (this.config.webDist) {
@@ -1343,7 +1023,6 @@ export class DaemonServer {
     this.agentInstall.stop();
     this.agentUpdates.stop();
     // 도는 증분 타입 검사의 자식도 이 데몬의 것 — 내려갈 때 함께 끊는다.
-    this.typeChecker.dispose();
     clearInterval(this.handoffTimer ?? undefined);
     this.handoffTimer = null;
     this.logger.info("데몬 종료");
@@ -1477,19 +1156,6 @@ export class DaemonServer {
    */
   private readonly gateChecked = new Map<string, GateChecked>();
 
-  /**
-   * 이번 턴의 보관 계획(2026-10-11 피드백) — 일하는 AI 가 `describe_changes` 로
-   * 적은 논리적 변경의 목록. `runAutoSave` 가 가져갈 때까지 여기 산다. 턴을
-   * 태그로 지우지 않는 대신, 소비할 때 그 턴의 requestId 인지 확인한다 —
-   * 가져가지 못한 계획(반영 저장 · 손 저장이 지나간 계획)은 다음 턴의 것이
-   * 될 수 없다. 소비하지 못하고 남은 계획은 새 턴의 보내기가 requestId 를
-   * 바꾸는 순간 버려진다.
-   */
-  private readonly changePlans = new Map<
-    string,
-    { requestId: string | null; changes: PlannedChange[] }
-  >();
-
   /** 성공한 편집·명령이 있는 요청만 완료 뒤 미보관 파일을 확인한다. */
   private async finishChangedTurn(sessionId: string, duration: number | undefined): Promise<void> {
     const activity = this.turnActivity.get(sessionId);
@@ -1599,19 +1265,9 @@ export class DaemonServer {
     // 이 턴의 확인 기록은 이 보관이 가져가고 — 보관이 없는 턴에서도 다음 턴으로 새지 않게 여기서 비운다.
     const checked = this.gateChecked.get(sessionId);
     this.gateChecked.delete(sessionId);
-    // 이 턴의 보관 계획도 같은 자리에서 간다 — 이 턴의 requestId 에 붙은 것만
-    // 유효하므로, 반영 저장 · 손 저장이 지나쳐 남은 옛 계획이 다음 턴의 보관을
-    // 물지 않는다.
-    const planEntry = this.changePlans.get(sessionId);
-    this.changePlans.delete(sessionId);
-    const session = this.manager.get(sessionId);
-    const plan =
-      planEntry && planEntry.requestId === (session?.lastRequestId ?? null)
-        ? planEntry.changes
-        : null;
     if (!this.autoSaveDue.delete(sessionId)) return;
     const workspaces = this.workspaceOfSession(sessionId);
-    const answer = session?.lastAssistantText ?? null;
+    const answer = this.manager.get(sessionId)?.lastAssistantText ?? null;
     const url = workspaces?.repo.repoCore().previewUrl;
     let origin: string | null = null;
     try {
@@ -1626,7 +1282,7 @@ export class DaemonServer {
       true,
     );
     const source = changedScreens.map((screen) => screen.route);
-    const autoSave = this.fleet.autoSaveTurn(sessionId, source, checked, plan ?? undefined);
+    const autoSave = this.fleet.autoSaveTurn(sessionId, source, checked);
     // 커밋이 내려앉은 순간 — 실패도 「끝」이다(다음 턴을 영원히 세우지 않는다).
     const landed: Promise<void> = autoSave.then(
       () => undefined,
@@ -1677,676 +1333,6 @@ export class DaemonServer {
     if (workspaces) this.comparisonSaves.set(workspaces.slug, saving);
   }
 
-  // -------------------------------------------------------------------------
-  // Preview tools (PLAN D61) — the desktop's driver, one per session.
-  // Ownership lives in preview-drivers.ts; what remains here is the host's
-  // entry point and the call sites wiring a fresh driver into session
-  // create / branch.
-  // -------------------------------------------------------------------------
-
-  // -------------------------------------------------------------------------
-  // Browser tools (인앱 브라우저 3단계) — the MCP child's relay endpoint.
-  // A session-scoped secret is the only credential: issued here at session
-  // create, carried to the child in env, revoked when the session closes.
-  // -------------------------------------------------------------------------
-
-  /**
-   * 세션 하나의 브라우저 시크릿을 발급한다. session-manager가 세션을 열 때
-   * browserDriverFactory가 있으면 불러 browserMcp 기동 명세의 env에 태운다 —
-   * MCP 자식은 이 시크릿으로만 /internal/browser에 닿는다.
-   */
-  issueBrowserSecret(sessionId: string): string {
-    const secret = randomBytes(32).toString("base64url");
-    this.browserSecrets.set(secret, { sessionId, issuedAt: Date.now() });
-    return secret;
-  }
-
-  /** 브라우저 op 한 번의 관측 (PLAN-MCP M-8) — 통계에 한 번, 데몬 로그에
-   *  한 줄. 주소·ref·인자는 싣지 않는다: 새니타이저를 믿는 대신 애초에
-   *  담지 않는다. 로거에 debug 수준이 없어 info 로 남긴다. */
-  private observeBrowserOp(
-    sessionId: string | null,
-    op: string,
-    ms: number,
-    fail?: BrowserFailKind,
-  ): void {
-    if (sessionId !== null) {
-      this.stats.noteBrowserOp(sessionId, { op, ms, ...(fail !== undefined ? { fail } : {}) });
-    }
-    this.logger.info("[browser] op", {
-      op,
-      ms: Math.max(0, ms),
-      ok: fail === undefined,
-      ...(fail !== undefined ? { fail } : {}),
-    });
-  }
-
-  /**
-   * POST /internal/browser — browser-mcp.js의 도구 호출이 닿는 자리. op는
-   * 화이트리스트로 가리고 실행은 pane 드라이버로 위임한다. 계약: 200
-   * {ok:true,result} | 200 {ok:false,error} | 401 시크릿 불일치 | 404
-   * 팩토리·pane 없음. 드라이버가 던진 실패(stale ref·DevTools 충돌 등)는
-   * 도구가 읽고 고칠 수 있게 200 ok:false로 내려간다.
-   */
-  private async onInternalBrowser(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const reply = (status: number, body: Record<string, unknown>): void => {
-      res.writeHead(status, { "content-type": "application/json" });
-      res.end(JSON.stringify(body));
-    };
-    // 시크릿 검사 — 발급된 시크릿과 상수 시간 비교. 길이 노출은 무의미하다
-    // (시크릿은 43글자 base64url로 일정하다).
-    const given = Buffer.from(/^Bearer (.+)$/.exec(req.headers.authorization ?? "")?.[1] ?? "");
-    let authorized = false;
-    let sessionId: string | null = null;
-    for (const [secret, candidate] of this.browserSecrets) {
-      const expected = Buffer.from(secret);
-      if (given.length === expected.length && timingSafeEqual(given, expected)) {
-        authorized = true;
-        sessionId = candidate.sessionId;
-      }
-    }
-    if (!authorized || sessionId === null) {
-      // 401 은 본문을 읽기 전에 끝나 op 를 알 수 없다 — 로그만 남고 통계는
-      // 붙일 세션 자체가 없다(관측의 401 경로, M-8).
-      this.observeBrowserOp(null, "unknown", 0, "other");
-      reply(401, { ok: false, error: "브라우저 시크릿이 일치하지 않습니다." });
-      return;
-    }
-    const chunks: Buffer[] = [];
-    let size = 0;
-    try {
-      for await (const chunk of req) {
-        size += (chunk as Buffer).length;
-        if (size > BROWSER_BODY_LIMIT) {
-          reply(413, { ok: false, error: "요청 본문이 너무 큽니다." });
-          return;
-        }
-        chunks.push(chunk as Buffer);
-      }
-    } catch {
-      reply(400, { ok: false, error: "요청 본문을 읽지 못했습니다." });
-      return;
-    }
-    let message: { op?: unknown; params?: unknown };
-    try {
-      message = JSON.parse(Buffer.concat(chunks).toString("utf8")) as typeof message;
-    } catch {
-      reply(400, { ok: false, error: "요청 본문을 JSON으로 읽지 못했습니다." });
-      return;
-    }
-    if (typeof message !== "object" || message === null || Array.isArray(message)) {
-      reply(400, { ok: false, error: "요청 본문은 {op, params} 객체여야 합니다." });
-      return;
-    }
-    const op = typeof message.op === "string" ? message.op : "";
-    if (!BROWSER_OPS[op]) {
-      reply(400, { ok: false, error: `알 수 없는 브라우저 op: ${op || "(없음)"}` });
-      return;
-    }
-
-    // op 관측의 시계 (M-8) — 화이트리스트를 지난 자리에서 놓아 모든 끝
-    // (성공 · 실패 · 타임아웃 · 404)이 같은 시계로 잰다.
-    const opStart = Date.now();
-    const params = message.params ?? {};
-    if (typeof params !== "object" || params === null || Array.isArray(params)) {
-      reply(400, { ok: false, error: "params는 객체여야 합니다." });
-      return;
-    }
-    // screen_check 는 pane 이 아니라 검증 창에서 돈다 — 사용자가 보는
-    // 페이지를 건드리지 않고, pane 이 없어도(미리보기를 띄우지 않아도)
-    // 판정할 수 있다. 게이트(runGate)와 같은 드라이버·같은 판정: open 이
-    // 콘솔을 비우므로 읽는 줄은 정확히 그 화면의 것이다.
-    if (op === "screenCheck") {
-      const checked = await this.runScreenCheck(sessionId, params as Record<string, unknown>);
-      this.observeBrowserOp(
-        sessionId,
-        op,
-        Date.now() - opStart,
-        checked.body.ok === true
-          ? undefined
-          : classifyBrowserFailure(String(checked.body.error ?? "")),
-      );
-      reply(checked.status, checked.body);
-      return;
-    }
-    // submit_for_review (PLAN L6 · O6) — pane 이 아니라 감독자에 향한다.
-    // 도구는 의도를 적을 뿐이고 네 단계는 감독자의 틱이 끝낸다. 실림과 실행
-    // 모두 프로젝트의 lifecycle.submitFromChat(기본 true)을 따른다. 세션 id 는
-    // 제출 완료의 귀속 대화가, 한마디는 PR 본문과 영수증이 쓴다 — 버튼 제출과
-    // 같은 자리로.
-    if (op === "submitForReview") {
-      const workspaces = this.workspaceOfSession(sessionId);
-      const slug = workspaces?.slug ?? null;
-      const allowed = slug !== null && (this.registry.get(slug)?.lifecycle?.submitFromChat ?? true);
-      if (!allowed) {
-        this.observeBrowserOp(sessionId, op, Date.now() - opStart, "other");
-        reply(200, {
-          ok: false,
-          error: "이 프로젝트는 대화로의 제출이 꺼져 있습니다 — 화면의 제출 버튼을 눌러 주세요.",
-        });
-        return;
-      }
-      workspaces?.supervisor.submit(
-        "chat",
-        sessionId,
-        submitNoteOf(params as Record<string, unknown>),
-      );
-      this.observeBrowserOp(sessionId, op, Date.now() - opStart);
-      reply(200, {
-        ok: true,
-        result: "개발자에게 보냈어요 — 진행은 상단의 상태 칩이 알려 줍니다.",
-      });
-      return;
-    }
-    // screen_files (PLAN-MCP §3.E) — pane 이 아니라 관찰 지도(screen-map.jsonl)와
-    // 클론 사냥만 본다. 미리보기를 띄우지 않은 세션·브라우저 개발 경로에서도
-    // 답한다. 겨냥은 screen_check 와 같이 활성 프로젝트가 아니라 세션의
-    // 프로젝트다.
-    if (op === "screenFiles") {
-      const workspaces = this.workspaceOfSession(sessionId);
-      const args = params as Record<string, unknown>;
-      const route = typeof args.route === "string" ? args.route.trim() : "";
-      if (workspaces === null || route === "") {
-        this.observeBrowserOp(sessionId, op, Date.now() - opStart, "other");
-        reply(200, {
-          ok: false,
-          error:
-            workspaces === null
-              ? "이 세션의 프로젝트를 찾지 못했습니다."
-              : "화면의 경로(route)가 필요합니다.",
-        });
-        return;
-      }
-      const title = typeof args.title === "string" ? args.title.trim() : "";
-      // 묶음 B(§3.B B-2): 레포 구조에서 주소와 같은 이름의 파일 — 세 길의
-      // 첫째다. 실패는 빈손(관찰과 같은 조용함).
-      const routed =
-        (await filesForRoute(workspaces.paths.repoRoot, route).catch(() => null))?.files ?? [];
-      const observed = await observedFilesFor(
-        workspaces.paths.root,
-        workspaces.paths.repoRoot,
-        route,
-      ).catch(() => [] as string[]);
-      // 제목이 있으면 관찰 다음의 한 번 더 — 핀 턴의 글자 사냥과 같은 바늘이다.
-      let hunted: string[] = [];
-      if (title !== "") {
-        const hits = await huntPinFiles(workspaces.paths.repoRoot, [
-          { id: "screen-files", text: title },
-        ])
-          .then((found) => found.get("screen-files") ?? [])
-          .catch(() => []);
-        hunted = hits.map((hit) => hit.file);
-      }
-      this.observeBrowserOp(sessionId, op, Date.now() - opStart);
-      reply(200, { ok: true, result: screenFilesAnswer(observed, hunted, title, routed) });
-      return;
-    }
-    // notify_developer (PLAN-MCP §3.E) — AI 도 고칠 수 없는 문제를 개발자에게
-    // 올리는 길이다. 열린 요청이 있으면 그 PR 의 코멘트, 없으면 이슈 —
-    // DeveloperNotice 의 기존 배달 그대로다. 문제 문장(notices)은 세우지 않는
-    // 것이 기본이라 `agent:` 키가 화면 주의에서 걸러진다. 실림 조건은 없다 —
-    // 예산(하루 3통)이 울타리다.
-    if (op === "notifyDeveloper") {
-      const workspaces = this.workspaceOfSession(sessionId);
-      const args = normalizeNotifyArgs(params as Record<string, unknown>);
-      if (workspaces === null || args === null) {
-        this.observeBrowserOp(sessionId, op, Date.now() - opStart, "other");
-        reply(200, {
-          ok: false,
-          error:
-            args === null
-              ? "title · what · ask 세 인자가 모두 필요합니다."
-              : "이 세션의 프로젝트를 찾지 못했습니다.",
-        });
-        return;
-      }
-      if (!workspaces.supervisor.spendAgentNotice()) {
-        this.observeBrowserOp(sessionId, op, Date.now() - opStart, "other");
-        reply(200, {
-          ok: true,
-          result: "오늘은 더 보낼 수 없습니다 — 답변에 이유를 적어 두십시오",
-        });
-        return;
-      }
-      const sessionTitle = this.manager.get(sessionId)?.title;
-      const via = await this.developerNotice.raise({
-        key: `${AGENT_NOTICE_KEY_PREFIX}${shortHash(args.title)}`,
-        slug: workspaces.slug,
-        title: args.title,
-        what: args.what,
-        tried: "AI 가 대화 안에서 시도한 것 — 답변 참조",
-        ask: args.ask,
-        // 자세히는 세션 제목 한 줄 — 개발자가 어느 대화의 쪽지인지 안다.
-        ...(sessionTitle === undefined ? {} : { detail: sessionTitle }),
-      });
-      this.observeBrowserOp(
-        sessionId,
-        op,
-        Date.now() - opStart,
-        via === "none" ? "other" : undefined,
-      );
-      reply(200, { ok: true, result: notifyDeveloperAnswer(via) });
-      return;
-    }
-    // repo_diagnostics (PLAN-HARNESS §3.C) — 증분 tsc 를 클론에서 돌려 이번에
-    // 바뀐 파일의 타입 오류부터 답한다. 빌드 정보 파일은 클론 밖(프로젝트
-    // 폴더의 뿌리)에 쓰므로 git status 는 깨끗하고, 미리보기와는 무관하다.
-    // 답은 어느 상태든 사실을 알리는 텍스트다 — 오류가 있어도 isError 가 아니다.
-    if (op === "repoDiagnostics") {
-      const workspaces = this.workspaceOfSession(sessionId);
-      if (workspaces === null) {
-        this.observeBrowserOp(sessionId, op, Date.now() - opStart, "other");
-        reply(200, { ok: false, error: "이 세션의 프로젝트를 찾지 못했습니다." });
-        return;
-      }
-      const changed = await workspaces.repo
-        .diff()
-        .then((files) => files.map((file) => file.path))
-        .catch(() => [] as string[]);
-      const result = await this.typeChecker.check(
-        workspaces.paths.repoRoot,
-        workspaces.paths.root,
-        repoCommandEnv(process.env),
-      );
-      this.observeBrowserOp(sessionId, op, Date.now() - opStart);
-      reply(200, { ok: true, result: diagnosticsAnswer(result, changed) });
-      return;
-    }
-    // describe_changes (2026-10-11 피드백) — pane 이 없다. 일하는 AI 가 적은
-    // 보관 계획을 이 턴의 것으로 여기 적는다. 레포의 지금 변경을 함께 읽어
-    // 계획에 없는 경로를 알려 주는 것까지가 도구의 대답이다 — 모델이 그 자리에서
-    // 고치게. 저장은 runAutoSave 의 소비 때 승인 경로와 한 번 더 골라내므로,
-    // 여기서의 안내는 정확을 위한 것일 뿐 집행의 문지기는 아니다.
-    if (op === "describeChanges") {
-      const parsed = normalizeDescribeChanges(params);
-      if (!parsed.ok) {
-        this.observeBrowserOp(sessionId, op, Date.now() - opStart, "other");
-        reply(200, { ok: false, error: parsed.error });
-        return;
-      }
-      const session = this.manager.get(sessionId);
-      this.changePlans.set(sessionId, {
-        requestId: session?.lastRequestId ?? null,
-        changes: parsed.changes,
-      });
-      const workspaces = this.workspaceOfSession(sessionId);
-      const changed =
-        workspaces === null
-          ? []
-          : await workspaces.repo
-              .diff()
-              .then((files) => files.map((file) => file.path))
-              .catch(() => [] as string[]);
-      const listed = new Set(parsed.changes.flatMap((change) => change.files));
-      const missing = changed.filter((path) => !listed.has(path));
-      this.observeBrowserOp(sessionId, op, Date.now() - opStart);
-      const answer =
-        parsed.changes.length === 0
-          ? "보관 계획에 남은 변경이 없다 — 저장 때는 이번 턴의 변경이 한 커밋으로 담긴다."
-          : `보관 계획에 변경 ${parsed.changes.length}건을 적었다 — 저장 때 변경마다 커밋한다.` +
-            (missing.length > 0
-              ? ` 레포의 지금 변경 중 계획에 없는 경로는 그 밖의 변경으로 함께 담긴다: ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? " 외" : ""}`
-              : "");
-      reply(200, { ok: true, result: answer });
-      return;
-    }
-    const factory = this.config.browserDriverFactory;
-    if (!factory) {
-      this.observeBrowserOp(sessionId, op, Date.now() - opStart, "no-pane");
-      reply(404, {
-        ok: false,
-        error: "브라우저 드라이버가 없습니다 — 데스크톱 앱에서만 동작합니다.",
-      });
-      return;
-    }
-    const driver = factory.forPane();
-    if (!driver) {
-      this.observeBrowserOp(sessionId, op, Date.now() - opStart, "no-pane");
-      reply(404, {
-        ok: false,
-        error: "브라우저 창이 아직 없습니다 — 탭을 열거나 미리보기를 띄운 뒤 다시 시도해 주세요.",
-      });
-      return;
-    }
-    // 에이전트가 pane을 조작하는 동안 탭 스트립에 표시한다(4단계) — 시작과
-    // 끝을 같은 자리에서 방송하므로 실패해도 표시가 남지 않는다. 읽기 op는
-    // 조작이 아니라 관찰이라 표시를 켜지 않는다.
-    const quiet = BROWSER_QUIET_OPS[op] === true;
-    if (!quiet) this.broadcast({ type: "browser.driving", sessionId, on: true });
-    // 타임아웃 판별용 센티넬 — catch 에서 이것과 같은 오류면 op 가 아직
-    // 끝나지 않은 채 떠 있다는 뜻이라 큐 꼬리 회수와 드라이버 복구가 따라간다.
-    const opTimeout = new Error("브라우저 명령이 시간을 넘겼습니다.");
-    try {
-      // 같은 세션의 op는 한 줄로 세운다 — 병렬이면 ref 세대가 경합해 가짜
-      // "다시 읽으십시오"가 난다. 타임아웃은 호출자만 놓아 준다 — 큐 꼬리는
-      // op 의 실제 끝을 기다리므로, 시간을 넘긴 op 가 뒤에서 계속 돌아도
-      // 다음 op 와 겹치지 않는다.
-      const run = this.browserOps.get(sessionId) ?? Promise.resolve();
-      const opDone = run.then(async () => {
-        // 권한은 op 종류가 아니라 실행 시점의 표면이 정한다 — 레포 바깥
-        // 화면에서는 scroll{dy:0} 한 줄도 페이지 전체를 실어 나르므로,
-        // 비-레포 표면의 모든 op 가 카드를 지난다. 판정을 큐 안(실행
-        // 직전)에 두는 것이 TOCTOU 를 닫는 길이다: 요청과 실행 사이에
-        // 사용자가 화면을 옮겼을 수 있다. 카드는 세션의 권한 흐름 그
-        // 자체라 항상 허용 메모리가 통하고, 무응답은 유예 뒤 거절로
-        // 정산된다.
-        const repoSurface = driver.isRepoSurface();
-        if (!repoSurface) {
-          const session = this.manager.get(sessionId);
-          if (!session) throw new Error("대화가 이미 닫혔습니다.");
-          const ask = new AbortController();
-          const askTimer = setTimeout(() => ask.abort(), BROWSER_ASK_TIMEOUT_MS);
-          askTimer.unref();
-          let verdict: { allowed: boolean; message: string | null };
-          try {
-            verdict = await session.decideBrowserOp(`browser_${op}`, ask.signal);
-          } finally {
-            clearTimeout(askTimer);
-          }
-          if (!verdict.allowed) {
-            throw new Error(verdict.message ?? "사용자가 이 화면에 대한 접근을 거절했습니다.");
-          }
-        }
-        const result = await callBrowserOp(driver, op, params as Record<string, unknown>);
-        // 레포 표면에서 떠난 이동(navigate·back·forward)은 카드 없이
-        // 허용했다 — 하지만 착지한 곳이 레포 바깥이면 그 화면의 내용까지
-        // 약속한 것은 아니다. 스냅샷을 내리지 않는다: 다시 읽고 싶으면
-        // 권한 카드를 지나는 읽기 op 를 부르게 한다.
-        if (
-          repoSurface &&
-          !driver.isRepoSurface() &&
-          (op === "navigate" || op === "back" || op === "forward")
-        ) {
-          // navigate 의 settled 만 살린다(도착 사실) — 결과가 계약 밖
-          // 형태면 정착 실패로 답하는 쪽이 안전하다.
-          if (
-            op === "navigate" &&
-            result !== null &&
-            typeof result === "object" &&
-            "settled" in result
-          ) {
-            return { settled: result.settled === true, note: BROWSER_EXTERNAL_NOTE };
-          }
-          return { note: BROWSER_EXTERNAL_NOTE };
-        }
-        return this.shapeBrowserResult(sessionId, op, params as Record<string, unknown>, result);
-      });
-      this.browserOps.set(
-        sessionId,
-        opDone.catch(() => undefined),
-      );
-      let timer: NodeJS.Timeout | undefined;
-      const result = await Promise.race([
-        opDone,
-        new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => reject(opTimeout), BROWSER_OP_TIMEOUT_MS);
-          timer.unref();
-        }),
-      ]).finally(() => clearTimeout(timer));
-      // navigate 가 가리킨 주소는 이 턴의 게이트 입력이다 — 사람의 pin과
-      // 같은 자리(notePinned)에 담고, preview origin 판별은 runGate가 한다.
-      // 전체 URL을 남긴다 — origin을 벗기면 외부 탐색이 preview 경로로
-      // 둔갑해 게이트가 뜬 적 없는 화면을 재검증한다. 주소의 쿼리는
-      // 그냥 주소의 일부로 실린다(2026-09-21 상태 축 철거).
-      if (op === "navigate" && typeof (params as Record<string, unknown>).url === "string") {
-        try {
-          const u = new URL((params as Record<string, unknown>).url as string);
-          this.drivers.notePinned(sessionId, u.toString());
-        } catch {
-          // 못 읽는 주소는 게이트 입력이 아니다.
-        }
-      }
-      this.observeBrowserOp(sessionId, op, Date.now() - opStart);
-      reply(200, { ok: true, result });
-    } catch (error) {
-      this.observeBrowserOp(
-        sessionId,
-        op,
-        Date.now() - opStart,
-        classifyBrowserFailure(error instanceof Error ? error.message : String(error)),
-      );
-      reply(200, {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      if (error === opTimeout) {
-        // op 가 끝나지 않은 채 떠 있다 — 꼬리를 이미 해결된 Promise 로
-        // 갈아치워 다음 op 가 멈춘 op 를 기다리지 않게 하고, 드라이버를
-        // 복구해 디버거 점유(사용자의 DevTools 봉쇄)를 푼다. 멈춘 op 자체는
-        // 계속 떠 있을 수 있지만 큐와 붙임은 회수됐다.
-        this.browserOps.set(sessionId, Promise.resolve());
-        try {
-          driver.recover();
-        } catch {
-          // 복구 실패가 타임아웃 보고를 가리면 안 된다 — 다음 op 가 다시 시도한다.
-        }
-      }
-    } finally {
-      if (!quiet) this.broadcast({ type: "browser.driving", sessionId, on: false });
-    }
-  }
-
-  /**
-   * 스냅샷 다이어트의 결과 가공 (PLAN-MCP §3.C) — onInternalBrowser 의
-   * 가공 줄을 이 한 곳으로 모은다. snapshot 은 렌더된 텍스트를, find 는
-   * 거른 줄을, inspect 는 정체 + 파일 후보의 한 장(§3.E-1)을, 액션 11개는
-   * 주소 · 제목 · 포커스 · 바뀐 줄의 요약을 내리고 세션의 마지막 렌더 줄을
-   * 갈아둔다(다음 액션 요약의 before). 부분 트리(ref) 스냅샷은 기준을 갈지
-   * 않는다 — 페이지 전체가 아니므로.
-   */
-  private async shapeBrowserResult(
-    sessionId: string,
-    op: string,
-    params: Record<string, unknown>,
-    result: unknown,
-  ): Promise<unknown> {
-    if (op === "snapshot") {
-      const rendered = result as SnapshotRender;
-      if (isWholeSnapshot(params)) this.browserLastRender.set(sessionId, rendered.fullLines);
-      return rendered.text;
-    }
-    if (op === "find") return (result as FindRender).text;
-    if (op === "inspect") return this.shapeInspect(sessionId, params, result);
-    // 기다림의 실패는 오류가 아니라 사실이다(PLAN-MCP §3.F) — true/false
-    // 그대로면 모델이 다음 수를 정할 근거가 옅다. 실제로 기다린 예산을 말하는
-    // 문장으로 내린다.
-    if (op === "waitFor") return waitForAnswer(result === true, asNumber(params.ms));
-    if (BROWSER_SUMMARIZE_OPS[op] !== true) return result;
-    const report = result as BrowserActionReport & { settled?: boolean };
-    const after = snapshotLines(report.snapshot);
-    const summary = summarizeAction(this.browserLastRender.get(sessionId) ?? [], after, {
-      url: report.url,
-      title: report.title,
-      focus: focusLineOf(report.snapshot),
-      // 정착은 navigate 만 알린다 — 다른 액션의 드라이버 답에 그 값이 없다.
-      ...(op === "navigate" ? { settled: report.settled === true } : {}),
-    });
-    this.browserLastRender.set(sessionId, after);
-    return summary.text;
-  }
-
-  /**
-   * inspect 결과의 보강 (§3.E-1) — 핀 턴(enrichCommentsTurn)과 같은 순서로
-   * 클론을 훑아 파일 후보 · 발췌를 얹고 정체 한 장을 조립한다. 조사한 화면은
-   * 이 턴의 화면이다: notePinned 가 게이트 · screen-map.jsonl · 「이번 작업」의
-   * 재료이므로 navigate · screen_check 와 같은 자리에 전체 주소로 적는다.
-   * 세션의 프로젝트(활성이 아님)가 클론의 주인 — 게이트와 같은 겨냥이다.
-   */
-  private async shapeInspect(
-    sessionId: string,
-    params: Record<string, unknown>,
-    result: unknown,
-  ): Promise<string> {
-    const inspected = result as { url?: unknown; element?: ColoNovaDesignCommentTarget };
-    const element = inspected.element;
-    const url = typeof inspected.url === "string" ? inspected.url : "";
-    const workspaces = this.workspaceOfSession(sessionId);
-    const screen = screenIdOf(url);
-    const files = element
-      ? await enrichIdentity(
-          workspaces?.paths.repoRoot ?? "",
-          {
-            id: String(params.ref ?? ""),
-            ...(element.attrs?.testId ? { testId: element.attrs.testId } : {}),
-            ...(element.owners && element.owners.length > 0 ? { owners: element.owners } : {}),
-            ...(element.text ? { text: element.text } : {}),
-            ...(screen !== undefined ? { screen } : {}),
-          } satisfies SessionPinHint,
-          workspaces ? { projectRoot: workspaces.paths.root } : null,
-        ).catch((): IdentityFiles => ({ candidates: [], observed: false }))
-      : { candidates: [], observed: false };
-    if (url !== "") this.drivers.notePinned(sessionId, url);
-    return element ? renderIdentity(element, files) : String(result);
-  }
-  /**
-   * `screen_check` 도구의 판정 (빠른 수정, 2026-09-20): 세션이 사는
-   * 프로젝트의 미리보기 주소에서 그 화면들을 검증 창으로 열어 본다 —
-   * 게이트(runGate)와 같은 드라이버, 같은 기준(자리 잡음 + error·실패한
-   * 요청), 같은 상한. 판정 자체는 화면 하나 도우미(judgeScreen) 하나에서
-   * 난다 — 두 기계의 말이 어긋나지 않게. 돌려주는 것은 화면마다 자리
-   * 잡음 · 빈 화면 · 콘솔 오류(휴대폰 폭이면 문서가 옆으로 밀리는지도, 부탁하면
-   * 접근성도)뿐이라 스냅샷 수천 토큰을 태우지 않는다.
-   * capture 면 문제 화면의 그림 한 장(긴 변 640)이 더 간다 — base64 를
-   * 텍스트에 싣지 않게 callBrowserTool 이 MCP image 블록으로 내린다.
-   * 인자의 정규화(합집합 · 중복 접기 · origin · 상한)는
-   * normalizeScreenCheckArgs 의 몫이다. 레포 바깥 주소는 원천 봉쇄 —
-   * 검증 창이 열 수 있는 것은 이 세션의 미리보기뿐이다.
-   */
-  private async runScreenCheck(
-    sessionId: string,
-    params: Record<string, unknown>,
-  ): Promise<{ status: number; body: Record<string, unknown> }> {
-    const factory = this.config.previewDriverFactory;
-    if (factory === undefined) {
-      return {
-        status: 404,
-        body: { ok: false, error: "브라우저 드라이버가 없습니다 — 데스크톱 앱에서만 동작합니다." },
-      };
-    }
-    // 게이트와 같은 겨냥 — 세션이 사는 프로젝트의 미리보기. 활성 프로젝트가
-    // 아니라 이 세션의 것이다(전환 뒤 끝난 턴과 같은 이유).
-    const repo = this.workspaceOfSession(sessionId)?.repo ?? null;
-    const status = await repo?.status().catch(() => null);
-    const previewUrl = status?.previewUrl;
-    if (!repo || !previewUrl) {
-      return {
-        status: 200,
-        body: {
-          ok: false,
-          error: "미리보기 서버가 아직 뜨지 않았습니다 — 잠시 후 다시 시도해 주세요.",
-        },
-      };
-    }
-    const normalized = normalizeScreenCheckArgs(params, previewUrl);
-    if (!normalized.ok) return { status: 400, body: { ok: false, error: normalized.error } };
-    // 창은 한 번 세운다 — 화면마다 open 을 이어 부르고 마지막에 거둔다.
-    // 게이트(inspectScreens)가 창 하나로 여러 화면을 보는 것과 같은 모양이다.
-    const driver = factory.forIsolated(previewUrl);
-    const origin = new URL(previewUrl).origin;
-    const screens: Array<{
-      url: string;
-      /**
-       * 열었더니 로그인 화면이었다(2026-10-07 베타 준비 분석) — AI 가 읽는 한 문장이다. 이 칸이 있으면 화면을 본 것이
-       * 아니다: 문서는 멀쩡히 로드됐지만 요청한 화면이 아니라 그 앞의 벽이다.
-       */
-      loginWall?: string;
-      settled: boolean;
-      blank: boolean;
-      errors: string[];
-      /** 휴대폰 폭으로 봤고 문서가 옆으로 밀릴 때만 — 게이트와 같은 문턱의 판정이다. */
-      overflow?: ScreenOverflow;
-      /**
-       * 접근성을 부탁했고 브라우저가 답했을 때만 — 문제가 없으면 빈 목록이다. 게이트와 달리 지난번과의
-       * 차를 빼지 않는다: AI 가 고친 것을 확인하려고 묻는 것이므로 지금 있는 것 전부를 본다.
-       */
-      a11y?: { unnamed: string[]; contrast: string[] };
-      capture?: PreviewCapture;
-    }> = [];
-    let walls = 0;
-    try {
-      for (const route of normalized.routes) {
-        const verdict = await judgeScreen(driver, route, {
-          viewport: normalized.viewport,
-          ...(normalized.colorScheme !== undefined ? { colorScheme: normalized.colorScheme } : {}),
-          ...(normalized.a11y ? { a11y: true } : {}),
-        });
-        // 2026-09-21: 화면의 전체 주소 — 답변의 하이퍼링크가 이 주소로
-        // 맺어진다. 경로만 아는 패인에게 미리보기 서버의 주소를 가르쳐
-        // 주는 유일한 자리다.
-        const url = new URL(route, origin).toString();
-        if (!verdict.opened) {
-          // 열지 못한 것도 화면 하나의 답이다 — 이유를 실어 AI 가 읽게
-          // 한다. 창이 그림으로 답할 상태가 아니므로 그림은 찍지 않는다.
-          screens.push({
-            url,
-            settled: false,
-            blank: false,
-            errors: [verdict.reason ?? "화면을 열지 못했습니다."],
-          });
-          continue;
-        }
-        // screen_check 로만 확인한 화면도 이번 작업의 장부에 적는다 —
-        // notePinned 가 게이트 · screen-map.jsonl · 「이번 작업」의 바뀐 화면
-        // (project-fleet 의 screensOfTurn)의 유일한 재료라, navigate 없이
-        // screen_check 만으로 확인한 화면은 장부에서 빠졌다. navigate 가
-        // 남기는 것과 같은 전체 주소다.
-        this.drivers.notePinned(sessionId, url);
-        if (verdict.loginWall === true) {
-          // 로그인 벽 — 화면을 확인한 것이 아니다. 조용한 `settled: true` · 빈 `errors` 가 「깨끗함」 으로 읽히지
-          // 않게 한 문장이 맨 앞에 선다. 그림은 찍지 않는다(로그인 화면의 사진은 이 화면의 것이 아니다).
-          screens.push({
-            url,
-            loginWall: LOGIN_WALL_NOTICE,
-            settled: true,
-            blank: false,
-            errors: [],
-          });
-          walls += 1;
-          continue;
-        }
-        const errors = verdict.lines.map((line) => `${line.level}: ${line.text}`);
-        const screen: (typeof screens)[number] = {
-          url,
-          settled: !verdict.unsettled,
-          blank: verdict.blank,
-          errors,
-          ...(verdict.overflow !== undefined ? { overflow: verdict.overflow } : {}),
-          ...(verdict.a11y !== undefined ? { a11y: a11yLines(verdict.a11y) } : {}),
-        };
-        const a11yTrouble =
-          verdict.a11y !== undefined &&
-          (verdict.a11y.unnamed.length > 0 || verdict.a11y.contrast.length > 0);
-        // 그림은 문제 화면에만 — 멀쩡한 화면의 그림은 토큰만 태운다.
-        if (
-          normalized.capture &&
-          (verdict.unsettled ||
-            verdict.blank ||
-            errors.length > 0 ||
-            verdict.overflow !== undefined ||
-            a11yTrouble)
-        ) {
-          const shot = await driver.screenshot({ longEdge: 640 }).catch(() => null);
-          if (shot !== null) screen.capture = shot;
-        }
-        screens.push(screen);
-      }
-    } finally {
-      await driver.destroy().catch(() => undefined);
-    }
-    // 통계에는 횟수만 — 주소 · 경로는 남기지 않는다.
-    if (walls > 0) this.stats.noteLoginWall(sessionId, walls);
-    return {
-      status: 200,
-      body: {
-        ok: true,
-        result: {
-          screens,
-          ...(normalized.truncated > 0 ? { truncated: normalized.truncated } : {}),
-        },
-      },
-    };
-  }
-
   private async status() {
     const active = this.activeOrNull();
     const registry = active?.repo.registry() ?? null;
@@ -2381,12 +1367,6 @@ export class DaemonServer {
           oneShot: driver.oneShot !== undefined,
           capabilities: {
             ...descriptor.capabilities,
-            // 브라우저 도구(3단계): 공급자 선언은 "주입 가능"일 뿐 — 실제
-            // 제공은 host의 browserDriverFactory 주입이 정한다. 둘 다 참일
-            // 때만 UI가 브라우저 의존 기능을 보여 준다.
-            browserTools:
-              descriptor.capabilities.browserTools === true &&
-              this.config.browserDriverFactory !== undefined,
           } as Record<string, unknown>,
         };
       }),

@@ -53,16 +53,17 @@ node scripts/bench/bench.mjs run \
 시나리오 하나의 한 바퀴: `project.activate`(시작에 한 번) → `git rev-parse
 HEAD` 로 시작점 → `session.create` → `session.send`(핀 시나리오는
 `lib.mjs` 가 만든 표식 턴과 `pins` · `pinHints`) → 턴 통계 파일을 2초마다
-읽어 끝을 판정(턴 행 뒤 gateset 행, `reopened` 면 턴 하나 더 — 상한 15분) →
+읽어 끝을 판정(턴 행이 내려오면 끝 — 상한 15분. gateset 행은 옛 게이트 기록에만
+있고 `reopened` 면 턴 하나를 더 기다린다) →
 자동 보관 대기(HEAD 가 움직이거나 20초) → 바뀐 파일 판정 → `session.close`.
-세션은 닫을 뿐 지우지 않는다.
 
 ## 결과와 비교
 
 결과는 `bench-results/<YYYYMMDD-HHmm>-<label>.json` 에 쌓인다(루트
 `.gitignore` 에 들어 있다). `run` 이 끝나면 시나리오마다 통과 · 총 시간 · 첫
-편집까지 · 컨텍스트 · 브라우저 호출 · 브라우저 시간 · exec · 게이트 재개 · 비용 ·
-캐시 적중률의 표를 찍는다. 비용은 턴 행의 `costUsd`(정가 기준 추정, Claude 만 —
+편집까지 · 컨텍스트 · exec · 비용 · 캐시 적중률의 표를 찍는다. browser ·
+browserMs · 게이트 재개 칸은 옛 기록(2026-10-20 내장 게이트 · 브라우저 도구
+제거 전)을 읽을 때만 값이 있다. 비용은 턴 행의 `costUsd`(정가 기준 추정, Claude 만 —
 구독에서는 일의 양을 재는 눈금이지 청구서가 아니다)의 합이고, 캐시는 입력 전체
 가운데 캐시에서 읽은 몫이다. 프로바이더가 알려 주지 않은 실행은 `-` 다.
 

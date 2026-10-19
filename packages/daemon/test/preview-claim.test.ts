@@ -10,8 +10,8 @@ import {
   commandLinesCommand,
   descendantsOf,
   parseCommandLines,
-  parseProcessTable,
   parseProcessSnapshot,
+  parseProcessTable,
   pidCommandLines,
   processSnapshotCommand,
   processTableCommand,
@@ -211,7 +211,9 @@ test("클론 경로 앵커: Windows 는 대소문자를 가리지 않고 POSIX �
   assert.equal(commandLineMentions("node /Users/a/repo/x", "/Users/a/repo", "darwin"), true);
 });
 
-test("실제 프로세스의 명령줄을 읽는다 — 한글 · 공백 경로가 깨지지 않는다", { timeout: 30_000 }, async () => {
+test("실제 프로세스의 명령줄을 읽는다 — 한글 · 공백 경로가 깨지지 않는다", {
+  timeout: 30_000,
+}, async () => {
   const dir = mkdtempSync(join(tmpdir(), "명령줄 앵커-"));
   const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)", join(dir, "클론")], {
     stdio: "ignore",

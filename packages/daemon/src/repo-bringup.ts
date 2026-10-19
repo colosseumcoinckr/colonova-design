@@ -16,18 +16,17 @@ import {
 } from "./environment.js";
 import { createFileLogger } from "./log.js";
 import {
+  commandLineMentions,
   daemonOwnedPorts,
   descendantPids,
   descendantsOf,
   killPidTree,
   killTree,
-  commandLineMentions,
   pidCommandLines,
   pidListeningPorts,
   probePreviewUrl,
   processSnapshot,
 } from "./preview-claim.js";
-import { warmTrackedFiles } from "./tree-warm.js";
 import { detectPreview } from "./preview-detection.js";
 import {
   PREVIEW_COMMAND_UNKNOWN,
@@ -51,6 +50,7 @@ import {
   type RepoCore,
   redact,
 } from "./repo-core.js";
+import { warmTrackedFiles } from "./tree-warm.js";
 
 export class BringUp {
   constructor(private readonly core: RepoCore) {}

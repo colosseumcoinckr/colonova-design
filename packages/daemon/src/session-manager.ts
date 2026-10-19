@@ -9,7 +9,6 @@ import type {
 import { stripReplayedAttachments } from "./agent/attachments.js";
 import type { AgentDriver, ImportableSession } from "./agent/driver.js";
 import type { DriverRegistry } from "./agent/registry.js";
-import type { BrowserMcpEntry } from "./browser-launch.js";
 import { closeReplayTurns } from "./replay-turns.js";
 import { NEW_SESSION_TITLE, Session, type SessionEvents, type SessionOptions } from "./session.js";
 import { SessionIdentities } from "./session-identity.js";
@@ -111,22 +110,7 @@ export class SessionManager {
   private readonly events: SessionEvents;
   private readonly drivers: DriverRegistry;
 
-  constructor(
-    events: SessionEvents,
-    drivers: DriverRegistry,
-    /**
-     * 세션별 브라우저 MCP 기동 명세를 만드는 훅(3단계). DaemonServer가
-     * browserDriverFactory 주입 여부·시크릿 발급·바인딩 포트를 알고 있으므로
-     * 여기서 만든다. `cwd` 는 세션이 사는 클론 — 제출 도구의 실림
-     * 판정(PLAN L6)이 프로젝트를 보는 데 쓴다.
-     */
-    private readonly browserMcpFor?: (sessionId: string, cwd: string) => BrowserMcpEntry | null,
-    /**
-     * createSession 이 던졌을 때 발급된 시크릿을 회수하는 훅 — 세션이
-     * 못 열렸는데 시크릿이 맵에 남으면 닫힌 세션의 자격이 살아남는다.
-     */
-    private readonly browserMcpRevoke?: (sessionId: string) => void,
-  ) {
+  constructor(events: SessionEvents, drivers: DriverRegistry) {
     this.drivers = drivers;
     this.events = {
       ...events,
@@ -226,16 +210,8 @@ export class SessionManager {
       effort: options.launch?.effort ?? null,
       appendSystemPrompt: options.launch?.appendSystemPrompt ?? null,
       ...options.launch,
-      // 브라우저 도구 명세는 데몬이 세션별 시크릿과 함께 발급한다 — 호출자가
-      // options.launch로 넣은 값이 있어도 덮는다(시크릿은 세션 소유).
-      browserMcp: this.browserMcpFor?.(session.id, session.cwd) ?? undefined,
     };
-    try {
-      session.attach(driver.createSession(launch, session.driverHooks));
-    } catch (error) {
-      this.browserMcpRevoke?.(session.id);
-      throw error;
-    }
+    session.attach(driver.createSession(launch, session.driverHooks));
     this.live.set(session.id, session);
 
     // A resumed or forked session should keep the name of the thread it came
@@ -890,30 +866,24 @@ export class SessionManager {
       },
       shim,
     );
-    try {
-      fork.attach(
-        driver.createSession(
-          {
-            cwd: fork.cwd,
-            sessionId: fork.id,
-            model: input.base.launch?.model ?? null,
-            effort: input.base.launch?.effort ?? null,
-            appendSystemPrompt: input.base.launch?.appendSystemPrompt ?? null,
-            ...input.base.launch,
-            resume: this.storeId(input.sessionId, input.cwd),
-            forkSession: true,
-            ...(cutoff.cut
-              ? { resumeSessionAt: cutoff.cut, resumeDropsTurn: cutoff.drops ?? cutoff.cut }
-              : {}),
-            browserMcp: this.browserMcpFor?.(fork.id, fork.cwd) ?? undefined,
-          },
-          fork.driverHooks,
-        ),
-      );
-    } catch (error) {
-      this.browserMcpRevoke?.(fork.id);
-      throw error;
-    }
+    fork.attach(
+      driver.createSession(
+        {
+          cwd: fork.cwd,
+          sessionId: fork.id,
+          model: input.base.launch?.model ?? null,
+          effort: input.base.launch?.effort ?? null,
+          appendSystemPrompt: input.base.launch?.appendSystemPrompt ?? null,
+          ...input.base.launch,
+          resume: this.storeId(input.sessionId, input.cwd),
+          forkSession: true,
+          ...(cutoff.cut
+            ? { resumeSessionAt: cutoff.cut, resumeDropsTurn: cutoff.drops ?? cutoff.cut }
+            : {}),
+        },
+        fork.driverHooks,
+      ),
+    );
     this.live.set(fork.id, fork);
     // The handshake's `init` is the healthy-fork signal — a bounded
     // wait. A deterministic refusal (Resume rejected) here means

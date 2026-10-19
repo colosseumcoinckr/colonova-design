@@ -98,6 +98,11 @@ Windows 설치 파일은 한 번도 실행된 적이 없다(`packages/desktop/el
   - `도구 준비` 칸이 5초 안에 통과로 바뀐다(`확인하는 중…` 에서 오래 머물지 않는다).
 - **실패 시 볼 파일**: `packages/daemon/src/environment.ts`(`bundledToolEnv` · `gitCandidates` · `resolveNodeVersion`), `packages/daemon/src/onboarding.ts`, `packages/desktop/scripts/bundle-runtimes.mjs`.
 
+2026-10-20 내장 MCP 제거 확인: 연결 레포에 Claude용 지침·설정·스킬과 Codex용 지침·설정·스킬을 각각 준비한다.
+각 공급자로 새 대화·재개·분기를 실행해 레포 규칙과 스킬이 적용되는지 확인한다. 프로젝트에 준비한 MCP도
+그대로 나타나야 하며 앱 내장 도구는 나타나지 않아야 한다. 핀과 첨부를 보내 수정한 뒤 한 요청의 변경이
+함께 보관되고, 제출 버튼으로 푸시·요청 생성까지 이어져야 한다. 일반 수정 뒤 앱의 검증 창은 뜨지 않아야 한다.
+
 ### 4. AI 에게 도구 시켜 보기 (5분 — `AI 연결` 이 된 뒤)
 
 - **하는 일**: 대화에서 AI 에게 시킨다. 「터미널에서 `git --version` 과 `node -v` 와 `pnpm -v` 를 실행해서 결과를 알려 줘. 그다음 `git commit` 도 한 번 해 봐.」
@@ -171,8 +176,9 @@ Windows 설치 파일은 한 번도 실행된 적이 없다(`packages/desktop/el
   - `%USERPROFILE%\.colonova-design\projects\` 에 `결제-xxxxxx` 와 `회원-xxxxxx`(여섯 자리 16진수 접미)가 **서로 다른 폴더**로 있다. 화면의 프로젝트 이름은 `결제` · `회원` 그대로다. *(이번 수리: ASCII 접미)*
   - `%USERPROFILE%\.claude\projects\` 에 두 프로젝트의 대화 폴더가 **둘로 나뉘어** 있다(폴더 이름이 접미 때문에 다르다).
   - 두 프로젝트의 대화 목록이 섞이지 않는다.
+  - 프로젝트를 번갈아 고른 뒤 `폴더 열기`를 누르면 각각 그 프로젝트의 클론이 탐색기에 열린다(2026-10-20 사용자 요청, 요청 처리 분리의 회귀 확인).
   - 알아 둘 것: 지금의 화면에는 **한 프로젝트의 대화만 지우는 길이 없다**(`전체 초기화…` 는 모두 지운다). 그래서 `대화 모두 지우기` 가 이웃의 대화를 지우는지는 이 세션에서 눈으로 볼 수 없고, 데몬 시험(`claude-delete-all.test.ts`)이 단언한다.
-- **실패 시 볼 파일**: `packages/daemon/src/projects.ts`(`slugify`), `packages/daemon/src/agent/drivers/claude/driver.ts`(`deleteAll`).
+- **실패 시 볼 파일**: `packages/daemon/src/projects.ts`(`slugify`), `packages/daemon/src/requests/projects.ts`(`project.openFolder`), `packages/daemon/src/agent/drivers/claude/driver.ts`(`deleteAll`).
 
 ### 11. OneDrive 가 가져간 다운로드 폴더 (5분 — 해당하는 계정만)
 

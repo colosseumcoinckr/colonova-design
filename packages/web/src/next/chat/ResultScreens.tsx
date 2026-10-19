@@ -5,14 +5,7 @@ import type { Box } from "../lib/photo-diff";
 import { readPhotos } from "../lib/result-photos";
 import { diffText, useCopyPhoto, usePhotoTools } from "../lib/use-photo-tools";
 import { DiffOutlines } from "../ui/PhotoOutlines";
-import {
-  CompareIcon,
-  CopyIcon,
-  DiffIcon,
-  EditIcon,
-  EyeIcon,
-  FwdIcon,
-} from "./icons";
+import { CompareIcon, CopyIcon, DiffIcon, EditIcon, EyeIcon, FwdIcon } from "./icons";
 
 export type LoadComparison = Daemon["api"]["comparison"];
 

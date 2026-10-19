@@ -407,8 +407,7 @@ export function armGitNetworkWatchdog(args: string[]): {
  * 체크아웃부터 듣는다. 이미 받은 클론의 설정은 바꾸지 않는다 — 파일이 고친 것처럼 보인다.
  */
 export function windowsGitArgs(argv: string[]): string[] {
-  const own =
-    argv[0] === "clone" ? ["clone", "-c", "core.autocrlf=false", ...argv.slice(1)] : argv;
+  const own = argv[0] === "clone" ? ["clone", "-c", "core.autocrlf=false", ...argv.slice(1)] : argv;
   return ["-c", "core.longpaths=true", ...own];
 }
 

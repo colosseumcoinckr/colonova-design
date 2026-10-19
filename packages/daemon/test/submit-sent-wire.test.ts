@@ -45,8 +45,8 @@ test("sent 의 제목이 넷이거나 비었거나 너무 길면 막는다", () 
 // 데몬 안의 이음매 — 선로 → 감독자의 제출 의도. 한 곳만 빠져도 영수증이 조용히 예전으로 돌아간다.
 const src = (name: string) => readFileSync(new URL(`../src/${name}`, import.meta.url), "utf8");
 
-test("sent 는 dispatch 의 두 길(확인 창 · 직접) 모두에서 감독자의 의도로 간다", () => {
-  const dispatch = src("dispatch.ts");
+test("sent 는 제출의 두 길(확인 창 · 직접) 모두에서 감독자의 의도로 간다", () => {
+  const dispatch = src("requests/repository.ts");
   const calls =
     dispatch.match(
       /active\.supervisor\.submit\(\s*"button",\s*message\.sessionId,\s*message\.note \|\| undefined,\s*message\.sent,\s*\)/g,

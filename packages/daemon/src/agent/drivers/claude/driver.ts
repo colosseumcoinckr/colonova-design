@@ -54,9 +54,8 @@ const CLAUDE_CAPABILITIES = {
   compact: true,
   // SDK 의 interrupt 는 턴을 자를 뿐 도는 턴에 실어 넣는 길이 없다.
   steer: false,
-  // 브라우저 도구 주입 가능. 공급자 선언일 뿐 실제 제공은 host의
-  // browserDriverFactory 주입이 정하고, status가 둘을 AND해 UI에 보인다.
-  browserTools: true,
+  // 2026-10-20 사용자 요청: 앱 내장 도구를 주입하지 않는다.
+  browserTools: false,
 } as const;
 
 /**

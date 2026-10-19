@@ -5,8 +5,6 @@
 // `../dist` 임포트인 이유는 screen-check.test.ts 와 같다.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BROWSER_TOOLS, type ToolDef } from "../dist/browser-tools.js";
-import { COMMON_INSTRUCTIONS } from "../dist/common-instructions.js";
 import type { DaemonNotice } from "../dist/notices.js";
 import type {
   PreviewConsoleLine,
@@ -448,18 +446,4 @@ test("runGate — 두 폭 모두 멀쩡하면 통과다", async () => {
   const outcome = await drivers.runGate("s1");
   assert.equal(outcome.status, "ok");
   assert.equal(deps.sent.length, 0);
-});
-
-// ————— AI 에게 하는 말 —————
-
-test("screen_check 도구와 공통 지침은 overflow 칸을 AI 에게 알린다", () => {
-  const tool = BROWSER_TOOLS.find((entry) => entry.name === "screen_check") as ToolDef;
-  assert.match(tool.description, /overflow/, "도구 설명이 돌려주는 칸을 말한다");
-  // 인자 · 반환 칸은 도구 설명의 몫이다(2026-10-02) — 지침은 휴대폰 폭에서도 밀리지 않아야 한다는 뜻만 말한다.
-  assert.doesNotMatch(
-    COMMON_INSTRUCTIONS,
-    /overflow/,
-    "공통 지침은 도구의 반환 칸을 되풀이하지 않는다",
-  );
-  assert.match(COMMON_INSTRUCTIONS, /휴대폰 폭/, "공통 지침이 휴대폰 폭의 뜻을 말한다");
 });

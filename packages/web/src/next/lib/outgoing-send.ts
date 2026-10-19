@@ -15,7 +15,9 @@ function sameSend(left: string, right: string): boolean {
   if (left === right) return true;
   const a = readTurn(left).marker;
   const b = readTurn(right).marker;
-  return a?.kind === "comments" && b?.kind === "comments" && JSON.stringify(a) === JSON.stringify(b);
+  return (
+    a?.kind === "comments" && b?.kind === "comments" && JSON.stringify(a) === JSON.stringify(b)
+  );
 }
 
 /** 같은 말을 연이어 보내도 지난 기록을 이번 수락으로 세지 않는다. */
@@ -37,7 +39,9 @@ export function outgoingBlock(
     id,
     text,
     images: attachments.filter((part) => part.mediaType.startsWith("image/")).length,
-    files: attachments.filter((part) => !part.mediaType.startsWith("image/")).map((part) => part.name),
+    files: attachments
+      .filter((part) => !part.mediaType.startsWith("image/"))
+      .map((part) => part.name),
     thumbs: attachments
       .filter((part) => part.mediaType === "image/jpeg")
       .slice(0, 6)

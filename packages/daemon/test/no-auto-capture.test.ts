@@ -23,11 +23,14 @@ test("제출 초안과 직접 넘기기는 브라우저를 열거나 촬영하�
       }),
     },
     registry: { get: () => ({ name: "project" }) },
-    previewDrivers: new Proxy({}, {
-      get: () => {
-        throw new Error("자동 촬영은 브라우저 도구를 호출하면 안 된다");
+    previewDrivers: new Proxy(
+      {},
+      {
+        get: () => {
+          throw new Error("자동 촬영은 브라우저 도구를 호출하면 안 된다");
+        },
       },
-    }),
+    ),
   } as never);
   await router.dispatch({ id: "draft", type: "repo.handoffDraft" });
   assert.equal((draft as { shotCount: number }).shotCount, 0);

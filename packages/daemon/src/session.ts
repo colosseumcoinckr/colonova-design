@@ -204,11 +204,6 @@ export interface SessionEvents {
    * 세션은 결과 문장만 넘기고, 프로젝트 찾기와 배달은 받는 쪽이 한다.
    */
   onTurnFailed?: (sessionId: string, resultText: string | null) => void;
-  /**
-   * 브라우저 MCP 서버가 뜨지 못했다(2026-10-14 MCP 점검) — 세션은 대화에 경고 한 줄을
-   * 이미 내려놓았다. 받는 쪽(서버)은 로그에 종류만 남긴다. 세션마다 한 번이다.
-   */
-  onBrowserToolsDown?: (sessionId: string) => void;
   onPermissionRequest: (payload: {
     requestId: string;
     sessionId: string;
@@ -381,8 +376,6 @@ export class Session {
   fastModeBlocked: string | null = null;
   /** 부탁의 도중 드라이버가 스스로 상태를 보고했는가 — 낙관 적기의 간판. */
   private fastModeAnswered = false;
-  /** 브라우저 도구가 빠졌다는 경고를 이미 냈다 — init 은 턴마다 오므로 한 번만 말한다. */
-  private browserDownNoticed = false;
   model: string | null = null;
   /** Composer chip selections; `null` = the provider's own default. */
   private selectedModel: string | null = null;
@@ -553,18 +546,6 @@ export class Session {
       // 부탁 안에서 답한 보고다 — setFastMode 의 낙관 적기가 이 사실을 덮지
       // 못하게 도장을 찍는다.
       this.fastModeAnswered = true;
-    },
-    // 브라우저 MCP 가 뜨지 못했다(2026-10-14 MCP 점검) — AI 는 화면을 열지 못하지만
-    // 턴 끝의 화면 확인(게이트)은 데몬이 따로 돌므로 그대로다. 한 번만 말한다.
-    onBrowserToolsDown: () => {
-      if (this.browserDownNoticed) return;
-      this.browserDownNoticed = true;
-      this.events.onEvent(this.id, {
-        kind: "notice",
-        level: "warn",
-        text: "이번 대화에서는 AI 가 화면을 직접 열어 보지 못해요 — 답이 끝난 뒤의 화면 확인은 그대로 해요. 되풀이되면 앱을 다시 켜 주세요.",
-      });
-      this.events.onBrowserToolsDown?.(this.id);
     },
   };
 

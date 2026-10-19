@@ -210,31 +210,24 @@ export function collectRows(files, sessionId) {
 }
 
 // ---------------------------------------------------------------------------
-// 끝 판정 — 시나리오가 한 턴의 자식이다. 턴 행 하나 이상이 있고 그 뒤에
-// gateset 행이 있으면 끝난 것이다. gateset 이 reopened: true 면 게이트의 고침
-// 턴이 하나 더 도니 턴 행 하나를 더 기다린다(게이트는 두 번 서지 않는다).
+// 끝 판정 — 시나리오가 한 턴의 자식이다. 턴 행은 turn.end 의 정산에서 내려오므로
+// 그 자체로 턴의 끝이다(2026-10-20 내장 게이트 제거 뒤 새 실행에는 gateset 행이
+// 오지 않는다). gateset 이 뒤따르는 옛 기록만 reopened 의 고침 턴 하나를 더
+// 기다린다(게이트는 두 번 서지 않는다).
 // ---------------------------------------------------------------------------
 
 /**
  * rows 는 이 세션의 행(at 순). { done, waiting } — waiting 은 지금 기다리는
- * 것의 이름("turn" | "gateset" | "reopen-turn")이다.
+ * 것의 이름("turn" | "reopen-turn")이다.
  */
 export function turnProgress(rows) {
   const turns = rows.filter((row) => row.kind !== "gateset");
   if (turns.length === 0) return { done: false, waiting: "turn" };
   const gates = rows.filter((row) => row.kind === "gateset");
   const lastTurn = turns[turns.length - 1];
-  // 오류 · 중지로 끝난 턴은 자동 보관이 서지 않으므로 gateset 행도 오지 않는다
-  // (server.ts 의 autoSaveDue 조건) — 그 턴으로 끝난 것이다. 판정은 judge 가
-  // 마지막 턴의 isError 로 실패시킨다.
-  if (
-    (lastTurn.isError === true || lastTurn.subtype === "interrupted") &&
-    !gates.some((row) => row.at > lastTurn.at)
-  ) {
-    return { done: true };
-  }
-  if (gates.length === 0) return { done: false, waiting: "gateset" };
-  const lastGate = gates[gates.length - 1];
+  const gated = gates.filter((row) => row.at > lastTurn.at);
+  if (gated.length === 0) return { done: true };
+  const lastGate = gated[gated.length - 1];
   if (lastGate.reopened === true) {
     const reopened = turns.filter((row) => row.at > lastGate.at).length;
     return reopened >= 1 ? { done: true } : { done: false, waiting: "reopen-turn" };

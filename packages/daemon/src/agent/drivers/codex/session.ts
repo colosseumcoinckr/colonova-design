@@ -7,11 +7,6 @@ import type {
   SessionCommand,
   SessionModelInfo,
 } from "@colonova-design/protocol";
-import {
-  BROWSER_MCP_SERVER_NAME,
-  codexBrowserMcpDown,
-  codexBrowserMcpServer,
-} from "../../../browser-launch.js";
 import { ensureGitGuardHooks, gitGuardEnv } from "../../../git-guard.js";
 import { composeTurnText, prepareAttachments } from "../../attachments.js";
 import type {
@@ -49,6 +44,15 @@ const EFFORT_LEVELS: readonly string[] = ["low", "medium", "high", "xhigh", "max
  */
 const BYPASS_APPROVAL_POLICY = "never";
 const BYPASS_SANDBOX = "danger-full-access";
+
+/**
+ * 연결한 클론의 설정을 읽도록 이 프로세스에서만 신뢰한다(2026-10-20 사용자 요청).
+ * 출처: OpenAI Config basics. 사용자 config.toml이나 레포 파일은 고치지 않는다.
+ */
+export function codexAppServerArgs(cwd: string): string[] {
+  const root = process.platform === "win32" ? cwd.toLowerCase() : cwd;
+  return ["-c", `projects={${JSON.stringify(root)}={trust_level="trusted"}}`, "app-server"];
+}
 
 /** `thread/*` takes a SandboxMode string; `turn/start` takes the full policy. */
 function bypassSandboxPolicy(): Wire {
@@ -339,7 +343,7 @@ export class CodexAgentSession implements AgentSession {
     this.currentEffort = launch.effort;
     this.transport = new JsonRpcTransport(
       command,
-      ["app-server"],
+      codexAppServerArgs(launch.cwd),
       launch.cwd,
       {
         onRequest: (method, params) => this.onAgentRequest(method, params),
@@ -428,27 +432,13 @@ export class CodexAgentSession implements AgentSession {
     });
   }
 
-  /**
-   * The per-thread overrides every thread/* call carries. 브라우저 도구
-   * (3단계): host가 팩토리를 주입한 세션만 config.mcp_servers에 stdio 서버
-   * 하나를 실는다 — 스레드가 start·resume·fork 어느 길로 열리든 그 프로세스가
-   * MCP 자식을 함께 기동해야 하므로 예외는 없다.
-   */
   private threadOverrides(): Wire {
-    const browser = this.launch.browserMcp;
     return {
       ...(this.launch.model ? { model: this.launch.model } : {}),
       approvalPolicy: BYPASS_APPROVAL_POLICY,
       sandbox: BYPASS_SANDBOX,
       ...(this.launch.appendSystemPrompt
         ? { developerInstructions: this.launch.appendSystemPrompt }
-        : {}),
-      ...(browser
-        ? {
-            config: {
-              mcp_servers: { [BROWSER_MCP_SERVER_NAME]: codexBrowserMcpServer(browser) },
-            },
-          }
         : {}),
     };
   }
@@ -863,10 +853,6 @@ export class CodexAgentSession implements AgentSession {
       }
       case "thread/compacted":
         this.hooks.onEvent({ kind: "compact", trigger: "auto" });
-        break;
-      // 브라우저 MCP 자식이 못 떴다 — 스레드는 도구 상자 없이 계속 돈다(2026-10-14 MCP 점검).
-      case "mcpServer/startupStatus/updated":
-        if (codexBrowserMcpDown(p, this.threadId)) this.hooks.onBrowserToolsDown?.();
         break;
       default:
         break;

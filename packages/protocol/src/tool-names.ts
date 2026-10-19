@@ -24,7 +24,7 @@ const NAMES: Record<string, string> = {
   Task: "보조 작업",
   Agent: "보조 작업",
   AskUserQuestion: "질문",
-  // 앱이 올리는 도구(daemon/src/browser-tools.ts 의 전부) — 허락 카드와 작업 과정 줄에 `browser_snapshot`
+  // 옛 앱 내장 도구(2026-10-20 제거, 과거 대화 표시용) — 허락 카드와 작업 과정 줄에 `browser_snapshot`
   // 같은 영어가 그대로 떴다(베타 준비 분석 2026-10-07). 사용자의 어휘로: 화면을 열고 · 읽고 · 누르고 ·
   // 입력한다. `submit_for_review` 는 사용자가 대화로 제출을 청했을 때만 불리는 도구라 「제출 요청」 —
   // AI 가 스스로 제출하는 것으로 읽히지 않게 「제출하기」 라 쓰지 않는다(제출은 사용자의 일이다).

@@ -1,126 +1,27 @@
-import { spawn } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
 import {
   type ClientMessage,
-  DEFAULT_HANDOFF_BODY,
   type EffortLevel,
   markTurn,
   readTurn,
-  type ServerMessage,
 } from "@colonova-design/protocol";
-import type { DriverRegistry } from "./agent/registry.js";
-import type { AgentInstall } from "./agent-install.js";
-import type { AgentUpdates } from "./agent-update.js";
-import { recordComments } from "./comments.js";
-import type { DeveloperNotice } from "./developer-notice.js";
 import { describeProblem } from "./developer-notice.js";
-import { collectDiagnostics } from "./diagnostics.js";
-import { browseFiles, currentPlatform, listFiles } from "./environment.js";
-import type { Escalation } from "./escalation.js";
-import { submitFeatureRequest } from "./feedback.js";
-import type { GitHubBridge } from "./github-bridge.js";
-import type { HandoffPreviews } from "./handoff-preview.js";
-import type { DaemonLogger } from "./log.js";
-import type { DaemonNotice } from "./notices.js";
-import {
-  type AgentLogin,
-  runOnboardingChecks,
-  runPnpmInstall,
-  startGitInstall,
-} from "./onboarding.js";
 import { realpathBestEffort } from "./paths.js";
-import type { PlanTracker } from "./plan-tracker.js";
-import type { PreviewDrivers } from "./preview-drivers.js";
-import type { ProjectFleet, ProjectWorkspaces } from "./project-fleet.js";
-import type { ProjectRegistry } from "./projects.js";
-import type { QueueDisk, QueueStore, StartupRecovery } from "./queue-store.js";
-import { assertClonableRepoUrl, type RepoWorkspace } from "./repo.js";
+import type { ProjectWorkspaces } from "./project-fleet.js";
+import type { StartupRecovery } from "./queue-store.js";
+import type { RepoWorkspace } from "./repo.js";
+import { projectHandlers } from "./requests/projects.js";
+import { repositoryHandlers } from "./requests/repository.js";
+import { systemHandlers } from "./requests/system.js";
+import type { RequestHandlers, RouterDeps } from "./requests/types.js";
 import { ReviveBudget } from "./revive-budget.js";
-import { readComparison } from "./screen-comparisons.js";
 import type { Session } from "./session.js";
-import type { SessionManager } from "./session-manager.js";
 import { dropTape, readTape, spliceTape } from "./session-tape.js";
 import { threadProvider } from "./thread-provider.js";
 import { REVIVE_GRACE_MS } from "./turn-retry.js";
-import type { TurnStats } from "./turn-stats.js";
-import { undoLog } from "./undo-log.js";
 import { repoWritePolicy } from "./workspaces.js";
 
-/**
- * 서버가 라우터에 넘기는 것 — 프로토콜의 모든 요청이 거치는 좁은 문. 협력자는
- * 참조로, 실행 중 바뀌는 값은 콜백으로, 바깥에도 쓰이는 상태맵은 공유로.
- */
-export interface RouterDeps {
-  manager: SessionManager;
-  fleet: ProjectFleet;
-  previewDrivers: PreviewDrivers;
-  /**
-   * 시점 빌드 재현 — the handed-off moment's worktree
-   * build. The server owns its lifetime; the router only relays.
-   */
-  handoffPreviews: HandoffPreviews;
-  /** The agent provider registry — session.create resolves its driver here. */
-  agentDrivers: DriverRegistry;
-  plans: PlanTracker;
-  github: GitHubBridge;
-  queueStore: QueueStore;
-  registry: ProjectRegistry;
-  /** 슬라이스 5: 환경 실패를 개발자 채널로 흘리는 문 — 저장된 웹훅의 주인. */
-  escalation: Escalation;
-  /** 기계 잔일의 설정(machine.json) — machine.set · machine.author.set 이 쓰고 상태가 읽는다. */
-  machineSetting: { get(key: string): string | null; set(key: string, value: string | null): void };
-  /** 담당의 캐시 — 설정이 바뀌면 지운다(invalidate). */
-  machineTurns: { invalidate(): void };
-  notice(notice: DaemonNotice): void;
-  logger: DaemonLogger;
-  /** 터미널 없는 에이전트 로그인(P1-1) — 데몬이 파이프로 몰고 방송한다. */
-  agentLogin: AgentLogin;
-  /** 에이전트 설치 진행기(1단계) — 데몬이 끝까지 지켜보고 방송한다. */
-  agentInstall: AgentInstall;
-  /** 에이전트 업데이트(PLAN-UI U12) — 확인 · 미루기 · 자동 설치의 담당. */
-  agentUpdates: AgentUpdates;
-  broadcast(message: ServerMessage): void;
-  /** 해석된 CLI 경로 — start() 가 채운다. */
-  claudeExecutable(): string | null;
-  /**
-   * 설치 성공이 방금 푼 claude 경로를 데몬에 심는다(2026-09-24) — 드라이버와
-   * 상태가 읽는 자리가 같은 필드라 로그인 버튼이 재시작 없이 새 CLI 를 안다.
-   */
-  setClaudeExecutable(path: string | null): void;
-  /** onboarding.check 의 방어 — 풀린 적 없으면(null) 한 번 다시 푼다. */
-  refreshClaudeExecutable(): Promise<void>;
-  /** 설정의 CLI 경로 오버라이드 — 온보딩 체크가 읽는다. */
-  claudeExecutableOverride(): string | undefined;
-  queueDiskFor(sessionId: string): QueueDisk;
-  /** 개발자 알림 (PLAN L11) — 턴 자기치유의 예산 초과가 올라가는 문 (L12). */
-  developerNotice: DeveloperNotice;
-  /** 앱이 에이전트 로그인을 마쳤다 — 로그인 대기 중인 말을 다시 세운다 (L12). */
-  afterAgentLogin?: () => void;
-  /** 프로젝트 전환 직후 — pane 이 다른 페이지를 겨누기 시작했음을 알린다. */
-  afterProjectSwitch?: () => void;
-  status(): Promise<unknown>;
-  /** 턴 통계 — 보내기 문에서 잰 핀 강화 시간만 흘려 준다. */
-  stats: TurnStats;
-  /**
-   * 앱 버전 (PLAN-FEEDBACK) — 기능 제안 본문에 실린다. 선택인 이유는 기존
-   * 목업·서버 시험 깨지지 않게 하려는 것뿐이고, 서버는 항상 심는다.
-   */
-  appVersion?: () => string | null;
-  /** Wait for a turn's photos to finish persisting before serving its comparison. */
-  comparisonReady?: (slug: string) => Promise<void> | undefined;
-}
-
-/** `repo.submit` 이 감독자의 틱을 기다리는 창 — 넘으면 진행 중을 돌려준다. */
-const SUBMIT_WAIT_MS = 60_000;
-
-/** 메시지 종류별 형태 — 표의 각 칸이 받는 좁은 메시지 하나. */
-type ClientMessageOf<K extends ClientMessage["type"]> = Extract<ClientMessage, { type: K }>;
-
-/** 핸들러 표의 형태 — 종류마다 그 종류의 메시지를 받는 문 하나. */
-type DispatchHandlers = {
-  [K in ClientMessage["type"]]: (message: ClientMessageOf<K>) => unknown;
-};
+export type { RouterDeps } from "./requests/types.js";
 
 export class RequestRouter {
   /** The last thread a failing gate briefed, when it had to open one itself. */
@@ -134,23 +35,24 @@ export class RequestRouter {
   /** 지금 되살리는 중인 대화 — 되살리기 자신의 교체 close 가 셈을 지우는
    *  일(옛 결함: 매번 0 에서 다시 시작)을 가르는 표식이다. */
   private readonly reviving = new Set<string>();
-  constructor(private readonly deps: RouterDeps) {}
+  private readonly handlers: RequestHandlers;
+
+  constructor(private readonly deps: RouterDeps) {
+    this.handlers = {
+      ...this.sessionHandlers,
+      ...projectHandlers(deps),
+      ...repositoryHandlers(deps, (sessionId, stage) => this.briefTo(sessionId, stage)),
+      ...systemHandlers(deps),
+    };
+  }
 
   /** The active project's repo — every repo.* case's "the repo". */
   private get repo(): RepoWorkspace {
     return this.deps.fleet.requireActive().repo;
   }
 
-  private workspacesFor(slug: string): ProjectWorkspaces {
-    return this.deps.fleet.workspacesFor(slug);
-  }
-
   private requireActive(): ProjectWorkspaces {
     return this.deps.fleet.requireActive();
-  }
-
-  private projectSummaries() {
-    return this.deps.fleet.projectSummaries();
   }
 
   private announceProjects(): void {
@@ -163,17 +65,6 @@ export class RequestRouter {
 
   private touchThreadsCwd(cwd: string | null | undefined): void {
     this.deps.fleet.touchThreadsCwd(cwd);
-  }
-
-  private async cliCommands() {
-    return this.deps.fleet.cliCommands();
-  }
-
-  private activateProject(slug: string): Promise<ProjectWorkspaces> {
-    return this.deps.fleet.activateProject(slug);
-  }
-  private async createProject(message: Parameters<ProjectFleet["createProject"]>[0]) {
-    return this.deps.fleet.createProject(message);
   }
 
   private workspaceCwd(): string {
@@ -191,22 +82,8 @@ export class RequestRouter {
   private workspaceOfSession(sessionId: string): ProjectWorkspaces | null {
     return this.deps.fleet.workspaceOfSession(sessionId);
   }
-
-  /**
-   * 클라이언트 메시지의 라우팅 테이블 — 한 케이스가 곧 선로 위 계약 하나. 서버는
-   * transport 와 수명주기를, 이 라우터는 "무엇을 어디로 보내는가"를 담당한다.
-   */
-  private readonly handlers: Partial<DispatchHandlers> = {
-    "daemon.status": async () => {
-      return await this.deps.status();
-    },
-    // 진단 한 덩어리(2026-10-07 베타 준비 분석) — 읽기뿐. 종류 · 숫자 · 버전만 나간다.
-    "diagnostics.summary": async () => {
-      return await collectDiagnostics({
-        status: () => this.deps.status(),
-        appVersion: this.deps.appVersion,
-      });
-    },
+  /** 세션 요청은 재개 예산과 복구 수명을 함께 쓴다. */
+  private readonly sessionHandlers = {
     "session.list": async (message) => {
       return await this.deps.manager.list(this.workspaceCwd(), message.limit ?? 50);
     },
@@ -480,12 +357,6 @@ export class RequestRouter {
       this.deps.plans.refresh(message.provider);
       return { ok: true };
     },
-    "repo.files": async (message) => {
-      // @-mention autocomplete draws from the repo clone only.
-      const root = this.repo.root;
-      const files = existsSync(root) ? await listFiles(root) : [];
-      return browseFiles(files, message.query ?? "", message.limit ?? 40);
-    },
     "session.setModel": async (message) => {
       await this.deps.manager.require(message.sessionId).setModel(message.model);
       this.deps.manager.rememberIdentity(message.sessionId);
@@ -523,7 +394,7 @@ export class RequestRouter {
       return { moved };
     },
     "cli.commands": async () => {
-      return await this.cliCommands();
+      return await this.deps.fleet.cliCommands();
     },
     "permission.respond": async (message) => {
       const session = this.deps.manager.findByRequest(message.requestId);
@@ -547,371 +418,6 @@ export class RequestRouter {
         message.annotations,
       );
       return { ok: true };
-    },
-    "project.list": () => {
-      return {
-        projects: this.projectSummaries(),
-        activeSlug: this.deps.registry.activeSlug(),
-      };
-    },
-    "project.create": async (message) => {
-      return await this.createProject(message);
-    },
-    "project.activate": async (message) => {
-      await this.activateProject(message.slug);
-      // 프로젝트가 바뀌면 pane 은 남의 페이지로 옮겨간다 — 세션의 브라우저
-      // 요약이 옛 페이지의 줄과 차이를 재지 않게 서버의 기억을 비운다.
-      this.deps.afterProjectSwitch?.();
-      return {
-        projects: this.projectSummaries(),
-        activeSlug: this.deps.registry.activeSlug(),
-      };
-    },
-    "project.update": async (message) => {
-      // Same guard as create — a moved url re-clones, so the wire's word
-      // passes through the clone-url guard before the registry hears it.
-      if (message.repoUrl != null) assertClonableRepoUrl(message.repoUrl);
-      // The error card's 실행 허용: the registry remembers, the workspace is
-      // told, and the bring-up it was waiting on runs to ready.
-      if (message.approveCommands !== undefined) {
-        this.deps.registry.update(message.slug, {
-          commandsApproved: message.approveCommands,
-        });
-        const gate = this.workspacesFor(message.slug);
-        gate.repo.setCommandsApproved(message.approveCommands);
-        if (message.approveCommands) void gate.repo.sync().catch(() => undefined);
-      }
-      this.deps.registry.update(message.slug, {
-        ...(message.name !== undefined ? { name: message.name } : {}),
-        ...(message.repoUrl !== undefined ? { repoUrl: message.repoUrl } : {}),
-        ...(message.baseBranch !== undefined ? { baseBranch: message.baseBranch } : {}),
-        // 지침(P1#8): 다음 대화부터 적용된다 — 돌고 있는 세션의 시스템
-        // 프롬프트를 중간에 바꾸지 않는다(SDK 의 스냅샷 계약).
-        ...(message.instructions !== undefined ? { instructions: message.instructions } : {}),
-        // 초대 v4(PLAN 단계 5): 개발자의 값은 덮는다 — null 은 지운다.
-        ...(message.defaults !== undefined ? { defaults: message.defaults } : {}),
-        ...(message.lifecycle !== undefined ? { lifecycle: message.lifecycle } : {}),
-        ...(message.reviewers !== undefined ? { reviewers: message.reviewers } : {}),
-      });
-      // A url change is a repo change: the workspace re-points (and
-      // re-clones when the url moved) through its own update path.
-      const workspaces = this.workspacesFor(message.slug);
-      if (message.repoUrl !== undefined) {
-        await workspaces.repo.update({ url: message.repoUrl });
-      }
-      this.announceProjects();
-      return {
-        projects: this.projectSummaries(),
-        activeSlug: this.deps.registry.activeSlug(),
-      };
-    },
-    "project.remove": async (message) => {
-      const paths = this.deps.registry.paths(message.slug);
-      // Transcripts are keyed by the clone's realpath (see workspaceCwd) —
-      // every lookup below must use that same spelling.
-      const repoRoot = realpathBestEffort(paths.repoRoot);
-      const workspaces = this.deps.fleet.workspaces.get(message.slug);
-      if (workspaces) {
-        // The clone's live threads die with it (D21): a session left
-        // running would keep writing into a folder the planner just
-        // disowned — or one `deleteFiles` is about to remove.
-        await this.deps.manager.closeWhere(repoRoot);
-        await workspaces.repo.stop();
-        this.deps.fleet.workspaces.delete(message.slug);
-      }
-      this.deps.registry.remove(message.slug);
-      // Files survive a forget: the clone holds screen work that was saved
-      // but never merged, and nothing else on the machine has it.
-      if (message.deleteFiles) {
-        // The conversations go with the folder (PLAN D77): the transcript
-        // store lives outside the project folder, keyed by this clone's
-        // path — leaving it behind would orphan every thread and let a
-        // same-named re-add resurrect them against an empty worktree.
-        await this.deps.manager.removeWhere(repoRoot);
-        rmSync(paths.root, { recursive: true, force: true });
-      }
-      const next = this.deps.registry.activeSlug();
-      if (next) await this.activateProject(next);
-      this.announceProjects();
-      return { projects: this.projectSummaries(), activeSlug: next };
-    },
-    "project.openFolder": (message) => {
-      if (!this.deps.registry.get(message.slug)) {
-        throw new Error(`프로젝트를 찾을 수 없습니다: ${message.slug}`);
-      }
-      const paths = this.deps.registry.paths(message.slug);
-      openInFileManager(paths.repoRoot);
-      return { ok: true };
-    },
-    "repo.status": async () => {
-      return await this.repo.status();
-    },
-    "repo.sync": async (message) => {
-      return await this.repo.sync(message.force === true);
-    },
-    "onboarding.check": async (message) => {
-      // 방어(2026-09-24): 시작 때 못 푼 claude 경로는 여기서 한 번 다시 푼다 —
-      // 사용자가 앱 밖에서 직접 설치한 경우도 재시작 없이 잡히게.
-      if (this.deps.claudeExecutable() === null) await this.deps.refreshClaudeExecutable();
-      return await runOnboardingChecks({
-        claudeExecutableOverride: this.deps.claudeExecutableOverride(),
-        gitHubClient: () => this.deps.github.client(),
-        provider: message.provider,
-        driverFor: (id) => this.deps.agentDrivers.get(id),
-        // 쓰기 레포 수(P1-2): 브리지의 캐시를 읽는다 — 피커가 곧 같은 목록을
-        // 요청하므로 이 판정의 추가 비용은 첫 한 번뿐이다.
-        githubWriteRepoCount: () => this.deps.github.writeRepoCount(),
-      });
-    },
-    "onboarding.fix": async (message) => {
-      switch (message.kind) {
-        case "install-claude":
-        case "install-codex": {
-          // 1단계: 데몬이 설치를 끝까지 지켜본다 — 진행 줄과 끝은 방송으로
-          // 나가고, ok 면 웹이 게이트를 다시 묻는다. 종류마다 하나씩만 돈다.
-          const kind = message.kind;
-          return this.deps.agentInstall.start(kind, {
-            onProgress: (line) =>
-              this.deps.broadcast({ type: "onboarding.install.progress", kind, line }),
-            onDone: (ok, detail, executable) => {
-              // 방송 전에 먼저: claude 설치의 성공 판정에 쓴 경로를 심어야
-              // 이어지는 재검사·로그인이 방금 설치한 CLI 를 본다(2026-09-24).
-              if (ok && kind === "install-claude" && executable) {
-                this.deps.setClaudeExecutable(executable);
-              }
-              this.deps.broadcast({ type: "onboarding.install.done", kind, ok, detail });
-            },
-          });
-        }
-        case "login-claude":
-        case "login-codex": {
-          // P1-1: 데몬이 로그인을 대신 몰고, 주소·끝은 방송으로 나간다.
-          // 각 드라이버가 자기 로그인 명령을 선언한다(loginCommand) — claude 는
-          // `auth login`(스파이크로 확인: 주소는 stdout, 코드는 stdin), codex 는
-          // `login`(주소는 stderr, 콜백 대기). login-codex 는 설정의 「로그인이
-          // 필요해요」 행이 부르는 같은 길이다(2026-09-28).
-          const provider =
-            message.provider ?? (message.kind === "login-codex" ? "codex" : "claude");
-          const driver = this.deps.agentDrivers.get(provider);
-          const command = driver?.loginCommand?.();
-          if (!command) {
-            return {
-              started: false,
-              guidance:
-                "이 에이전트는 로그인을 앱이 대신 시작할 수 없습니다 — 터미널에서 직접 로그인한 뒤 다시 확인해 주세요.",
-            };
-          }
-          return this.deps.agentLogin.start(command.command, command.args, {
-            onUrl: (url, wantsCode) =>
-              this.deps.broadcast({ type: "agent.login.url", url, wantsCode }),
-            onDone: (ok, detail) => {
-              this.deps.broadcast({ type: "agent.login.done", ok, detail });
-              // 로그인이 돌아왔다 — 로그인 만료로 멈춰 둔 말을 다시 세운다
-              // (PLAN L12). 감시의 다음 틱을 기다리지 않게 하는 길이다.
-              if (ok) this.deps.afterAgentLogin?.();
-            },
-          });
-        }
-        case "install-git":
-          return startGitInstall();
-        case "install-pnpm":
-          return await runPnpmInstall();
-      }
-      return { started: false, guidance: "알 수 없는 수정 요청입니다." };
-    },
-    "agent.login.code": (message) => {
-      if (!this.deps.agentLogin.submitCode(message.code)) {
-        throw new Error("진행 중인 로그인이 없습니다 — 로그인 버튼을 다시 눌러 주세요.");
-      }
-      return { ok: true as const };
-    },
-    "escalation.set": async (message) => {
-      await this.deps.escalation.set(message.config);
-      return { ok: true as const };
-    },
-    "machine.set": async (message) => {
-      const provider = message.provider;
-      if (message.agentAutoUpdate !== undefined) {
-        // 켬이 기본이라 파일에는 끔만 적힌다 — 잊기(null)가 곧 켬이다.
-        this.deps.machineSetting.set("agentAutoUpdate", message.agentAutoUpdate ? null : "off");
-        void this.deps
-          .status()
-          .then((status) => this.deps.broadcast({ type: "status", status } as ServerMessage));
-        // 켰다면 이미 아는 새 버전을 곧바로 건다(도는 작업이 있으면 미룬다).
-        if (message.agentAutoUpdate) void this.deps.agentUpdates.applyAuto();
-      }
-      if (provider === undefined) return { ok: true as const };
-      if (provider !== null) {
-        const driver = this.deps.agentDrivers.get(provider);
-        if (!driver) throw new Error(`알 수 없는 에이전트입니다: ${provider}`);
-        if (!driver.oneShot) {
-          throw new Error(
-            `${driver.describe().label} 는 보관 메모를 맡을 수 없습니다 — 자동으로 두거나 다른 에이전트를 골라 주세요.`,
-          );
-        }
-        const diagnostic = await driver.isAvailable().catch(() => null);
-        if (!diagnostic?.ok || !diagnostic.executable) {
-          throw new Error(
-            `${driver.describe().label} CLI 를 찾지 못했습니다 — 설치를 마친 뒤 다시 시도해 주세요.`,
-          );
-        }
-      }
-      this.deps.machineSetting.set("provider", provider);
-      this.deps.machineTurns.invalidate();
-      return { ok: true as const };
-    },
-    "agent.update": async (message) => {
-      // PLAN-UI U12: `check` 는 `지금 확인` — 새 버전만 읽고 상태를 다시 보낸다.
-      // 아니면 설치 진행기로 바꿔 깐다(도는 작업이 있으면 끝나는 즉시).
-      if (message.check === true) {
-        await this.deps.agentUpdates.check();
-        void this.deps
-          .status()
-          .then((status) => this.deps.broadcast({ type: "status", status } as ServerMessage));
-        return {
-          ok: true as const,
-          latestVersion: this.deps.agentUpdates.latest(message.kind) ?? null,
-        };
-      }
-      return { ok: true as const, phase: this.deps.agentUpdates.request(message.kind) };
-    },
-    "machine.author.set": (message) => {
-      // 이름은 문서로 흘러가는 문자열이라 잘라내는 것으로 충분하다 — 빈 칸은
-      // 지우기(null 과 같은 길)로 읽는다. 상태를 곧바로 다시 보낸다 — 다음 방송을
-      // 기다리면 초대 파일을 가져온 직후의 홈 인사가 이름 없이 남는다(단계 8 에서 봄).
-      const name = message.name === null ? null : message.name.trim();
-      this.deps.machineSetting.set("authorName", name === "" ? null : name);
-      void this.deps
-        .status()
-        .then((status) => this.deps.broadcast({ type: "status", status } as ServerMessage));
-      return { ok: true as const };
-    },
-    "escalation.notify": async (message) => {
-      // 화면이 지은 문구를 그대로 울린다. 10분 동일 문구 dedupe 는 그대로
-      // 두고(같은 사고가 연달아 슬랙을 때리지 않게), 문구에 프로젝트와
-      // 시각이 들어 있어 두 번째 누름이 조용히 삼켜지지 않는다 — 그 조립은
-      // 화면의 몫이다.
-      const rung = await this.deps.escalation.notify(message.text);
-      if (!rung)
-        throw new Error("개발자 알림을 보내지 못했습니다 — 설정 → 알림에서 연결을 확인해 주세요.");
-      return { ok: true as const };
-    },
-    "escalation.test": async () => {
-      const sent = await this.deps.escalation.notify(
-        "[ColoNova Design] 개발자 알림 시험 — 이 메시지가 보이면 연결된 것입니다.",
-      );
-      if (!sent)
-        throw new Error("알림을 보내지 못했습니다 — 웹훅 주소나 봇 토큰·채널을 확인해 주세요.");
-      return { ok: true as const };
-    },
-    "github.token.set": async (message) => {
-      return await this.deps.github.setToken(message.token);
-    },
-    "github.repo.inspect": async (message) => {
-      return await this.deps.github.inspectRepo(message.owner, message.repo);
-    },
-    "diff.get": async () => {
-      return await this.repo.diff();
-    },
-    "repo.save": async (message) => {
-      return await this.repo.save({
-        ...(message.message ? { message: message.message } : {}),
-        // hero-synthesis D1: the calling conversation owns the saved card.
-        ...(message.sessionId ? { sessionId: message.sessionId } : {}),
-        ...this.briefTo(message.sessionId, "save"),
-      });
-    },
-    "repo.handoff": async (message) => {
-      const active = this.requireActive();
-      const commentsFile = join(active.paths.root, "comments.json");
-      return await active.repo.handoff({
-        title: message.title ?? this.deps.registry.get(active.slug)?.name ?? undefined,
-        body: message.body ?? DEFAULT_HANDOFF_BODY,
-        // D93: the comment store — the PR body's `### 수정 요청` section is
-        // the daemon's to build.
-        commentsFile,
-        ...(message.sessionId ? { sessionId: message.sessionId } : {}),
-        ...this.briefTo(message.sessionId, "handoff"),
-      });
-    },
-    "repo.submit": async (message) => {
-      // 제출은 의도를 적는 것으로 끝난다 (PLAN L6) — 나머지는 감독자의 네
-      // 단계가 멱등하게 끝낸다. 여기서는 그 틱의 끝을 최대 60초 기다렸다 지금
-      // DiffStatus 를 돌려준다: 넘으면 "진행 중"(handing-off) — 의도는 원장에
-      // 남아 다음 틱이 이어받는다.
-      const active = this.requireActive();
-      // 확인 창의 한마디(PLAN-UI U3)는 의도와 함께 원장에 적힌다 — 본문의 `> 한마디:`.
-      if (message.expectedHead || message.expectedPreview) {
-        this.refuseWhileTurnRuns();
-        await active.repo.repoCore().lane.run("submit", async () => {
-          const head = await active.repo.headCommitFiles();
-          await active.repo.repoCore().refreshPendingChanges(true);
-          this.refuseWhileTurnRuns();
-          if (
-            (message.expectedHead && head?.sha !== message.expectedHead) ||
-            active.repo.pendingChanges > 0 ||
-            (message.expectedPreview &&
-              (await active.repo.repoCore().submitPreviewToken()) !== message.expectedPreview)
-          ) {
-            throw new Error(
-              "SUBMIT_CHANGED: 확인한 뒤 작업 내용이 바뀌었어요. 변경 목록을 다시 확인해 주세요.",
-            );
-          }
-          if ((await active.repo.repoCore().finalChangedFiles()).length === 0) {
-            throw new Error("제출할 변경이 없어요.");
-          }
-          active.supervisor.submit(
-            "button",
-            message.sessionId,
-            message.note || undefined,
-            message.sent,
-          );
-        });
-      } else {
-        active.supervisor.submit(
-          "button",
-          message.sessionId,
-          message.note || undefined,
-          message.sent,
-        );
-      }
-      await new Promise<void>((resolve) => {
-        const timer = setTimeout(resolve, SUBMIT_WAIT_MS);
-        void active.supervisor.settled().then(() => {
-          clearTimeout(timer);
-          resolve();
-        });
-      });
-      return active.lastDiff ?? { stage: "computing" as const };
-    },
-    "repo.handoffStatus": async () => {
-      // 상태 확인은 읽기만 한다 — 끝난 사이클의 착지(fetch·checkout·reset)는
-      // 감독자의 몫이다(PLAN L2 흡수표). 읽은 뒤의 틱이 그 일을 한다.
-      const workspaces = this.requireActive();
-      const report = await workspaces.repo.peekHandoff();
-      void workspaces.supervisor.tick("manual");
-      return report;
-    },
-    // 보낸 화면 동결: the frozen stage asks for one
-    // committed capture at a time — null is the "no shot" answer, not an
-    // error, so the panel falls back to the live preview with the stamp.
-    "repo.handoffShot": async (message) => {
-      return await this.repo.handoffShot(message.route);
-    },
-    // 시점 빌드 재현: the frozen stage's 실제로
-    // 열기 — the handoff branch's tip in a throwaway worktree, served on
-    // a second port. Absence answers as a ready:false info, not an error,
-    // so the stage falls back to the committed capture. The sessionId is
-    // what ties the build's life to the conversation that asked for it.
-    "repo.handoffPreview": async (message) => {
-      return await this.deps.handoffPreviews.open(message.sessionId ?? null);
-    },
-    // 패인 오류의 판정: the pane's held error report, re-opened in the
-    // isolated verification window. The pane decides what the verdict
-    // means — a fixed transient is put away quietly, a live break becomes
-    // the auto fix turn. 확인 불능(null)도 판정의 하나다.
-    "preview.screenCheck": async (message) => {
-      return await this.deps.previewDrivers.checkScreen(message.route);
     },
     // 답하기 (PLAN D88): the planner's words to one developer comment —
     // the daemon picks the endpoint by the id's kind.
@@ -947,143 +453,12 @@ export class RequestRouter {
       this.refreshThreads();
       return result;
     },
-    "comments.reply": async (message) => {
-      const activeWs = this.requireActive();
-      await activeWs.repo.replyToReview(message.reviewId, message.body);
-      return { ok: true as const };
-    },
-    // U20(PLAN-UI §10): 영수증의 `개발자에게 한마디 더` — 활성 프로젝트의
-    // 열린 요청에 달린다. 명령 id 가 멱등 키라 재전송이 두 번 달지 않는다.
-    "repo.note": async (message) => {
-      const activeWs = this.requireActive();
-      await activeWs.repo.noteToDeveloper(message.text);
-      return { ok: true as const };
-    },
-    // 제출 취소(2026-10-14) — 활성 프로젝트의 열린 요청을 닫는다. 감독자가 표식을 적고 닫은 뒤 착지 틱까지 돈다.
-    "repo.withdraw": async () => {
-      await this.requireActive().supervisor.withdraw();
-      return { ok: true as const };
-    },
-    // --- 되돌리기와 넘기기 (PLAN D52 · D53) ------------------------------
-    "repo.handoffDraft": async () => {
-      const active = this.requireActive();
-      const commentsFile = join(active.paths.root, "comments.json");
-      return await active.repo.handoffDraft({
-        commentsFile,
-        shotCount: 0,
-      });
-    },
-    "repo.comparison": async (message) => {
-      const active = this.requireActive();
-      if (!message.submitted) {
-        await this.deps.comparisonReady?.(active.slug);
-        return readComparison(active.paths.root, message);
-      }
-      const route = message.route.split("?")[0] ?? "/";
-      if (!route.startsWith("/") || route.startsWith("//")) return null;
-      const before = await active.repo.handoffShot(route);
-      const shots = await this.deps.previewDrivers.captureHandoffShots([{ route }]);
-      const shot = shots[0];
-      const mediaType =
-        shot?.extension === ".png"
-          ? "image/png"
-          : shot?.extension === ".webp"
-            ? "image/webp"
-            : "image/jpeg";
-      return {
-        route,
-        requestId: "submitted",
-        sessionId: "",
-        sha: "",
-        title: "",
-        viewport: "desktop",
-        before: before ? { ...before, at: "" } : null,
-        after: shot
-          ? {
-              mediaType,
-              data: Buffer.from(shot.image).toString("base64"),
-              at: new Date().toISOString(),
-            }
-          : null,
-      };
-    },
-    // 서비스의 첫 화면 사진(2026-10-07) — 첫 화면의 주소는 준비가 끝나며 읽은 것, 모르면 루트. 쿼리는 뗀다.
-    "repo.firstLook": async () => {
-      const active = this.requireActive();
-      const found = this.deps.fleet.firstScreenOf(active.slug)?.path.split(/[?#]/, 1)[0] ?? "/";
-      const route = found.startsWith("/") && !found.startsWith("//") ? found : "/";
-      return { route, image: null };
-    },
-    "repo.submitPreview": async () => {
-      const active = this.requireActive();
-      // 웹은 repo.status 를 받을 때마다 다시 묻고, 이 읽기의 git 출력이 다시
-      // repo.status 를 방송한다. git 이 느린 Windows 에서는 한 바퀴가 방송 간격보다
-      // 길어 줄이 끝없이 불어났다(2026-10-19 — 턴이 40초 넘게 줄 뒤에 섰다). 아직
-      // 시작하지 않은 읽기에 합류해 줄에는 많아야 하나만 선다 — 합류한 읽기도 요청
-      // 뒤에 시작하므로 신선하다. 칸은 "review": "submit" 은 실제 제출 · 넘기기가
-      // 쓰는 칸이라 거기에 합류하면 다른 모양의 결과를 받는다.
-      return active.repo.repoCore().lane.run(
-        "review",
-        async () => {
-          const core = active.repo.repoCore();
-          const head = await core.headCommitFiles();
-          if (!head) throw new Error("제출할 작업을 읽지 못했어요.");
-          await core.refreshPendingChanges(true);
-          const history = await core.history(true);
-          const finalFiles = await core.finalChangedFiles();
-          const expectedPreview = await core.submitPreviewToken();
-          return { head: head.sha, expectedPreview, repo: core.snapshot(), history, finalFiles };
-        },
-        { join: true },
-      );
-    },
-    "repo.history": async () => {
-      return await this.repo.history();
-    },
-    "repo.restore": async (message) => {
-      this.refuseWhileTurnRuns();
-      const restored = await this.repo.restore(message.sha);
-      undoLog().record({ kind: "save", slug: this.requireActive().slug });
-      return restored;
-    },
-    // --- 코멘트 저장소 (PLAN D57) ----------------------------------------
-    // The pins belong to the ACTIVE project: the messages carry no slug,
-    // exactly because the planner is looking at one project's preview.
-    // Write-only from here: the store's reader is the pull request body.
-    "comments.record": (message) => {
-      recordComments(join(this.requireActive().paths.root, "comments.json"), message.items);
-      return { recorded: message.items.length };
-    },
-    // --- 기능 제안 (PLAN-FEEDBACK) ---------------------------------------
-    // 앱 전체 기능: 활성 프로젝트·세션과 무관하므로 아무 준비도 묻지 않는다.
-    "feedback.submit": async (message) => {
-      return await submitFeatureRequest(
-        { request: message.request, context: message.context },
-        { github: this.deps.github, appVersion: this.deps.appVersion },
-      );
-    },
-  };
+  } satisfies Partial<RequestHandlers>;
 
   async dispatch(message: ClientMessage): Promise<unknown> {
     const handler = this.handlers[message.type];
     if (!handler) return undefined;
     return (handler as (message: ClientMessage) => unknown)(message);
-  }
-
-  /**
-   * 도는 턴 위에서 워크트리를 되돌리지 않는다 — 저장 · 되돌리기가 세운
-   * 계약을 인접 엔드포인트에도 같은 문구로 적용한다(감사 2026-09-19 C2ⓐ). 복원과
-   * 에이전트의 쓰기가 섞이면 어느 순간의 것도 아닌 트리가 남고, 그 트리가
-   * 그대로 사이클 브랜치에 실린다. 거절이 정직한 답이다(중지는 사용자의 몫).
-   *
-   * 판정은 활성 클론 기준이다 — 이 세 메시지는 slug 를 실지 않고 활성
-   * 프로젝트의 워크트리를 뜻하므로, 그 클론에서 도는 턴만이 위험하다.
-   */
-  private refuseWhileTurnRuns(): void {
-    if (!this.deps.manager.anyRunning(this.workspaceCwd())) return;
-    throw new Error(
-      "돌고 있는 턴이 있습니다 — 중지한 뒤에 되돌릴 수 있습니다. 먼저 중지해 주세요.",
-    );
   }
 
   /**
@@ -1432,27 +807,4 @@ export class RequestRouter {
     this.gateThreadId = session.id;
     return session;
   }
-}
-
-/**
- * 폴더 열기 — the OS file manager on the clone's path. Detached like the
- * onboarding fix spawns: nobody reads the outcome, and an opener that
- * errors must never crash the daemon. `explorer` is an exe, so no shell is
- * needed even on Windows.
- */
-function openInFileManager(path: string): void {
-  const platform = currentPlatform();
-  // COLONOVA_DESIGN_OPEN_BIN pins the opener — the e2e suite points it at a
-  // stub that logs the path instead of raising a real Finder window.
-  const pinned = process.env.COLONOVA_DESIGN_OPEN_BIN;
-  const [command, args] = pinned
-    ? [pinned, [path]]
-    : platform === "win32"
-      ? ["explorer", [path]]
-      : platform === "darwin"
-        ? ["open", [path]]
-        : ["xdg-open", [path]];
-  const child = spawn(command, args, { detached: true, stdio: "ignore" });
-  child.on("error", () => undefined);
-  child.unref();
 }

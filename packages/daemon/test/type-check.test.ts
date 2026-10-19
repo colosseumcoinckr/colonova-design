@@ -18,7 +18,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { BROWSER_TOOLS } from "../dist/browser-tools.js";
 import { repoCommandEnv } from "../dist/repo-bringup.js";
 import {
   diagnosticsAnswer,
@@ -282,21 +281,6 @@ test("TypeChecker — 진단 없이 끝나면 failed, 비지 않은 마지막 �
   children[0]?.say("무슨 출력\n마지막 줄의 이유\n");
   children[0]?.close(1);
   assert.deepEqual(await pending, { status: "failed", reason: "마지막 줄의 이유" });
-});
-
-// ————— 도구 계약 —————
-
-test("repo_diagnostics 도구 — submit_for_review 바로 앞에 선다", () => {
-  const names = BROWSER_TOOLS.map((tool) => tool.name);
-  const diagnostics = names.indexOf("repo_diagnostics");
-  assert.ok(diagnostics > 0);
-  assert.equal(names.indexOf("submit_for_review"), diagnostics + 1);
-  // 목록의 맨 끝은 그대로 screen_files · notify_developer (screen-files 시험의 계약).
-  assert.deepEqual(names.slice(-2), ["screen_files", "notify_developer"]);
-  const tool = BROWSER_TOOLS[diagnostics];
-  assert.equal(tool?.op, "repoDiagnostics");
-  assert.deepEqual(tool?.properties, {});
-  assert.equal(tool?.required, undefined);
 });
 
 // ————— 게이트의 타입 절 (PLAN-HARNESS §3.D D-1) —————

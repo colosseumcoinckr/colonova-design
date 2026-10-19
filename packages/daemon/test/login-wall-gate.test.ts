@@ -4,12 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ChatEvent } from "@colonova-design/protocol";
-import { BROWSER_TOOLS, callBrowserTool, type ToolDef } from "../dist/browser-tools.js";
-import { LOGIN_WALL_NOTICE } from "../dist/login-wall.js";
+
 import type { PreviewDriver, PreviewOpenResult } from "../dist/preview-driver.js";
 import { gateOutcomeStats, PreviewDrivers } from "../dist/preview-drivers.js";
 import { inspectScreens, judgeScreen } from "../dist/screen-gate.js";
-import { DaemonServer } from "../dist/server.js";
+
 import { TurnStats } from "../dist/turn-stats.js";
 
 /**
@@ -182,51 +181,6 @@ test("checkScreen: 벽 앞의 조용한 콘솔로 깨끗하다고 하지 않는�
   assert.equal(await walledSide.checkScreen("/members"), null);
   const open = gateDrivers([]);
   assert.deepEqual(await open.checkScreen("/members"), { settled: true, errors: [] });
-});
-
-test("screen_check: 벽 화면은 AI 가 읽는 한 문장과 함께 돌아오고 횟수만 통계로 간다", async () => {
-  const noted: string[] = [];
-  const walls: Array<[string, number]> = [];
-  const server = Object.create(DaemonServer.prototype) as any;
-  Object.assign(server, {
-    config: { previewDriverFactory: { forIsolated: () => quietWindow(["/b"]) } },
-    workspaceOfSession: () => ({ repo: { status: async () => ({ previewUrl: ORIGIN }) } }),
-    drivers: { notePinned: (_id: string, url: string) => noted.push(url) },
-    stats: { noteLoginWall: (id: string, count: number) => walls.push([id, count]) },
-  });
-  const reply = await server.runScreenCheck("s", { routes: ["/a", "/b"], capture: true });
-  assert.equal(reply.body.ok, true);
-  const [first, second] = reply.body.result.screens;
-  assert.equal(first.url, `${ORIGIN}/a`);
-  assert.equal(first.loginWall, undefined, "정상 화면에는 칸이 없다");
-  assert.equal(second.url, `${ORIGIN}/b`, "AI 가 링크로 쓸 주소는 요청한 화면의 것");
-  assert.equal(second.loginWall, LOGIN_WALL_NOTICE);
-  assert.deepEqual(second.errors, [], "로그인 화면의 오류를 이 화면의 오류로 돌려주지 않는다");
-  assert.equal(second.capture, undefined, "로그인 화면의 사진은 이 화면의 것이 아니다");
-  assert.deepEqual(noted, [`${ORIGIN}/a`, `${ORIGIN}/b`], "이번 작업의 장부에는 둘 다 적힌다");
-  assert.deepEqual(walls, [["s", 1]]);
-
-  // AI 가 읽는 도구 결과 텍스트까지 — 중계가 그 문장을 그대로 내린다.
-  const original = globalThis.fetch;
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ ok: true, result: reply.body.result }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    })) as typeof fetch;
-  try {
-    const tool = BROWSER_TOOLS.find((entry) => entry.name === "screen_check") as ToolDef;
-    const outcome = await callBrowserTool(
-      tool,
-      {},
-      { daemonUrl: "http://127.0.0.1:1", secret: "s" },
-    );
-    const block = outcome.content[0] as { type: string; text: string };
-    assert.equal(block.type, "text");
-    assert.ok(block.text.includes(LOGIN_WALL_NOTICE), "AI 가 읽는 결과에 한 문장이 있다");
-    assert.ok(tool.description.includes("loginWall"), "도구 설명이 이 칸을 말한다");
-  } finally {
-    globalThis.fetch = original;
-  }
 });
 
 // --- 통계: 횟수만 -----------------------------------------------------------

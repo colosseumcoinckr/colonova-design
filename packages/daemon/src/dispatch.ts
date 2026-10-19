@@ -1066,16 +1066,26 @@ export class RequestRouter {
     },
     "repo.submitPreview": async () => {
       const active = this.requireActive();
-      return active.repo.repoCore().lane.run("submit", async () => {
-        const core = active.repo.repoCore();
-        const head = await core.headCommitFiles();
-        if (!head) throw new Error("제출할 작업을 읽지 못했어요.");
-        await core.refreshPendingChanges(true);
-        const history = await core.history(true);
-        const finalFiles = await core.finalChangedFiles();
-        const expectedPreview = await core.submitPreviewToken();
-        return { head: head.sha, expectedPreview, repo: core.snapshot(), history, finalFiles };
-      });
+      // 웹은 repo.status 를 받을 때마다 다시 묻고, 이 읽기의 git 출력이 다시
+      // repo.status 를 방송한다. git 이 느린 Windows 에서는 한 바퀴가 방송 간격보다
+      // 길어 줄이 끝없이 불어났다(2026-10-19 — 턴이 40초 넘게 줄 뒤에 섰다). 아직
+      // 시작하지 않은 읽기에 합류해 줄에는 많아야 하나만 선다 — 합류한 읽기도 요청
+      // 뒤에 시작하므로 신선하다. 칸은 "review": "submit" 은 실제 제출 · 넘기기가
+      // 쓰는 칸이라 거기에 합류하면 다른 모양의 결과를 받는다.
+      return active.repo.repoCore().lane.run(
+        "review",
+        async () => {
+          const core = active.repo.repoCore();
+          const head = await core.headCommitFiles();
+          if (!head) throw new Error("제출할 작업을 읽지 못했어요.");
+          await core.refreshPendingChanges(true);
+          const history = await core.history(true);
+          const finalFiles = await core.finalChangedFiles();
+          const expectedPreview = await core.submitPreviewToken();
+          return { head: head.sha, expectedPreview, repo: core.snapshot(), history, finalFiles };
+        },
+        { join: true },
+      );
     },
     "repo.history": async () => {
       return await this.repo.history();

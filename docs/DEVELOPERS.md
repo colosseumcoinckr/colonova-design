@@ -134,7 +134,7 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 | `COLONOVA_DESIGN_COMMAND_STALL_MS` | `300000` | 레포 명령이 아무 말도 하지 않아도 기다리는 시간(설치 정지 감시) |
 | `COLONOVA_DESIGN_ENFORCE_REPO_SETTINGS` | unset(신뢰) | `1`(또는 `true`)이면 연결 레포가 실어 보낸 에이전트 설정(Claude Code)의 권한 확장 키를 절단하고 검역 기록과 함께 경고한다 — 외부 레포를 받는 배포용. 기본은 레포 파일을 그대로 두고 절단도 경고도 하지 않는다 |
 | `COLONOVA_DESIGN_DEV_AGENTS` | unset(끔) | `1` 이면 개발 실행으로 선다(`DaemonStatus.dev` — 개발 전용 면). 프로바이더 목록과는 무관하다. `pnpm dev:daemon` 이 켜고, 데스크톱은 `app.isPackaged` 가 아닌 실행에서 스스로 켠다(패키징된 앱은 절대) |
-| `COLONOVA_DESIGN_CLAUDE_INSTALL_CMD` | unset | 설치 스크립트 대신 이 명령을 셸로 돌린다 — 검증용(성공·실패·느린 진행을 흉내 낸다) |
+| `COLONOVA_DESIGN_CLAUDE_INSTALL_CMD` | unset | 설치 스크립트 대신 이 명령을 셸로 돌린다 — 검증용(성공·실패·느린 진행을 흉내 낸다). Windows 에서는 PowerShell 문장이고 대상(`latest`)을 `$args[0]` 으로 받는다 |
 | `COLONOVA_DESIGN_CODEX_RELEASE_API` | unset | Codex 릴리스 API 주소 — 검증용(로컬 서버가 JSON 을 내어 준다). 설치와 업데이트 확인이 함께 쓴다 |
 | `COLONOVA_DESIGN_CLAUDE_LATEST_API` | downloads.claude.ai 의 `latest` | Claude Code 최신 버전을 읽는 주소 — 검증용(업데이트 줄의 `→ 새 버전 있어요`) |
 | `COLONOVA_DESIGN_PORT` | 임시 포트 | 데몬이 들 포트 — 포트가 막혔을 때 데몬의 안내 문구도 이 이름을 말한다 |
@@ -327,7 +327,7 @@ AI 가 답을 마치면 이어 물어볼 만한 말 한 문장이 빈 입력창�
   AI 작성 줄(`buildAiLine`)은 `코드는 AI 가 썼고, 요청한 사람은 코드가 아니라 화면으로 확인했습니다.` 한 줄이고 한마디의 인용 밖에 선다(인용 안에 두면 `readToolNote` 가 한마디로 되읽는다). 종류(`AI(Claude Code)`)는 이번 제출에 담긴 화면 작업이 **모두** 공급자를 알 때만 싣는다: `autoSaveTurn` 이 보관 때 세션의 공급자 id(`claude` · `codex`)를 화면 지도 행의 `provider` 에 적고, `CycleScreens` 가 `cycleScreens[].provider` 로 실어 `aiKindsOf` 가 이름으로 바꾼다. 하나라도 모르면(옛 행 · 이름을 모르는 공급자) 이름 없이 `AI 가 썼고` 로만 말한다. 되돌리기 · 병합은 도구가 한 일이라 세지 않고, 코멘트 반영은 AI 가 쓴 코드라 센다 — 이름은 알파벳순이다. 화면 지도에 행이 남지 않는 보관은 세지 않으므로 그 보관의 공급자는 알 수 없다. 모델 이름은 싣지 않는다 — 턴마다 달라질 수 있다.
   `### 확인한 것` 의 타입 검사 한 줄은 게이트가 이미 돌리는 증분 타입 검사의 결과다. 턴이 바꾼 TypeScript 파일이 있을 때만 `tsc --noEmit` 이 돌고 **그 파일들의** 오류만 센다(`typeErrors`) — 레포 전체의 타입 검사가 아니다. 오류 없이 지난 확인 기록에만 `GateChecked.types` 가 적히고(`server.ts` 의 `startGate` — 화면을 열어 본 작업에만 적히므로 화면 없이 타입만 본 턴은 기록이 없다), `summarizeChecks` 가 센 수(`HandoffChecks.types`)로 `타입 검사: 이번 제출에 담긴 화면 작업 N건 중 M건에서 바뀐 TypeScript 파일의 타입 오류가 없었습니다` 를 말한다. 돌지 못한 작업(바뀐 TypeScript 파일이 없음 · 예산 안에 끝나지 않음 · 레포에 타입 검사가 없음)은 `검사 기록이 없습니다` 이고, 하나도 돌지 않았으면 줄이 없다 — 돌리지 않은 검사를 통과라고 말하지 않는다. 레포의 검사 · 빌드는 이 확인에 들어 있지 않다는 문장은 그대로다.
   제출 확인 창은 같은 판정(`extras.scopeRisk`)을 `설정 파일도 함께 바뀌었어요` 한 줄로 말한다 — 사용자는 그 말을 몰라도 되지만 숨기지는 않는다(설정 파일이 화면을 고친 보관에 함께 담기면 `finalOutgoingChanges` 가 그 화면의 것으로 귀속해 `화면에 드러나지 않은 변경` 으로 세지 않는다 — 이 줄이 없으면 확인 창에서 보이지 않는다). 위험 분류가 없으면 줄이 없다. 이미 열린 요청에 더하는 제출은 초안을 읽지 않으므로 이 줄도 없다. 견본: `status-fixture` 의 `?draft=risk`.
-  제출 확인 창은 **첫 제출에만** 이 제목과 AI 설명을 `개발자에게는 이렇게 보여요` 상자로 미리 보인다(2026-10-07 UX 점검 3단계). 재료는 `repo.handoffDraft`(짧은 AI 한 번, 15초 목줄(2026-10-13, 레포 템플릿을 채우는 본문의 분량), 보관의 끝 표식별 캐시 — 제출 때 감독자가 다시 불러도 같은 글이다. 확인 창 없이 바로 가는 제출은 초안을 그 자리에서 쓰므로 PR 이 열리기까지 최대 15초가 더 걸릴 수 있다)이고, 웹의 `lib/handoff-preview.ts` 가 종류 접두어 · 작성자 꼬리를 떼고 마크다운 기호를 걷어 한 덩이 글로 만든다. 읽기는 `useHandoffDraft` 가 따로 하므로 제출을 붙잡지 않고, 못 읽으면 상자가 서지 않는다. AI 가 제목을 못 쓴 초안은 데몬의 `pickHandoffTitle` 처럼 첫 보관의 제목을 대신 쓰고 그 사실을 말한다. 이미 열린 요청에 더하는 제출은 초안을 읽지 않고 `repo.handoff.title` 만 보인다(제목과 설명은 개발자의 것). 미리 본 글이 제출 때의 글과 같다는 보증은 캐시에 기댄다 — 데몬을 다시 켜면 초안이 다시 쓰여 낱말이 달라질 수 있다.
+  제출 확인 창은 **첫 제출에만** 이 제목과 AI 설명을 `개발자에게는 이렇게 보여요` 상자로 미리 보인다(2026-10-07 UX 점검 3단계). 재료는 `repo.handoffDraft`(짧은 AI 한 번, 15초 목줄(2026-10-13, 레포 템플릿을 채우는 본문의 분량 — Windows 는 45초, 2026-10-19 실기), 보관의 끝 표식별 캐시 — 제출 때 감독자가 다시 불러도 같은 글이다. 쓰는 중에 누른 제출은 새 턴을 띄우지 않고 그 글을 기다린다(2026-10-19). 확인 창 없이 바로 가는 제출은 초안을 그 자리에서 쓰므로 PR 이 열리기까지 최대 15초(Windows 45초)가 더 걸릴 수 있다)이고, 웹의 `lib/handoff-preview.ts` 가 종류 접두어 · 작성자 꼬리를 떼고 마크다운 기호를 걷어 한 덩이 글로 만든다. 읽기는 `useHandoffDraft` 가 따로 하므로 제출을 붙잡지 않고, 못 읽으면 상자가 서지 않는다. AI 가 제목을 못 쓴 초안은 데몬의 `pickHandoffTitle` 처럼 첫 보관의 제목을 대신 쓰고 그 사실을 말한다. 이미 열린 요청에 더하는 제출은 초안을 읽지 않고 `repo.handoff.title` 만 보인다(제목과 설명은 개발자의 것). 미리 본 글이 제출 때의 글과 같다는 보증은 캐시에 기댄다 — 데몬을 다시 켜면 초안이 다시 쓰여 낱말이 달라질 수 있다.
   영수증의 `보낸 화면`(2026-10-07 UX 점검 3단계)은 사용자가 제출을 누를 때 확인 창이 보인 목록이다 — `repo.submit.sent`(`screens` 1~999 · `titles` 많아야 셋, 각 60자; 선로가 막는다) → 원장의 제출 의도 `submit.sent`(`parseSent` 가 깨진 값을 버린다 — 재시작 뒤의 이어받기도 같은 영수증을 낸다) → 사건 `cycle.handed.sent` → 대화록의 영수증. 데몬은 최종 변경의 귀속(`finalOutgoingChanges`)을 몰라 웹이 정해 건넨다. 확인 창이 없는 대화 제출(`submit_for_review`)에는 이 값이 없고 영수증은 그 줄을 말하지 않는다. 도는 제출에 다시 누르면 의도는 하나 그대로 `sent` 만 새것으로 바뀐다. 막힌 제출이 길어져 그 사이 화면이 더 쌓이면 영수증은 누른 때의 목록을 말한다(실제로는 더 실렸을 수 있다). 기다림이 보이게(2026-10-07 UX 점검 3단계): 요청이 열린 때는 GitHub 의 `created_at` 이 `HandoffStatus.since`(선택 필드, ISO)로 서고 — `refOf`(읽히지 않는 값은 버린다) → 감독자가 요청을 만들 때 · 입양할 때의 `HandoffStatus` → 레지스트리(`projects.ts` 의 `parseHandoff` 가 왕복시킨다) → 선로. 이 변경 전에 열린 요청처럼 `since` 를 모르는 기록은 다음 관찰 틱이 `getPullRequest` 의 값으로 채운다(알고 있는 값은 건드리지 않는다). 웹의 `lib/waiting.ts` 가 `daysSince`(달력으로 센 날수 — 오늘이면 0, `startOfDay` 로 시간대와 서머타임을 따른다)를 계산하고, 오늘의 자정은 `useToday` 가 갈아 끼워 자정을 넘기면 숫자가 저절로 는다. 상태 줄은 `deriveJourney` 의 `waitingDays` 로 받아 **코멘트가 없고 요청이 `open` 일 때만** `· N일째`(N = 날수 + 1, 제출한 날은 붙이지 않는다)를 붙인다 — 코멘트가 오면 그 수가 더 급한 말이고(코멘트 수는 장부에 쌓여 줄지 않으므로 한 번이라도 코멘트가 온 요청은 날수를 말하지 않는다), `changes_requested` 는 공이 우리 쪽이다. 그래서 날수는 요청을 연 뒤 한 번도 말이 없던 기다림, 곧 요청의 나이가 기다린 시간과 같은 경우에만 선다. 홈은 `waitingRows` 가 `open` 인 프로젝트를 오래 기다린 순으로 `지금 진행 중` 에 한 줄씩 세운다(때를 모르면 날수 없이) — 눌러서 가는 줄이라 사용자의 손이 필요한 수(`waitCount` · 사이드바 배지)에는 세지 않는다. 견본: `home-fixture` 의 `?case=g,h`, `status-fixture` 의 `?case=q`.
   받을 개발자를 확인하지 못했다는 줄(`receiptFacts.nobody`)은 첫 제출의 영수증이 **지금의 요청**을 알고 `reviewers` 가 빈 배열일 때만 선다. 데몬이 아는 것은 요청을 만들 때 응답의 `requested_reviewers`(와 도구가 직접 요청한 리뷰어)뿐이고 이후 틱은 이 값을 새로 읽지 않는다 — 리뷰를 마친 개발자는 GitHub 이 이 목록에서 빼므로 새로 읽으면 「받은 사람이 없다」 로 바뀌기 때문이다. 팀 단위 코드 소유자(`requested_teams`)나 늦게 채워지는 지정은 닿지 않을 수 있어 문장은 「없다」 가 아니라 「확인하지 못했다」 를 말하고, 모르는 값(`undefined`)이나 옛 영수증에는 말하지 않는다.
 - **제출 취소**(2026-10-14 사용자 요청 — 제출한 사람이 앱에서 PR 을 닫을 길이 없었다) — `이번 작업` 팝의
@@ -1524,6 +1524,26 @@ Windows 의 문서화된 동작과 맞대어 고친 것**이지 Windows 에서 �
 | 저장 포트 EACCES | 저장 포트가 점유(EADDRINUSE)일 때만 임시 포트로 물러나던 것을 접근 거부(EACCES)까지 넓혔다 — Windows 는 Hyper-V · WSL · Docker 가 예약한 포트 대역(`netsh int ipv4 show excludedportrange protocol=tcp`)을 EACCES 로 막고 그 대역은 재부팅마다 바뀌어, 어제 잘 뜬 저장 포트가 오늘 시작 실패 상자를 영구히 반복시킬 수 있었다. `startDaemonServer` 를 main.ts 에서 `daemon-start.ts` 로 떼어 가짜 서버로 시험한다 | `desktop/src/daemon-start.ts` · `daemon-start.test.ts` |
 | 한글 프로젝트 폴더 | 위 「프로젝트와 목록」의 `폴더 이름(slug)` — 같은 글자 수 한글 이름이 같은 Claude 대화 폴더를 가리키던 것. Windows 장치 이름(`con` …)과 끝의 점도 slug 에서 푼다 | `projects.ts` `slugify` · `project-slug.test.ts` · `claude-delete-all.test.ts` |
 
+2026-10-19 Windows 레포 다운로드·실행 호환성 수리:
+
+- 앱의 Git 호출에만 `-c core.longpaths=true`를 준다. 사용자·시스템 Git 설정은 바꾸지 않는다. 260자를 넘는 파일이 있는 임시 원격을 한글·공백 경로에 복제해 체크아웃과 상태 조회를 확인한다(`windows-repo.test.ts`).
+- 앱이 새로 받는 클론(첫 준비 · 재클론)은 `git clone -c core.autocrlf=false` 로 받는다(`repo-core.ts` `windowsGitArgs`). Git for Windows 의 시스템 설정은 `autocrlf=true` 라, 그대로 받으면 작업 폴더가 CRLF 가 돼 `.sh` 가 깨지고 구해 둔 변경이 바이트 그대로 돌아오지 않았다(`cycle-reclone.test.ts` · `shelf-recover.test.ts`). 설정은 새 클론의 `.git/config` 에만 남고 macOS 의 기본(변환 없음)과 같다. 레포의 `.gitattributes` 가 정한 줄바꿈은 그대로 듣는다. 이미 받은 클론의 설정은 바꾸지 않는다 — 바꾸면 CRLF 파일이 고친 것처럼 보인다.
+- MinGit의 `resources/bin/cmd`를 PATH 앞에 둔다. 데몬의 절대경로 Git 호출뿐 아니라 설치 스크립트·AI의 자식 명령도 `git`을 찾는다. 사용자 지정 bash는 그대로 존중하며 `usr/bin`은 cmd와 동명인 도구가 있어 PATH에 넣지 않는다.
+- 이 도구 자체의 `pnpm dev:daemon`은 `cross-env`로 환경변수를 넘긴다. 연결한 다른 레포의 `package.json`을 자동으로 바꾸거나 모든 스크립트 셸을 강제로 바꾸지는 않는다.
+- Windows 개발 환경의 임시 레포 검사는 설치본·GitHub 토큰·사내망 검증을 대신하지 않는다.
+- 벤치 시험의 파일 URL은 `fileURLToPath`, 파일 이름은 `basename`으로 읽는다. `/C:/...`와 `/` 분할을 가정하던 기존 시험 두 개도 Windows에서 동일 기준으로 검사한다.
+
+2026-10-19 Windows 실기 점검(개발 빌드 · 초대 파일로 전체 초기화 뒤 다시 들임 → 처음 준비 → AI 턴 → 화면 확인 → 제출 → 반려 착지 → 재시작) 수리:
+
+- **미리보기 감지 — 짧게 끊고 다시 찌르지 않는다.** Next dev(Turbopack)의 Windows 첫 렌더는 주소를 찍고 20~80초 뒤에 답한다. 예전 감지는 2초에 요청을 끊고 250ms 마다 다시 보냈다. 버려진 렌더가 서버에 쌓여 끝내 답이 없었고, 준비는 `미리보기 서버 주소 감지 실패`(`firstResponseMs:null`)로 끝났다. 이제 출력 주소는 한 요청으로 최대 45초(`probeTimeoutMs`), 조회로 찾은 포트는 15초(`scanProbeTimeoutMs`) 기다린다. 요청이 도는 동안 PowerShell · netstat 조회는 쉬어 컴파일과 CPU 를 다투지 않는다. 주소를 출력한 서버는 출력 시각 + 180초(`printedGraceMs`)까지 기다린다. 새 클론의 첫 컴파일은 출력 뒤 81초가 걸려 120초 기한을 10초 남기고 통과했다. 같은 이유로 `handoff-preview.ts` · `repo-bringup.ts` 의 응답 확인도 길게 기다리고, 한 번 실패한 포트를 영구히 빼지 않는다. 실측: 수리 뒤 새 클론 `elapsedMs` 109,747 · 재시작 83,943(둘 다 `source:"printed"`)(`preview-detection.test.ts`).
+- **이전 실행이 남긴 서버를 Windows 에서도 거둔다.** `reclaimStalePreview` 가 win32 에서 곧바로 돌아갔다. 남은 `next dev` 가 3000 번 포트와 `.next/dev/lock` 을 쥐고 있어 새 서버가 곧바로 끝났고, 감지는 `source:"stopped"` 로 실패했다. 이제 PowerShell CIM 으로 명령줄을 읽어(`preview-claim.ts` `pidCommandLines`, UTF-8 출력) 클론 폴더를 말하는 프로세스만 `taskkill` 한다(대소문자 무시). Windows 는 부모가 죽어도 자식이 남고 pid 는 다시 쓰이므로, 기록된 pid 하나만 믿고 죽이지 않는다. POSIX 는 예전처럼 프로세스 묶음을 죽인다(`preview-claim.test.ts` — 한글 · 공백 경로의 실제 프로세스를 읽는다).
+- **감독자 틱은 부른 자리의 차선 문맥을 물려받지 않는다(모든 OS).** dispatch 의 `repo.submit` 은 "submit" 칸 안에서 `supervisor.submit()` 을 부른다. 그 안에서 시작한 틱은 재진입으로 줄을 건너뛰었고, 제출 칸이 끝난 뒤에는 차선 밖에서 fetch · 자산 브랜치 올리기 · PR 만들기를 돌렸다(진단의 `차선 밖 git 쓰기 ×13`). 이제 `tick()` 은 `lane.outside` 에서 자기 supervise 칸에 선다. 틱을 기다리는 호출자(철회 · 활성화 · 보내기 전 최신화)는 모두 차선 밖에서 기다려 교착이 없다. 실기에서 두 번째 제출(PR #2)은 경고 0건이었다(`cycle-submit-flow.test.ts` — `COLONOVA_DESIGN_LANE_STRICT=1`).
+- **AI 쓰기 울타리 — Windows 경로의 `\`.** 셸 훑기가 역슬래시를 늘 Bash 이스케이프로 읽어 `rm -rf "C:\Users\kim\Documents"`(Git Bash 큰따옴표) · PowerShell 의 `C:\…` 가 클론 안 상대 경로로 보여 지났다. win32 에서는 역슬래시를 글자로도 한 번 더 읽어 어느 쪽이든 클론 밖이면 막는다(macOS · Linux 판정은 무작위 40만 문장에서 예전과 같다). 임시 폴더는 8.3 짧은 이름(`DEVELO~1`)과 펼친 긴 이름을 둘 다 둔다 — JS realpath 는 짧은 이름을 펴지 않아 `%LOCALAPPDATA%\Temp` 쓰기를 막았다(`write-guard.test.ts`).
+- **Claude · Codex 설치.** 내려받은 `install.ps1` 에 UTF-8 BOM 을 붙인다 — PowerShell 5.1 은 BOM 없는 파일을 CP949 로 읽어 `✔` 하나에 `InvalidEndOfLine` 으로 깨졌다. 실행은 `-File` 대신 `[Console]::OutputEncoding` 을 UTF-8 로 정하는 `-Command` 문장으로 한다(`windowsScriptCommand`) — 콘솔 없는 자식의 출력이 CP949 로 와 `✔` 가 `?` 가 되고 한국어 오류 문장이 깨졌다. 종료 코드는 `exit N` · throw · 정상 끝에서 `-File` 과 같다. Codex zip 은 `%SystemRoot%\System32\tar.exe` 로 푼다 — PATH 앞의 Git Bash GNU tar 는 `C:` 를 원격 호스트로 읽고 zip 을 못 연다. `COLONOVA_DESIGN_CLAUDE_INSTALL_CMD` 는 Windows 에서 PowerShell 문장이고 대상은 `$args[0]` 으로 받는다(`agent-install.test.ts`).
+- **PR 초안의 예산 — Windows 45초.** 실기에서 제출 확인의 초안이 두 번 모두 15초(`HANDOFF_DRAFT_TIMEOUT_MS`)에 물러나 `AI 가 글을 쓰지 못해 처음 한 말이 제목이 돼요` 가 됐다. 같은 초안 프롬프트(3,740자)를 SDK 로 다시 돌리면 21~23초(생각 끔 14~21초)였다. 그중 SDK 시작은 약 2초이고 `claude -p` 한 단어가 4.5초다. win32 만 45초로 올린다(`handoffDraftTimeoutMs`) — macOS 는 15초 그대로다. 초안은 제출을 붙잡지 않는다. 쓰는 중에 누른 제출은 같은 tip 의 턴을 기다리고 새 턴을 띄우지 않는다(`repo-summary.ts` `handoffDraftPending` — 모든 OS, 결과는 같고 중복 턴만 없앤다)(`repo-summary.test.ts`).
+- **턴 통계의 핀 적중.** 후보 경로와 도구 경로를 같은 열쇠(`turn-stats.ts` `pathKey`)로 비교한다. win32 는 대소문자를 접는다 — Codex 는 `c:/…` 와 섞인 구분자를 보고한다.
+- **시험의 Windows 모양.** 폴더 링크는 junction, 파일 링크는 권한이 없을 때만 건너뛴다(`test/helpers/links.ts`). 가짜 `pnpm` 은 `.cmd`, 가짜 `codex` 는 `node.exe`, 웹 시험의 상대 경로는 `/` 로 맞춘다(`packages/web/test/helpers/source-path.ts`). POSIX 파일 모드(`0o600` · 실행 비트) 단언만 win32 에서 건너뛴다.
+
 **추정으로 남긴 것 · 알려진 한계**(실기가 정한다 — 베타 세션 번호는 `beta-windows-session.md`)
 
 - **`FOO=bar vite` 류 dev 스크립트 — 하지 않았다(`추정으로 남김`).** 데몬이 도는 미리보기 명령은 `<매니저> run <스크립트 이름>`
@@ -1532,9 +1552,9 @@ Windows 의 문서화된 동작과 맞대어 고친 것**이지 Windows 에서 �
   그러면 매니저가 주는 PATH(`node_modules/.bin`) · `npm_*` 환경 · pre/post 훅을 잃는다. 후보(pnpm 의 `shell-emulator` 환경
   설정 · bash 를 스크립트 셸로)는 cmd 전용 스크립트를 깨뜨릴 수 있다. 베타 세션 7번이 먼저 증상(오류 문장 · AI 가 레포를
   고치려 드는지)을 보고, 그 뒤에 정한다.
-- **이전 실행이 남긴 서버 거두기는 Windows 에서 건너뛴다**(`reclaimStalePreview` — 명령줄 앵커가 없어 앵커 없이 죽이지
-  않는다). 앱을 강제 종료하면 서버 트리가 포트를 쥔 채 남고 새 서버는 다른 포트로 뜬다 [추정] — 정상 종료 · 창 닫기 ·
-  프로젝트 전환은 위 트리 킬이 거둔다. 세션 8번.
+- **이전 실행이 남긴 서버는 다음 준비가 명령줄로 거둔다**(2026-10-19 수리 — 위 목록). 앱을 강제 종료하면 서버 트리가
+  다음 실행까지 포트를 쥐고 남는다. 명령줄에 클론 폴더가 없는 자식(예: 상대 경로만 받은 워커)은 거두지 못한다 [추정].
+  세션 8번.
 - **자식 출력의 인코딩(발견만 — 코드는 바꾸지 않았다).** 데몬은 자식의 stdout · stderr 를 전부 청크마다 `String(chunk)`(UTF-8)로
   읽는다(`repo-core.ts` · `repo-bringup.ts` · `onboarding.ts` · `agent-install.ts` · `handoff-preview.ts` · `type-check.ts` ·
   `one-shot-cli.ts`). (1) 한국어 Windows 의 cmd · `where` · 일부 PowerShell 출력은 CP949 로 와 깨져 읽힌다 [추정]. (2) UTF-8
@@ -1546,8 +1566,7 @@ Windows 의 문서화된 동작과 맞대어 고친 것**이지 Windows 에서 �
   — 베타에서 실제로 깨지는지 본 뒤 정한다(세션 13번이 복사 한 덩어리에 이 줄이 섞이는지 본다).
 - 로그 정화(`log.ts` `USER_ROOT_PATTERNS`)의 Windows 패턴은 `C:\Users\<이름>` 하나다 — 다른 드라이브(`D:\Users\…`)나 소문자
   `c:\users` 의 계정 이름은 로그에 남는다(슬래시 `C:/Users/…` 는 mac 패턴이 이름을 걷는다) [코드 읽기]. 세션 2번.
-- git 설정은 `core.longpaths` · `core.autocrlf` 를 건드리지 않는다 — 260자 넘는 경로의 체크아웃과 `.sh` 의 줄바꿈은 MinGit
-  기본값에 달렸다 [추정]. 세션 7번.
+- 새 클론은 `core.autocrlf=false` 로 받는다(위 2026-10-19 수리). 이 수리 전에 받은 클론은 예전 설정(시스템의 `autocrlf=true`)을 그대로 쓴다 — `.sh` 의 줄바꿈은 그 설정과 레포의 `.gitattributes` 에 달렸다 [추정]. 긴 경로는 위 호출별 `core.longpaths=true`로 처리한다. 세션 7번.
 - 업데이트 설치 파일은 `app.getPath("downloads")` 에 받는다(`app-updates.ts`) — OneDrive 가 다운로드 폴더를 가져간 계정에서는
   설치 파일이 동기화된다 [코드로 확실 — 위치만 그렇다]. 세션 11번이 기록한다.
 - `netstat` 의 상태 칸을 `LISTENING` 으로 읽는다 — 영어 표기가 남는 한국어 Windows 에서는 맞고, 상태를 현지어로 찍는 언어에서는
@@ -1637,6 +1656,24 @@ permissions: **Contents: Read and write**(작업 올리기) · **Pull requests: 
 설치 · 미리보기 명령을 읽고([아래 표](#도구가-값을-읽는-곳)), 서버가 뜬 포트는
 출력된 주소나 프로세스의 LISTEN 소켓에서 감지한다. `http://127.0.0.1:<port>/` 가
 응답할 때까지 기다린 뒤에야 `준비됨`이라고 부른다.
+
+2026-10-19 Windows 준비 지연 제보: 출력 주소 확인과 프로세스·소켓 조회를 분리했다
+(`preview-detection.ts`). 주소는 250ms 간격으로 다시 확인한다. 각 확인 묶음의 IPv4·IPv6는 함께
+확인한다. 보조 조회는 한 번에 하나만 돌고, 끝난 뒤 2초가 지나야 다시 돈다. PowerShell 조회가
+느려도 출력 주소가 응답하면 준비를 끝낸다. 준비 완료·시간 초과·프로젝트 전환 때 남은 조회와
+HTTP 요청을 취소한다. 주소를 출력하지 않는 서버의 소켓 감지, 데몬 포트 제외, HTML 우선과
+기한 뒤 비 HTML 응답 대체는 유지한다. 실제 응답 전에 준비됐다고 알리지는 않는다.
+
+같은 날 실기에서 더 고쳤다. 확인 요청 하나는 기한 안에서 출력 주소는 45초, 조회로 찾은 포트는 15초까지
+기다린다. 250ms 간격은 요청이 실패한 뒤의 다음 확인에만 쓴다. 2초에 끊고 다시 보내면 Next dev 의 Windows
+첫 렌더가 쌓여 끝내 답이 없었다. 확인 요청이 도는 동안 보조 조회는 쉰다. 주소를 출력한 서버의 기한은
+출력 시각 + 180초와 기본 기한 중 늦은 쪽이다(`printedGraceMs`). 주소를 못 찍는 서버는 그대로 기본 기한에 끝난다.
+
+진단 로그 `미리보기 감지`에는 감지 방식(`source`), 감지 시작부터 종료까지(`elapsedMs`), 첫 출력
+주소 관찰까지(`firstAddressMs`), 첫 유효 응답까지(`firstResponseMs`), 조회 횟수(`scans`), 완료한
+프로세스·소켓 조회의 누적 시간(`scanMs`)만 남긴다. 시간 단위는 ms이며 관찰하지 못한 값은 null이다.
+서버를 띄운 직후 감지를 시작한다. 실행 명령 사전 확인 시간은 포함하지 않는다. 사용자 말·주소·경로·서버
+출력은 이 로그에 넣지 않는다. 실제 Windows의 단축 시간은 베타 7-A에서 새 실행과 재실행을 각각 잰다.
 
 서버가 주소를 출력하지 않고 소켓 스캔도 못 찾으면 준비가 멈추고, 도구가 사람의
 클릭 없이 그 실패를 대화로 넘겨 AI 가 서버가 주소를 출력하게 고친다(D4). 고친 뒤에도

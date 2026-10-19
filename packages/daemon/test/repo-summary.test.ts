@@ -10,6 +10,7 @@ import {
   handoffPrompt,
   memoPrompt,
 } from "../dist/repo-prompts.js";
+import { handoffDraftTimeoutMs } from "../dist/repo-core.js";
 import { RepoSummarizer, readPullRequestTemplate } from "../dist/repo-summary.js";
 import { makeScene } from "./helpers/cycle-harness.ts";
 
@@ -236,4 +237,43 @@ test("보관 메모 — 계획의 커밋과 같은 `type: 변경` 꼴을 지시�
   assert.ok(prompt.includes("`type: 변경` 꼴"));
   assert.ok(prompt.includes("예: feat: 회원 관리 화면 추가"));
   assert.ok(prompt.includes("파일: src/members.tsx"));
+});
+
+test("PR 초안 — 쓰는 중에 같은 tip 을 다시 부르면 새 턴을 띄우지 않고 같은 답을 기다린다(2026-10-19 Windows 실기)", async () => {
+  const scene = await makeScene();
+  try {
+    const branch = "colonova-design/pending-test";
+    await scene.git(["checkout", "-b", branch]);
+    writeFileSync(join(scene.clone.path, "members.ts"), "export const searchByName = true;\n");
+    await scene.git(["add", "members.ts"]);
+    await scene.git(["commit", "-m", "이름 검색을 넣어 줘"]);
+    scene.core.setCycle(branch, null);
+
+    let calls = 0;
+    const answer = Promise.withResolvers<string>();
+    const summarizer = new RepoSummarizer(scene.core, async () => {
+      calls += 1;
+      return answer.promise;
+    });
+    // 제출 확인이 여는 초안과, 그 사이 누른 제출이 부르는 초안.
+    const dialog = summarizer.handoffDraft();
+    const submit = summarizer.handoffDraft();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    answer.resolve("feat(members): 회원 목록에 이름 검색 추가\n\n이름으로 회원을 찾는다.");
+    const [first, second] = await Promise.all([dialog, submit]);
+    assert.equal(calls, 1, "같은 tip 의 두 호출이 턴 하나를 나눠 쓴다");
+    assert.equal(first.title, "feat(members): 회원 목록에 이름 검색 추가");
+    assert.deepEqual(second, first);
+    // 끝난 뒤의 호출은 캐시가 답한다 — 쓰는 중 표식이 남아 다음 tip 을 막지 않는다.
+    assert.deepEqual(await summarizer.handoffDraft(), first);
+    assert.equal(calls, 1);
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("PR 초안 예산 — Windows 는 45초, 그 밖은 15초 그대로다(2026-10-19 Windows 실기)", () => {
+  assert.equal(handoffDraftTimeoutMs("win32"), 45_000);
+  assert.equal(handoffDraftTimeoutMs("darwin"), 15_000);
+  assert.equal(handoffDraftTimeoutMs("linux"), 15_000);
 });

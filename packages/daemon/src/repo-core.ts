@@ -85,8 +85,14 @@ export const MEMO_TIMEOUT_MS = 8_000;
  * How long the 넘기기 draft's turn may take before the browser's proposal wins.
  * 8초 → 15초(2026-10-13): 레포의 PR 템플릿을 채우는 본문은 섹션이 넷 이상이라 8초에 못 들어왔다. 웹은
  * 120초를 기다리고(`daemon-client` 의 handoffDraft), 제출은 꼭지별 캐시를 다시 쓴다.
+ * Windows 는 45초(2026-10-19 Windows 실기): 제출 확인의 초안이 두 번 모두 15초에 물러났다. 같은
+ * 프롬프트(3,740자)를 다시 돌리면 21~23초였다 — CLI 시작이 느리다(`claude -p` 한 단어 4.5초). 초안은
+ * 제출을 붙잡지 않고, 쓰는 중에 누른 제출은 같은 턴을 기다린다(`repo-summary.ts`). macOS 는 15초 그대로다.
  */
-export const HANDOFF_DRAFT_TIMEOUT_MS = 15_000;
+export function handoffDraftTimeoutMs(platform: NodeJS.Platform = process.platform): number {
+  return platform === "win32" ? 45_000 : 15_000;
+}
+export const HANDOFF_DRAFT_TIMEOUT_MS = handoffDraftTimeoutMs();
 
 /**
  * The planner's own word for each gate — the step as the planner's own

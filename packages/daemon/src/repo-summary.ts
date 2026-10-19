@@ -88,6 +88,16 @@ export class RepoSummarizer {
     draft: RepoHandoffDraft;
   } | null = null;
 
+  /**
+   * 쓰는 중인 초안 — 같은 tip 의 두 번째 호출은 새 턴을 띄우지 않고 이것을 기다린다(2026-10-19
+   * Windows 실기). 제출 확인이 쓰는 동안 제출을 누르면 제출이 두 번째 턴을 띄워 예산만큼 다시
+   * 기다렸다.
+   */
+  private handoffDraftPending: {
+    tip: string;
+    draft: Promise<RepoHandoffDraft>;
+  } | null = null;
+
   // -------------------------------------------------------------------------
   // 넘기기 초안과 저장 메모 (비개발자 넘기기 · 비개발자 저장)
   // -------------------------------------------------------------------------
@@ -114,7 +124,21 @@ export class RepoSummarizer {
     if (this.handoffDraftCache?.tip === tip) {
       return { ...this.handoffDraftCache.draft, extras };
     }
+    if (this.handoffDraftPending?.tip === tip) {
+      return { ...(await this.handoffDraftPending.draft), extras };
+    }
+    const pending = this.composeHandoffDraft(range, tip);
+    this.handoffDraftPending = { tip, draft: pending };
+    try {
+      return { ...(await pending), extras };
+    } finally {
+      if (this.handoffDraftPending?.draft === pending) this.handoffDraftPending = null;
+    }
+  }
 
+  /** 초안의 본문 — 기록과 diff 를 읽고 턴 하나를 돌려 tip 의 캐시에 둔다. */
+  private async composeHandoffDraft(range: string, tip: string): Promise<RepoHandoffDraft> {
+    const empty: RepoHandoffDraft = { title: "", body: "", source: "fallback" };
     const memos = (await this.core.git(["log", "--reverse", "--format=%s", range]).catch(() => ""))
       .split(/\r?\n/)
       .map((line) => line.trim())
@@ -127,7 +151,7 @@ export class RepoSummarizer {
     // Nothing saved on this cycle yet: there is no work to describe, and a
     // turn over an empty range would invent one. The extras still answer —
     // pins taken before the first 저장 ride the handoff too.
-    if (memos.length === 0 && files.length === 0) return { ...empty, extras };
+    if (memos.length === 0 && files.length === 0) return empty;
 
     const diff = parseUnifiedDiff(
       await this.core
@@ -147,7 +171,7 @@ export class RepoSummarizer {
     const draft =
       (await this.machineHandoffDraft(memos, files, diff, template).catch(() => null)) ?? empty;
     this.handoffDraftCache = { tip, draft };
-    return { ...draft, extras };
+    return draft;
   }
 
   /**

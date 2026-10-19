@@ -899,15 +899,20 @@ export class DaemonServer {
           }
           this.gateRequests.delete(sessionId);
           if (!this.drivers.gatedSessions.has(sessionId)) this.changedTurnFiles.delete(sessionId);
-          await this.comparisons.begin({
-            root: workspace.paths.root,
-            sessionId,
-            requestId: item.id,
-            head: readHeadSha(workspace.paths.repoRoot),
-            routes: beforeRoutes({ pins: item.pins, viewing: item.viewing, known }),
-            url: workspace.repo.repoCore().previewUrl,
-            factory: this.config.previewDriverFactory,
-          });
+          // 수정 전 사진은 기다리지 않는다(2026-10-19 응답 속도 조사) — 길 넷을 열어 찍는 6초
+          // 예산이 보내기마다 모델 시작 앞에 통째로 들었다. begin 은 요청의 자리를 동기로
+          // 잡아 두고 사진만 뒤에서 채우므로, 끝(finish)은 그때까지 찍힌 것으로 짝짓는다.
+          void this.comparisons
+            .begin({
+              root: workspace.paths.root,
+              sessionId,
+              requestId: item.id,
+              head: readHeadSha(workspace.paths.repoRoot),
+              routes: beforeRoutes({ pins: item.pins, viewing: item.viewing, known }),
+              url: workspace.repo.repoCore().previewUrl,
+              factory: this.config.previewDriverFactory,
+            })
+            .catch(() => undefined);
         },
         onPinned: (sessionId, pins) => {
           for (const pin of pins) this.drivers.notePinned(sessionId, pin.screen);
@@ -1732,6 +1737,11 @@ export class DaemonServer {
    */
   private readonly comparisons = new ScreenComparisons();
   private readonly comparisonSaves = new Map<string, Promise<void>>();
+  /**
+   * 프로젝트별 「직전 턴의 보관이 내려앉았다」 — comparisonSaves 의 앞 절반(커밋까지,
+   * 수정 후 사진은 뺀다). 다음 턴의 beforeDeliver 가 기다리는 것은 이것뿐이다(2026-10-19).
+   */
+  private readonly autoSaveLands = new Map<string, Promise<void>>();
 
   private runAutoSave(sessionId: string): void {
     const routes = this.screenMapDue.get(sessionId);
@@ -1753,8 +1763,24 @@ export class DaemonServer {
     const workspaces = this.workspaceOfSession(sessionId);
     const source = routes ?? [...(this.drivers.pinnedThisTurn.get(sessionId)?.keys() ?? [])];
     const answer = session?.lastAssistantText ?? null;
-    const saving = this.fleet
-      .autoSaveTurn(sessionId, source, checked, plan ?? undefined)
+    const autoSave = this.fleet.autoSaveTurn(sessionId, source, checked, plan ?? undefined);
+    // 커밋이 내려앉은 순간 — 실패도 「끝」이다(다음 턴을 영원히 세우지 않는다).
+    const landed: Promise<void> = autoSave.then(
+      () => undefined,
+      () => undefined,
+    );
+    if (workspaces) {
+      this.autoSaveLands.set(workspaces.slug, landed);
+      void landed.then(() => {
+        if (this.autoSaveLands.get(workspaces.slug) === landed)
+          this.autoSaveLands.delete(workspaces.slug);
+      });
+    }
+    // 차례의 전제: 아래 then 은 landed 보다 뒤에 걸렸으므로 커밋이 내려앉으면 landed 가
+    // 먼저 풀리고, 이 then 의 동기 구간(대화록의 user.echo 를 changedScreens 와 함께 다시
+    // 적는 자리)이 다음 턴의 beforeDeliver 가 이어지기 전에 지나간다 — 대화록에서 지난
+    // 턴의 줄이 새 턴의 user.echo 뒤에 서지 않는다. 그 구간에 await 를 넣지 않는다.
+    const saving = autoSave
       .then(async (saved) => {
         if (!workspaces || !saved?.requestId) return;
         const url = workspaces.repo.repoCore().previewUrl;

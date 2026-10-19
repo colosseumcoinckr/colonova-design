@@ -94,6 +94,7 @@ function stub(root: string) {
     screenMapDue: new Map(),
     autoSaveDue: new Set(["s"]),
     comparisonSaves: new Map(),
+    autoSaveLands: new Map(),
     changePlans: new Map(),
     config: {},
     logger: { info: () => {} },

@@ -1312,6 +1312,54 @@ export function useDaemon(url: string | null): Daemon {
       pendingCalls.current.clear();
     };
 
+    // 세션 사건은 한 프레임에 모아 한 번만 상태에 넣는다(2026-10-19 응답 속도 조사).
+    // 데몬은 text.delta 를 토막마다 따로 보내고, 토막마다 setSessions 를 부르면
+    // 대화 칸 전체가 그 수만큼 다시 그려져(마크다운 파싱까지) 긴 답에서 끊겼다.
+    // 차례는 지킨다: 다른 종류의 메시지(상태 · 카드 · 결과)가 오면 쌓인 사건을
+    // 먼저 흘려보낸 뒤 그것을 처리한다.
+    // 창이 숨거나 최소화되면 Chromium 이 rAF 를 세우므로(데스크톱은 backgroundThrottling 을
+    // 끄지 않는다) 타이머가 같은 일을 맡는다 — 둘 중 먼저 오는 쪽이 흘리고 다른 쪽은 거둔다.
+    let eventQueue: Array<{ sessionId: string; event: ChatEvent }> = [];
+    let eventFrame: number | null = null;
+    let eventTimer: ReturnType<typeof setTimeout> | null = null;
+    const EVENT_FLUSH_FALLBACK_MS = 100;
+    const flushEvents = () => {
+      if (eventFrame !== null) {
+        cancelAnimationFrame(eventFrame);
+        eventFrame = null;
+      }
+      if (eventTimer !== null) {
+        clearTimeout(eventTimer);
+        eventTimer = null;
+      }
+      if (eventQueue.length === 0) return;
+      const batch = eventQueue;
+      eventQueue = [];
+      setSessions((prev) => {
+        const next = { ...prev };
+        for (const { sessionId, event } of batch) {
+          next[sessionId] = applyEvent(next[sessionId] ?? EMPTY_SESSION, event);
+        }
+        return next;
+      });
+    };
+    const queueEvent = (sessionId: string, event: ChatEvent) => {
+      eventQueue.push({ sessionId, event });
+      if (eventFrame !== null || eventTimer !== null) return;
+      if (typeof requestAnimationFrame !== "function") {
+        flushEvents();
+        return;
+      }
+      eventFrame = requestAnimationFrame(() => {
+        eventFrame = null;
+        flushEvents();
+      });
+      eventTimer = setTimeout(() => {
+        eventTimer = null;
+        flushEvents();
+      }, EVENT_FLUSH_FALLBACK_MS);
+    };
+
     const connect = () => {
       if (disposed) return;
       setConnection("connecting");
@@ -1381,6 +1429,8 @@ export function useDaemon(url: string | null): Daemon {
       // else on the wire is dropped without a word.
       if (typeof message !== "object" || message === null || typeof message.type !== "string")
         return;
+      // 세션 사건이 아닌 메시지는 쌓인 사건 뒤에 선다 — 턴 끝 뒤의 상태, 카드, 결과의 차례.
+      if (message.type !== "session.event") flushEvents();
 
       if (message.type === "ok" || message.type === "error") {
         const call = pendingCalls.current.get(message.id ?? "");
@@ -1435,11 +1485,7 @@ export function useDaemon(url: string | null): Daemon {
           typeof message.event.kind !== "string"
         )
           return;
-        setSessions((prev) => {
-          const view = prev[message.sessionId] ?? EMPTY_SESSION;
-          const next = applyEvent(view, message.event);
-          return { ...prev, [message.sessionId]: next };
-        });
+        queueEvent(message.sessionId, message.event);
         return;
       }
       if (message.type === "browser.driving") {
@@ -1578,6 +1624,10 @@ export function useDaemon(url: string | null): Daemon {
       disposed = true;
       reconnectRef.current = null;
       if (retryTimer) clearTimeout(retryTimer);
+      // 아직 흘리지 않은 사건은 버린다 — 떠나는 연결의 상태는 다음 연결이 다시 받는다.
+      if (eventFrame !== null) cancelAnimationFrame(eventFrame);
+      if (eventTimer !== null) clearTimeout(eventTimer);
+      eventQueue = [];
       if (ws) {
         ws.onclose = null;
         ws.onmessage = null;

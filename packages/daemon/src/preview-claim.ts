@@ -287,3 +287,58 @@ export async function descendantPids(pid: number, signal?: AbortSignal): Promise
     .catch(() => "");
   return descendantsOf(parseProcessTable(stdout), pid);
 }
+
+/**
+ * Windows 의 프로세스 표와 명령줄을 PowerShell 한 번으로 읽는 명령(2026-10-20, Windows 실측).
+ * `descendantPids` 와 `pidCommandLines` 를 차례로 부르면 PowerShell 이 두 번 뜬다. 한 번에
+ * 2.1~2.8초가 들어, 시작마다 미리보기 기동 앞의 거둠이 약 4.5초를 기다렸다. 한 번에 읽으면
+ * 2.2~2.4초다. 같은 순간의 표라 트리와 명령줄이 서로 어긋나지도 않는다.
+ * 큰따옴표는 쓰지 않는다 — `commandLinesCommand` 의 주석.
+ */
+export function processSnapshotCommand(): { command: string; args: string[] } {
+  return {
+    command: "powershell",
+    args: [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-CimInstance Win32_Process | ForEach-Object { $_.ProcessId.ToString() + [char]9 + $_.ParentProcessId.ToString() + [char]9 + $_.CommandLine }",
+    ],
+  };
+}
+
+/** 한 순간의 프로세스 표 — 부모 → 자식 목록과 pid → 명령줄. */
+export type ProcessSnapshot = {
+  children: Map<number, number[]>;
+  commandLines: Map<number, string>;
+};
+
+/**
+ * `pid<TAB>부모<TAB>명령줄` 줄들을 읽는다. BOM · CRLF 를 견딘다. 명령줄이 빈 줄(권한 밖
+ * 프로세스)은 트리에만 넣는다. 끝의 탭이 없어도 읽는다.
+ */
+export function parseProcessSnapshot(text: string): ProcessSnapshot {
+  const children = new Map<number, number[]>();
+  const commandLines = new Map<number, string>();
+  for (const raw of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    const match = /^\s*(\d+)\t(\d+)(?:\t(.*))?$/.exec(raw);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const parent = Number(match[2]);
+    const list = children.get(parent) ?? [];
+    list.push(pid);
+    children.set(parent, list);
+    const line = (match[3] ?? "").trim();
+    if (line !== "") commandLines.set(pid, line);
+  }
+  return { children, commandLines };
+}
+
+/** Windows 의 프로세스 표 한 장. 못 읽으면 빈 표다. */
+export async function processSnapshot(): Promise<ProcessSnapshot> {
+  const { command, args } = processSnapshotCommand();
+  const stdout = await run(command, args, { timeout: 15_000, encoding: "utf8" })
+    .then((result) => String(result.stdout))
+    .catch(() => "");
+  return parseProcessSnapshot(stdout);
+}

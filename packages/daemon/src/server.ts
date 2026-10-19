@@ -1089,6 +1089,8 @@ export class DaemonServer {
   }
 
   async start(): Promise<void> {
+    // 시작 줄의 시간 칸 — 아래 "데몬 시작" 의 startMs · uptimeMs(2026-10-20).
+    const startedAt = performance.now();
     this.claudeExecutable = await resolveClaudeExecutable(this.config.claudeExecutable);
     // git 가드 훅 폴더를 기동 때 한 번 쓴다 — 세션을 띄우는 드라이버들이
     // gitGuardEnv 로 core.hooksPath 를 겨눌 때 훅이 이미 있어야 한다.
@@ -1338,6 +1340,10 @@ export class DaemonServer {
         arch: arch(),
         nodeVersion: process.versions.node,
       }),
+      // 앱 시작이 느린 자리를 가리는 두 숫자(2026-10-20, Windows 실측 — 창이 뜨기까지 12초).
+      // startMs 는 이 start() 의 몸(복구 · 훑기 포함), uptimeMs 는 프로세스가 뜬 뒤 여기까지다.
+      startMs: Math.round(performance.now() - startedAt),
+      uptimeMs: Math.round(process.uptime() * 1000),
     });
   }
 

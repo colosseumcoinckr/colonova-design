@@ -11,7 +11,9 @@ import {
   descendantsOf,
   parseCommandLines,
   parseProcessTable,
+  parseProcessSnapshot,
   pidCommandLines,
+  processSnapshotCommand,
   processTableCommand,
   treeKillPlan,
 } from "../dist/preview-claim.js";
@@ -161,6 +163,43 @@ test("명령줄 읽기: BOM · CRLF · 빈 명령줄(권한 밖)을 견딘다", 
   assert.equal(lines.get(101), "C:\\Users\\홍 길동\\repo\\node next dev");
   assert.equal(lines.has(202), false);
   assert.equal(lines.get(303), "cmd.exe /d /s /c next dev");
+});
+
+/**
+ * 거둠의 표 한 장(2026-10-20, Windows 실측) — 표와 명령줄을 PowerShell 한 번으로 읽는다.
+ * 두 번 띄우면 시작마다 미리보기 기동이 약 4.5초 늦었다.
+ */
+test("표 한 장 명령: pid · 부모 · 명령줄을 UTF-8 탭 구분으로, 큰따옴표 없이", () => {
+  const { command, args } = processSnapshotCommand();
+  assert.equal(command, "powershell");
+  const script = args.at(-1) ?? "";
+  assert.match(script, /OutputEncoding=\[Text\.Encoding\]::UTF8/);
+  assert.match(script, /ProcessId[\s\S]*ParentProcessId[\s\S]*CommandLine/);
+  assert.doesNotMatch(script, /-Filter/);
+  assert.doesNotMatch(script, /"/);
+});
+
+test("표 한 장 읽기: 트리와 명령줄을 함께, BOM · CRLF · 빈 명령줄 · 끝 탭 없음을 견딘다", () => {
+  const text =
+    "\uFEFF10\t1\tcmd.exe /d /s /c pnpm run dev\r\n" +
+    "11\t10\tC:\\Users\\홍 길동\\repo\\node next dev\r\n" +
+    "12\t11\t\r\n" +
+    "13\t11\r\n" +
+    "garbage line\r\n\r\n" +
+    "99\t98\tother.exe\r\n";
+  const { children, commandLines } = parseProcessSnapshot(text);
+  assert.deepEqual(descendantsOf(children, 10), [11, 12, 13]);
+  assert.equal(commandLines.get(10), "cmd.exe /d /s /c pnpm run dev");
+  assert.equal(commandLines.get(11), "C:\\Users\\홍 길동\\repo\\node next dev");
+  assert.equal(commandLines.has(12), false);
+  assert.equal(commandLines.has(13), false);
+  assert.equal(commandLines.get(99), "other.exe");
+});
+
+test("표 한 장 읽기: 빈 출력(PowerShell 실패)은 빈 표다", () => {
+  const { children, commandLines } = parseProcessSnapshot("");
+  assert.equal(children.size, 0);
+  assert.equal(commandLines.size, 0);
 });
 
 test("클론 경로 앵커: Windows 는 대소문자를 가리지 않고 POSIX 는 가린다", () => {

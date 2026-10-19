@@ -1544,6 +1544,14 @@ Windows 의 문서화된 동작과 맞대어 고친 것**이지 Windows 에서 �
 - **턴 통계의 핀 적중.** 후보 경로와 도구 경로를 같은 열쇠(`turn-stats.ts` `pathKey`)로 비교한다. win32 는 대소문자를 접는다 — Codex 는 `c:/…` 와 섞인 구분자를 보고한다.
 - **시험의 Windows 모양.** 폴더 링크는 junction, 파일 링크는 권한이 없을 때만 건너뛴다(`test/helpers/links.ts`). 가짜 `pnpm` 은 `.cmd`, 가짜 `codex` 는 `node.exe`, 웹 시험의 상대 경로는 `/` 로 맞춘다(`packages/web/test/helpers/source-path.ts`). POSIX 파일 모드(`0o600` · 실행 비트) 단언만 win32 에서 건너뛴다.
 
+2026-10-20 Windows 준비 속도(실측 — colonova-cdp, Ryzen 5 2600 · NVMe · Windows Defender 실시간 보호 켬):
+
+- **병목은 Defender 의 첫 열기 검사다.** 파일을 처음 열 때 한 파일에 약 8~10ms 를 기다린다. 새 클론의 설치에서 `prepare` 의 `node scripts/i18n-build.ts` 가 52초를 썼다(다시 돌리면 6~7초). CPU 프로파일 43.8초 중 33.3초가 `readFileUtf8`, 4초가 open · close 였다. 소스 4,025개를 차례로 읽기 34.7초, 32개씩 함께 11.4초, 검사가 끝난 뒤 1.0초다. 열기만 해도 검사가 일어난다. 검사가 끝난 상태는 7분 뒤에도 남았지만 20분을 넘긴 재시작에서는 다시 느렸다. 재시작의 미리보기 기동에서도 같은 스크립트가 약 50초를 기다려 주소 출력이 54초였다.
+- **작업 폴더 데우기(win32).** 준비가 클론 직후(새 클론)와 최신화 전(활성 프로젝트)에 추적 파일을 32개씩 열었다 닫는다(`tree-warm.ts` `warmTrackedFiles`, 상한 20,000개). 기다리지 않는다 — 최신화 · 설치 · 미리보기 기동과 함께 돈다. 목록은 `RepoCore.git` 을 거치지 않는다(출력 줄이 준비 카드에 방송된다). 새 클론 복사본의 `pnpm install`(prepare 포함)이 75.6초에서 41.0초가 됐다. `node_modules` 는 데우지 않는다 — 52,923개를 모두 열면 32개씩에도 241초라 서버가 실제로 읽는 것보다 훨씬 많다. macOS 는 무동작이다. 로그 `작업 폴더 데우기 {files, opened, ms}`(`tree-warm.test.ts`).
+- **거둠의 PowerShell 을 한 번으로.** `reclaimStalePreview` 가 표(`descendantPids`)와 명령줄(`pidCommandLines`)을 따로 읽어 PowerShell 이 두 번 뜬다. 한 번에 2.1~2.8초라 시작마다 서버 기동이 약 4.5초 늦었다. win32 는 한 장의 표로 둘을 읽는다(`processSnapshot`, 2.2~2.4초). POSIX 는 예전 길 그대로다(`preview-claim.test.ts`).
+- **시간 칸.** `데몬 시작` 에 `startMs`(start() 의 몸) · `uptimeMs`(프로세스 나이), 준비 끝에 `준비 시간 {cloneMs|pullMs, installMs, countMs, previewMs, totalMs}` 한 줄이 남는다. 재시작 실측에서 앱 실행 → 데몬 시작 줄이 12초였다 — 이 두 칸이 그 12초의 자리를 가른다.
+- **남은 것(코드로 못 줄임).** Next 의 차가운 첫 컴파일(새 클론 `/` 63초 + `/signin` 23초)은 `node_modules` 의 첫 열기가 대부분이다. Turbopack 캐시(`.next/dev/cache/turbopack`, 약 690MB)가 있으면 재시작의 주소 → 응답이 5~10초다. 캐시는 컴파일이 끝난 뒤 수 초 안에 저장되므로, 컴파일 직후 앱을 끄면(`taskkill /F`) 저장되지 않는다. 프로젝트 폴더(`~/.colonova-design/projects`)를 Defender 예외로 두면 두 비용이 함께 사라진다 — 관리자 권한이 필요해 앱이 혼자 하지 않는다.
+
 **추정으로 남긴 것 · 알려진 한계**(실기가 정한다 — 베타 세션 번호는 `beta-windows-session.md`)
 
 - **`FOO=bar vite` 류 dev 스크립트 — 하지 않았다(`추정으로 남김`).** 데몬이 도는 미리보기 명령은 `<매니저> run <스크립트 이름>`

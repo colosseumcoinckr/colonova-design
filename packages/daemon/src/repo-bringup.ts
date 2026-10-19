@@ -18,13 +18,16 @@ import { createFileLogger } from "./log.js";
 import {
   daemonOwnedPorts,
   descendantPids,
+  descendantsOf,
   killPidTree,
   killTree,
   commandLineMentions,
   pidCommandLines,
   pidListeningPorts,
   probePreviewUrl,
+  processSnapshot,
 } from "./preview-claim.js";
+import { warmTrackedFiles } from "./tree-warm.js";
 import { detectPreview } from "./preview-detection.js";
 import {
   PREVIEW_COMMAND_UNKNOWN,
@@ -55,6 +58,25 @@ export class BringUp {
   /** C5: 서버가 저절로 꺼졌을 때 남은 저절로 다시 켜기 시도 수. */
   private previewRestarts = 0;
 
+  /** 도는 중인 작업 폴더 데우기 — 같은 일을 걹쳐 띄우지 않는다. */
+  private warming: Promise<void> | null = null;
+
+  /**
+   * Windows: 클론의 추적 파일을 함께 열어 둔다(tree-warm.ts, 2026-10-20). 기다리지 않는다 —
+   * 최신화 · 설치 · 미리보기 기동과 함께 돌아야 뒤의 명령이 덕을 본다. macOS 는 무동작이다.
+   */
+  private warmTree(): void {
+    if (this.warming !== null) return;
+    this.warming = warmTrackedFiles(this.core.root)
+      .then((result) => {
+        if (result) createFileLogger().info("작업 폴더 데우기", result);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        this.warming = null;
+      });
+  }
+
   // -------------------------------------------------------------------------
   // Bootstrap
   // -------------------------------------------------------------------------
@@ -69,6 +91,15 @@ export class BringUp {
       // PLAN-UI U8: 처음 여는 프로젝트의 준비 — 아래의 전환 울타리가 설치까지는
       // 배경에서 잇게 한다.
       const firstPrep = !this.core.isCloned();
+      // 단계별 시간(2026-10-20) — 끝의 "준비 시간" 한 줄이 느린 단계를 말한다.
+      const spans: Record<string, number> = {};
+      const started = performance.now();
+      let mark = started;
+      const lap = (name: string) => {
+        const now = performance.now();
+        spans[name] = Math.round(now - mark);
+        mark = now;
+      };
       // 최신화 전의 단계 — 활성이 아닌 프로젝트는 아래 울타리에서 나가므로 그때 되돌린다.
       const before = this.core.phase;
       if (firstPrep) {
@@ -85,7 +116,11 @@ export class BringUp {
         );
         trustWorkspace(this.core.root);
         sanitizeRepoAgentSettings(this.core.root);
+        // 갓 체크아웃한 파일은 모두 처음 읽힌다 — 설치의 사전 생성 스크립트가 덕을 본다.
+        this.warmTree();
       } else {
+        // 활성 프로젝트만 — 떠난 프로젝트의 최신화는 미리보기를 켜지 않는다.
+        if (this.core.active) this.warmTree();
         this.core.setPhase("pulling", null);
         await this.core.scrubOriginCredential();
         // Already cloned: 최신화, not a blind ff. Unsaved work survives the
@@ -96,6 +131,7 @@ export class BringUp {
         // 있다 — 클론 길에서와 같은 칼을 다시 댄다(이미 깨끗하면 무동작).
         sanitizeRepoAgentSettings(this.core.root);
       }
+      lap(firstPrep ? "cloneMs" : "pullMs");
 
       // 설정이 못 읽는 것(명령 없음 · 깨진 JSON)은 그대로 오류 카드로 —
       // AI 에게 해결 요청이 이 레포를 고치는 길이다.
@@ -129,6 +165,7 @@ export class BringUp {
         return this.core.snapshot();
       }
       const installed = await this.installIfNeeded(config);
+      lap("installMs");
 
       /**
        * Count once the clone is on disk and checked out. Without this the
@@ -137,6 +174,7 @@ export class BringUp {
        * come back to a rail that says there is nothing to save.
        */
       await this.core.refreshPendingChanges();
+      lap("countMs");
 
       // Up to date and still serving: restarting the preview would only flip
       // the UI out of `ready` for no gain.
@@ -145,6 +183,13 @@ export class BringUp {
         return this.core.snapshot();
       }
       await this.startPreview(config);
+      lap("previewMs");
+      createFileLogger().info("준비 시간", {
+        firstPrep,
+        installed,
+        ...spans,
+        totalMs: Math.round(performance.now() - started),
+      });
       this.core.setPhase("ready", null);
     } catch (error) {
       this.core.setPhase("error", detailOf(error, this.core.pat), this.bringUpErrorKind(error));
@@ -430,8 +475,18 @@ export class BringUp {
     }
     if (!Number.isInteger(recorded) || recorded <= 1) return;
     const platform = currentPlatform();
-    const tree = [recorded, ...(await descendantPids(recorded).catch(() => []))];
-    const lines = await pidCommandLines(tree);
+    // Windows 는 표와 명령줄을 PowerShell 한 번으로 읽는다 — 두 번 띄우면 기동이 약 4.5초 늦었다
+    // (processSnapshotCommand 의 주석, 2026-10-20).
+    let tree: number[];
+    let lines: Map<number, string>;
+    if (platform === "win32") {
+      const snapshot = await processSnapshot();
+      tree = [recorded, ...descendantsOf(snapshot.children, recorded)];
+      lines = snapshot.commandLines;
+    } else {
+      tree = [recorded, ...(await descendantPids(recorded).catch(() => []))];
+      lines = await pidCommandLines(tree);
+    }
     const mine = tree.filter((pid) => {
       const line = lines.get(pid);
       return line !== undefined && commandLineMentions(line, this.core.root, platform);

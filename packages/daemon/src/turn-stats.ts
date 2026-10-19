@@ -7,6 +7,9 @@
  * `firstEditMs`(방향 잡기: 첫 편집까지), `waitMs`(사람이 카드 앞에서 기다린
  * 시간 — durationMs 에서 갈라 낸다), `scanMs`(보내기 문에서 핀 강화가 걸린
  * 시간), `sincePrevTurnMs`(이전 턴 종료 뒤 재보내기의 틈 — 교정 턴의 재료).
+ * 2026-10-19 응답 속도 조사 — `preDeliverMs`(user.echo 부터 말이 실제로 CLI 로
+ * 나가기까지: 직전 보관 대기 · 기준 스냅숏 · 대화록 읽기 등 데몬의 몫)가 갈라 들어,
+ * `firstDeltaMs` 에서 데몬 시간과 모델 시간을 나눌 수 있다.
  * 게이트는 turn.end 뒤에야 판정이 나오므로 턴 행이 아닌 제 행(kind
  * "gateset")으로 내려앉는다. 이 측정은 `undo.jsonl` 과 같은 결이다: 종류와
  * 숫자만 남고, 사용자의 말·화면·파일 이름은 조금도 남지 않는다. 로그가 도구를
@@ -62,6 +65,8 @@ interface InFlight {
   startedAt: number;
   /** 첫 text.delta 가 뜬 시각 — 첫 글자까지의 대기(TTFT). 없던 턴은 null. */
   firstDeltaAt: number | null;
+  /** 말이 실제로 CLI 로 나간 시각(2026-10-19) — 데몬의 보내기 전 작업이 끝난 자리. 못 본 턴은 null. */
+  deliveredAt: number | null;
   /** 첫 편집 도구가 뜬 시각 — 편집이 없던 턴은 null. */
   firstEditAt: number | null;
   /** 핀 턴이 에이전트에 실어 보낸 말의 바이트 — 핀 페이로드의 크기. 핀 턴만 값이 있다. */
@@ -111,6 +116,8 @@ interface TurnStatsRow {
   firstEditMs: number | null;
   /** user.echo → 첫 text.delta — 첫 글자까지의 대기(TTFT). 없으면 null. */
   firstDeltaMs: number | null;
+  /** user.echo → 말이 CLI 로 나간 순간(2026-10-19) — firstDeltaMs 가운데 데몬의 몫. 못 본 턴은 null. */
+  preDeliverMs: number | null;
   /** 핀 턴이 에이전트에게 실어 보낸 말의 바이트 — 핀 페이로드의 크기. 핀 턴만. */
   pinBytes: number | null;
   /** 실패한 턴의 단계 — 실패 문장의 최선 분류(계정류 `account` 는 2026-10-07 에 더했다). 성공 턴은 null. */
@@ -217,6 +224,7 @@ function freshTurn(text: string): InFlight {
     other: 0,
     startedAt: Date.now(),
     firstDeltaAt: null,
+    deliveredAt: null,
     firstEditAt: null,
     pinBytes: kind === "comments" ? Buffer.byteLength(text, "utf8") : null,
     waitMs: 0,
@@ -562,6 +570,13 @@ export class TurnStats {
     return Date.now() - head.at > SCAN_TTL_MS ? null : head;
   }
 
+  /** 말이 실제로 CLI 로 나갔다(2026-10-19) — 도는 턴의 preDeliverMs 가 여기서 선다.
+   *  턴마다 한 번(첫 신호만). 도는 턴이 없으면 조용히 흘린다. */
+  noteDelivered(sessionId: string): void {
+    const turn = this.flying.get(sessionId);
+    if (turn !== undefined && turn.deliveredAt === null) turn.deliveredAt = Date.now();
+  }
+
   /** 카드 대기의 한 구간(waiting_* 에 머문 시간) — 도는 턴에 더한다. */
   noteWait(sessionId: string, ms: number): void {
     const turn = this.flying.get(sessionId);
@@ -680,6 +695,8 @@ export class TurnStats {
         turn.firstEditAt === null ? null : Math.max(0, turn.firstEditAt - turn.startedAt),
       firstDeltaMs:
         turn.firstDeltaAt === null ? null : Math.max(0, turn.firstDeltaAt - turn.startedAt),
+      preDeliverMs:
+        turn.deliveredAt === null ? null : Math.max(0, turn.deliveredAt - turn.startedAt),
       pinBytes: turn.pinBytes,
       failure: event.isError ? classifyFailure(event.resultText, event.errorCode) : null,
       waitMs: turn.waitMs,

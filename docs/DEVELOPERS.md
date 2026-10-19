@@ -92,7 +92,7 @@ git, 그리고 Claude 를
 | --- | --- |
 | `~/.colonova-design/config/` | `daemon.json` (host/port/token), `projects.json` (레지스트리) — 전부 0600, 비밀 없음(그건 OS 저장소로 간다) |
 | `~/.colonova-design/logs/` | 데몬의 하루 로그(`daemon-YYYY-MM-DD.log`, 7일 보존) — 값과 문장(message) 모두에서 비밀·이메일·계정 경로를 `~/{path}` 따위로 눌러 닫는다(2026-10-02). 설정 → `개발자용` 의 `로그 폴더 열기`가 여기를 연다 |
-| `~/.colonova-design/logs/turn-stats-YYYY-MM-DD.jsonl` | 턴 통계 — 한 턴의 종류(사람 말 · 핀 · 게이트) · 길이 · 도구 묶음별 호출 수 · 컨텍스트 토큰 · 첫 답까지(`firstDeltaMs`)·첫 편집까지(`firstEditMs`) · 실패 단계(`failure` — `length · auth · account · limit · stream · other`, `account` 는 2026-10-07) · 핀 턴의 payload 크기(`pinBytes`) · 핀 후보 적중 여부(`pinHit` — 파일 경로는 남기지 않는다) · 브라우저 도구에 쓴 시간(`browserMs`)과 op 실패 종류 수(`browserFail` — 낡은 ref · 시간 초과 · 거절 · 창 없음 · 그 밖, 0인 종류는 칸에서 뺀다)와 그 턴의 `screen_check` 가 만난 로그인 벽 수(`loginWall`, 없으면 칸이 없다). 게이트 행(`gateset`)은 판정 상세(빈 화면·휴대폰 폭 넘침(`overflow`)·새 접근성 문제(`a11y`)·콘솔 오류·실패한 요청 수, `rescued`)·로그인 화면으로 튕겨 확인한 화면으로도 문제로도 세지 않은 수(`loginWall` — 횟수만, 주소 · 경로는 남기지 않는다)와 돌지 못한 이유(`skipped`), 바뀐 파일에서 되짚은 화면 수(`fallback`)와 타입 검사(`typeErrors` · `typeMs` — 이번에 바뀐 파일의 오류 수와 검사 시간, 검사가 끝났으면 0도)를 더 남긴다. 턴 행은 그 턴의 토큰(`tokens` — 캐시를 뺀 새 입력 · 출력 · 캐시 읽기 · 캐시 쓰기) · 추정 비용(`costUsd`, 정가 기준 — Claude 만) · 캐시 적중률(`cacheHitRate`)도 싣는다(2026-10-02) — 프로바이더가 알려 주지 않은 턴은 null 이지 0 이 아니다. 무엇이 턴을 느리게 하고 비싸게 하는지 재는 잣자리로, 사용자의 말도 화면도 남기지 않는다(7일 보존) |
+| `~/.colonova-design/logs/turn-stats-YYYY-MM-DD.jsonl` | 턴 통계 — 한 턴의 종류(사람 말 · 핀 · 게이트) · 길이 · 도구 묶음별 호출 수 · 컨텍스트 토큰 · 첫 답까지(`firstDeltaMs`)·말이 CLI 로 나가기까지(`preDeliverMs` — firstDeltaMs 가운데 데몬의 몫, 2026-10-19)·첫 편집까지(`firstEditMs`) · 실패 단계(`failure` — `length · auth · account · limit · stream · other`, `account` 는 2026-10-07) · 핀 턴의 payload 크기(`pinBytes`) · 핀 후보 적중 여부(`pinHit` — 파일 경로는 남기지 않는다) · 브라우저 도구에 쓴 시간(`browserMs`)과 op 실패 종류 수(`browserFail` — 낡은 ref · 시간 초과 · 거절 · 창 없음 · 그 밖, 0인 종류는 칸에서 뺀다)와 그 턴의 `screen_check` 가 만난 로그인 벽 수(`loginWall`, 없으면 칸이 없다). 게이트 행(`gateset`)은 판정 상세(빈 화면·휴대폰 폭 넘침(`overflow`)·새 접근성 문제(`a11y`)·콘솔 오류·실패한 요청 수, `rescued`)·로그인 화면으로 튕겨 확인한 화면으로도 문제로도 세지 않은 수(`loginWall` — 횟수만, 주소 · 경로는 남기지 않는다)와 돌지 못한 이유(`skipped`), 바뀐 파일에서 되짚은 화면 수(`fallback`)와 타입 검사(`typeErrors` · `typeMs` — 이번에 바뀐 파일의 오류 수와 검사 시간, 검사가 끝났으면 0도)를 더 남긴다. 턴 행은 그 턴의 토큰(`tokens` — 캐시를 뺀 새 입력 · 출력 · 캐시 읽기 · 캐시 쓰기) · 추정 비용(`costUsd`, 정가 기준 — Claude 만) · 캐시 적중률(`cacheHitRate`)도 싣는다(2026-10-02) — 프로바이더가 알려 주지 않은 턴은 null 이지 0 이 아니다. 무엇이 턴을 느리게 하고 비싸게 하는지 재는 잣자리로, 사용자의 말도 화면도 남기지 않는다(7일 보존) |
 | `~/.colonova-design/projects/<slug>/screen-map.jsonl` | 라우트↔파일 관찰 지도 — 그 화면을 고친 커밋이 건드린 파일(sha 와 함께). 정체 검색이 빈손인 핀의 마지막 후보 길이다(500행 상한) |
 | `~/.colonova-design/projects/<slug>/tsc.tsbuildinfo` | 증분 타입 검사(`tsc --noEmit --incremental`)의 빌드 정보 — 클론 밖에 두어 `git status` 를 깨끗하게 한다. 편집 사이사이의 몇 초 답(`repo_diagnostics`)과 게이트의 타입 절이 함께 쓴다 |
 | `~/.colonova-design/projects/<slug>/cycle.json` | 사이클 원장 — 제출 의도 · 푸시 밀림 · 코멘트 장부 · 자동 검사 반영 장부(브리프한 head) · 예산 · 끝난 요청 · 반영된 일(`landed`, 최근 20건 — 사용자의 말(제목)이 담기는 곳이 이 원장이고 로그 · 통계에는 싣지 않는다). 어디서 끊겨도 다음 시작이 이어받는다 |
@@ -902,6 +902,17 @@ engineering for Claude 5」를 따라). 모든 세션에 붙는 공통 규칙(`c
 밝힌다(되묻기는 여전히 하나). 1,998 → 2,160자이고 `common-instructions.test.ts` 가 불릿 열넷 · 2,400자의 천장을 지킨다. 같은 날 문서 파일 불릿의 끝에 「그림은
 사용자가 화면에 넣어 달라고 한 것만 저장된 경로에서 레포의 에셋 자리로 복사한다」 한 구절만 더했다(새 불릿 없이 2,211자 — 위 「첨부」).
 
+**응답 속도**(2026-10-19 조사). 턴 통계의 첫 글자(`firstDeltaMs`)가 턴 끝(`durationMs`)과 거의 같았다 — 모델이
+`screen_check` · 진단 · 명령을 다 돌린 뒤에야 첫 문장을 썼으므로, 읽는 사람은 30초 넘게 침묵만 봤다. 세 자리를 고쳤다.
+(1) 공통 규칙에 불릿 하나(12 → 13, 2,296자) — 도구를 부르기 전에 무엇을 하려는지 한 문장을 먼저 쓴다. (2) 데몬의
+보내기 전 작업(`beforeDeliver`)이 모델 시작을 막던 두 대기를 풀었다 — 수정 전 사진 찍기(`comparisons.begin`, 길 넷 ·
+6초 예산)는 기다리지 않고 뒤에서 채우며, 직전 턴의 보관은 커밋이 내려앉는 것(`autoSaveLands`)까지만 기다리고 수정 후
+사진(`comparisonSaves` 의 뒷절반)은 기다리지 않는다 — 기준 스냅숏은 커밋 뒤의 트리를 읽어야 하므로 그 대기는 남는다.
+`preDeliverMs` 가 남은 데몬 몫을 잰다(세션의 `onDelivered` — 드라이버 send 직전). (3) 웹은 `session.event` 를 한
+프레임에 모아 `setSessions` 한 번으로 넣는다(`daemon-client.ts`) — 토막마다 대화 칸 전체(마크다운 파싱까지)가 다시 그려져
+긴 답에서 끊겼다. 다른 종류의 메시지가 오면 쌓인 사건을 먼저 흘려 차례를 지킨다. 첫 글자가 빨라지는 것은 (1)(2), (3) 은
+부드러움이다.
+
 **통과한 확인의 흔적**(2026-10-06 UX 점검). 예전에는 확인이 문제를 찾았을 때(`화면 확인` 카드)만 사용자에게 닿고, 문제 없이
 통과한 확인은 통계 한 줄 말고는 흔적이 없어서 「끝났다」 가 확인된 말인지 알 수 없었다. 이제 `runGate` 의 `ok` 가
 실제로 열린 화면의 수(`opened`)와 그 화면이 모두 휴대폰 폭으로도 열려 넘침까지 봤는지(`phone` — 휴대폰 폭으로 못 연
@@ -911,8 +922,9 @@ engineering for Claude 5」를 따라). 모든 세션에 붙는 공통 규칙(`c
 받아 결과 카드 아래 한 줄로 말한다. 문제를 찾았거나 확인하지 못한 턴(`trouble` · `broken` · `skipped`)에는 없다. 로그인 벽
 화면은 열린 화면으로 세지 않는다(위의 「로그인 벽」).
 
-**수정 전·후 사진**(`screen-comparisons.ts`). 말이 CLI 로 나가기 직전(`beforeDeliver`)에 수정 전 사진을 찍고
-(요청마다 앞 네 길, 6초 예산), 보관이 서면 바뀐 화면의 수정 후 사진을 찍어 같은 경로로 짝짓는다. 찍는
+**수정 전·후 사진**(`screen-comparisons.ts`). 말이 CLI 로 나가기 직전(`beforeDeliver`)에 수정 전 사진을 찍기 시작하고
+(요청마다 앞 네 길, 6초 예산 — 말은 사진을 기다리지 않고 나간다, 2026-10-19 응답 속도), 보관이 서면 바뀐 화면의 수정 후
+사진을 찍어 같은 경로로 짝짓는다(그때까지 찍힌 수정 전 사진만 짝이 된다). 찍는
 차례는 `beforeRoutes` 다 — 사용자가 가리킨 화면(핀) · **지금 보던 화면**(`session.send` 의 선택 필드
 `viewing`, 2026-10-06) · 관찰 지도의 최근 화면 · 루트. 예전에는 보던 화면이 없어서 처음 만지는 화면을 말로만
 부탁하면 그 화면의 수정 전 사진이 비었다. `viewing` 은 사진의 재료일 뿐 게이트 입력이 아니다 — 게이트는 핀 ·

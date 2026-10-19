@@ -129,6 +129,43 @@ test("실패한 턴은 단계가 새겨지고, 성공 턴은 null 이다", async
   }
 });
 
+test("preDeliverMs — noteDelivered 를 본 턴은 숫자, 못 본 턴은 null 이다 (2026-10-19 응답 속도 조사)", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
+  try {
+    const stats_ = stats(dir);
+    stats_.observe("s1", { kind: "user.echo", text: "첫 턴", images: 0 } as ChatEvent);
+    stats_.noteDelivered("s1");
+    // 두 번째 신호는 첫 것을 덮지 않는다.
+    stats_.noteDelivered("s1");
+    stats_.observe("s1", {
+      kind: "turn.end",
+      subtype: "success",
+      isError: false,
+      costUsd: null,
+      numTurns: 1,
+      durationMs: 100,
+      resultText: null,
+    } as ChatEvent);
+    stats_.observe("s2", { kind: "user.echo", text: "둘째 턴", images: 0 } as ChatEvent);
+    stats_.observe("s2", {
+      kind: "turn.end",
+      subtype: "success",
+      isError: false,
+      costUsd: null,
+      numTurns: 1,
+      durationMs: 100,
+      resultText: null,
+    } as ChatEvent);
+    const rows = (await untilRows(dir, 2)).filter((row) => row.kind === "user");
+    assert.equal(rows.length, 2);
+    assert.equal(typeof rows[0]?.preDeliverMs, "number");
+    assert.ok((rows[0]?.preDeliverMs as number) >= 0);
+    assert.equal(rows[1]?.preDeliverMs, null);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("첫 delta 가 없던 턴의 firstDeltaMs 는 null 이다", async () => {
   const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
   try {

@@ -172,6 +172,11 @@ export interface SessionEvents {
   onTurnStart?: (sessionId: string) => void;
   beforeDeliver?: (sessionId: string, item: HeldSend) => Promise<void>;
   /**
+   * 말이 실제로 CLI 로 나가는 순간(2026-10-19 응답 속도 조사) — beforeDeliver 가 끝나고
+   * 드라이버의 send 를 부르기 직전. 턴 통계가 데몬의 보내기 전 시간(preDeliverMs)을 여기서 잰다.
+   */
+  onDelivered?: (sessionId: string) => void;
+  /**
    * 말이 실제로 CLI 로 나가는 시점(deliver)의 핀 목록 — 서버가 화면 게이트의
    * 입력으로 옮겨 적는다. 받은 시점이 아닌 나가는 시점인 이유는 HeldSend 의
    * 주석: 대기 중인 말의 핀은 그 말을 실은 턴의 것이어야 한다.
@@ -1606,6 +1611,7 @@ export class Session {
     const agentText = withViewingLine(text, item.viewing, pins.length > 0);
     const send = (): void => {
       if (this.closed || this.interrupting || this.lastDelivered !== item) return;
+      this.events.onDelivered?.(this.id);
       void this.agent?.send({ text: agentText, attachments }).catch((error: unknown) => {
         // 전송이 살아 있어도 보내기가 거절될 수 있다(codex 의 turn/start 거절,
         // 방금 닫힌 SDK 입력 큐). 삼키면 turnStartedAt 만 남고 turn.end 는

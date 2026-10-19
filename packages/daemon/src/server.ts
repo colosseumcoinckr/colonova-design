@@ -864,10 +864,18 @@ export class DaemonServer {
             );
           }
         },
+        // 턴 통계의 preDeliverMs (2026-10-19 응답 속도 조사) — 아래 beforeDeliver 가 끝나
+        // 말이 CLI 로 나간 순간.
+        onDelivered: (sessionId) => {
+          this.stats.noteDelivered(sessionId);
+        },
         beforeDeliver: async (sessionId, item) => {
           const workspace = this.workspaceOfSession(sessionId);
           if (!workspace) return;
-          await this.comparisonSaves.get(workspace.slug);
+          // 직전 턴의 보관(커밋)이 내려앉을 때까지만 기다린다 — 기준 스냅숏은 커밋 뒤의
+          // 트리를 읽어야 이 턴의 변경만 센다. 수정 후 사진까지 기다리던 것(최대 6초)은
+          // 2026-10-19 응답 속도 조사로 풀었다: 사진은 격리 창이라 다음 턴과 겹쳐도 된다.
+          await this.autoSaveLands.get(workspace.slug);
           this.turnBaselines.set(
             sessionId,
             await turnSnapshot(workspace.repo.repoCore()).catch(() => null),

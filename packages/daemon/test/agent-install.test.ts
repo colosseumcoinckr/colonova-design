@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -11,10 +12,14 @@ import {
   codexAssetFor,
   meaningfulInstallLine,
   verifyDigest,
+  windowsScriptCommand,
 } from "../dist/agent-install.js";
 
+/** Windows 의 설치 대체 명령은 PowerShell 이 돈다(제품의 win32 길) — sh 문법은 그 때만 갈아 끼운다. */
+const WIN = process.platform === "win32";
+
 /** 실제 설치 스크립트처럼 한 청크가 한 줄로 흐르는 시험용 설치 명령. */
-function emitSteps(): string {
+function emitSteps(winGapMs = 50): string {
   const lines = [
     "\\033[1mSetting up Claude Code...\\033[0m",
     "Installing Claude Code native build latest...",
@@ -23,6 +28,20 @@ function emitSteps(): string {
     "Installing Claude Code native build latest...",
     "✔ Claude Code successfully installed!",
   ];
+  if (WIN) {
+    // PowerShell 5.1 에는 printf 가 없다(Git Bash 의 printf.exe 를 빌려 줄마다 프로세스를 띄우면
+    // 6 줄이 1 초를 넘겨 스로틀 시험이 흔들렸다). 한 프로세스가 줄마다 바로 쓴다. 파이프 출력은
+    // 콘솔 코드 페이지라 `✔` 가 `?` 가 되므로 UTF-8 로 맞추고, ESC 는 [char]27 로 쓴다(2026-10-19).
+    const writes = lines.map((line) => {
+      const quoted = `'${line.replaceAll("'", "''").replaceAll("\\033", "' + $e + '")}'`;
+      return `[Console]::Out.WriteLine(${quoted})`;
+    });
+    return [
+      "$e = [string][char]27",
+      "[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)",
+      writes.join(winGapMs > 0 ? `; Start-Sleep -Milliseconds ${winGapMs}; ` : "; "),
+    ].join("; ");
+  }
   return lines.map((line) => `printf '${line}\\n'`).join("; sleep 0.05; ");
 }
 
@@ -160,8 +179,10 @@ test("진행 방송: ANSI 제거 · PATH 문단 버림 · 같은 줄 반복 억�
 });
 
 test("진행 방송: 기본 간격(1초)에서는 1초에 한 번 이하 — 끝의 flush 가 마지막 줄을 내보낸다", async () => {
+  // Windows 는 간격 없이 한꺼번에 쓴다. 부하가 큰 PC 에서는 PowerShell 의 50ms 쉼이 1초를 넘겨
+  // 가운데 줄이 정당하게 나갔다(2026-10-19 전체 시험). 1초 안에 온 줄을 접는지는 그대로 본다.
   const result = await runInstall({
-    env: { ...process.env, COLONOVA_DESIGN_CLAUDE_INSTALL_CMD: emitSteps() },
+    env: { ...process.env, COLONOVA_DESIGN_CLAUDE_INSTALL_CMD: emitSteps(0) },
     resolveClaude: async () => "/usr/local/bin/claude",
   });
   // 6 줄이 0.05 초 간격으로 흐르면 즉시 나가는 것은 첫 줄뿐이고, 나머지는
@@ -257,7 +278,9 @@ test("성공 판정: exit 7 은 네트워크 실패로 분류된다", async () =
   const result = await runInstall({
     env: {
       ...process.env,
-      COLONOVA_DESIGN_CLAUDE_INSTALL_CMD: "echo 'curl: (7) Failed to connect' >&2; exit 7",
+      COLONOVA_DESIGN_CLAUDE_INSTALL_CMD: WIN
+        ? "[Console]::Error.WriteLine('curl: (7) Failed to connect'); exit 7"
+        : "echo 'curl: (7) Failed to connect' >&2; exit 7",
     },
     resolveClaude: async () => "/opt/homebrew/bin/claude",
   });
@@ -341,8 +364,9 @@ test("update-claude: 스크립트에 latest 를 건네고, 자식은 자기 업�
     env: {
       ...process.env,
       DISABLE_AUTOUPDATER: "",
-      COLONOVA_DESIGN_CLAUDE_INSTALL_CMD:
-        'test "$1" = latest || exit 3; test "$DISABLE_AUTOUPDATER" = 1 || exit 4; echo "target $1"',
+      COLONOVA_DESIGN_CLAUDE_INSTALL_CMD: WIN
+        ? "if ($args[0] -ne 'latest') { exit 3 }; if ($env:DISABLE_AUTOUPDATER -ne '1') { exit 4 }; Write-Output \"target $($args[0])\""
+        : 'test "$1" = latest || exit 3; test "$DISABLE_AUTOUPDATER" = 1 || exit 4; echo "target $1"',
     },
     resolveClaude: async () => "/home/u/.local/share/claude/versions/2.2.0",
     progressIntervalMs: 0,
@@ -370,7 +394,9 @@ test("install-claude: 설치는 대상을 건네지 않는다 — 스크립트�
   const result = await runInstall({
     env: {
       ...process.env,
-      COLONOVA_DESIGN_CLAUDE_INSTALL_CMD: 'test -z "$1" || exit 3; test "$DISABLE_AUTOUPDATER" = 1',
+      COLONOVA_DESIGN_CLAUDE_INSTALL_CMD: WIN
+        ? "if ($args.Count -ne 0) { exit 3 }; if ($env:DISABLE_AUTOUPDATER -ne '1') { exit 4 }"
+        : 'test -z "$1" || exit 3; test "$DISABLE_AUTOUPDATER" = 1',
     },
     resolveClaude: async () => "/usr/local/bin/claude",
   });
@@ -383,9 +409,24 @@ test("update-codex: 로컬 릴리스 서버의 자산을 받아 확인하고 too
   const { execFileSync } = await import("node:child_process");
   const { readFileSync } = await import("node:fs");
   const dir = mkdtempSync(join(tmpdir(), "colonova-codex-update-test-"));
-  const assetName = "codex-aarch64-apple-darwin.tar.gz";
-  writeFileSync(join(dir, "codex-aarch64-apple-darwin"), "#!/bin/sh\necho codex-cli 0.46.0\n");
-  execFileSync("tar", ["-czf", join(dir, assetName), "-C", dir, "codex-aarch64-apple-darwin"]);
+  // Windows 는 제 자산(zip)을 제품의 win32 길(System32 의 tar.exe)로 연다. 압축도 그 tar 로 cwd 의
+  // 상대 경로에서 만든다 — Git Bash 의 GNU tar 는 `C:\…` 의 `C:` 를 원격 호스트로 읽는다(2026-10-19).
+  const target = WIN
+    ? {
+        platform: "win32",
+        arch: "x64",
+        inner: "codex-x86_64-pc-windows-msvc.exe",
+        bin: "codex.exe",
+      }
+    : { platform: "darwin", arch: "arm64", inner: "codex-aarch64-apple-darwin", bin: "codex" };
+  const assetName = WIN ? `${target.inner}.zip` : "codex-aarch64-apple-darwin.tar.gz";
+  writeFileSync(join(dir, target.inner), "#!/bin/sh\necho codex-cli 0.46.0\n");
+  if (WIN) {
+    const tar = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
+    execFileSync(tar, ["-a", "-cf", assetName, target.inner], { cwd: dir });
+  } else {
+    execFileSync("tar", ["-czf", join(dir, assetName), "-C", dir, "codex-aarch64-apple-darwin"]);
+  }
   const archive = readFileSync(join(dir, assetName));
   const digest = `sha256:${createHash("sha256").update(archive).digest("hex")}`;
   const server = createServer((request, response) => {
@@ -419,10 +460,10 @@ test("update-codex: 로컬 릴리스 서버의 자산을 받아 확인하고 too
           ...process.env,
           COLONOVA_DESIGN_CODEX_RELEASE_API: `http://127.0.0.1:${port}/release`,
         },
-        platform: "darwin",
-        arch: "arm64",
+        platform: target.platform,
+        arch: target.arch,
         toolsBinDir,
-        resolveCodex: async () => join(toolsBinDir, "codex"),
+        resolveCodex: async () => join(toolsBinDir, target.bin),
         progressIntervalMs: 0,
       },
       "update-codex",
@@ -433,11 +474,58 @@ test("update-codex: 로컬 릴리스 서버의 자산을 받아 확인하고 too
     assert.ok(result.lines.includes("Codex 확인하는 중…"));
     assert.ok(result.lines.includes("Codex 설치하는 중…"));
     assert.equal(
-      readFileSync(join(toolsBinDir, "codex"), "utf8"),
+      readFileSync(join(toolsBinDir, target.bin), "utf8"),
       "#!/bin/sh\necho codex-cli 0.46.0\n",
     );
   } finally {
     server.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Windows 설치 스크립트는 UTF-8 출력으로 부르고 스크립트의 종료 코드를 그대로 돌려준다(2026-10-19)", (t) => {
+  assert.equal(
+    windowsScriptCommand("C:\\Temp\\it's 설치.ps1", ["-Target", "latest"]),
+    [
+      "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+      "& 'C:\\Temp\\it''s 설치.ps1' -Target 'latest'",
+      "exit $LASTEXITCODE",
+    ].join("\n"),
+  );
+  if (process.platform !== "win32") {
+    t.skip("PowerShell 실행은 Windows 에서만 본다");
+    return;
+  }
+  const dir = mkdtempSync(join(tmpdir(), "설치 it's-"));
+  try {
+    const script = join(dir, "install.ps1");
+    // install.ps1 처럼 param 블록으로 시작한다 — 앞에 줄을 넣으면 깨지는 모양.
+    writeFileSync(
+      script,
+      '\uFEFFparam([string]$Target = "stable")\nWrite-Output "대상 $Target ✔"\n' +
+        'if ($Target -eq "latest") { exit 7 }\n',
+      "utf8",
+    );
+    const run = (args: string[]) =>
+      spawnSync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          windowsScriptCommand(script, args),
+        ],
+        { encoding: "utf8", windowsHide: true },
+      );
+    const latest = run(["-Target", "latest"]);
+    assert.equal(latest.status, 7, latest.stderr);
+    assert.equal(latest.stdout.trim(), "대상 latest ✔");
+    const plain = run([]);
+    assert.equal(plain.status, 0, plain.stderr);
+    assert.equal(plain.stdout.trim(), "대상 stable ✔");
+  } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });

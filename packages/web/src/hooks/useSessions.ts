@@ -32,7 +32,7 @@ interface QueuedRestore {
   pins?: Array<{ screen: string }>;
 }
 
-import { modelRowOf } from "../lib/chat-options";
+import { modelRowOf, seedEffort } from "../lib/chat-options";
 import { type Daemon, EMPTY_SESSION, type SessionView } from "../lib/daemon-client";
 import {
   type ChatSettings,
@@ -1148,10 +1148,11 @@ export function useSessions(
 
   // 메뉴에서 '자동' 행은 없어졌다 — 그러니 비어 있던 자리도 허공에 남을 수
   // 없다. 목록(또는 데몬이 말해 주는 모델)이 처음 이름을 대는 순간, 다음
-  // 대화의 모델은 그 행을 데려가고 노력은 모델이 받는 수준의 가운데에서
-  // 시작한다. next 만 본다(PLAN-MODEL-CHIP §3.4) — 열린 대화는 이미 모델을
-  // 가지고 있으니 씨앗이 필요 없고, 숨은 대화의 선택자를 여기 섞으면 홈의
-  // 씨앗이 그 대화로 새어 든다. 공급자당 한 번만 시도한다 — 거절이 되돌림을
+  // 대화의 모델은 그 행을 데려가고 노력은 보통(medium)에서 시작한다
+  // (`seedEffort` — 보통을 받지 않는 모델만 받는 수준의 가운데). next 만
+  // 본다(PLAN-MODEL-CHIP §3.4) — 열린 대화는 이미 모델을 가지고 있으니 씨앗이
+  // 필요 없고, 숨은 대화의 선택자를 여기 섞으면 홈의 씨앗이 그 대화로
+  // 새어 든다. 공급자당 한 번만 시도한다 — 거절이 되돌림을
   // 남기면 이 효과가 다시 불려 무한히 재시도하는 것을 막는다.
   const seededModelFor = useRef<string | null>(null);
   const seededEffortFor = useRef<string | null>(null);
@@ -1187,10 +1188,7 @@ export function useSessions(
       if (seededEffortFor.current === provider) return;
       const row = modelRowOf(models, pick.model);
       const levels = row?.supportedEffortLevels ?? [];
-      const level =
-        defaultsFit && projectDefaults.effort && levels.includes(projectDefaults.effort)
-          ? projectDefaults.effort
-          : levels[Math.floor(levels.length / 2)];
+      const level = seedEffort(levels, defaultsFit ? projectDefaults.effort : undefined);
       if (!row?.supportsEffort || !level) return;
       seededEffortFor.current = provider;
       onChatChange(withChatPick(chat, provider, { effort: level }));

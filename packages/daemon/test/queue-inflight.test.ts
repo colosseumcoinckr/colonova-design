@@ -219,7 +219,7 @@ function minimalEvents() {
   };
 }
 
-test("closing while the baseline photo is being captured never delivers the cancelled request", async () => {
+test("closing while the previous save is pending never delivers the cancelled request", async () => {
   let release!: () => void;
   const baseline = new Promise<void>((resolve) => {
     release = resolve;

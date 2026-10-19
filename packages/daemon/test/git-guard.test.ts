@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -116,13 +116,15 @@ test("ensureGitGuardHooks 는 멱등이다 — 내용이 같으면 다시 쓰지
   try {
     ensureGitGuardHooks(dir);
     const hook = join(dir, "reference-transaction");
-    const first = await exec("stat", ["-f", "%m", hook]).then((r) => r.stdout);
+    // `stat -f` 는 BSD 전용이라 Windows · Linux 에서 깨졌다 — fs.statSync 로 읽는다(2026-10-19).
+    const first = statSync(hook).mtimeMs;
     ensureGitGuardHooks(dir);
-    const second = await exec("stat", ["-f", "%m", hook]).then((r) => r.stdout);
+    const second = statSync(hook).mtimeMs;
     assert.equal(first, second, "같은 내용이면 다시 쓰지 않아 mtime 이 그대로다");
-    // 실행 권한 — 0755
-    const mode = await exec("stat", ["-f", "%Lp", hook]).then((r) => r.stdout);
-    assert.equal(mode.trim(), "755", "훅은 실행 가능해야 한다");
+    // 실행 권한 — 0755. Windows 에는 실행 비트가 없다(Git for Windows 는 첫 줄 `#!` 로 훅의 실행을 가린다).
+    if (process.platform !== "win32") {
+      assert.equal(statSync(hook).mode & 0o777, 0o755, "훅은 실행 가능해야 한다");
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

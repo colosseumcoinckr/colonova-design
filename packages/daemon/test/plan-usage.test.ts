@@ -6,6 +6,7 @@
  */
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -135,9 +136,14 @@ test("Claude — 5시간 · 주간 · 모델별 주간(Fable)은 이름과 기�
   ]);
 });
 
-/** 줄마다 JSON-RPC 로 답하는 가짜 `codex app-server` — 한도 읽기에 `answer` 를 돌려준다. */
+/**
+ * 줄마다 JSON-RPC 로 답하는 가짜 `codex app-server` — 한도 읽기에 `answer` 를 돌려준다.
+ * Windows 는 제품이 codex 를 `.exe` 로만 찾아 셸 없이 직접 띄운다 — 스크립트 가짜는 돌지 못한다.
+ * 그래서 node.exe 를 실행 파일로 두고 같은 몸통을 cwd 의 `app-server` 파일에 쓴다 —
+ * `node.exe app-server` 가 그 파일을 돈다(probe 의 cwd 는 dir 이다, 2026-10-19).
+ */
 function fakeAppServer(dir: string, answer: unknown | "hang"): string {
-  const path = join(dir, "codex");
+  const path = join(dir, process.platform === "win32" ? "app-server" : "codex");
   writeFileSync(
     path,
     `#!/usr/bin/env node
@@ -154,7 +160,7 @@ function reply(id, result) {
 `,
     { mode: 0o755 },
   );
-  return path;
+  return process.platform === "win32" ? process.execPath : path;
 }
 
 test("probeCodexUsage — 스레드 없이 핸드셰이크 뒤 한도를 읽는다", async () => {
@@ -166,7 +172,9 @@ test("probeCodexUsage — 스레드 없이 핸드셰이크 뒤 한도를 읽는�
     assert.equal(plan?.modelWeekly[0]?.period, "month");
     assert.equal(await probeCodexUsage({ executable: null, cwd: dir }), null);
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    // probe 는 답을 받고 자식을 끝내라고만 알린다. Windows 는 아직 도는 자식의 cwd 를 지우지 못한다(EPERM).
+    // 동기 rmSync 는 이 EPERM 을 다시 해 보지 않는다 — 비동기 rm 의 재시도로 자식의 끝을 기다린다.
+    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
   }
 });
 

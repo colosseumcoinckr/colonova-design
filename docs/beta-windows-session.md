@@ -85,6 +85,8 @@ Windows 설치 파일은 한 번도 실행된 적이 없다(`packages/desktop/el
 
 ### 3. 번들 도구 확인 (5분)
 
+2026-10-20 사용자 요청 — 일반 화면 수정 뒤 숨은 검증 창과 자동 전후 사진이 생기지 않고 보관과 완료로 이어지는지 확인한다. 사진 없는 결과 카드에는 빈 사진 자리와 비교 버튼이 없고, 사진 없이 제출할 수 있어야 한다. 사용자가 직접 찍은 핀과 과거 사진 열기는 계속 동작해야 한다.
+
 - **하는 일**: PowerShell 에서 앱이 싣고 온 도구를 직접 부른다.
   `& "<설치>\resources\bin\node.exe" -v`,
   `& "<설치>\resources\bin\cmd\git.exe" --version`,
@@ -95,6 +97,11 @@ Windows 설치 파일은 한 번도 실행된 적이 없다(`packages/desktop/el
   - 보호 기록에 `resources\bin` 아래 파일의 격리 · 차단이 **0건**이다.
   - `도구 준비` 칸이 5초 안에 통과로 바뀐다(`확인하는 중…` 에서 오래 머물지 않는다).
 - **실패 시 볼 파일**: `packages/daemon/src/environment.ts`(`bundledToolEnv` · `gitCandidates` · `resolveNodeVersion`), `packages/daemon/src/onboarding.ts`, `packages/desktop/scripts/bundle-runtimes.mjs`.
+
+2026-10-20 내장 MCP 제거 확인: 연결 레포에 Claude용 지침·설정·스킬과 Codex용 지침·설정·스킬을 각각 준비한다.
+각 공급자로 새 대화·재개·분기를 실행해 레포 규칙과 스킬이 적용되는지 확인한다. 프로젝트에 준비한 MCP도
+그대로 나타나야 하며 앱 내장 도구는 나타나지 않아야 한다. 핀과 첨부를 보내 수정한 뒤 한 요청의 변경이
+함께 보관되고, 제출 버튼으로 푸시·요청 생성까지 이어져야 한다. 일반 수정 뒤 앱의 검증 창은 뜨지 않아야 한다.
 
 ### 4. AI 에게 도구 시켜 보기 (5분 — `AI 연결` 이 된 뒤)
 
@@ -128,11 +135,15 @@ Windows 설치 파일은 한 번도 실행된 적이 없다(`packages/desktop/el
   - 7-A: `회원`(레포 B) 초대 파일을 `초대 파일` 칸에 끌어다 놓는다. 가져오기를 누르고 준비 카드를 지켜본다.
   - 7-A′ **초대 파일 더블클릭 실기 확인**: 끌어 놓는 대신 파일을 **더블클릭**해 본다 — (1) 앱이 꺼져 있을 때 앱이 켜지며 같은 확인이 뜨는가, (2) 앱이 켜져 있을 때 다른 초대 파일(`결제`)을 더블클릭하면 창이 앞으로 오고 확인이 이어서 뜨는가(열린 확인이 있으면 그것이 끝난 뒤), (3) 탐색기의 `종류` 열이 `ColoNova Design 초대 파일` 이고 아이콘이 앱의 것인가, (4) 이 앱을 제거한 뒤 그 파일을 더블클릭하면 이 앱으로 열리지 않는가(연결이 지워졌는가). 한글 · 공백이 든 계정 폴더의 `다운로드` 에서도 해 본다.
   - 7-B: `결제`(레포 A)를 같은 식으로 들인다. 이 레포는 일부러 함정이 있다.
+  - 7-C(2026-10-20 응답 지연 개선): 준비된 프로젝트에서 짧은 질문과 핀 수정을 각각 보내고, 누른 때부터 답이 끝날 때까지 잰다. 같은 질문을 두 번 보낸 뒤 대화를 다시 열어 본다.
 - **합격 기준**
   - 7-A′: 더블클릭이 위 (1)~(4)처럼 열린다 — 확인 카드는 끌어 놓았을 때와 같고 `파일 지우기`(`휴지통에 넣기`)가 이어진다. 안 열리면 어느 쪽인지 적는다: 아무 일도 없다(연결 등록 실패 — `installer.nsh` · `fileAssociations`) · 앱만 켜지고 카드가 없다(`process.argv` 에 경로가 오지 않음 [추정]) · 두 번째 더블클릭이 창만 앞으로 가져온다(`second-instance` 의 `argv`).
   - 7-A: 준비 카드가 `내려받기` → `설치하기` → `미리보기 켜기` **세 단계**를 지나 `준비가 끝났어요` 가 된다. 작업 관리자(또는 `Get-CimInstance Win32_Process -Filter "Name='node.exe'"`)에서 서버 트리가 **하나**다 — `cmd.exe` 아래 `node.exe` 몇 개이고, 같은 서버가 두 트리로 뜨지 않는다(`node.exe` 개수를 적는다). 그동안 **콘솔 창이 0개**다.
-  - 7-B 깊은 경로: 클론이 `Filename too long` 으로 실패하는지 적는다. git 설정이 `core.longpaths` 를 건드리지 않아 MinGit 기본값에 달렸다 [추정].
-  - 7-B `.sh`: `& "<설치>\resources\bin\cmd\git.exe" -C <클론 폴더> ls-files --eol` 에서 그 `.sh` 가 `w/lf` 이면 합격이다. `w/crlf` 면 줄바꿈 설정(`core.autocrlf`)이 파일을 바꾼 것이니 적는다 [추정].
+  - 7-A 감지 지연(2026-10-19, Windows 준비 지연 제보): 처음 실행과 재실행의 `미리보기 켜기` 시간을 따로 적는다. 데몬 로그의 `미리보기 감지`에서 `source`, `elapsedMs`, `firstAddressMs`, `firstResponseMs`, `scans`, `scanMs`를 비교한다. 서버 응답 뒤 프로세스 조회가 끝날 때까지 기다리지 않고 준비가 끝나야 한다. 주소를 출력하지 않는 시험 서버도 소켓 조회로 열린다. 준비 도중 프로젝트를 바꾸면 이전 조회가 다음 미리보기를 덮어쓰지 않는다. 사용자 말·주소·경로가 이 진단 항목에 없는지도 확인한다.
+  - 7-A 준비 속도(2026-10-20): 데몬 로그의 `준비 시간`(`cloneMs` · `installMs` · `previewMs` · `totalMs`)과 `작업 폴더 데우기`(`files` · `opened` · `ms`)를 적는다. 개발 기계 기준은 처음 준비 146초 · 재시작 77.5초다(`DEVELOPERS.md` 의 「Windows 준비 속도」). 백신이 Defender 가 아니면 그 이름도 적는다.
+  - 7-C: 보내기 직전 최신화와 핀 파일 검색이 시작되지 않는다. 완료 줄의 시간은 실측과 초 단위 반올림 범위에서 맞고, 같은 질문 두 개도 각각 자기 결과와 시간을 유지한다. 이전 작업이 보관 중이면 보관 완료 뒤 전달되며 다음 수정이 이전 보관에 섞이지 않는다. 첫 글자까지의 실기 단축 시간은 측정해서 적는다.
+  - 7-B 깊은 경로(2026-10-19 수리): 260자를 넘는 파일 경로가 있는 레포도 `Filename too long` 없이 복제·체크아웃되어야 한다. 앱의 Git 호출만 `-c core.longpaths=true`를 주며 사용자·시스템 설정은 바꾸지 않는다. 시스템 Git이 없는 기기에서도 설치 스크립트의 `git --version`이 번들 `resources/bin/cmd/git.exe`로 실행되어야 한다. Windows 임시 레포 회귀 검사는 `windows-repo.test.ts`이며 설치본 실기는 이 항목에서 별도로 기록한다.
+  - 7-B `.sh`: `& "<설치>\resources\bin\cmd\git.exe" -C <클론 폴더> ls-files --eol` 에서 그 `.sh` 가 `w/lf` 이면 합격이다. 앱은 새 클론을 `core.autocrlf=false` 로 받는다(2026-10-19) — 같은 폴더의 `git config --local core.autocrlf` 가 `false` 인지도 적는다. 그래도 `w/crlf` 면 레포의 `.gitattributes` 나 수리 전에 받은 클론이 원인이니 적는다 [추정].
   - 7-B `FOO=bar vite` **[예상 실패]**: `pnpm run dev` 의 스크립트 본문을 pnpm 이 cmd 로 읽어 `KEY=값` 접두를 모른다. 준비 카드가 미리보기 단계에서 멈추는지, 오류 문장이 어떻게 보이는지(깨진 한글 포함), 도구가 스스로 AI 에게 맡긴 준비 실패 대화(`…에서 문제를 찾아 AI에게 맡겼어요` 카드 · 덮개 `AI가 막힌 곳을 고치고 있어요` · 문제 문장 `AI가 고치는 중이에요`)에서 AI 가 레포의 `package.json` 을 고치려 드는지를 **그대로 적는다**. 성공하면 그것도 적는다. 이 관찰이 `추정으로 남김` 의 판정 자리다(후보: pnpm 의 `shell-emulator` 환경 설정, bash 를 스크립트 셸로).
 - **실패 시 볼 파일**: `packages/daemon/src/repo-core.ts`(클론), `packages/daemon/src/repo-bringup.ts`(설치 · 미리보기), `packages/daemon/src/repo-config.ts`(명령 조립), `packages/daemon/src/preview-claim.ts`(포트 읽기).
 
@@ -143,7 +154,7 @@ Windows 설치 파일은 한 번도 실행된 적이 없다(`packages/desktop/el
   - 8-2: 앱을 다시 켜 미리보기를 띄운다. 작업 관리자의 세부 정보 탭에서 가장 위의 `ColoNova Design.exe` 를 **`프로세스 트리 끝내기` 가 아니라 `작업 끝내기`(그 프로세스 하나)** 로 끝낸다 — 앱이 죽어도 자식이 따라 죽지 않는 상황을 흉내 낸다. `after` 를 돌린다. 앱을 다시 켠다.
 - **합격 기준**
   - 8-1: `after` 가 `통과 — 남은 프로세스 없음`(**0줄**)이다. `claude` · `node` · `cmd` · `conhost` 가 한 줄도 남지 않는다. *(이번 수리: `taskkill /T /F` 트리 킬)*
-  - 8-2 **[예상]**: 서버 트리(`node` · `cmd`)가 남는다 — 앱이 죽으면 아무도 거두지 않고, Windows 에서는 다음 실행이 이전 서버를 거두지 않는다(`reclaimStalePreview` 가 건너뛴다). 다시 켠 앱이 미리보기를 **띄우는지**와 **다른 포트로 뜨는지**를 적는다. 남은 프로세스는 `taskkill /PID <pid> /T /F` 로 치운다.
+  - 8-2: `after` 에는 서버 트리(`node` · `cmd`)가 남는다 — 앱이 죽으면 그 자리에서 거둘 사람이 없다. 앱을 다시 켜면 다음 준비가 명령줄에 클론 폴더가 든 프로세스를 거두고(2026-10-19 수리 — `reclaimStalePreview`) 미리보기가 **같은 포트로** 뜬다. 맞는지 적는다. 다시 켠 뒤에도 옛 `node` 가 남아 있으면 그 명령줄(`Get-CimInstance Win32_Process -Filter "ProcessId=<pid>"`)을 적고 `taskkill /PID <pid> /T /F` 로 치운다.
   - 프로젝트를 두 개 이상 번갈아 열어도 서버가 사라지지 않고 따뜻하게 남는다(최근 두 개까지가 정상이다).
 - **실패 시 볼 파일**: `packages/daemon/src/preview-claim.ts`(`treeKillPlan`), `packages/daemon/src/repo-bringup.ts`(`killPreview` · `reclaimStalePreview`), `scripts/orphan-check.mjs`, `packages/desktop/src/main.ts`(`will-quit`).
 
@@ -165,8 +176,9 @@ Windows 설치 파일은 한 번도 실행된 적이 없다(`packages/desktop/el
   - `%USERPROFILE%\.colonova-design\projects\` 에 `결제-xxxxxx` 와 `회원-xxxxxx`(여섯 자리 16진수 접미)가 **서로 다른 폴더**로 있다. 화면의 프로젝트 이름은 `결제` · `회원` 그대로다. *(이번 수리: ASCII 접미)*
   - `%USERPROFILE%\.claude\projects\` 에 두 프로젝트의 대화 폴더가 **둘로 나뉘어** 있다(폴더 이름이 접미 때문에 다르다).
   - 두 프로젝트의 대화 목록이 섞이지 않는다.
+  - 프로젝트를 번갈아 고른 뒤 `폴더 열기`를 누르면 각각 그 프로젝트의 클론이 탐색기에 열린다(2026-10-20 사용자 요청, 요청 처리 분리의 회귀 확인).
   - 알아 둘 것: 지금의 화면에는 **한 프로젝트의 대화만 지우는 길이 없다**(`전체 초기화…` 는 모두 지운다). 그래서 `대화 모두 지우기` 가 이웃의 대화를 지우는지는 이 세션에서 눈으로 볼 수 없고, 데몬 시험(`claude-delete-all.test.ts`)이 단언한다.
-- **실패 시 볼 파일**: `packages/daemon/src/projects.ts`(`slugify`), `packages/daemon/src/agent/drivers/claude/driver.ts`(`deleteAll`).
+- **실패 시 볼 파일**: `packages/daemon/src/projects.ts`(`slugify`), `packages/daemon/src/requests/projects.ts`(`project.openFolder`), `packages/daemon/src/agent/drivers/claude/driver.ts`(`deleteAll`).
 
 ### 11. OneDrive 가 가져간 다운로드 폴더 (5분 — 해당하는 계정만)
 
@@ -240,7 +252,12 @@ Windows 설치 파일은 한 번도 실행된 적이 없다(`packages/desktop/el
 | 저장 포트 EACCES 폴백 | 9-2 |
 | 한글 프로젝트 폴더의 ASCII 접미 | 10 |
 | 초대 파일 더블클릭 열기(파일 연결 · `process.argv` · `second-instance`) — 2026-10-08 | 7-A′ |
+| 미리보기 감지의 긴 한 요청(45초) · 출력 뒤 180초 유예 — 2026-10-19 | 7-A |
+| 이전 실행의 서버를 명령줄로 거두기(`reclaimStalePreview` · `pidCommandLines`) — 2026-10-19 | 8-2 |
+| 새 클론의 `core.autocrlf=false` · 긴 경로 — 2026-10-19 | 7-B |
+| 설치 스크립트의 BOM · UTF-8 출력 · System32 tar — 2026-10-19 | 5 · 12 |
+| AI 쓰기 울타리의 Windows `\` 경로 — 2026-10-19 | 4 |
 
-아직 추정인 것: `FOO=bar` 류 스크립트(7-B) · 강제 종료 뒤 남는 서버(8-2) · 방화벽 상자(2) · 긴 경로와 줄바꿈 설정(7-B) ·
+아직 추정인 것: `FOO=bar` 류 스크립트(7-B) · 강제 종료 뒤 다음 실행의 거두기(8-2 — 개발 빌드에서만 확인) · 방화벽 상자(2) · 긴 경로와 줄바꿈 설정(7-B) ·
 자식 출력의 인코딩(5 · 13) · OneDrive 의 설치 파일(11) · PowerShell 도구와 가드(4).
 범위 밖: Windows 서명 · 스마트 앱 컨트롤 · SmartScreen(결정 대기), 프록시 · 사내 인증서.

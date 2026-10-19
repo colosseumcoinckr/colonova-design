@@ -93,13 +93,15 @@ export interface SessionPin {
  * 입력이 사라진다(실사 결함 — 대기 줄의 핀이 영구 미검증).
  */
 interface HeldSend {
+  /** 창에서 누른 시각. 대기 줄의 메모리 안에서만 들고 간다. */
+  sentAt?: number;
   id: string;
   text: string;
   attachments: Array<{ name: string; mediaType: string; data: string }>;
   pins: SessionPin[];
   /**
-   * 보낸 순간 사용자가 보던 미리보기 경로 — 수정 전 사진의 재료일 뿐 게이트 입력이 아니다(2026-10-06).
-   * 대기 방의 디스크 판에는 싣지 않는다 — 재시작을 건너면 사진 한 장의 단서를 잃을 뿐이다.
+   * 보낸 순간 사용자가 보던 미리보기 경로. 핀 없는 요청의 화면 맥락이다.
+   * 대기 방의 디스크 판에는 싣지 않는다.
    */
   viewing?: { path: string };
   /**
@@ -202,11 +204,6 @@ export interface SessionEvents {
    * 세션은 결과 문장만 넘기고, 프로젝트 찾기와 배달은 받는 쪽이 한다.
    */
   onTurnFailed?: (sessionId: string, resultText: string | null) => void;
-  /**
-   * 브라우저 MCP 서버가 뜨지 못했다(2026-10-14 MCP 점검) — 세션은 대화에 경고 한 줄을
-   * 이미 내려놓았다. 받는 쪽(서버)은 로그에 종류만 남긴다. 세션마다 한 번이다.
-   */
-  onBrowserToolsDown?: (sessionId: string) => void;
   onPermissionRequest: (payload: {
     requestId: string;
     sessionId: string;
@@ -379,8 +376,6 @@ export class Session {
   fastModeBlocked: string | null = null;
   /** 부탁의 도중 드라이버가 스스로 상태를 보고했는가 — 낙관 적기의 간판. */
   private fastModeAnswered = false;
-  /** 브라우저 도구가 빠졌다는 경고를 이미 냈다 — init 은 턴마다 오므로 한 번만 말한다. */
-  private browserDownNoticed = false;
   model: string | null = null;
   /** Composer chip selections; `null` = the provider's own default. */
   private selectedModel: string | null = null;
@@ -479,7 +474,7 @@ export class Session {
    * 아니라 이 시계가 기준인 이유: waiting_permission 도 도는 턴이고, 그 사이에
    * 쓴 말도 똑같이 다음 턴으로 접혀 들어간다. 같은 이유로 시계는 카드를
    * 기다리는 동안에도 계속 센다 — 사람이 기다린 시간도 그 요청의 시간이다.
-   * 대기 줄이 연 다음 턴은 새 시계를 받는다.
+   * 창의 보내기 시각을 받으면 대기 줄에서 보낸 시간도 포함한다(2026-10-20 응답 지연 개선).
    *
    * 알림의 `걸렸습니다` 시계(server.ts)와는 다른 질문에 답한다 — 그쪽은 대기
    * 뒤 재개마다 다시 놓아 "그때의 일"만 재고, 이쪽은 요청 하나가 시작한 시각을
@@ -552,18 +547,6 @@ export class Session {
       // 못하게 도장을 찍는다.
       this.fastModeAnswered = true;
     },
-    // 브라우저 MCP 가 뜨지 못했다(2026-10-14 MCP 점검) — AI 는 화면을 열지 못하지만
-    // 턴 끝의 화면 확인(게이트)은 데몬이 따로 돌므로 그대로다. 한 번만 말한다.
-    onBrowserToolsDown: () => {
-      if (this.browserDownNoticed) return;
-      this.browserDownNoticed = true;
-      this.events.onEvent(this.id, {
-        kind: "notice",
-        level: "warn",
-        text: "이번 대화에서는 AI 가 화면을 직접 열어 보지 못해요 — 답이 끝난 뒤의 화면 확인은 그대로 해요. 되풀이되면 앱을 다시 켜 주세요.",
-      });
-      this.events.onBrowserToolsDown?.(this.id);
-    },
   };
 
   constructor(options: SessionOptions, events: SessionEvents) {
@@ -614,6 +597,9 @@ export class Session {
   // -------------------------------------------------------------------------
 
   private handleDriverEvent(event: ChatEvent): void {
+    if (event.kind === "turn.end" && this.turnStartedAt !== null) {
+      event = { ...event, durationMs: Math.max(0, Date.now() - this.turnStartedAt) };
+    }
     this.lastActivity = Date.now();
     if (event.kind === "init") {
       this.model = event.model;
@@ -1047,8 +1033,8 @@ export class Session {
     const [item] = this.held.splice(0, 1);
     if (!item) return;
     this.disk?.saveHeld(this.held);
-    // 대기 줄이 여는 턴은 새 요청이다 — 새 시계를 받는다.
-    this.turnStartedAt = Date.now();
+    // 창이 알려 준 보내기 시각은 대기 줄에서 보낸 시간도 포함한다.
+    this.turnStartedAt = item.sentAt ?? Date.now();
     // 새 턴의 답변 문장은 여기서 시작한다 (PLAN L9).
     this.lastAssistantText = null;
     // 지난 턴의 화면 목록은 여기서 비워진다 — 한 턴에 한 번이면 충분하다.
@@ -1488,6 +1474,7 @@ export class Session {
     pins?: SessionPin[],
     mode: "queue" | "steer" = "queue",
     viewing?: { path: string },
+    sentAt?: number,
   ): void {
     if (this.closed) throw new Error("닫힌 대화입니다 — 목록에서 다시 열면 이어갑니다.");
     if (this.aborted)
@@ -1501,6 +1488,9 @@ export class Session {
     this.lastActivity = Date.now();
     const item: HeldSend = {
       id: randomUUID(),
+      ...(sentAt !== undefined && sentAt >= Date.now() - 86_400_000
+        ? { sentAt: Math.min(Date.now(), sentAt) }
+        : {}),
       text,
       attachments: attachments ?? [],
       pins: pins ?? [],
@@ -1537,7 +1527,7 @@ export class Session {
       this.announceHeld();
       return;
     }
-    this.turnStartedAt = Date.now();
+    this.turnStartedAt = item.sentAt ?? Date.now();
     // 새 턴의 답변 문장은 여기서 시작한다 (PLAN L9).
     this.lastAssistantText = null;
     // 턴의 시작 — 지난 턴이 가리킨 화면 목록은 여기서 비워진다(onPinned 보다 먼저).

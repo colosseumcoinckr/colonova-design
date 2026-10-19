@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, parse, relative } from "node:path";
 import { test } from "node:test";
@@ -13,6 +13,7 @@ import {
   pathWritable,
   type WriteScope,
 } from "../dist/write-guard.js";
+import { makeLink, NO_FILE_SYMLINK } from "./helpers/links.ts";
 
 // 끊어진 심볼릭 링크(2026-10-08 검토 FIX1) — 클론 안에 있지만 클론 **밖의 아직 없는 파일**을 가리키는
 // 링크는 realpath 가 던져서 "없는 이름" 으로 읽혔고, 그 이름이 클론 안이라 쓰기가 통과했다
@@ -36,9 +37,12 @@ function scene() {
 
 type Scene = ReturnType<typeof scene>;
 
-/** 클론 안에 링크를 만든다 — `to` 는 글 그대로(절대 · 상대 모두) 가리킨다. */
-function link(s: Scene, name: string, to: string) {
-  symlinkSync(to, join(s.clone, name));
+/**
+ * 클론 안에 링크를 만든다 — `to` 는 글 그대로(절대 · 상대 모두) 가리킨다. Windows 에서 권한이 없으면 접합점으로
+ * 만들고, 있는 파일을 가리키는 링크만 못 만들어 false 다(helpers/links.ts, 2026-10-19 Windows 시험).
+ */
+function link(s: Scene, name: string, to: string): boolean {
+  return makeLink(to, join(s.clone, name));
 }
 
 function writeOk(s: Scene, file: string) {
@@ -190,7 +194,7 @@ test("끊어진 링크 — 클론 안을 가리키면 통과한다(과잉 차단
   }
 });
 
-test("링크가 아닌 것은 그대로다 — 없는 파일 · 있는 파일 · 정상 링크", () => {
+test("링크가 아닌 것은 그대로다 — 없는 파일 · 있는 파일 · 정상 링크", (t) => {
   const s = scene();
   try {
     // 없는 파일(링크 아님) — 가장 가까운 부모에 꼬리를 붙인다.
@@ -201,17 +205,23 @@ test("링크가 아닌 것은 그대로다 — 없는 파일 · 있는 파일 ·
     assertAllowed(s, join(s.clone, "no", "such", "file.txt"), "없는 파일");
     assertAllowed(s, join(s.clone, "src", "app.txt"), "있는 파일");
     // 정상 링크 — 가리키는 곳이 있으면 이전처럼 realpath 가 따라간다.
-    link(s, "ok-out", join(s.elsewhere, "secret.txt"));
-    link(s, "ok-in", join(s.clone, "src", "app.txt"));
-    assert.equal(realpathBestEffort(join(s.clone, "ok-out")), join(s.elsewhere, "secret.txt"));
-    assertBlocked(s, join(s.clone, "ok-out"), "정상 링크(밖)");
-    assertAllowed(s, join(s.clone, "ok-in"), "정상 링크(안)");
+    // 있는 파일을 가리키는 링크는 Windows 에서 권한이 있어야 만든다. 없으면 이 단언만 빼고 끝에 건너뜀으로 알린다.
+    const fileLinks =
+      link(s, "ok-out", join(s.elsewhere, "secret.txt")) &&
+      link(s, "ok-in", join(s.clone, "src", "app.txt"));
+    if (fileLinks) {
+      assert.equal(realpathBestEffort(join(s.clone, "ok-out")), join(s.elsewhere, "secret.txt"));
+      assertBlocked(s, join(s.clone, "ok-out"), "정상 링크(밖)");
+      assertAllowed(s, join(s.clone, "ok-in"), "정상 링크(안)");
+    }
     // 부모 폴더의 링크는 기존 규칙 그대로(링크 너머가 밖이면 막는다).
     link(s, "dir-out", s.elsewhere);
     assertBlocked(s, join(s.clone, "dir-out", "x.txt"), "폴더 링크 너머의 새 파일");
     // 같은 풀이를 쓰는 containsPath 도 그대로다(정적 파일 서버의 울타리).
     assert.equal(containsPath(s.clone, join("src", "app.txt")), true);
     assert.equal(containsPath(s.clone, s.elsewhere), false);
+    // 나머지 단언이 모두 지난 뒤에 건너뜀을 단다 — 먼저 달면 뒤의 실패가 건너뜀에 묻힌다.
+    if (!fileLinks) t.skip(NO_FILE_SYMLINK);
   } finally {
     s.dispose();
   }

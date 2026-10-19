@@ -6,85 +6,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { BROWSER_TOOLS, SCREEN_FILES_MAX, screenFilesAnswer } from "../dist/browser-tools.js";
-import { huntPinFiles } from "../dist/pin-files.js";
+
 import { observedFilesFor } from "../dist/screen-map.js";
-
-// ————— 순수 — screenFilesAnswer —————
-
-test("screenFilesAnswer — 관찰만이면 한 줄에 (관찰) 표식으로", () => {
-  assert.equal(
-    screenFilesAnswer(["src/a.tsx", "src/a.mock.ts"], [], "회원 목록"),
-    "파일 후보: src/a.tsx · src/a.mock.ts (관찰)",
-  );
-});
-
-test("screenFilesAnswer — 글자만이면 한 줄에 (글자) 표식으로", () => {
-  assert.equal(
-    screenFilesAnswer([], ["src/routes.tsx"], "회원 목록"),
-    '파일 후보: src/routes.tsx (글자 "회원 목록")',
-  );
-});
-
-test("screenFilesAnswer — 둘 다면 관찰이 먼저이고 겹치는 파일은 한 번만", () => {
-  assert.equal(
-    screenFilesAnswer(["src/a.tsx", "src/b.ts"], ["src/b.ts", "src/routes.tsx"], "회원 목록"),
-    '파일 후보: src/a.tsx · src/b.ts (관찰)\n파일 후보: src/routes.tsx (글자 "회원 목록")',
-  );
-});
-
-test("screenFilesAnswer — 합이 상한을 넘으면 관찰이 먼저이고 글자가 잘린다", () => {
-  const observed = ["src/1.ts", "src/2.ts", "src/3.ts", "src/4.ts"];
-  const hunted = ["src/5.ts", "src/6.ts", "src/7.ts"];
-  const answer = screenFilesAnswer(observed, hunted, "제목");
-  assert.equal(
-    answer,
-    '파일 후보: src/1.ts · src/2.ts · src/3.ts · src/4.ts (관찰)\n파일 후보: src/5.ts · src/6.ts (글자 "제목")',
-  );
-  // 도구의 답에 실린 후보는 상한을 넘지 않는다.
-  assert.ok(answer.split("\n").join(" ").split("src/").length - 1 <= SCREEN_FILES_MAX);
-});
-
-test("screenFilesAnswer — 빈손은 오류가 아니다", () => {
-  assert.equal(screenFilesAnswer([], [], "회원 목록"), "이 화면을 고친 기록이 아직 없습니다");
-});
-
-// ————— (주소) 줄 (PLAN-HARNESS §3.B B-2) —————
-
-test("screenFilesAnswer — 주소의 파일이 맨 앞 줄에 (주소) 표식으로", () => {
-  assert.equal(
-    screenFilesAnswer(["src/obs.tsx"], ["src/word.tsx"], "제목", ["src/route.tsx"]),
-    '파일 후보: src/route.tsx (주소)\n파일 후보: src/obs.tsx (관찰)\n파일 후보: src/word.tsx (글자 "제목")',
-  );
-});
-
-test("screenFilesAnswer — 겹치는 파일은 앞 줄에 한 번만", () => {
-  assert.equal(
-    screenFilesAnswer(["src/a.tsx", "src/b.tsx"], ["src/b.tsx"], "제목", ["src/b.tsx"]),
-    "파일 후보: src/b.tsx (주소)\n파일 후보: src/a.tsx (관찰)",
-  );
-});
-
-test("screenFilesAnswer — 합이 상한을 넘으면 (주소) 줄이 먼저 실린다", () => {
-  const routed = ["src/r1.tsx", "src/r2.tsx", "src/r3.tsx"];
-  const observed = ["src/o1.tsx", "src/o2.tsx", "src/o3.tsx"];
-  const hunted = ["src/h1.tsx", "src/h2.tsx"];
-  assert.equal(
-    screenFilesAnswer(observed, hunted, "제목", routed),
-    "파일 후보: src/r1.tsx · src/r2.tsx · src/r3.tsx (주소)\n" +
-      "파일 후보: src/o1.tsx · src/o2.tsx · src/o3.tsx (관찰)",
-  );
-});
-
-// ————— 도구 계약 —————
-
-test("screen_files 도구 — 두 새 도구는 목록의 맨 끝이고 route 는 필수다", () => {
-  const tail = BROWSER_TOOLS.slice(-2).map((tool) => tool.name);
-  assert.deepEqual(tail, ["screen_files", "notify_developer"]);
-  const files = BROWSER_TOOLS.find((tool) => tool.name === "screen_files");
-  assert.equal(files?.op, "screenFiles");
-  assert.deepEqual(files?.required, ["route"]);
-});
 
 // ————— 관찰 지도 — 임시 screen-map.jsonl 과 클론 —————
 
@@ -196,32 +119,6 @@ test("observedFilesFor — 루프백 전체 주소 행은 같은 경로의 화�
       "src/member.tsx",
     ]);
     assert.deepEqual(await observedFilesFor(projectRoot, repoRoot, "/list"), ["src/member.tsx"]);
-  } finally {
-    rmSync(root, { recursive: true, force: true });
-  }
-});
-
-// ————— 글자 사냥 — 임시 클론으로 huntPinFiles —————
-
-test("screen_files 의 재료 — 제목 글자가 코드에 적힌 자리를 huntPinFiles 가 찾는다", async () => {
-  const root = mkdtempSync(join(tmpdir(), "colonova-screen-hunt-"));
-  try {
-    mkdirSync(join(root, "src/screens/member"), { recursive: true });
-    writeFileSync(
-      join(root, "src/screens/member/MemberList.tsx"),
-      "export const TITLE = '회원 목록';\n",
-    );
-    const found = await huntPinFiles(root, [{ id: "screen-files", text: "회원 목록" }]);
-    const hits = found.get("screen-files") ?? [];
-    assert.ok(hits.some((hit) => hit.file === "src/screens/member/MemberList.tsx"));
-    // 판정에 흘러드는 모양은 파일 경로뿐이다.
-    const answer = screenFilesAnswer(
-      [],
-      hits.map((hit) => hit.file),
-      "회원 목록",
-    );
-    assert.ok(answer.includes("src/screens/member/MemberList.tsx"));
-    assert.ok(answer.includes('(글자 "회원 목록")'));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

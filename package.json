@@ -10,7 +10,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r build && node --test packages/daemon/test/*.test.ts packages/desktop/test/*.test.ts packages/web/test/*.test.ts scripts/bench/*.test.mjs",
     "bench": "node scripts/bench/bench.mjs",
-    "dev:daemon": "COLONOVA_DESIGN_DEV_AGENTS=1 pnpm --filter @colonova-design/daemon dev",
+    "dev:daemon": "cross-env COLONOVA_DESIGN_DEV_AGENTS=1 pnpm --filter @colonova-design/daemon dev",
     "dev:web": "pnpm --filter @colonova-design/web dev",
     "dev:desktop": "pnpm --filter @colonova-design/desktop dev:hmr",
     "doctor": "pnpm --filter @colonova-design/daemon doctor"
@@ -21,6 +21,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "concurrently": "^10.0.6",
+    "cross-env": "^10.1.0",
     "lefthook": "^2.2.1",
     "typescript": "^5.9.3"
   },

@@ -14,15 +14,20 @@ import {
   detectsRegistryAuthFailure,
   resolvePnpmExecutable,
 } from "./environment.js";
+import { createFileLogger } from "./log.js";
 import {
+  commandLineMentions,
   daemonOwnedPorts,
   descendantPids,
+  descendantsOf,
   killPidTree,
   killTree,
-  pidCommandLine,
+  pidCommandLines,
   pidListeningPorts,
   probePreviewUrl,
+  processSnapshot,
 } from "./preview-claim.js";
+import { detectPreview } from "./preview-detection.js";
 import {
   PREVIEW_COMMAND_UNKNOWN,
   type RepoConfig,
@@ -45,12 +50,32 @@ import {
   type RepoCore,
   redact,
 } from "./repo-core.js";
+import { warmTrackedFiles } from "./tree-warm.js";
 
 export class BringUp {
   constructor(private readonly core: RepoCore) {}
 
   /** C5: 서버가 저절로 꺼졌을 때 남은 저절로 다시 켜기 시도 수. */
   private previewRestarts = 0;
+
+  /** 도는 중인 작업 폴더 데우기 — 같은 일을 걹쳐 띄우지 않는다. */
+  private warming: Promise<void> | null = null;
+
+  /**
+   * Windows: 클론의 추적 파일을 함께 열어 둔다(tree-warm.ts, 2026-10-20). 기다리지 않는다 —
+   * 최신화 · 설치 · 미리보기 기동과 함께 돌아야 뒤의 명령이 덕을 본다. macOS 는 무동작이다.
+   */
+  private warmTree(): void {
+    if (this.warming !== null) return;
+    this.warming = warmTrackedFiles(this.core.root)
+      .then((result) => {
+        if (result) createFileLogger().info("작업 폴더 데우기", result);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        this.warming = null;
+      });
+  }
 
   // -------------------------------------------------------------------------
   // Bootstrap
@@ -66,6 +91,15 @@ export class BringUp {
       // PLAN-UI U8: 처음 여는 프로젝트의 준비 — 아래의 전환 울타리가 설치까지는
       // 배경에서 잇게 한다.
       const firstPrep = !this.core.isCloned();
+      // 단계별 시간(2026-10-20) — 끝의 "준비 시간" 한 줄이 느린 단계를 말한다.
+      const spans: Record<string, number> = {};
+      const started = performance.now();
+      let mark = started;
+      const lap = (name: string) => {
+        const now = performance.now();
+        spans[name] = Math.round(now - mark);
+        mark = now;
+      };
       // 최신화 전의 단계 — 활성이 아닌 프로젝트는 아래 울타리에서 나가므로 그때 되돌린다.
       const before = this.core.phase;
       if (firstPrep) {
@@ -82,7 +116,11 @@ export class BringUp {
         );
         trustWorkspace(this.core.root);
         sanitizeRepoAgentSettings(this.core.root);
+        // 갓 체크아웃한 파일은 모두 처음 읽힌다 — 설치의 사전 생성 스크립트가 덕을 본다.
+        this.warmTree();
       } else {
+        // 활성 프로젝트만 — 떠난 프로젝트의 최신화는 미리보기를 켜지 않는다.
+        if (this.core.active) this.warmTree();
         this.core.setPhase("pulling", null);
         await this.core.scrubOriginCredential();
         // Already cloned: 최신화, not a blind ff. Unsaved work survives the
@@ -93,6 +131,7 @@ export class BringUp {
         // 있다 — 클론 길에서와 같은 칼을 다시 댄다(이미 깨끗하면 무동작).
         sanitizeRepoAgentSettings(this.core.root);
       }
+      lap(firstPrep ? "cloneMs" : "pullMs");
 
       // 설정이 못 읽는 것(명령 없음 · 깨진 JSON)은 그대로 오류 카드로 —
       // AI 에게 해결 요청이 이 레포를 고치는 길이다.
@@ -126,6 +165,7 @@ export class BringUp {
         return this.core.snapshot();
       }
       const installed = await this.installIfNeeded(config);
+      lap("installMs");
 
       /**
        * Count once the clone is on disk and checked out. Without this the
@@ -134,6 +174,7 @@ export class BringUp {
        * come back to a rail that says there is nothing to save.
        */
       await this.core.refreshPendingChanges();
+      lap("countMs");
 
       // Up to date and still serving: restarting the preview would only flip
       // the UI out of `ready` for no gain.
@@ -142,6 +183,13 @@ export class BringUp {
         return this.core.snapshot();
       }
       await this.startPreview(config);
+      lap("previewMs");
+      createFileLogger().info("준비 시간", {
+        firstPrep,
+        installed,
+        ...spans,
+        totalMs: Math.round(performance.now() - started),
+      });
       this.core.setPhase("ready", null);
     } catch (error) {
       this.core.setPhase("error", detailOf(error, this.core.pat), this.bringUpErrorKind(error));
@@ -353,69 +401,28 @@ export class BringUp {
     urlCandidates: Set<string>,
     tail: string[],
   ): Promise<string> {
-    const deadline = Date.now() + READY_TIMEOUT_MS;
-    /** 후보별 마지막 시도 — 한 번의 null 은 "죽음"이 아니라 "아직"이다. */
-    const probedAt = new Map<string, number>();
-    const scannedAt = new Map<number, number>();
-    /**
-     * 실패 판정의 재시도 간격 — 매 틱 다시 찌르지 않되, 영구 제외도 하지 않는다.
-     * 출력된 주소는 틱 간격(250ms)으로 다시 보고, 소켓 스캔은 2초로 늦춘다 —
-     * 서버가 찍은 주소가 스캔보다 이기는 것이 이 판정의 우선순위다.
-     */
-    const CANDIDATE_RETRY_MS = 250;
-    const SCAN_RETRY_MS = 2_000;
-    /** HTML 이 아니어도 응답한 첫 포트 — 더 나은 후보가 없을 때의 답. */
-    let fallback: string | null = null;
-    while (Date.now() < deadline) {
-      if (this.core.preview !== child) {
-        throw new Error(this.core.detail ?? "미리보기 서버가 시작되지 않았습니다");
-      }
-      for (const candidate of urlCandidates) {
-        // A printed loopback URL is probed on BOTH families — the server may
-        // say `localhost` while binding [::1] alone, and normalizing to
-        // 127.0.0.1 would probe a dead address (the port-undetected 실사).
-        for (const url of loopbackUrlVariants(candidate)) {
-          // URL 을 찍은 뒤 바인드·응답 준비까지의 창이 있다 — 한 번의 null 로
-          // 후보를 영구 제외하면 준비 느린 서버는 죽는다.
-          const seen = probedAt.get(url);
-          if (seen !== undefined && Date.now() - seen < CANDIDATE_RETRY_MS) continue;
-          probedAt.set(url, Date.now());
-          if ((await probePreviewUrl(url)) !== null) return url;
-        }
-      }
-      const pids = [...(child.pid ? [child.pid] : []), ...(await descendantPids(child.pid ?? -1))];
-      // 데몬 자신의 포트는 제외한다 — 자식들이 fd 로 물려받은 이 리스너가
-      // lsof 에 자기 소켓처럼 보여, 서버 출력이 없을 때 도구의 웹 UI 를
-      // 미리보기로 판정하는 사고(CI 러너 실측 2026-09-21)를 닫는다.
-      const ports = (await pidListeningPorts(pids)).filter((port) => !daemonOwnedPorts.has(port));
-      for (const port of ports) {
-        // 소켓 스캔도 같은 규율: LISTEN 이 떴어도 HTTP 응답 전의 포트는
-        // 첫 스캔에서 null 이고, 그렇다고 영구 제외하면 영원히 못 찾는다.
-        const seen = scannedAt.get(port);
-        if (seen !== undefined && Date.now() - seen < SCAN_RETRY_MS) continue;
-        scannedAt.set(port, Date.now());
-        for (const scheme of ["http", "https"] as const) {
-          for (const host of ["127.0.0.1", "[::1]"] as const) {
-            const url = `${scheme}://${host}:${port}/`;
-            const verdict = await probePreviewUrl(url);
-            if (verdict === "html") {
-              // The scan only names the port — when the server's own output
-              // already named it too, the printed spelling wins (URL 을 먼저
-              // 믿는다).
-              for (const candidate of urlCandidates) {
-                if (new URL(candidate).port === String(port)) {
-                  if ((await probePreviewUrl(candidate)) !== null) return candidate;
-                }
-              }
-              return url;
-            }
-            if (verdict === "ok" && fallback === null) fallback = url;
-          }
-        }
-      }
-      await sleep(250);
+    const result = await detectPreview({
+      candidates: () => [...new Set([...urlCandidates].flatMap(loopbackUrlVariants))],
+      scan: async (signal) => {
+        const pids = [
+          ...(child.pid ? [child.pid] : []),
+          ...(await descendantPids(child.pid ?? -1, signal)),
+        ];
+        if (signal.aborted) return [];
+        // 데몬이 물려준 리스너는 미리보기 후보에서 뺀다.
+        return (await pidListeningPorts(pids, signal)).filter(
+          (port) => !daemonOwnedPorts.has(port),
+        );
+      },
+      probe: probePreviewUrl,
+      active: () => this.core.preview === child,
+      timeoutMs: READY_TIMEOUT_MS,
+    });
+    createFileLogger().info("미리보기 감지", result.metrics);
+    if (this.core.preview !== child) {
+      throw new Error(this.core.detail ?? "미리보기 서버가 시작되지 않았습니다");
     }
-    if (fallback !== null) return fallback;
+    if (result.url !== null) return result.url;
     throw new PreviewPortUndetectedError(
       `미리보기 서버는 시작됐지만 어느 주소에서 듣는지 찾지 못했습니다 — ` +
         `서버가 뜬 주소를 출력하게 해 주세요 (예: \`Local: http://localhost:PORT\`).` +
@@ -427,7 +434,8 @@ export class BringUp {
   private async isServing(): Promise<boolean> {
     const url = this.core.previewUrl;
     if (url === null) return false;
-    return (await probePreviewUrl(url)) !== null;
+    // 살아 있는 서버의 느린 응답을 죽음으로 읽으면 멀쩡한 미리보기를 다시 띄운다(Windows 2026-10-19).
+    return (await probePreviewUrl(url, undefined, 15_000)) !== null;
   }
 
   async killPreview(): Promise<void> {
@@ -449,11 +457,15 @@ export class BringUp {
    * — 손에 핸들이 없는 다음 생의 killPreview 는 그 좀비를 못 거둔다 (실사:
    * 오래된 next dev 가 3000 을 쥔 채 새 서버가 엉뚱한 포트로 새는 꼴). 마지막
    * spawn 의 pid 기록(.git 아래 — 워크트리를 더럽히지 않는다)이 가리키는
-   * 트리의 명령줄이 이 클론을 말하면 우리 것임이 확실하므로 거둔다. Windows 는
-   * 명령줄 앵커가 없어 보수적으로 건너뛴다.
+   * 트리의 명령줄이 이 클론을 말하면 우리 것임이 확실하므로 거둔다.
+   *
+   * Windows(2026-10-19 실측): 부모가 죽어도 자식은 함께 죽지 않는다 — 앱이 강제로 꺼지면
+   * next dev 가 남아 포트와 `.next/dev/lock` 을 쥐고, 새 서버는 매번 곧장 끝나 준비가 멈췄다.
+   * 옛 코드는 명령줄 앵커가 없어 Windows 를 건너뛰었다. 이제 PowerShell CIM 으로 명령줄을 읽고,
+   * 클론 경로를 말하는 프로세스만 하나하나 `taskkill /T /F` 한다. 셸(cmd)이 먼저 죽어 기록된
+   * pid 가 사라졌어도 고아가 된 자식이 남기 때문이고, 재활용된 pid 의 남의 프로세스는 건드리지 않는다.
    */
   private async reclaimStalePreview(): Promise<void> {
-    if (currentPlatform() === "win32") return;
     const pidFile = join(this.core.root, ".git", "colonova-design-preview.pid");
     let recorded = 0;
     try {
@@ -462,22 +474,48 @@ export class BringUp {
       return;
     }
     if (!Number.isInteger(recorded) || recorded <= 1) return;
-    const tree = [recorded, ...(await descendantPids(recorded).catch(() => []))];
-    const lines = await Promise.all(tree.map((pid) => pidCommandLine(pid)));
-    const ours = lines.some((line) => line?.includes(this.core.root) === true);
-    if (!ours) {
+    const platform = currentPlatform();
+    // Windows 는 표와 명령줄을 PowerShell 한 번으로 읽는다 — 두 번 띄우면 기동이 약 4.5초 늦었다
+    // (processSnapshotCommand 의 주석, 2026-10-20).
+    let tree: number[];
+    let lines: Map<number, string>;
+    if (platform === "win32") {
+      const snapshot = await processSnapshot();
+      tree = [recorded, ...descendantsOf(snapshot.children, recorded)];
+      lines = snapshot.commandLines;
+    } else {
+      tree = [recorded, ...(await descendantPids(recorded).catch(() => []))];
+      lines = await pidCommandLines(tree);
+    }
+    const mine = tree.filter((pid) => {
+      const line = lines.get(pid);
+      return line !== undefined && commandLineMentions(line, this.core.root, platform);
+    });
+    if (mine.length === 0) {
       // 기록이 남의 것이 됐다(pid 재활용 등) — 지워 다음 생이 다시 판단하게.
       rmSync(pidFile, { force: true });
       return;
     }
-    killPidTree(recorded, "SIGTERM");
-    const hard = setTimeout(() => killPidTree(recorded, "SIGKILL"), 3_000);
+    const windows = platform === "win32";
+    // POSIX 는 그룹째(기록된 pid 가 그룹 리더), Windows 는 우리 것으로 확인된 프로세스마다.
+    const targets = windows ? mine : [recorded];
+    const killAll = (signal: NodeJS.Signals) => {
+      for (const pid of targets) killPidTree(pid, signal);
+    };
+    const alive = (pid: number) => {
+      try {
+        process.kill(pid, 0);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    killAll("SIGTERM");
+    const hard = setTimeout(() => killAll("SIGKILL"), 3_000);
     // 프로세스 소멸 대기 — 포트가 풀려야 다음 스폰이 그 자리를 얻는다.
     const settled = Promise.withResolvers<void>();
     const poll = setInterval(() => {
-      try {
-        process.kill(recorded, 0);
-      } catch {
+      if (!targets.some(alive)) {
         clearInterval(poll);
         clearTimeout(hard);
         settled.resolve();

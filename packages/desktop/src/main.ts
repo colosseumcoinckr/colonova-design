@@ -4,7 +4,6 @@ import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 import { bundledToolEnv, COLONOVA_DESIGN_DATA_DIR } from "@colonova-design/daemon/environment";
 import type { DaemonNotice } from "@colonova-design/daemon/server";
-// 서브패스로 가져온다 — 루트 진입점은 CLI 라 가져오는 순간 실행된다.
 import {
   DaemonServer,
   daemonOwnedPorts,
@@ -31,7 +30,7 @@ import { APP_BUNDLE_ID } from "./identity.js";
 import { InviteOpenQueue, inviteArgvPaths } from "./invite-open.js";
 import { GUIDE_URL } from "./links.js";
 import { buildMenuTemplate } from "./menu.js";
-import { createBrowserDriverFactory, createPreviewDriverFactory } from "./preview-driver.js";
+import { createPreviewDriverFactory } from "./preview-driver.js";
 import { PlannerPreviewView, registerPreviewIpc } from "./preview-view.js";
 import { SafeStorageCredentialStore } from "./safe-storage-store.js";
 import { daemonUrl, guardNavigations, MainWindowHost, windowUrl } from "./windows.js";
@@ -305,10 +304,6 @@ async function bootApp(): Promise<void> {
     ? join(app.getAppPath(), "web-dist")
     : undefined;
 
-  // AI 의 미리보기 (PLAN D61): 세션 도구는 pane 의 페이지를 drive 하고,
-  // 창은 모두 이 파일이 만든다 — pane 을 찾는 getter 를 넘기면
-  // 드라이버는 Electron 을 몰라도 된다 (PLAN D61).
-  const browserDrivers = createBrowserDriverFactory(() => plannerPreview);
   const previewDriverFactory = createPreviewDriverFactory();
   const onNotice = (notice: DaemonNotice) => {
     notices.notifyPlanner(notice);
@@ -323,10 +318,8 @@ async function bootApp(): Promise<void> {
       webDist,
       credentialStore: credentials,
       previewDriverFactory,
-      browserDriverFactory: browserDrivers,
       onNotice,
-      // 브라우저 MCP 자식의 serverInfo.version 이 앱 버전을 말하게 한다
-      // (DaemonConfig.appVersion — COLONOVA_APP_VERSION 으로 자식까지 간다).
+      // 진단과 사용자 의견에 앱 버전을 싣는다.
       appVersion: app.getVersion(),
       // 개발 전용 면은 패키징되지 않은 실행(`pnpm dev:desktop` ·
       // `pnpm --filter @colonova-design/desktop dev`)에만(DaemonConfig.devAgents).

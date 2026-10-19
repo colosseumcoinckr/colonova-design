@@ -10,6 +10,8 @@
  * 2026-10-19 응답 속도 조사 — `preDeliverMs`(user.echo 부터 말이 실제로 CLI 로
  * 나가기까지: 직전 보관 대기 · 기준 스냅숏 · 대화록 읽기 등 데몬의 몫)가 갈라 들어,
  * `firstDeltaMs` 에서 데몬 시간과 모델 시간을 나눌 수 있다.
+ * 2026-10-20 응답 지연 개선: 기준 스냅숏·대화록 읽기·핀 검색을 보내기 앞에서 없앴다.
+ * 새 durationMs는 창의 보내기부터 완료까지다. scanMs·pinHit는 새 요청에서 null이다.
  * 게이트는 turn.end 뒤에야 판정이 나오므로 턴 행이 아닌 제 행(kind
  * "gateset")으로 내려앉는다. 이 측정은 `undo.jsonl` 과 같은 결이다: 종류와
  * 숫자만 남고, 사용자의 말·화면·파일 이름은 조금도 남지 않는다. 로그가 도구를
@@ -24,11 +26,53 @@ import type {
   DiagnosticsTurnStats,
   TurnFailureStage,
 } from "@colonova-design/protocol";
-import { type BrowserFailKind, isBrowserToolName } from "./browser-tools.js";
 import { daemonLogDir } from "./log.js";
 import { STATS_EDIT_TOOLS, STATS_EXEC_TOOLS, STATS_READ_TOOLS } from "./tool-names.js";
 import { editPathsOf } from "./tool-paths.js";
 import { classifyFailure } from "./turn-retry.js";
+
+/** 옛 내장 도구의 통계를 읽는 이름이다(2026-10-20 내장 MCP 제거). */
+const LEGACY_BROWSER_TOOLS = new Set([
+  "browser_navigate",
+  "browser_snapshot",
+  "browser_find",
+  "browser_inspect",
+  "browser_screenshot",
+  "browser_click",
+  "browser_fill",
+  "browser_type",
+  "browser_press",
+  "browser_scroll",
+  "browser_hover",
+  "browser_select",
+  "browser_drag",
+  "browser_wait",
+  "browser_console",
+  "browser_evaluate",
+  "browser_back",
+  "browser_forward",
+  "screen_check",
+  "describe_changes",
+  "repo_diagnostics",
+  "submit_for_review",
+  "screen_files",
+  "notify_developer",
+]);
+function isBrowserToolName(name: string): boolean {
+  const plain = name.replace(/^mcp__colonova-browser__|^colonova-browser\//, "");
+  return LEGACY_BROWSER_TOOLS.has(plain);
+}
+type BrowserFailKind = "stale-ref" | "timeout" | "refused" | "no-pane" | "other";
+
+/**
+ * 핀 적중 비교의 열쇠 — 후보와 도구 경로를 같은 정규화로 견준다(2026-10-19, Windows 호환성).
+ * Windows 의 Codex 는 `C:/…` 나 섞인 구분자로 답한다. resolve 가 양쪽의 구분자를 맞춘다.
+ * Windows 의 경로는 대소문자를 가리지 않아 접는다. macOS · Linux 는 예전 그대로다.
+ */
+function pathKey(cwd: string, path: string): string {
+  const absolute = resolve(cwd, path);
+  return process.platform === "win32" ? absolute.toLowerCase() : absolute;
+}
 
 /** 보존 일수 — 데몬 하루 로그와 같은 창. */
 const RETENTION_DAYS = 7;
@@ -486,9 +530,10 @@ export class TurnStats {
       const scan = this.takeScan(sessionId);
       turn.scanMs = scan?.ms ?? null;
       turn.cwd = scan?.cwd ?? null;
+      const base = turn.cwd ?? process.cwd();
       turn.candidates =
         scan?.candidates !== null && scan?.candidates !== undefined && scan.candidates.length > 0
-          ? new Set(scan.candidates)
+          ? new Set(scan.candidates.map((file) => pathKey(base, file)))
           : null;
       // 후보가 있던 턴은 이 미터가 성립한다 — 비적중도 답이다(false). 후보가
       // 없으면 비교 자체가 성립하지 않으므로 null 로 솔직하다.
@@ -522,7 +567,7 @@ export class TurnStats {
       // 절대 또는 cwd 상대). 경로는 기록하지 않는다.
       if (turn.candidates !== null && EDIT_TOOLS[event.name] === true) {
         for (const path of editPathsOf(event.input)) {
-          if (turn.candidates.has(resolve(turn.cwd ?? process.cwd(), path))) {
+          if (turn.candidates.has(pathKey(turn.cwd ?? process.cwd(), path))) {
             turn.pinHit = true;
             break;
           }

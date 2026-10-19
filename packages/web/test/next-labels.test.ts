@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
 // 순수 모듈 — src 에서 곧장 읽는다(turn-screens.test.ts 와 같은 모양).
 import { DEV, L } from "../src/next/labels.ts";
+import { sourcePath } from "./helpers/source-path.ts";
 
 /** U10 의 끝 조건 — 사용자 면에 나오지 않는 개발자의 말. */
 const FORBIDDEN = ["턴", "경로", "git", "데몬", "커밋", "브랜치", "PR"];
@@ -101,16 +102,16 @@ test("next/: labels.ts 밖에 한글 리터럴이 없다(린트 규칙)", () => 
     ...sourceFiles(root),
     ...sourceFiles(join(root, "../components/shell")),
     ...sourceFiles(join(root, "../components/dialogs")),
-  ].filter((file) => relative(root, file) !== "labels.ts");
+  ].filter((file) => sourcePath(root, file) !== "labels.ts");
   assert.ok(files.length > 0, "next/ 에 검사할 파일이 없다");
   const hits: string[] = [];
   for (const file of files) {
     const { literals, code } = splitSource(readFileSync(file, "utf8"));
     for (const literal of literals) {
-      if (HANGUL.test(literal)) hits.push(`${relative(root, file)} 문자열: ${literal}`);
+      if (HANGUL.test(literal)) hits.push(`${sourcePath(root, file)} 문자열: ${literal}`);
     }
     for (const line of code.split("\n")) {
-      if (HANGUL.test(line)) hits.push(`${relative(root, file)} JSX 텍스트: ${line.trim()}`);
+      if (HANGUL.test(line)) hits.push(`${sourcePath(root, file)} JSX 텍스트: ${line.trim()}`);
     }
   }
   assert.deepEqual(hits, []);
@@ -162,9 +163,9 @@ test("labels: L 의 칸은 모두 next/ 어딘가에서 불린다", () => {
     ...sourceFiles(join(root, "../components/shell")),
     ...sourceFiles(join(root, "../components/dialogs")),
   ]
-    .filter((file) => relative(root, file) !== "labels.ts")
+    .filter((file) => sourcePath(root, file) !== "labels.ts")
     .map((file) => ({
-      name: relative(root, file),
+      name: sourcePath(root, file),
       text: withoutComments(readFileSync(file, "utf8")),
     }));
   /** 한 파일에서 칸을 부르는 이름들 — 칸 이름 자신과, 풀어 받은 별명. */

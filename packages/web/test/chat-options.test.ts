@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { SessionModelInfo } from "@colonova-design/protocol";
+import type { EffortLevel, SessionModelInfo } from "@colonova-design/protocol";
 // 순수 모듈 — src 에서 곧장 읽는다(next-thread.test.ts 와 같은 모양).
-import { modelName } from "../src/lib/chat-options.ts";
+import { DEFAULT_EFFORT, modelName, seedEffort } from "../src/lib/chat-options.ts";
+import { EFFORT_OF, effortWord } from "../src/next/lib/thread.ts";
 
 const row = (
   over: Pick<SessionModelInfo, "value" | "displayName" | "resolvedModel">,
@@ -55,4 +56,35 @@ test("modelName: 목록에 없는 id 는 버리지 않고 이름으로 읽는다
 
 test("modelName: 아무것도 모델을 이름하지 않을 때만 null — 그때 칩은 AI 이름", () => {
   assert.equal(modelName([], null), null);
+});
+
+// 모델이 받는 단계의 실제 모양 — 예전 씨앗(가운데)은 둘 다 high(깊게)에 앉았다.
+const codexLevels: EffortLevel[] = ["low", "medium", "high", "xhigh"];
+const claudeLevels: EffortLevel[] = ["low", "medium", "high", "xhigh", "max"];
+
+test("seedEffort: 고른 적 없는 생각 시간은 보통(medium)에서 시작한다", () => {
+  assert.equal(DEFAULT_EFFORT, "medium");
+  assert.equal(seedEffort(codexLevels), "medium");
+  assert.equal(seedEffort(claudeLevels), "medium");
+  assert.equal(seedEffort(["medium"]), "medium");
+  // 칩이 고른 적 없는 값(null)을 읽는 말과 씨앗이 같은 칸이다 — 보통.
+  assert.equal(effortWord(null), "normal");
+  assert.equal(EFFORT_OF.normal, DEFAULT_EFFORT);
+  assert.equal(effortWord(DEFAULT_EFFORT), "normal");
+});
+
+test("seedEffort: 프로젝트의 처음 값은 모델이 받을 때만 이긴다", () => {
+  assert.equal(seedEffort(claudeLevels, "high"), "high");
+  assert.equal(seedEffort(codexLevels, "low"), "low");
+  // codex 는 max 를 받지 않는다 — 처음 값을 버리고 보통으로.
+  assert.equal(seedEffort(codexLevels, "max"), "medium");
+  assert.equal(seedEffort(claudeLevels, undefined), "medium");
+});
+
+test("seedEffort: 보통을 받지 않는 모델만 가운데, 단계를 모르면 씨앗도 없다", () => {
+  assert.equal(seedEffort(["low", "high"]), "high");
+  assert.equal(seedEffort(["low", "high", "max"]), "high");
+  assert.equal(seedEffort(["high"]), "high");
+  assert.equal(seedEffort([]), undefined);
+  assert.equal(seedEffort([], "high"), undefined);
 });

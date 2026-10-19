@@ -49,6 +49,13 @@ export type HandoffPreviewSource = () => {
 
 /** 브랜치 꼭지 판정의 준비 대기 — 본 미리보기와 같은 벽시계 상한. */
 const READY_TIMEOUT_MS = Number(process.env.COLONOVA_DESIGN_READY_TIMEOUT_MS) || 120_000;
+/**
+ * 준비 요청의 상한 — 2초에 끊고 다시 찌르면 Windows 의 느린 첫 렌더(5~10초)가 버려진 요청으로
+ * 줄을 세워 끝내 답하지 못한다(2026-10-19 실측, preview-detection.ts 와 같은 원인).
+ */
+const PROBE_TIMEOUT_MS = 45_000;
+const SCAN_PROBE_TIMEOUT_MS = 15_000;
+const SCAN_RETRY_MS = 2_000;
 /** 마지막 open() 뒤의 유휭 수명 — 위 수명 규칙 3번. */
 const IDLE_TTL_MS = 15 * 60_000;
 
@@ -356,7 +363,10 @@ export class HandoffPreviews {
       });
     });
     const deadline = Date.now() + READY_TIMEOUT_MS;
-    const scanned = new Set<number>();
+    /** 조회로 찾은 포트의 다음 확인 시각 — 한 번의 무응답으로 영구 제외하지 않는다(2026-10-19). */
+    const scanned = new Map<number, number>();
+    /** 남은 기한 안의 요청 상한 — 느린 첫 화면은 끊지 않고 기다린다(본 미리보기와 같다). */
+    const budget = (cap: number) => Math.max(1, Math.min(cap, deadline - Date.now()));
     try {
       while (Date.now() < deadline) {
         if (child.exitCode !== null) {
@@ -369,7 +379,7 @@ export class HandoffPreviews {
         }
         // 힌트 포트부터 — 명령이 힌트를 따랐다면 첫 판정으로 끝난다.
         if (hint !== undefined && !scanned.has(hint)) {
-          const url = await servingUrl(hint);
+          const url = await servingUrl(hint, budget(PROBE_TIMEOUT_MS));
           if (url !== null) {
             live.port = hint;
             live.url = url;
@@ -382,9 +392,9 @@ export class HandoffPreviews {
           ...(await descendantPids(child.pid ?? -1)),
         ];
         for (const port of await pidListeningPorts(pids)) {
-          if (scanned.has(port)) continue;
-          scanned.add(port);
-          const url = await servingUrl(port);
+          if ((scanned.get(port) ?? 0) > Date.now()) continue;
+          scanned.set(port, Date.now() + SCAN_RETRY_MS);
+          const url = await servingUrl(port, budget(SCAN_PROBE_TIMEOUT_MS));
           if (url !== null) {
             live.port = port;
             live.url = url;
@@ -474,10 +484,10 @@ async function freePort(): Promise<number> {
 }
 
 /** 어느 루프백 패밀리든 응답하는 쪽의 주소를 그대로 돌린다 (본 미리보기와 같다). */
-async function servingUrl(port: number): Promise<string | null> {
+async function servingUrl(port: number, timeoutMs: number): Promise<string | null> {
   for (const host of ["127.0.0.1", "[::1]"] as const) {
     const url = `http://${host}:${port}/`;
-    if ((await probePreviewUrl(url)) !== null) return url;
+    if ((await probePreviewUrl(url, undefined, timeoutMs)) !== null) return url;
   }
   return null;
 }

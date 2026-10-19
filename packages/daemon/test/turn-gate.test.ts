@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { PreviewDrivers } from "../dist/preview-drivers.js";
 import { DaemonServer } from "../dist/server.js";
-import { turnSnapshot } from "../dist/turn-changes.js";
+import { TurnActivity } from "../dist/turn-activity.js";
 import { makeScene } from "./helpers/cycle-harness.ts";
 
-test("server skips pinned read-only repair over dirty work, while actual edits and deletions still gate before save", async () => {
+test("server saves edits and deletions without reopening screens or repairing; read-only requests do not save", async () => {
   const scene = await makeScene();
   try {
     mkdirSync(join(scene.clone.path, "src/app"), { recursive: true });
@@ -17,15 +17,19 @@ test("server skips pinned read-only repair over dirty work, while actual edits a
     await scene.git(["commit", "-m", "seed page"]);
     writeFileSync(join(scene.clone.path, "README.md"), "preexisting unsaved work\n");
     let repairs = 0;
+    let windows = 0;
     let saves = 0;
     const drivers = new PreviewDrivers({
       factory: () => ({
-        forIsolated: () => ({
-          open: async () => ({ ok: true, settled: true }),
-          consoleLines: async () => [{ level: "error", text: "broken" }],
-          screenshot: async () => ({ data: "", mediaType: "image/png" }),
-          destroy: async () => {},
-        }),
+        forIsolated: () => {
+          windows++;
+          return {
+            open: async () => ({ ok: true, settled: true }),
+            consoleLines: async () => [{ level: "error", text: "broken" }],
+            screenshot: async () => ({ data: "", mediaType: "image/png" }),
+            destroy: async () => {},
+          };
+        },
       }),
       activeRepo: () =>
         ({
@@ -47,43 +51,56 @@ test("server skips pinned read-only repair over dirty work, while actual edits a
     Object.assign(server, {
       drivers,
       manager: { get: () => ({ state: "idle" }) },
-      turnBaselines: new Map(),
+      turnActivity: new Map(),
       changedTurnFiles: new Map(),
       gateRequests: new Map(),
       turnEnds: new Map(),
       autoSaveDue: new Set(),
       screenMapDue: new Map(),
-      gateFallbackCount: new Map(),
-      comparisons: { cancel: () => {} },
       workspaceOfSession: () => ({
         repo: { repoCore: () => scene.core },
-        paths: { root: scene.clone.dir },
+        paths: { root: scene.clone.dir, repoRoot: scene.clone.path },
       }),
       finishWithoutGate: () => {
         if (server.autoSaveDue.delete("s")) saves++;
       },
     });
-    let gate: Promise<unknown> | undefined;
-    server.startGate = () => {
-      gate = drivers.runGate("s");
-    };
     const finish = async (mutate?: () => void, pinned = true) => {
       drivers.gatedSessions.delete("s");
       if (pinned) drivers.notePinned("s", "index");
-      server.turnBaselines.set("s", await turnSnapshot(scene.core));
+      const activity = new TurnActivity();
+      server.turnActivity.set("s", activity);
       server.autoSaveDue.add("s");
       mutate?.();
+      if (mutate) {
+        activity.observe({
+          kind: "tool.start",
+          toolUseId: "edit",
+          name: "fileChange",
+          input: { changes: [{ path: page }] },
+          agentId: null,
+        });
+        activity.observe({
+          kind: "tool.end",
+          toolUseId: "edit",
+          isError: false,
+          content: null,
+          agentId: null,
+        });
+      }
       await server.finishChangedTurn("s", 1);
-      await gate;
     };
     await finish();
     assert.equal(repairs, 0, "no repair for observational request, even with dirty README");
     assert.equal(saves, 0, "do not attribute old unsaved work to read-only request");
     assert.equal(drivers.pinnedThisTurn.has("s"), false);
     await finish(() => writeFileSync(page, "export const title = 'after';\n"), false);
-    assert.equal(repairs, 1, "real unpinned TS delta still checks");
+    assert.equal(repairs, 0, "real TS delta does not trigger automatic browser checks");
+    assert.equal(saves, 1);
     await finish(() => unlinkSync(page), false);
-    assert.equal(repairs, 2, "deleting a screen is also a genuine edit");
+    assert.equal(repairs, 0, "deleting a screen does not reopen the browser");
+    assert.equal(saves, 2);
+    assert.equal(windows, 0, "automatic save never opens a browser");
   } finally {
     scene.dispose();
   }
@@ -126,7 +143,7 @@ test("repair with no additional edits keeps original screen association, and lat
     const associations = ["/"];
     Object.assign(server, {
       manager: { get: () => ({ state }) },
-      turnBaselines: new Map(),
+      turnActivity: new Map(),
       changedTurnFiles: new Map([["s", ["src/app/page.tsx"]]]),
       gateRequests: new Map(),
       turnEnds: new Map([["s", "success"]]),
@@ -134,7 +151,7 @@ test("repair with no additional edits keeps original screen association, and lat
       drivers: { verifyRepair: () => verification },
       workspaceOfSession: () => ({
         repo: { repoCore: () => scene.core },
-        paths: { root: scene.clone.dir },
+        paths: { root: scene.clone.dir, repoRoot: scene.clone.path },
       }),
       broadcast: () => {},
       finishWithoutGate: () => {
@@ -143,7 +160,7 @@ test("repair with no additional edits keeps original screen association, and lat
         assert.deepEqual(server.changedTurnFiles.get("s"), ["src/app/page.tsx"]);
       },
     });
-    server.turnBaselines.set("s", await turnSnapshot(scene.core));
+    server.turnActivity.set("s", new TurnActivity());
     server.gateRequests.set("s", { requestId: "repair", afterTurn: 2, text: "check" });
     await server.finishChangedTurn("s", 1);
     assert.equal(finishes, 1, "original edit can save with its original screen association");
@@ -160,7 +177,7 @@ test("repair with no additional edits keeps original screen association, and lat
     server.gateRequests.set("s", { requestId: "repair-next", afterTurn: 3, text: "check" });
     const finishing = server.finishChangedTurn("s", 1);
     await waiting;
-    state = "running"; // Session.send sets this before beforeDeliver finishes its new snapshot.
+    state = "running";
     deferred.resolve("unchanged");
     await finishing;
     assert.equal(finishes, 1, "old verification cannot trigger save in a newer running turn");

@@ -5,8 +5,9 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import {
   collectRows,
   compareResults,
@@ -24,7 +25,7 @@ import {
   validateScenarios,
 } from "./lib.mjs";
 
-const HERE = new URL(".", import.meta.url).pathname;
+const HERE = fileURLToPath(new URL(".", import.meta.url));
 const turn = (over = {}) => ({
   at: "2026-09-28T01:00:00.000Z",
   sessionId: "s1",
@@ -168,7 +169,7 @@ test("행 모으기 — 이틀 치를 시간 순으로, 남의 것과 깨진 줄
 
   const files = statsFiles("/logs", new Date("2026-09-28T12:00:00.000Z"));
   assert.deepEqual(
-    files.map((file) => file.split("/").pop()),
+    files.map((file) => basename(file)),
     ["turn-stats-2026-09-28.jsonl", "turn-stats-2026-09-27.jsonl"],
   );
 });
@@ -177,9 +178,10 @@ test("행 모으기 — 이틀 치를 시간 순으로, 남의 것과 깨진 줄
 // 끝 판정
 // ---------------------------------------------------------------------------
 
-test("끝 판정 — 턴만 있으면 아직, 턴 뒤 gateset 이 오면 끝", () => {
-  assert.deepEqual(turnProgress([turn()]), { done: false, waiting: "gateset" });
+test("끝 판정 — 턴 행이 내려오면 끝, gateset 을 기다리지 않는다", () => {
   assert.deepEqual(turnProgress([]), { done: false, waiting: "turn" });
+  // 2026-10-20 내장 게이트 제거 뒤 새 실행에는 gateset 행이 오지 않는다.
+  assert.deepEqual(turnProgress([turn()]), { done: true });
   assert.deepEqual(turnProgress([turn(), gate()]), { done: true });
   // gateset 이 먼저 나오고 턴이 없으면 끝이 아니다.
   assert.deepEqual(turnProgress([gate()]), { done: false, waiting: "turn" });
@@ -195,22 +197,13 @@ test("끝 판정 — reopened 뒤에는 턴 하나를 더 기다린다", () => {
   assert.deepEqual(turnProgress(settled), { done: true });
 });
 
-test("끝 판정 — 오류 · 중지로 끝난 턴은 gateset 을 기다리지 않는다", () => {
-  // 오류 턴만 — 자동 보관이 서지 않아 gateset 행이 오지 않는다.
+test("끝 판정 — 오류 · 중지로 끝난 턴도 그대로 끝난다", () => {
   assert.deepEqual(turnProgress([turn({ isError: true, failure: "stream" })]), { done: true });
-  // 중지 턴만.
   assert.deepEqual(turnProgress([turn({ subtype: "interrupted" })]), { done: true });
-  // reopened 뒤의 고침 턴이 오류로 끝나도 같은 규칙으로 끝난다.
-  const reopenedThenError = [
-    turn(),
-    gate({ reopened: true }),
-    turn({ at: "2026-09-28T01:05:00.000Z", isError: true }),
-  ];
-  assert.deepEqual(turnProgress(reopenedThenError), { done: true });
-  // 오류 턴이 마지막이 아니면(뒤에 정상 턴이 이어지면) 규칙이 화하지 않는다.
+  // 오류 턴 뒤에 정상 턴이 이어져도 마지막 턴이면 끝이다.
   assert.deepEqual(
     turnProgress([turn({ isError: true }), turn({ at: "2026-09-28T01:02:00.000Z" })]),
-    { done: false, waiting: "gateset" },
+    { done: true },
   );
 });
 

@@ -170,10 +170,39 @@ test("registryProbeTarget — 명령줄에 실을 수 없는 이름은 버린다
 
 type Mode = "ok" | "unauthorized" | "notfound" | "offline" | "garbage";
 
+/**
+ * Windows 의 가짜 pnpm — 제품이 찾는 모양(`pnpm.cmd` 셔임)이고, 제품은 그것을 shellPlan 으로 cmd 를
+ * 거쳐 띄운다. `#!/bin/sh` 스크립트는 Windows 에서 돌지 않아 부른 횟수가 0 이었다(2026-10-19).
+ * 로그는 셔임 옆(`%~dp0`)에 쓴다 — 경로를 배치 파일에 적으면 비 ASCII 사용자 폴더에서 코드 페이지가 어긋난다.
+ * `%%2F` 는 배치의 `%2`(둘째 인자)로 읽히지 않게 한 것이다.
+ */
+const WINDOWS_BODIES: Record<Mode, string[]> = {
+  ok: ["echo 1.2.3"],
+  unauthorized: [
+    ">&2 echo [ERR_PNPM_FETCH_401] GET https://npm.pkg.github.com/@acme%%2Fui: Unauthorized - 401",
+    "exit /b 1",
+  ],
+  notfound: [
+    ">&2 echo [ERR_PNPM_FETCH_404] GET https://registry.npmjs.org/@acme%%2Fui: Not Found - 404",
+    "exit /b 1",
+  ],
+  offline: [
+    ">&2 echo [ERR_PNPM_META_FETCH_FAIL] getaddrinfo ENOTFOUND npm.pkg.github.com",
+    "exit /b 1",
+  ],
+  garbage: ["echo not-a-version"],
+};
+
 /** 가짜 pnpm — 부른 자리와 인자를 로그에 적고 모드대로 답한다. */
 function fakePnpm(mode: Mode): { pnpm: string; log: string; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "colonova-registry-pnpm-"));
   const log = join(dir, "calls.log");
+  if (process.platform === "win32") {
+    const pnpm = join(dir, "pnpm.cmd");
+    const lines = ["@echo off", '>>"%~dp0calls.log" echo %CD%^|%*', ...WINDOWS_BODIES[mode]];
+    writeFileSync(pnpm, `${lines.join("\r\n")}\r\n`);
+    return { pnpm, log, dir };
+  }
   const bodies: Record<Mode, string> = {
     ok: "echo 1.2.3",
     unauthorized:
@@ -192,7 +221,7 @@ function fakePnpm(mode: Mode): { pnpm: string; log: string; dir: string } {
 }
 
 const calls = (log: string): string[] =>
-  existsSync(log) ? readFileSync(log, "utf8").split("\n").filter(Boolean) : [];
+  existsSync(log) ? readFileSync(log, "utf8").split(/\r?\n/).filter(Boolean) : [];
 
 test("readRegistryAuth — 그 레포의 클론에서, 그 레포 스코프의 의존성 하나를 묻는다", async () => {
   const repo = repoWith({ dependencies: { "@acme/ui": "^1.0.0" } });

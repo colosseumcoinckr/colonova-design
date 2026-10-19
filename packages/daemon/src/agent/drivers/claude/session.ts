@@ -16,11 +16,6 @@ import type {
   SessionModelInfo,
 } from "@colonova-design/protocol";
 import { withoutSelfUpdate } from "../../../agent-env.js";
-import {
-  BROWSER_MCP_SERVER_NAME,
-  claudeBrowserMcpDown,
-  claudeBrowserMcpServer,
-} from "../../../browser-launch.js";
 import { sanitizeRepoAgentSettings } from "../../../claude-trust.js";
 import { ensureGitGuardHooks, gitGuardEnv } from "../../../git-guard.js";
 import {
@@ -235,16 +230,6 @@ export class ClaudeAgentSession implements AgentSession {
         // pre-approved tool rules gets those keys cut before this query
         // reads anything; see sanitizeRepoAgentSettings.)
         settingSources: ["user", "project", "local"],
-        // 브라우저 도구(3단계): host가 브라우저 팩토리를 주입한 세션만 세션
-        // 시크릿을 든 stdio MCP 서버를 받는다 — 메인 query에만 주입하고,
-        // probe·one-shot 사이트는 의도적 무도구 그대로다.
-        ...(launch.browserMcp
-          ? {
-              mcpServers: {
-                [BROWSER_MCP_SERVER_NAME]: claudeBrowserMcpServer(launch.browserMcp),
-              },
-            }
-          : {}),
         // 질문 카드의 선택지 미리보기를 HTML 로 받는다 (PLAN D96): 이 앱의
         // 카드는 웹이라 monospace 박스가 아니라 그려진 시안을 보여 줄 수 있다.
         // 카드는 스크립트 없는 sandbox iframe 으로만 그린다.
@@ -297,9 +282,6 @@ export class ClaudeAgentSession implements AgentSession {
         // 쉬는 중 - 켜 달라는 뜻은 살아 있으나 지금 도는 것은 보통 속도라,
         // 켜짐으로 세지 않는다.
         this.readFastMode(message);
-        // 브라우저 MCP 자식이 못 떴으면 init 이 그 상태를 싣는다 — 번역은 서버
-        // 상태를 옮기지 않으므로 여기서 읽어 알린다(2026-10-14 MCP 점검).
-        if (claudeBrowserMcpDown(message)) this.hooks.onBrowserToolsDown?.();
         for (const event of this.translator.translate(message)) {
           if (event.kind === "shutdown") {
             // 예고된 종료는 고장이 아니다: 스트림 끝이 이 깃발을 읽고 다른

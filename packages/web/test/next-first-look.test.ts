@@ -100,17 +100,15 @@ test("askFirstLook: 기억은 몇 개뿐이다 — 오래된 것부터 잊는다
   assert.equal(asks, 6, "가장 오래된 것은 잊었다");
 });
 
-test("홈: 사진은 지금 프로젝트의 줄에만, 서비스가 떠 있고 첫 화면을 읽은 뒤에만 묻는다 · 풀리지 않는 그림은 세우지 않는다", () => {
+test("옛 사진 훅은 현재 프로젝트의 열린 화면만 읽고, 홈은 사진을 자동 요청하지 않는다", () => {
   const hook = readFileSync(new URL("../src/next/home/use-first-look.ts", import.meta.url), "utf8");
   assert.match(hook, /slug === daemon\.activeSlug/);
   assert.match(hook, /repo\?\.phase === "ready"/);
   assert.match(hook, /repo\.firstScreen !== undefined/);
   assert.match(hook, /decodes\(url\)\.then\(\(ok\) => \(ok \? url : null\)\)/);
   const view = readFileSync(new URL("../src/next/home/HomeView.tsx", import.meta.url), "utf8");
-  assert.match(
-    view,
-    /const lookSlug = active !== null && ready\.includes\(active\.slug\) \? active\.slug : null;/,
-  );
+  assert.doesNotMatch(view, /useFirstLook/);
+  assert.match(view, /photo=\{null\}/);
   const card = readFileSync(new URL("../src/next/home/HomeReady.tsx", import.meta.url), "utf8");
   assert.match(card, /photo\?\.slug === project\.slug/);
 });

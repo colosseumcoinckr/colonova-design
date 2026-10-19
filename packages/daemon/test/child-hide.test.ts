@@ -25,7 +25,7 @@ const SOURCES = [
 /** `windowsHide` 없이 불려도 되는 호출 — 호출자 파일 · 부르는 이름 · 첫 인자 모양 · 이유. */
 const EXCEPTIONS: Array<{ file: string; callee: string; first: RegExp; reason: string }> = [
   {
-    file: "daemon/src/dispatch.ts",
+    file: "daemon/src/requests/projects.ts",
     callee: "spawn",
     first: /^command\b/,
     reason:

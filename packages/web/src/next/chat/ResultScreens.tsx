@@ -5,17 +5,7 @@ import type { Box } from "../lib/photo-diff";
 import { readPhotos } from "../lib/result-photos";
 import { diffText, useCopyPhoto, usePhotoTools } from "../lib/use-photo-tools";
 import { DiffOutlines } from "../ui/PhotoOutlines";
-import {
-  CompareIcon,
-  CopyIcon,
-  DiffIcon,
-  EditIcon,
-  EyeIcon,
-  FwdIcon,
-  ImageIcon,
-  NoPhotoIcon,
-  RedoIcon,
-} from "./icons";
+import { CompareIcon, CopyIcon, DiffIcon, EditIcon, EyeIcon, FwdIcon } from "./icons";
 
 export type LoadComparison = Daemon["api"]["comparison"];
 
@@ -61,20 +51,13 @@ export function ResultScreen({
   // 수정 전 사진 — 없으면 null 이고 토글도 없다. `showing` 은 지금 사진에 선 쪽이다.
   const [before, setBefore] = useState<string | null>(null);
   const [showing, setShowing] = useState<"after" | "before">("after");
-  const [loading, setLoading] = useState(Boolean(requestId));
-  const [unavailable, setUnavailable] = useState(false);
-  // 읽다 실패한 사진을 다시 읽는 횟수 — 값이 바뀌면 아래 효과가 처음부터 다시 돈다.
-  const [attempt, setAttempt] = useState(0);
   // 달라진 곳 윤곽 · 한 장 복사 — 사진 둘이 오면 한 번, 한가할 때 계산한다. 못 하면 조용히 단추가 없다.
   const tools = usePhotoTools(before, picture, pins);
   const { busy: copying, copy } = useCopyPhoto(onToast);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt 는 읽지 않고 다시 돌리는 열쇠다.
   useEffect(() => {
     setPicture(null);
     setBefore(null);
     setShowing("after");
-    setLoading(Boolean(requestId));
-    setUnavailable(false);
     if (!requestId || !card.current) return;
     let cancelled = false;
     const observer = new IntersectionObserver(
@@ -90,12 +73,7 @@ export function ResultScreen({
               setBefore(photos.before);
             }
           })
-          .catch(() => {
-            if (!cancelled) setUnavailable(true);
-          })
-          .finally(() => {
-            if (!cancelled) setLoading(false);
-          });
+          .catch(() => undefined);
       },
       { rootMargin: "200px" },
     );
@@ -104,125 +82,97 @@ export function ResultScreen({
       cancelled = true;
       observer.disconnect();
     };
-  }, [route, requestId, loadComparison, attempt]);
+  }, [route, requestId, loadComparison]);
 
   return (
     <div ref={card} className="nx-result-screen">
-      <div
-        className={`nx-result-photo${
-          picture ? "" : loading ? " nx-result-photo--loading" : " nx-result-photo--empty"
-        }`}
-      >
-        {picture ? (
-          <>
-            {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: Handles image decoding failure, not user interaction. */}
-            <img
-              className="nx-result-img"
-              src={showing === "before" && before ? before : picture}
-              alt=""
-              onError={() => {
-                // 수정 전 사진만 못 그리면 그 사진만 거두고 수정 후로 돌아온다 — 카드를 비우지 않는다.
-                if (showing === "before" && before) {
-                  setBefore(null);
-                  setShowing("after");
-                  return;
-                }
-                setPicture(null);
-                setUnavailable(true);
-              }}
+      {picture && (
+        <div className="nx-result-photo">
+          {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: Handles image decoding failure, not user interaction. */}
+          <img
+            className="nx-result-img"
+            src={showing === "before" && before ? before : picture}
+            alt=""
+            onError={() => {
+              // 수정 전 사진만 못 그리면 그 사진만 거두고 수정 후로 돌아온다 — 카드를 비우지 않는다.
+              if (showing === "before" && before) {
+                setBefore(null);
+                setShowing("after");
+                return;
+              }
+              setPicture(null);
+            }}
+          />
+          {/* 윤곽은 수정 후 사진 위에만 선다 — 수정 전을 보는 동안은 접어 둔다(상자의 좌표는 수정 후 사진의 것이다). */}
+          {tools.on && tools.diff && showing === "after" && tools.boxes.length > 0 && (
+            <DiffOutlines
+              size={tools.diff}
+              boxes={tools.boxes}
+              warn={tools.warn}
+              className="nx-diff-svg--card"
             />
-            {/* 윤곽은 수정 후 사진 위에만 선다 — 수정 전을 보는 동안은 접어 둔다(상자의 좌표는 수정 후 사진의 것이다). */}
-            {tools.on && tools.diff && showing === "after" && tools.boxes.length > 0 && (
-              <DiffOutlines
-                size={tools.diff}
-                boxes={tools.boxes}
-                warn={tools.warn}
-                className="nx-diff-svg--card"
-              />
-            )}
-            {before ? (
-              // biome-ignore lint/a11y/useSemanticElements: 분절은 fieldset 의 모양(테두리 · 범례)을 입지 않는다 — 눌림 단추 둘을 이름 붙여 묶을 뿐이다.
-              <div className="nx-result-ba" role="group" aria-label={L.compare.flipGroup}>
-                <button
-                  type="button"
-                  aria-pressed={showing === "before"}
-                  onClick={() => setShowing("before")}
-                >
-                  {L.compare.before}
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={showing === "after"}
-                  onClick={() => setShowing("after")}
-                >
-                  {L.compare.after}
-                </button>
-              </div>
-            ) : (
-              <span className="nx-result-photo-label">{L.transcript.shotCaptured}</span>
-            )}
-            {/* 사진 오른쪽 아래의 두 알약 — 위쪽은 사진의 머리띠 · 단추가 서는 자리라 비워 둔다. */}
-            <div className="nx-diff-tools">
-              {tools.diff && (
-                <button
-                  type="button"
-                  className="nx-diff-pill"
-                  aria-pressed={tools.on}
-                  aria-label={`${title} · ${L.photo.showDiff}`}
-                  onClick={() => {
-                    // 수정 전을 보던 중에 켜면 수정 후로 넘어간다 — 윤곽은 수정 후 사진 위에만 서서, 안 넘어가면 켜도 아무것도 안 보인다.
-                    if (!tools.on) setShowing("after");
-                    tools.toggle();
-                  }}
-                >
-                  <DiffIcon />
-                  <span className="nx-diff-pill-label">{L.photo.showDiff}</span>
-                </button>
-              )}
+          )}
+          {before ? (
+            // biome-ignore lint/a11y/useSemanticElements: 분절은 fieldset 의 모양(테두리 · 범례)을 입지 않는다 — 눌림 단추 둘을 이름 붙여 묶을 뿐이다.
+            <div className="nx-result-ba" role="group" aria-label={L.compare.flipGroup}>
+              <button
+                type="button"
+                aria-pressed={showing === "before"}
+                onClick={() => setShowing("before")}
+              >
+                {L.compare.before}
+              </button>
+              <button
+                type="button"
+                aria-pressed={showing === "after"}
+                onClick={() => setShowing("after")}
+              >
+                {L.compare.after}
+              </button>
+            </div>
+          ) : (
+            <span className="nx-result-photo-label">{L.transcript.shotCaptured}</span>
+          )}
+          {/* 사진 오른쪽 아래의 두 알약 — 위쪽은 사진의 머리띠 · 단추가 서는 자리라 비워 둔다. */}
+          <div className="nx-diff-tools">
+            {tools.diff && (
               <button
                 type="button"
                 className="nx-diff-pill"
-                aria-busy={copying || undefined}
-                aria-label={`${title} · ${L.photo.copy}`}
-                onClick={() =>
-                  copy({
-                    before: before ? { src: before, label: L.compare.before } : null,
-                    after: { src: picture, label: L.compare.after },
-                    outlines:
-                      tools.on && tools.boxes.length > 0
-                        ? { boxes: tools.boxes, warn: tools.warn }
-                        : null,
-                  })
-                }
+                aria-pressed={tools.on}
+                aria-label={`${title} · ${L.photo.showDiff}`}
+                onClick={() => {
+                  // 수정 전을 보던 중에 켜면 수정 후로 넘어간다 — 윤곽은 수정 후 사진 위에만 서서, 안 넘어가면 켜도 아무것도 안 보인다.
+                  if (!tools.on) setShowing("after");
+                  tools.toggle();
+                }}
               >
-                <CopyIcon />
-                <span className="nx-diff-pill-label">{L.photo.copy}</span>
-              </button>
-            </div>
-          </>
-        ) : (
-          <span className="nx-result-placeholder">
-            {loading ? <ImageIcon /> : <NoPhotoIcon />}
-            <span>
-              {loading
-                ? L.transcript.shotLoading
-                : unavailable
-                  ? L.transcript.shotFailed
-                  : L.transcript.shotNoPhoto}
-            </span>
-            {unavailable && !loading && (
-              <button
-                type="button"
-                className="nx-result-retry"
-                onClick={() => setAttempt((count) => count + 1)}
-              >
-                <RedoIcon />
-                {L.vocab.retry}
+                <DiffIcon />
+                <span className="nx-diff-pill-label">{L.photo.showDiff}</span>
               </button>
             )}
-          </span>
-        )}
-      </div>
+            <button
+              type="button"
+              className="nx-diff-pill"
+              aria-busy={copying || undefined}
+              aria-label={`${title} · ${L.photo.copy}`}
+              onClick={() =>
+                copy({
+                  before: before ? { src: before, label: L.compare.before } : null,
+                  after: { src: picture, label: L.compare.after },
+                  outlines:
+                    tools.on && tools.boxes.length > 0
+                      ? { boxes: tools.boxes, warn: tools.warn }
+                      : null,
+                })
+              }
+            >
+              <CopyIcon />
+              <span className="nx-diff-pill-label">{L.photo.copy}</span>
+            </button>
+          </div>
+        </div>
+      )}
       {/* 켠 윤곽이 말하는 한 줄 — 곳 수, 그리고 있다면 요청 밖의 변경. 비면 자리를 접는다(:empty). */}
       <p className="nx-diff-line" role="status">
         {tools.on && tools.summary && (
@@ -257,15 +207,17 @@ export function ResultScreen({
             <span className="nx-result-act-label">{L.requestResult.edit}</span>
           </button>
         )}
-        <button
-          type="button"
-          className="nx-result-act"
-          onClick={onCompare}
-          aria-label={`${title} · ${L.compare.open}`}
-        >
-          <CompareIcon />
-          <span className="nx-result-act-label">{L.compare.open}</span>
-        </button>
+        {picture && (
+          <button
+            type="button"
+            className="nx-result-act"
+            onClick={onCompare}
+            aria-label={`${title} · ${L.compare.open}`}
+          >
+            <CompareIcon />
+            <span className="nx-result-act-label">{L.compare.open}</span>
+          </button>
+        )}
       </div>
     </div>
   );

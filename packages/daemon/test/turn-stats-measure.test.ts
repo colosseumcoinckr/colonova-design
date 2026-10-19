@@ -228,6 +228,40 @@ test("Codex 의 item 이름도 같은 묶음이다 — fileChange 의 changes[] 
   }
 });
 
+test("Windows — Codex 의 `c:/…` 경로도 `C:\\…` 후보에 적중한다", {
+  skip: process.platform !== "win32",
+}, async () => {
+  // Codex 는 cwd 에 패치의 상대경로를 이어 `/` 가 섞이고, 드라이브 글자의 대소문자도
+  // 다를 수 있다. Windows 의 경로는 대소문자를 가리지 않는다(2026-10-19).
+  const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
+  try {
+    const stats_ = stats(dir);
+    stats_.noteScan("s1", 5, { cwd: "C:\\Work\\Repo", candidates: ["C:\\Work\\Repo\\src\\b.tsx"] });
+    const marker = '<!-- colonova-design:comments {"pins":[],"items":[{}]} -->\n칩을 바꿔 주세요.';
+    stats_.observe("s1", { kind: "user.echo", text: marker, images: 0 } as ChatEvent);
+    stats_.observe("s1", {
+      kind: "tool.start",
+      toolUseId: "t1",
+      name: "fileChange",
+      input: { changes: [{ path: "c:/work/repo\\src/b.tsx" }] },
+      agentId: null,
+    } as ChatEvent);
+    stats_.observe("s1", {
+      kind: "turn.end",
+      subtype: "success",
+      isError: false,
+      costUsd: null,
+      numTurns: 1,
+      durationMs: 700,
+      resultText: "바꿨습니다",
+    } as ChatEvent);
+    const rows = (await untilRows(dir, 1)).filter((row) => row.kind === "comments");
+    assert.equal(rows[0]?.pinHit, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("브라우저 도구는 세 이름 형태 모두 browser 묶음으로 센다 (PLAN-MCP M-7)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
   try {

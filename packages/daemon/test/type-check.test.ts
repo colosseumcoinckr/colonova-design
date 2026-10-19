@@ -18,7 +18,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { BROWSER_TOOLS } from "../dist/browser-tools.js";
 import { repoCommandEnv } from "../dist/repo-bringup.js";
 import {
   diagnosticsAnswer,
@@ -284,21 +283,6 @@ test("TypeChecker — 진단 없이 끝나면 failed, 비지 않은 마지막 �
   assert.deepEqual(await pending, { status: "failed", reason: "마지막 줄의 이유" });
 });
 
-// ————— 도구 계약 —————
-
-test("repo_diagnostics 도구 — submit_for_review 바로 앞에 선다", () => {
-  const names = BROWSER_TOOLS.map((tool) => tool.name);
-  const diagnostics = names.indexOf("repo_diagnostics");
-  assert.ok(diagnostics > 0);
-  assert.equal(names.indexOf("submit_for_review"), diagnostics + 1);
-  // 목록의 맨 끝은 그대로 screen_files · notify_developer (screen-files 시험의 계약).
-  assert.deepEqual(names.slice(-2), ["screen_files", "notify_developer"]);
-  const tool = BROWSER_TOOLS[diagnostics];
-  assert.equal(tool?.op, "repoDiagnostics");
-  assert.deepEqual(tool?.properties, {});
-  assert.equal(tool?.required, undefined);
-});
-
 // ————— 게이트의 타입 절 (PLAN-HARNESS §3.D D-1) —————
 
 test("isTypeScriptFile — ts · tsx · mts · cts 는 참, 다른 확장자는 거짓", () => {
@@ -388,7 +372,12 @@ test("TypeChecker — 진짜 tsc: 오류를 돌려주고 빌드 정보 파일은
     );
     writeFileSync(join(repoRoot, "a.ts"), 'const x: number = "문자";\n');
     mkdirSync(join(repoRoot, "node_modules"), { recursive: true });
-    symlinkSync(TYPESCRIPT_INSTALL, join(repoRoot, "node_modules", "typescript"), "dir");
+    // Windows 는 접합점 — 폴더 심볼릭 링크는 권한이 없으면 EPERM 이다(2026-10-19 Windows 시험, handoff-preview 와 같다).
+    symlinkSync(
+      TYPESCRIPT_INSTALL,
+      join(repoRoot, "node_modules", "typescript"),
+      process.platform === "win32" ? "junction" : "dir",
+    );
 
     const checker = new TypeChecker();
     const env = repoCommandEnv(process.env);

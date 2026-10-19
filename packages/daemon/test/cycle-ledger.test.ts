@@ -90,7 +90,8 @@ test("원장 왕복 — 쓴 그대로 읽는다", () => {
   writeLedger(file, ledger);
   assert.deepEqual(readLedger(file), ledger);
   // 원자 쓰기의 임시 파일이 남지 않는다.
-  assert.equal(statSync(file).mode & 0o777, 0o600);
+  // Windows 에는 POSIX 권한 비트가 없다 — 늘 0o666 으로 답해 이 단언만 건너뛴다(2026-10-19).
+  if (process.platform !== "win32") assert.equal(statSync(file).mode & 0o777, 0o600);
 });
 
 test("submit 의 재시도 상태와 리뷰어도 왕복한다 — 모르는 값은 버린다", () => {

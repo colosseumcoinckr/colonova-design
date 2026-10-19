@@ -10,7 +10,6 @@ import {
   SNAPSHOT_NAME_LIMIT,
   summarizeAction,
 } from "../dist/browser-snapshot.js";
-import { browserTools, callBrowserTool } from "../dist/browser-tools.js";
 import type { PreviewAxNode } from "../dist/preview-driver.js";
 
 /** 온전한 노드를 짧게 짓는 생성기 — 시험 트리의 소음을 줄인다. */
@@ -186,31 +185,4 @@ test("findInSnapshot — limit 은 기본 10, 상한 30으로 맞는다", () => 
   const clamped = findInSnapshot(many, { role: "button", limit: 40 });
   assert.equal(clamped.lines.length, 31, "40을 요청해도 30줄 + 안내");
   assert.equal(clamped.lines[30], "… 10개 더 — 조건을 좁혀 다시 찾으십시오");
-});
-
-test("callBrowserTool — 문자열 결과는 JSON 따옴표 없이 그대로 text 로 내려간다", async () => {
-  const original = globalThis.fetch;
-  const rendered = 'textbox "검색" e1\nbutton "확인" e2';
-  globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ ok: true, result: rendered }), {
-      headers: { "content-type": "application/json" },
-    })) as typeof fetch;
-  try {
-    const tool = browserTools(false).find((candidate) => candidate.name === "browser_snapshot");
-    assert.ok(tool, "browser_snapshot 도구가 목록에 있다");
-    const outcome = await callBrowserTool(
-      tool,
-      {},
-      { daemonUrl: "http://127.0.0.1:1", secret: "s" },
-    );
-    assert.equal(outcome.isError, undefined);
-    assert.equal(outcome.content.length, 1);
-    const block = outcome.content[0];
-    assert.ok(block?.type === "text", "text 블록으로 내려온다");
-    if (block?.type === "text") {
-      assert.equal(block.text, rendered, "따옴표 · \\n 이스케이프에 갇히지 않는다");
-    }
-  } finally {
-    globalThis.fetch = original;
-  }
 });

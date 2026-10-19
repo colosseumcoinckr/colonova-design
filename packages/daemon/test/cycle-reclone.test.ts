@@ -31,7 +31,7 @@ import {
   salvageStamp,
 } from "../dist/clone-salvage.js";
 import { type CycleLedger, emptyLedger, readLedger, writeLedger } from "../dist/cycle-ledger.js";
-import { RepoCore } from "../dist/repo-core.js";
+import { RepoCore, windowsGitArgs } from "../dist/repo-core.js";
 import { makeScene, makeSupervisedScene, type SupervisedScene } from "./helpers/cycle-harness.ts";
 
 const BRANCH = "colonova-design/20260924-1";
@@ -71,6 +71,26 @@ function projectEntries(scene: SupervisedScene): string[] {
 
 test("salvageStamp — 콜론 없는 UTC 도장", () => {
   assert.equal(salvageStamp(Date.parse("2026-09-25T10:15:30.123Z")), "20260925T101530Z");
+});
+
+test("windowsGitArgs — 새 클론만 줄바꿈을 끄고, 다른 동사는 긴 경로만 켠다", () => {
+  // 이미 받은 클론에 autocrlf 를 얹으면 CRLF 작업 폴더가 고친 것처럼 보인다(2026-10-19).
+  assert.deepEqual(windowsGitArgs(["clone", "--progress", "https://example.com/r.git", "dst"]), [
+    "-c",
+    "core.longpaths=true",
+    "clone",
+    "-c",
+    "core.autocrlf=false",
+    "--progress",
+    "https://example.com/r.git",
+    "dst",
+  ]);
+  assert.deepEqual(windowsGitArgs(["status", "--porcelain"]), [
+    "-c",
+    "core.longpaths=true",
+    "status",
+    "--porcelain",
+  ]);
 });
 
 test("corruptionSignal — 인덱스 · HEAD 를 읽지 못하는 말만 손상이다", () => {
@@ -167,6 +187,10 @@ test("손상된 인덱스 — 구해 두기 → 재클론 → 커밋 안 된 변
     assert.equal(readFileSync(join(scene.clone.path, "src/new.ts"), "utf8"), "새 파일\n");
     // 새 클론의 인덱스는 멀쩡하다.
     await scene.git(["status", "--porcelain"]);
+    // Windows 의 새 클론은 줄바꿈을 바꾸지 않는 설정을 지닌다(2026-10-19).
+    if (process.platform === "win32") {
+      assert.equal((await scene.git(["config", "--local", "core.autocrlf"])).trim(), "false");
+    }
     assert.deepEqual(scene.notices, [], "개발자 알림 없이 끝난다");
   } finally {
     await scene.dispose();

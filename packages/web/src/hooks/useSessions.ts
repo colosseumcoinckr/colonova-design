@@ -13,6 +13,12 @@ import type {
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Attachment } from "../lib/attachment";
 import {
+  countSend,
+  type OutgoingSend,
+  outgoingArrived,
+  outgoingBlock,
+} from "../next/lib/outgoing-send";
+import {
   SENT_ORIGINAL_MAX_BYTES,
   type SentOriginal,
   sentOriginalBytes,
@@ -32,7 +38,7 @@ interface QueuedRestore {
   pins?: Array<{ screen: string }>;
 }
 
-import { modelRowOf } from "../lib/chat-options";
+import { modelRowOf, seedEffort } from "../lib/chat-options";
 import { type Daemon, EMPTY_SESSION, type SessionView } from "../lib/daemon-client";
 import {
   type ChatSettings,
@@ -118,6 +124,8 @@ export interface Sessions {
   activeId: string | null;
   /** Transcript of the active thread; null when none is open. */
   active: SessionView | null;
+  /** 보내기를 누른 즉시 서는 말 — 실제 기록이나 대기 줄이 오면 물러난다. */
+  outgoing: OutgoingSend[];
   running: boolean;
   /**
    * 낙관 구간 — 보낸 말이 데몬에 수락되어 running 방송이 오기까지의 빈 자리.
@@ -213,7 +221,7 @@ export interface Sessions {
   submit: (
     text: string,
     attachments: Attachment[],
-    thread?: { name?: string },
+    thread?: { name?: string; onTarget?: (id: string) => void },
     pins?: Array<{ screen: string }>,
     pinHints?: SessionPinHint[],
   ) => Promise<void>;
@@ -225,7 +233,7 @@ export interface Sessions {
   sentOriginal: (sessionId: string | null) => SentOriginal | null;
   /**
    * 미리보기가 지금 보여 주는 화면의 경로(없으면 null) — 미리보기 칸이 알리고, 다음 보내기마다 `viewing` 으로
-   * 실린다. 말로만 부탁한 요청도 보던 화면의 수정 전 사진을 얻는다(2026-10-06 UX 점검).
+   * 실린다. 말로만 부탁한 요청도 AI가 보던 화면을 알 수 있다.
    */
   setViewing: (path: string | null) => void;
   /**
@@ -313,6 +321,24 @@ export function useSessions(
   const [historyFailed, setHistoryFailed] = useState(false);
 
   const active = activeId ? (sessions[activeId] ?? EMPTY_SESSION) : null;
+  const [outgoingSends, setOutgoingSends] = useState<OutgoingSend[]>([]);
+  const sendSeq = useRef(0);
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  const outgoing = outgoingSends.filter(
+    (send) =>
+      send.slug === daemon.activeSlug &&
+      send.sessionId === activeId &&
+      !outgoingArrived(send, active),
+  );
+  useEffect(() => {
+    setOutgoingSends((current) => {
+      const kept = current.filter(
+        (send) => !outgoingArrived(send, send.sessionId ? sessions[send.sessionId] : null),
+      );
+      return kept.length === current.length ? current : kept;
+    });
+  }, [sessions]);
   // 버튼의 비동기 콜백(칩 부탁)이 읽는 지금의 activeId — 클릭과 답 사이에
   // 대화가 바뀌었는지 아는 유일한 길이다.
   const activeIdRef = useRef(activeId);
@@ -614,9 +640,10 @@ export function useSessions(
       if (!sessionId) return;
       const view = sessions[sessionId];
       if (!view?.live || view.blocks.length > 0) return;
+      if (outgoingSends.some((send) => send.sessionId === sessionId)) return;
       void api.closeSession(sessionId).catch(() => undefined);
     },
-    [api, sessions],
+    [api, sessions, outgoingSends],
   );
 
   const open = async (summary: SessionSummary) => {
@@ -890,21 +917,44 @@ export function useSessions(
   const submit = async (
     text: string,
     attachments: Attachment[],
-    thread?: { name?: string },
+    thread?: { name?: string; onTarget?: (id: string) => void },
     pins?: Array<{ screen: string }>,
     pinHints?: SessionPinHint[],
   ) => {
+    // 대화 생성부터 답변 완료까지 같은 시계로 잰다(2026-10-20 사용자 제보).
+    const sentAt = Date.now();
+    const block = outgoingBlock(`outgoing-${++sendSeq.current}`, text, attachments);
+    setOutgoingSends((current) => [
+      ...current,
+      {
+        block,
+        sessionId: activeId,
+        slug: activeSlug,
+        seen: countSend(active, text),
+        bound: false,
+      },
+    ]);
     let target: string | null = null;
     let sentCount = 0;
     try {
       target = await targetSession(undefined, thread?.name);
+      const destination = target;
+      thread?.onTarget?.(destination);
+      const seen = countSend(sessionsRef.current[destination], text);
+      setOutgoingSends((current) =>
+        current.map((send) =>
+          send.block.id === block.id
+            ? { ...send, sessionId: destination, seen, bound: true }
+            : send,
+        ),
+      );
       sentCount = (sendsBySession.current.get(target) ?? 0) + 1;
       sendsBySession.current.set(target, sentCount);
       // 조용한 세션만 낙관을 얻는다 — 도는 중·대기 중인 세션엔 표시의 주인이
       // 이미 있다(진행 시계·확인 카드·대기 줄), 거기 겹치면 거짓말이 둘이 된다.
       const view = sessions[target];
       const wake = !view || view.state === "idle";
-      if (wake) setAwaitingTurn({ sessionId: target, since: Date.now() });
+      if (wake) setAwaitingTurn({ sessionId: target, since: sentAt });
       await api.send(
         target,
         text,
@@ -913,6 +963,7 @@ export function useSessions(
         chat.midturn === "steer" ? "steer" : undefined,
         pinHints,
         viewingRef.current ?? undefined,
+        sentAt,
       );
       // 답이 나올 자리가 생겼다 — 갓 태어난 세션의 감시를 푼다.
       newborn.current.delete(target);
@@ -926,6 +977,7 @@ export function useSessions(
       });
       void refresh();
     } catch (e) {
+      setOutgoingSends((current) => current.filter((send) => send.block.id !== block.id));
       // 수락이 거절된 보내기엔 대기 표시의 근거가 없다 — 컴포저의 경고 줄이
       // 유일한 이야기꾼이다(위의 계약). 낙관도 함께 거둔다.
       setAwaitingTurn(null);
@@ -976,6 +1028,7 @@ export function useSessions(
     pins?: Array<{ screen: string }>,
     pinHints?: SessionPinHint[],
   ) => {
+    const sentAt = Date.now();
     let id: string | null = null;
     let sentCount = 0;
     try {
@@ -983,11 +1036,11 @@ export function useSessions(
       // 컴포저의 보내기와 같은 낙관 — 사람의 말이 아니어도 턴은 턴이다.
       const view = sessions[id];
       const wake = !view || view.state === "idle";
-      if (wake) setAwaitingTurn({ sessionId: id, since: Date.now() });
+      if (wake) setAwaitingTurn({ sessionId: id, since: sentAt });
       // 보내기의 셈은 기계 턴도 같이 센다(W4) — 첫 보내기의 잣자리가 사람 말과 어긋나지 않게.
       sentCount = (sendsBySession.current.get(id) ?? 0) + 1;
       sendsBySession.current.set(id, sentCount);
-      await api.send(id, text, attachments, pins, undefined, pinHints);
+      await api.send(id, text, attachments, pins, undefined, pinHints, undefined, sentAt);
       void refresh();
       newborn.current.delete(id);
       sendsBySession.current.delete(id);
@@ -1148,10 +1201,11 @@ export function useSessions(
 
   // 메뉴에서 '자동' 행은 없어졌다 — 그러니 비어 있던 자리도 허공에 남을 수
   // 없다. 목록(또는 데몬이 말해 주는 모델)이 처음 이름을 대는 순간, 다음
-  // 대화의 모델은 그 행을 데려가고 노력은 모델이 받는 수준의 가운데에서
-  // 시작한다. next 만 본다(PLAN-MODEL-CHIP §3.4) — 열린 대화는 이미 모델을
-  // 가지고 있으니 씨앗이 필요 없고, 숨은 대화의 선택자를 여기 섞으면 홈의
-  // 씨앗이 그 대화로 새어 든다. 공급자당 한 번만 시도한다 — 거절이 되돌림을
+  // 대화의 모델은 그 행을 데려가고 노력은 보통(medium)에서 시작한다
+  // (`seedEffort` — 보통을 받지 않는 모델만 받는 수준의 가운데). next 만
+  // 본다(PLAN-MODEL-CHIP §3.4) — 열린 대화는 이미 모델을 가지고 있으니 씨앗이
+  // 필요 없고, 숨은 대화의 선택자를 여기 섞으면 홈의 씨앗이 그 대화로
+  // 새어 든다. 공급자당 한 번만 시도한다 — 거절이 되돌림을
   // 남기면 이 효과가 다시 불려 무한히 재시도하는 것을 막는다.
   const seededModelFor = useRef<string | null>(null);
   const seededEffortFor = useRef<string | null>(null);
@@ -1187,10 +1241,7 @@ export function useSessions(
       if (seededEffortFor.current === provider) return;
       const row = modelRowOf(models, pick.model);
       const levels = row?.supportedEffortLevels ?? [];
-      const level =
-        defaultsFit && projectDefaults.effort && levels.includes(projectDefaults.effort)
-          ? projectDefaults.effort
-          : levels[Math.floor(levels.length / 2)];
+      const level = seedEffort(levels, defaultsFit ? projectDefaults.effort : undefined);
       if (!row?.supportsEffort || !level) return;
       seededEffortFor.current = provider;
       onChatChange(withChatPick(chat, provider, { effort: level }));
@@ -1201,6 +1252,7 @@ export function useSessions(
     activeId,
     list,
     active,
+    outgoing,
     running,
     awaitingTurn,
     open,

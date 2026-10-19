@@ -98,6 +98,8 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("session.send"),
     sessionId: z.string().min(1),
     text: z.string(),
+    /** 2026-10-20: 보내기를 누른 시각. 같은 기계의 창과 데몬이 완료 시간을 맞춘다. */
+    sentAt: z.number().int().nonnegative().optional(),
     /**
      * Optional base64 attachments — pasted or dropped files. `mediaType`
      * decides the delivery: `image/*` rides as a vision block (and is staged
@@ -115,16 +117,12 @@ const clientMessageSchema = z.discriminatedUnion("type", [
      */
     pins: z.array(z.object({ screen: z.string().min(1) })).optional(),
     /**
-     * The pins' element identity (빠른 수정, 2026-09-20) — the daemon greps
-     * the clone with this and appends `파일 후보:` to each block of the
-     * marked turn before the agent reads it. Absent on plain sends.
+     * 핀 정체의 옛 호환 칸. 2026-10-20부터 코드 탐색은 AI가 맡는다.
      */
     pinHints: z.array(sessionPinHintSchema).optional(),
     /**
-     * The preview page the planner was looking at when this was sent (2026-10-06): the daemon takes
-     * ITS 수정 전 사진 too, so a request made in words alone still gets a before for the screen it is
-     * about. Never the gate's input — only pins and 화면 캡처 name the screens the gate re-opens.
-     * Absent when the pane showed no project page (a link out, no server).
+     * 보낸 순간 미리보기에서 보던 화면. 핀이 없는 요청의 화면 맥락으로 AI에 전달한다.
+     * 프로젝트 화면이 보이지 않으면 없다.
      */
     viewing: z.object({ path: z.string().min(1).max(2000) }).optional(),
     /**

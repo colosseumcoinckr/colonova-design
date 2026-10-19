@@ -11,8 +11,15 @@ import { join } from "node:path";
 import test from "node:test";
 import { CodexDriver, searchPathForCodex } from "../dist/agent/drivers/codex/driver.js";
 
+/**
+ * 가짜 codex 의 `--version` 답. Windows 는 제품이 codex 를 `.exe` 로만 찾아 셸 없이 직접 띄운다 —
+ * `#!/bin/sh` 가짜는 돌지 못한다. 그래서 node.exe 자신을 가짜로 쓰고, 답은 node 의 버전이다(2026-10-19).
+ */
+const FAKE_VERSION = process.platform === "win32" ? process.version : "codex-cli 0.0.0-test";
+
 /** --version 에 답하는 가짜 codex — 성공 판정의 길 그대로를 돈다. */
 function fakeCodex(dir: string): string {
+  if (process.platform === "win32") return process.execPath;
   const path = join(dir, "codex");
   writeFileSync(path, "#!/bin/sh\necho 'codex-cli 0.0.0-test'\n", { mode: 0o755 });
   return path;
@@ -47,7 +54,7 @@ test("설치돼 있고 로그인도 됐다 — reason 없이 깨끗한 판정", 
       async () => {
         const diagnostic = await new CodexDriver().isAvailable();
         assert.equal(diagnostic.ok, true);
-        assert.equal(diagnostic.version, "codex-cli 0.0.0-test");
+        assert.equal(diagnostic.version, FAKE_VERSION);
         assert.equal(diagnostic.loggedIn, true);
         assert.equal(diagnostic.reason, undefined);
       },

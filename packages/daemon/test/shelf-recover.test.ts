@@ -22,6 +22,9 @@ async function makeRepo(): Promise<string> {
   const root = mkdtempSync(join(tmpdir(), "colonova-shelf-recover-"));
   const git = gitOf(root);
   await git(["init", "-b", "main"]);
+  // 제품의 클론처럼 줄바꿈을 바꾸지 않는다(2026-10-19, Windows 호환성). Git for Windows 의
+  // 시스템 설정(autocrlf=true)에 기대면 되살린 파일이 CRLF 라 바이트 단언이 깨진다.
+  await git(["config", "core.autocrlf", "false"]);
   await git(["config", "user.email", "test@colonova-design"]);
   await git(["config", "user.name", "테스트"]);
   writeFileSync(join(root, "screen.txt"), "첫 줄\n");

@@ -6,7 +6,6 @@ import type {
   SessionCommand,
   SessionModelInfo,
 } from "@colonova-design/protocol";
-import type { BrowserMcpEntry } from "../browser-launch.js";
 
 /**
  * The normalized tool classes the core session and UI understand. Drivers
@@ -62,13 +61,7 @@ export interface Capabilities {
    * 슬래시 명령을 직접 실행하고 요약 경계(compact) 를 알려 온다.
    */
   compact: boolean;
-  /**
-   * 브라우저 도구(`browser_*`)를 와이어에 주입할 수 있는 공급자인가 — 네
-   * 공급자 모두 true다(claude·codex는 각자의 mcpServers 필드, ACP 에이전트는
-   * session/new의 mcpServers). 공급자 선언일 뿐 실제 제공 여부는 host의
-   * browserDriverFactory 주입이 정하고, UI에는 server의 status가 둘을
-   * AND해 보인다.
-   */
+  /** 옛 내장 브라우저 도구의 제공 여부. 새 세션은 false다(2026-10-20 사용자 요청). */
   browserTools: boolean;
 }
 
@@ -185,12 +178,6 @@ export interface LaunchConfig {
   resumeSessionAt?: string;
   /** D95: with `resumeSessionAt` — the discarded turn's prompt id. */
   resumeDropsTurn?: string;
-  /**
-   * 브라우저 MCP 서버의 기동 명세(browser-launch.ts, 3단계). session-manager가
-   * host의 browserDriverFactory 주입 여부를 보고 채운다 — 받은 세션은 이걸
-   * 각자 와이어 형태로 바꿔 넣는다.
-   */
-  browserMcp?: BrowserMcpEntry;
   /** Provider-specific extras (Claude: executable/…). */
   [key: string]: unknown;
 }
@@ -223,12 +210,6 @@ export interface DriverHooks {
   ): Promise<PermissionVerdict>;
   /** The provider reported its own fast-mode state (Claude: fast_mode_state). */
   onFastMode?(on: boolean, blocked: string | null): void;
-  /**
-   * 이 세션에 실은 브라우저 MCP 서버가 뜨지 못했다(Claude: init 의 mcp_servers ·
-   * Codex: mcpServer/startupStatus/updated). 세션은 도구 상자 없이 계속 돈다 —
-   * 알리는 것은 받는 쪽(Session)의 몫이다. 같은 세션에서 여러 번 올 수 있다.
-   */
-  onBrowserToolsDown?(): void;
 }
 
 /**

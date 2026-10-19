@@ -11,6 +11,8 @@ import { AsyncLocalStorage } from "node:async_hooks";
 export type LaneKind =
   | "save"
   | "submit"
+  /** 제출 확인 창의 읽기(repo.submitPreview) — 합류하므로 실제 제출과 칸을 나눈다. */
+  | "review"
   | "refresh"
   | "land"
   | "push"

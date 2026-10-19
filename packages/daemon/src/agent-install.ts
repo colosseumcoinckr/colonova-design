@@ -10,7 +10,7 @@
 
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync } from "node:fs";
 import { chmod, copyFile, mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -429,7 +429,9 @@ export class AgentInstall {
     // 것과 같은 `latest` 파일의 버전이 깔리게. 설치는 스크립트의 기본 그대로.
     const target = update ? ["latest"] : [];
     // 시험용 대체: 스크립트 대신 이 명령을 셸로 실행한다(검수자가 성공·실패·
-    // 느린 진행을 흉내 낸다). 실기 실행에서는 비어 있다. 대상은 $1 로 받는다.
+    // 느린 진행을 흉내 낸다). 실기 실행에서는 비어 있다. 대상은 sh 에서 $1,
+    // Windows(PowerShell)에서 $args[0] 이다. `-Command` 는 뒤 인자를 명령 글에 이어 붙일 뿐
+    // 위치 인자를 주지 않는다 — 명령을 스크립트 블록으로 감싸 대상을 건넌다(2026-10-19).
     const override = ctx.env.COLONOVA_DESIGN_CLAUDE_INSTALL_CMD;
     let scriptPath: string | null = null;
     let command: string;
@@ -437,7 +439,7 @@ export class AgentInstall {
     if (override) {
       [command, args] =
         ctx.platform === "win32"
-          ? ["powershell", ["-NoProfile", "-Command", override, ...target]]
+          ? ["powershell", ["-NoProfile", "-Command", `& {\n${override}\n}`, ...target]]
           : ["sh", ["-c", override, "sh", ...target]];
     } else {
       const url = ctx.platform === "win32" ? CLAUDE_INSTALL_PS1 : CLAUDE_INSTALL_SH;
@@ -456,7 +458,14 @@ export class AgentInstall {
         tmpdir(),
         `colonova-claude-install-${process.pid}-${Math.random().toString(36).slice(2)}.${ext}`,
       );
-      await writeFile(scriptPath, script, "utf8");
+      // Windows PowerShell 5.1 은 BOM 없는 .ps1 을 시스템 코드 페이지(한국어 Windows 는 CP949)로 읽는다.
+      // 스크립트에 `✔` 같은 비 ASCII 글자가 하나만 들어도 따옴표가 먹혀 파싱이 깨졌다
+      // (InvalidEndOfLine, 2026-10-19 Windows 시험). UTF-8 BOM 을 붙이면 5.1 과 7 이 모두 UTF-8 로 읽는다.
+      await writeFile(
+        scriptPath,
+        ext === "ps1" && !script.startsWith("\uFEFF") ? `\uFEFF${script}` : script,
+        "utf8",
+      );
       // 정책 우회(-ExecutionPolicy Bypass)는 이 프로세스의 이 실행 범위만 —
       // 관리자도 시스템 설정도 필요 없다.
       command = ctx.platform === "win32" ? "powershell" : "bash";
@@ -467,9 +476,8 @@ export class AgentInstall {
               "-NonInteractive",
               "-ExecutionPolicy",
               "Bypass",
-              "-File",
-              scriptPath,
-              ...(update ? ["-Target", "latest"] : []),
+              "-Command",
+              windowsScriptCommand(scriptPath, update ? ["-Target", "latest"] : []),
             ]
           : [scriptPath, ...target];
     }
@@ -543,7 +551,7 @@ export class AgentInstall {
       await mkdir(extractDir, { recursive: true });
       const outcome = await runInstallChild(
         ctx.spawnLike,
-        "tar",
+        ctx.platform === "win32" ? windowsTar(ctx.env) : "tar",
         ["-xf", archivePath, "-C", extractDir],
         { env: ctx.env, signal: ctx.signal },
       );
@@ -574,6 +582,35 @@ export class AgentInstall {
       await rm(workDir, { recursive: true, force: true }).catch(() => undefined);
     }
   }
+}
+
+/**
+ * Windows 설치 스크립트의 실행 문장. 출력 인코딩을 UTF-8 로 정한 뒤 스크립트를 부르고 그 종료 코드로 끝낸다.
+ * `-File` 로 부르면 콘솔이 없는 자식의 출력이 시스템 코드 페이지(한국어 Windows 는 CP949)로 나와,
+ * 데몬이 UTF-8 로 읽을 때 `✔` 는 `?` 가 되고 PowerShell 의 한국어 오류 문장은 깨졌다(2026-10-19 실측).
+ * 스크립트 첫 줄에 넣을 수는 없다 — install.ps1 은 param 블록으로 시작한다. 종료 코드는 `exit N` ·
+ * throw · 정상 끝에서 `-File` 과 같다. 다른 것은 마지막 네이티브 명령이 실패한 채 정상으로 끝나는
+ * 경우뿐인데, install.ps1 은 그 코드를 받아 스스로 exit 한다.
+ */
+export function windowsScriptCommand(scriptPath: string, args: readonly string[]): string {
+  // 작은따옴표 안은 글자 그대로다 — 작은따옴표만 두 번 쓴다. `-Target` 같은 이름은 그대로 둔다.
+  const quote = (value: string) => `'${value.replace(/'/g, "''")}'`;
+  const words = args.map((value) => (value.startsWith("-") ? value : quote(value)));
+  return [
+    "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8",
+    ["&", quote(scriptPath), ...words].join(" "),
+    "exit $LASTEXITCODE",
+  ].join("\n");
+}
+
+/**
+ * Windows 의 tar — System32 의 tar.exe(bsdtar)를 경로로 부른다. PATH 앞에 Git Bash · MSYS2 의
+ * GNU tar 가 있으면 그것이 잡혔는데, GNU tar 는 zip 을 못 열고 `C:\…` 의 `C:` 를 원격
+ * 호스트로 읽는다(2026-10-19 Windows 시험). System32 에 없으면(1803 이전) PATH 에 맡긴다.
+ */
+function windowsTar(env: NodeJS.ProcessEnv): string {
+  const tar = join(env.SystemRoot ?? env.SYSTEMROOT ?? "C:\\Windows", "System32", "tar.exe");
+  return existsSync(tar) ? tar : "tar";
 }
 
 /** 설치 스크립트 받기 — 실패는 곧바로 네트워크 실패다. */

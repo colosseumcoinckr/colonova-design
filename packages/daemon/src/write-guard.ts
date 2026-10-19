@@ -20,14 +20,16 @@
  * 변수(`$VAR`) · 명령 치환을 보지 않는다. `cd` 는 한 명령 안에서만 따라간다(앞선 호출의 `cd` 는 CLI 가
  * 훅 입력에 실어 오는 cwd 가 알려 준다). PowerShell 도구도 Bash 문법의 같은 훑개로 본다(2026-10-08 검토) —
  * 그래서 `Remove-Item -Recurse` · `Set-Content` · `Out-File` 같은 PowerShell 자신의 쓰기는 보지 않고,
- * 리다이렉션 · `rm` 별칭 · git 쓰기만 닿는다. 훑개의 드문 틈은 알고 둔다 — 서브셸 `( cd x; … )` 의 `cd` 가
- * 밖으로 새는 것 · `$(( a << b ))` 산술의 `<<` 를 heredoc 으로 읽는 것 · `$'…'` 인용 · 링크 뒤의 `..`
- * (`link/../x` 를 글자로만 접는다).
+ * 리다이렉션 · `rm` 별칭 · git 쓰기만 닿는다. Windows 에서는 `\` 를 글자로도 한 번 더 읽는다
+ * (2026-10-19 — `C:\Users\…` 가 이스케이프로 지워져 클론 안으로 읽혔다, bashCommandVerdict).
+ * 훑개의 드문 틈은 알고 둔다 — 서브셸 `( cd x; … )` 의 `cd` 가 밖으로 새는 것 · `$(( a << b ))` 산술의
+ * `<<` 를 heredoc 으로 읽는 것 · `$'…'` 인용 · 링크 뒤의 `..`(`link/../x` 를 글자로만 접는다).
  *
  * Bash 를 git-guard 의 tokenizeShellWords 가 아니라 여기 따로 훑는 이유: 그쪽은 따옴표 정보를
  * 버려 `grep ">" /etc/hosts` 의 `>` 가 리다이렉션으로 읽히고, heredoc 본문(`cat > a <<EOF … EOF`)
  * 안의 글이 명령으로 읽힌다. 리다이렉션을 보려면 둘 다 알아야 한다. git 가드의 판정은 건드리지 않는다.
  */
+import { realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { currentPlatform, type Platform } from "./environment.js";
@@ -132,9 +134,20 @@ function isInside(root: string, target: string, ctx: Pick<Ctx, "api" | "platform
   );
 }
 
-/** OS 임시 폴더 — POSIX 는 /tmp · /var/tmp 도(AI 가 늘 거기에 스크래치를 둔다). */
+/**
+ * OS 임시 폴더 — POSIX 는 /tmp · /var/tmp 도(AI 가 늘 거기에 스크래치를 둔다). Windows 는 긴 이름도
+ * 함께 둔다. 사용자 이름이 8자를 넘으면 tmpdir() 이 8.3 짧은 이름(`C:UsersDEVELO~1…`)을 주고 JS
+ * realpath 는 그것을 펴지 않는다. 그래서 `%LOCALAPPDATA%Temp` 같은 긴 이름 쓰기를 클론 밖으로
+ * 막았다(2026-10-19 Windows 실측). 펼친 이름은 같은 폴더라 새로 열리는 곳은 없다.
+ */
 function defaultTempRoots(platform: Platform): string[] {
-  return platform === "win32" ? [tmpdir()] : [tmpdir(), "/tmp", "/var/tmp"];
+  if (platform !== "win32") return [tmpdir(), "/tmp", "/var/tmp"];
+  const short = tmpdir();
+  try {
+    return [short, realpathSync.native(short)];
+  } catch {
+    return [short];
+  }
 }
 
 function context(scope: WriteScope): Ctx {
@@ -256,7 +269,11 @@ function skipHeredocBodies(
   return index;
 }
 
-function scanShell(command: string): Segment[] {
+/**
+ * `literalBackslash` 면 `\` 를 이스케이프가 아니라 글자로 읽는다(줄 이음만 지운다) — PowerShell 과 Git Bash 의
+ * 큰따옴표 안이 그렇게 읽는다. Windows 만 이 읽기를 더한다(bashCommandVerdict).
+ */
+function scanShell(command: string, literalBackslash: boolean): Segment[] {
   const segments: Segment[] = [];
   let words: string[] = [];
   let targets: string[] = [];
@@ -289,10 +306,22 @@ function scanShell(command: string): Segment[] {
     const ch = command[i] as string;
     if (quote !== null) {
       if (ch === quote) quote = null;
-      else if (ch === "\\" && quote === '"' && i + 1 < n) {
+      else if (ch === "\\" && quote === '"' && !literalBackslash && i + 1 < n) {
         word += command[i + 1];
         i += 1;
       } else word += ch;
+      i += 1;
+      continue;
+    }
+    if (ch === "\\" && literalBackslash) {
+      // 글자로 읽어도 줄 이음(`\` + 줄바꿈)은 지운다 — 여러 줄 명령의 `\` 한 글자가 드라이브 뿌리로 읽히지 않게.
+      const join = command.startsWith("\r\n", i + 1) ? 3 : command[i + 1] === "\n" ? 2 : 0;
+      if (join > 0) {
+        i += join;
+        continue;
+      }
+      word += ch;
+      inWord = true;
       i += 1;
       continue;
     }
@@ -528,9 +557,10 @@ function commandDenied(
   scope: WriteScope,
   start: Base,
   depth: number,
+  literalBackslash: boolean,
 ): boolean {
   let base = start;
-  for (const segment of scanShell(command)) {
+  for (const segment of scanShell(command, literalBackslash)) {
     for (const target of segment.targets) {
       if (!isDevice(target, ctx.platform) && outside(target, ctx, scope, base, true)) return true;
     }
@@ -571,7 +601,7 @@ function commandDenied(
       case "eval":
         if (
           depth < NESTED_DEPTH &&
-          commandDenied(call.args.join(" "), ctx, scope, base, depth + 1)
+          commandDenied(call.args.join(" "), ctx, scope, base, depth + 1, literalBackslash)
         ) {
           return true;
         }
@@ -581,7 +611,10 @@ function commandDenied(
           // `bash -c '…'` · `sh -lc '…'` — -c 뒤의 글이 명령이다.
           const at = call.args.findIndex((arg) => /^-[A-Za-z]*c[A-Za-z]*$/.test(arg));
           const payload = at === -1 ? undefined : call.args[at + 1];
-          if (payload !== undefined && commandDenied(payload, ctx, scope, base, depth + 1)) {
+          if (
+            payload !== undefined &&
+            commandDenied(payload, ctx, scope, base, depth + 1, literalBackslash)
+          ) {
             return true;
           }
         }
@@ -597,9 +630,14 @@ function commandDenied(
  */
 export function bashCommandVerdict(command: string, scope: WriteScope): WriteVerdict {
   const ctx = context(scope);
-  return commandDenied(command, ctx, scope, ctx.base, 0)
-    ? { allow: false, reason: OUTSIDE_COMMAND_REFUSAL }
-    : { allow: true };
+  // Windows 는 `\` 를 두 번 읽고 하나라도 밖이면 거절한다(2026-10-19 Windows 시험). Bash 의 이스케이프로만 읽으면
+  // PowerShell 의 `rm -r C:\Users\…` · Git Bash 의 `rm -rf "C:\Users\…"` 가 `C:Users…`(클론 안의 상대
+  // 경로)로 읽혀 지났다. 두 셸 모두 실제로는 클론 밖을 쓴다(이 PC 의 Git Bash · PowerShell 로 확인).
+  // macOS · Linux 는 그대로다.
+  const denied =
+    commandDenied(command, ctx, scope, ctx.base, 0, false) ||
+    (ctx.platform === "win32" && commandDenied(command, ctx, scope, ctx.base, 0, true));
+  return denied ? { allow: false, reason: OUTSIDE_COMMAND_REFUSAL } : { allow: true };
 }
 
 // ---------------------------------------------------------------------------

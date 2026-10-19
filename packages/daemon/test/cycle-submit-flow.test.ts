@@ -103,6 +103,30 @@ test("제출 — 네 단계가 한 번에 서고 의도가 지워진다", async 
   }
 });
 
+test("차선 작업 안에서 누른 제출도 틱은 자기 supervise 칸에서 돈다 — 끝난 작업의 문맥을 물려받지 않는다(2026-10-19)", async () => {
+  // dispatch 의 repo.submit 은 확인한 head 를 "submit" 칸에서 대조한 뒤 그 안에서
+  // submit() 을 부른다. 틱이 그 문맥을 물려받으면 재진입으로 줄을 건너뛰고, 제출 칸이
+  // 끝난 뒤에는 차선 밖에서 push · 자산 올리기를 돌렸다(실측: "차선 밖 git 쓰기" ×13).
+  const previous = process.env.COLONOVA_DESIGN_LANE_STRICT;
+  process.env.COLONOVA_DESIGN_LANE_STRICT = "1";
+  const scene = await makeSupervisedScene();
+  try {
+    await cycleWith(scene);
+    await scene.core.lane.run("submit", async () => {
+      scene.supervisor.submit("button");
+    });
+    await scene.supervisor.settled();
+
+    assert.equal(ledgerOf(scene).submit, null, "차선 안에서 네 단계가 모두 선다");
+    assert.equal(ledgerOf(scene).push, null, "푸시가 차선 위반으로 실패하지 않는다");
+    assert.equal(scene.core.openHandoff?.state, "open");
+  } finally {
+    if (previous === undefined) delete process.env.COLONOVA_DESIGN_LANE_STRICT;
+    else process.env.COLONOVA_DESIGN_LANE_STRICT = previous;
+    await scene.dispose();
+  }
+});
+
 test("S9 레지스트리가 PR 을 잃음 — head 로 입양, 새 PR 을 만들지 않는다", async () => {
   const scene = await makeSupervisedScene();
   try {

@@ -5,8 +5,6 @@
 // `../dist` 임포트인 이유는 screen-check.test.ts 와 같다.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { BROWSER_TOOLS, type ToolDef } from "../dist/browser-tools.js";
-import { COMMON_INSTRUCTIONS } from "../dist/common-instructions.js";
 import type { DaemonNotice } from "../dist/notices.js";
 import type {
   PreviewA11y,
@@ -693,21 +691,6 @@ test("normalizeScreenCheckArgs — 참이 아닌 a11y 는 끔이고, 틀린 colo
   );
   assert.ok(!bad.ok);
   if (!bad.ok) assert.match(bad.error, /colorScheme/);
-});
-
-test("screen_check 도구는 a11y · colorScheme 을 선언하고 공통 지침이 그 쓰임을 말한다", () => {
-  const tool = BROWSER_TOOLS.find((entry) => entry.name === "screen_check") as ToolDef;
-  assert.equal(tool.properties.a11y?.type, "boolean");
-  assert.deepEqual(tool.properties.colorScheme?.enum, ["light", "dark"]);
-  assert.match(tool.description, /a11y/);
-  // 확인 방법(a11y: true)은 도구 설명의 몫이다(2026-10-02) — 지침은 이름을 미리 다는 규칙만 말한다.
-  assert.doesNotMatch(
-    COMMON_INSTRUCTIONS,
-    /a11y: true/,
-    "공통 지침은 도구의 인자를 되풀이하지 않는다",
-  );
-  assert.match(tool.description, /a11y 를 켜면/, "도구 설명이 켜는 법을 말한다");
-  assert.match(COMMON_INSTRUCTIONS, /aria-label/, "이름을 미리 다는 규칙을 말한다");
 });
 
 // ————— runGate 통합 —————

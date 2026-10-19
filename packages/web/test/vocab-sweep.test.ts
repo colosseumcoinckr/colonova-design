@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join, relative } from "node:path";
+import { join } from "node:path";
 import { test } from "node:test";
+import { sourcePath } from "./helpers/source-path.ts";
 
 /**
  * U10 의 끝 조건(PLAN-UI 단계 7) — 개발 실행 밖 표면의 한국어 문장에 개발자의 말이 없다.
@@ -122,12 +123,12 @@ test("hitsIn: 문장과 JSX 텍스트는 잡고, 주석 · 정규식 · 영어 �
 
 test("vocab: 사용자 면의 한국어 문장에 턴 · 경로 · git · 데몬 · 커밋 · 브랜치 · PR 이 없다", () => {
   const root = join(import.meta.dirname, "../src");
-  const files = sourceFiles(root).filter((file) => !(relative(root, file) in EXEMPT));
+  const files = sourceFiles(root).filter((file) => !(sourcePath(root, file) in EXEMPT));
   assert.ok(files.length > 50, `검사할 파일이 너무 적다: ${files.length}`);
   const hits: string[] = [];
   for (const file of files) {
     for (const { word, text } of hitsIn(readFileSync(file, "utf8"))) {
-      hits.push(`${relative(root, file)} — "${word}": ${text}`);
+      hits.push(`${sourcePath(root, file)} — "${word}": ${text}`);
     }
   }
   assert.deepEqual(hits, []);
@@ -135,7 +136,7 @@ test("vocab: 사용자 면의 한국어 문장에 턴 · 경로 · git · 데몬
 
 test("vocab: 면제 목록의 파일이 모두 있다 — 지운 파일의 면제가 남지 않게", () => {
   const root = join(import.meta.dirname, "../src");
-  const present = new Set(sourceFiles(root).map((file) => relative(root, file)));
+  const present = new Set(sourceFiles(root).map((file) => sourcePath(root, file)));
   assert.deepEqual(
     Object.keys(EXEMPT).filter((file) => !present.has(file)),
     [],
@@ -171,12 +172,12 @@ const KOREAN_EXEMPT: Record<string, string> = {
 
 test("vocab: next/ 밖의 한국어 리터럴은 면제 목록의 파일에만 산다(동결)", () => {
   const root = join(import.meta.dirname, "../src");
-  const files = sourceFiles(root).filter((file) => !relative(root, file).startsWith("next/"));
+  const files = sourceFiles(root).filter((file) => !sourcePath(root, file).startsWith("next/"));
   const carrying: string[] = [];
   for (const file of files) {
     const { literals, code } = splitSource(readFileSync(file, "utf8"));
     if (literals.some((text) => HANGUL.test(text)) || HANGUL.test(code)) {
-      carrying.push(relative(root, file));
+      carrying.push(sourcePath(root, file));
     }
   }
   const unlisted = carrying.filter((file) => !(file in KOREAN_EXEMPT));

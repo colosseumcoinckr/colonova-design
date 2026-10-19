@@ -2,8 +2,6 @@
 // `../dist` 임포트인 이유: node --test 는 src 의 `.js` 지정자를 못 읽는다.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { ToolDef, Wire } from "../dist/browser-tools.js";
-import { BROWSER_TOOLS, callBrowserTool } from "../dist/browser-tools.js";
 import type {
   PreviewConsoleLine,
   PreviewDriver,
@@ -187,19 +185,6 @@ test("judgeScreen — viewport 는 open 에(재시도에도) 그대로 간다", 
   assert.deepEqual(driver.opens[1]?.options, { viewport: "mobile" });
 });
 
-test("screen_check 도구 — route 는 필수가 아니고 네 인자를 선언한다", () => {
-  const tool = BROWSER_TOOLS.find((entry) => entry.name === "screen_check") as ToolDef;
-  assert.ok(!tool.required?.includes("route"), "route 와 routes 중 무엇이든 쓸 수 있다");
-  for (const name of ["route", "routes", "viewport", "capture"]) {
-    assert.ok(tool.properties[name], `${name} 을 선언한다`);
-  }
-  assert.deepEqual(
-    tool.properties.viewport?.enum,
-    ["mobile", "tablet", "desktop"],
-    "틀린 폭을 덜 보내게 고른 칸을 선언한다",
-  );
-});
-
 /** 전역 fetch 를 가짜로 — 데몬의 답을 정해 둔다. */
 function stubFetch(body: unknown): { restore: () => void; bodies: unknown[] } {
   const bodies: unknown[] = [];
@@ -213,61 +198,4 @@ function stubFetch(body: unknown): { restore: () => void; bodies: unknown[] } {
   }) as typeof fetch;
   return { restore: () => (globalThis.fetch = original), bodies };
 }
-
-const SCREEN_CHECK_TOOL = BROWSER_TOOLS.find((entry) => entry.name === "screen_check") as ToolDef;
 const RELAY = { daemonUrl: "http://127.0.0.1:1", secret: "s" };
-
-test("callBrowserTool — screen_check 의 그림을 image 블록으로 내린다", async () => {
-  const stub = stubFetch({
-    ok: true,
-    result: {
-      screens: [
-        {
-          url: `${PREVIEW}/a`,
-          settled: false,
-          blank: true,
-          errors: [],
-          capture: { data: "QUJD", mediaType: "image/webp" },
-        },
-        { url: `${PREVIEW}/b`, settled: true, blank: false, errors: [] },
-      ],
-      truncated: 2,
-    },
-  });
-  try {
-    const outcome = await callBrowserTool(SCREEN_CHECK_TOOL, {} as Wire, RELAY);
-    assert.notEqual(outcome.isError, true);
-    const first = outcome.content[0];
-    assert.equal(first.type, "text", "첫 블록은 screens 의 JSON 텍스트다");
-    if (first.type !== "text") return;
-    const parsed = JSON.parse(first.text) as {
-      screens: Array<Record<string, unknown>>;
-      truncated?: number;
-    };
-    assert.equal(parsed.truncated, 2, "잘린 수는 텍스트에 실린다");
-    assert.equal(parsed.screens.length, 2);
-    assert.ok(!("capture" in parsed.screens[0]), "그림 칸은 JSON에서 뗀다");
-    assert.ok(!first.text.includes("QUJD"), "base64 를 텍스트에 싣지 않는다");
-    assert.equal(outcome.content[1]?.type, "image");
-    if (outcome.content[1]?.type !== "image") return;
-    assert.equal(outcome.content[1].data, "QUJD");
-    assert.equal(outcome.content[1].mimeType, "image/webp");
-    assert.equal(outcome.content.length, 2, "문제 없는 화면은 그림이 없다");
-  } finally {
-    stub.restore();
-  }
-});
-
-test("callBrowserTool — 그림 없는 screen_check 답은 텍스트 블록 하나다", async () => {
-  const stub = stubFetch({
-    ok: true,
-    result: { screens: [{ url: `${PREVIEW}/a`, settled: true, blank: false, errors: [] }] },
-  });
-  try {
-    const outcome = await callBrowserTool(SCREEN_CHECK_TOOL, {} as Wire, RELAY);
-    assert.equal(outcome.content.length, 1);
-    assert.equal(outcome.content[0]?.type, "text");
-  } finally {
-    stub.restore();
-  }
-});

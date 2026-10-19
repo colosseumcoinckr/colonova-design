@@ -54,6 +54,16 @@ test("번들 bash.exe 가 있으면 CLAUDE_CODE_GIT_BASH_PATH 를 세운다 (win
   assert.equal(env.env.CLAUDE_CODE_GIT_BASH_PATH, bash);
 });
 
+test("번들 git은 bash 지정 여부와 무관하게 PATH 앞에 둔다 (win32)", () => {
+  const bin = join("C:\\Apps", "ColoNova Design", "resources", "bin");
+  const git = join(bin, "cmd", "git.exe");
+  for (const original of [{}, { CLAUDE_CODE_GIT_BASH_PATH: "custom-bash.exe" }]) {
+    const result = bundledToolEnv(bin, "win32", original, existsOf([git]));
+    assert.deepEqual(result.pathPrefixes, [join(bin, "cmd")]);
+    assert.deepEqual(result.env, {});
+  }
+});
+
 test("번들 bash.exe 가 없으면 세우지 않는다 (win32)", () => {
   const env = bundledToolEnv("C:\\Apps", "win32", {}, () => false);
   assert.deepEqual(env.env, {});
@@ -83,8 +93,8 @@ test("darwin 번들 경로는 win32 규칙에 들지 않는다 — 플랫폼이 
 test("gitCandidates(darwin): EXTRA_PATH 각 항목의 번들 git 이 맨 앞이다", () => {
   const candidates = gitCandidates("darwin", { COLONOVA_DESIGN_EXTRA_PATH: "/r/bin:/다른/곳" });
   assert.deepEqual(candidates, [
-    "/r/bin/git/bin/git",
-    "/다른/곳/git/bin/git",
+    join("/r/bin", "git", "bin", "git"),
+    join("/다른/곳", "git", "bin", "git"),
     "/opt/homebrew/bin/git",
     "/usr/local/bin/git",
     "/usr/bin/git",

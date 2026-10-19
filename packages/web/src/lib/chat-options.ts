@@ -35,6 +35,28 @@ export const EFFORT_HINT: Record<EffortLevel, string> = {
 };
 
 /**
+ * 새 대화가 처음 앉는 생각 시간 — 보통(medium). 이 도구의 일(화면 하나를 말로 고치는
+ * 잘 정의된 반복 편집)에 벤더가 권하는 단계이고(DEVELOPERS.md 「앱에서 추가」), 칩이 고른 적
+ * 없는 값(null)을 읽는 말(`effortWord(null)` → 보통)과도 같다.
+ */
+export const DEFAULT_EFFORT: EffortLevel = "medium";
+
+/**
+ * 고른 적 없는 생각 시간의 씨앗 — `useSessions` 가 다음 대화에 심는 값. 프로젝트의 처음 값
+ * (초대 `defaults.effort`)이 모델이 받는 단계면 그것이 이긴다. 아니면 보통(medium)이고,
+ * 모델이 보통을 받지 않을 때만 받는 단계의 가운데로 물러선다. 받는 단계를 모르면
+ * 씨앗도 없다(`undefined` — CLI 의 기본에 맡긴다).
+ */
+export function seedEffort(
+  levels: readonly EffortLevel[],
+  projectDefault?: EffortLevel,
+): EffortLevel | undefined {
+  if (projectDefault && levels.includes(projectDefault)) return projectDefault;
+  if (levels.includes(DEFAULT_EFFORT)) return DEFAULT_EFFORT;
+  return levels[Math.floor(levels.length / 2)];
+}
+
+/**
  * What a model row says, exactly as the CLI said it: `displayName` leads the
  * row, `description` rides along as the hint 설정 reads. This app rewrites
  * neither — a hand-tuned label ("Sonnet 5", "자동 (추천)") or a hand-written

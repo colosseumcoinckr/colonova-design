@@ -33,6 +33,12 @@ import { RepoWorkspace } from "../../dist/repo.js";
 import { RepoCore } from "../../dist/repo-core.js";
 
 const exec = promisify(execFile);
+/**
+ * 하네스의 클론은 줄바꿈을 바꾸지 않는다(2026-10-19, Windows 호환성). Git for Windows 의
+ * 시스템 설정(core.autocrlf=true)에 기대면 작업 폴더가 CRLF 가 돼 바이트 단언이 깨진다.
+ * 제품의 클론(windowsGitArgs)과 macOS 의 기본과 같게 맞춘다.
+ */
+const CLONE = ["clone", "-c", "core.autocrlf=false"];
 const execAt = (cwd: string) => (args: string[]) =>
   exec("git", args, { cwd }).then((done) => done.stdout as string);
 
@@ -60,7 +66,7 @@ export async function makeRemote(): Promise<RemoteRepo> {
   await git(["init", "--bare", "-b", "main", path]);
   // bare 는 커밋을 못 만든다 — 씨앗 클론에서 첫 커밋을 올리고 치운다.
   const seed = join(root.dir, "seed");
-  await exec("git", ["clone", path, seed], { cwd: root.dir });
+  await exec("git", [...CLONE, path, seed], { cwd: root.dir });
   const seedGit = execAt(seed);
   await seedGit(["config", "user.email", "test@colonova-design"]);
   await seedGit(["config", "user.name", "테스트"]);
@@ -80,7 +86,7 @@ export interface ToolClone extends TempRoot {
 export async function makeClone(remote: RemoteRepo): Promise<ToolClone> {
   const root = tempRoot("colonova-cycle-clone-");
   const path = join(root.dir, "repo");
-  await exec("git", ["clone", remote.path, path], { cwd: root.dir });
+  await exec("git", [...CLONE, remote.path, path], { cwd: root.dir });
   const git = execAt(path);
   await git(["config", "user.email", "test@colonova-design"]);
   await git(["config", "user.name", "테스트"]);
@@ -626,7 +632,7 @@ export class MemoryGitHub implements RestTransport {
     const tmp = tempRoot("colonova-cycle-merge-");
     try {
       const work = join(tmp.dir, "m");
-      await exec("git", ["clone", this.remote.path, work], { cwd: tmp.dir });
+      await exec("git", [...CLONE, this.remote.path, work], { cwd: tmp.dir });
       const git = execAt(work);
       await git(["config", "user.email", "developer@colonova-design"]);
       await git(["config", "user.name", "개발자"]);
@@ -782,7 +788,7 @@ export function developer(remote: RemoteRepo): DeveloperHands {
   const prepare = async () => {
     if (ready === null) {
       ready = (async () => {
-        await exec("git", ["clone", remote.path, path], { cwd: root.dir });
+        await exec("git", [...CLONE, remote.path, path], { cwd: root.dir });
         const git = execAt(path);
         await git(["config", "user.email", "developer@colonova-design"]);
         await git(["config", "user.name", "개발자"]);

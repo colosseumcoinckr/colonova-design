@@ -24,8 +24,6 @@ import { probeCommands } from "./agent/drivers/claude/session.js";
 import type { DriverRegistry } from "./agent/registry.js";
 import { AutoThreads } from "./auto-thread.js";
 import { type BringUpEpisode, nextBringUpBrief } from "./bring-up-briefs.js";
-import type { PlannedChange } from "./change-plan.js";
-import { captureTargets, readComments } from "./comments.js";
 import {
   COMMON_INSTRUCTIONS,
   commentReflectionSubject,
@@ -379,17 +377,8 @@ export class ProjectFleet {
       // L6 제출 — PR 본문의 재료와 이름.
       projectName: () => this.deps.registry.get(slug)?.name ?? slug,
       commentsFile: () => join(paths.root, "comments.json"),
-      captureShots: async () => {
-        const commentsFile = join(paths.root, "comments.json");
-        const anchor = await workspaces.repo.cycleAnchor().catch(() => null);
-        return await this.deps.previewDrivers.captureHandoffShots(
-          captureTargets(
-            readComments(commentsFile),
-            anchor,
-            workspaces.repo.repoCore().snapshot().cycleScreens,
-          ),
-        );
-      },
+      // 2026-10-20 사용자 요청: 제출은 화면 촬영 없이 진행한다.
+      captureShots: async () => [],
       logger: this.deps.logger,
     });
     this.workspaces.set(slug, workspaces);
@@ -931,9 +920,8 @@ export class ProjectFleet {
    *
    * 커밋 제목은 그 턴을 연 말의 첫 줄(①): 메모 턴을 돌리면 턴마다 구독이 두
    * 배로 타므로, 여기서 절대 돌리지 않는다. 말이 없으면(기계가 연 턴)
-   * runSave 의 폴백(② machineMemo → ③ 기본 문구)에 맡긴다. `describe_changes`
-   * 로 적힌 보관 계획(2026-10-11 피드백)이 있으면 그 대로 변경마다 나눠
-   * 커밋한다 — 도구를 부른 턴의 제목은 요청 문장이 아니라 바뀐 결과가 된다.
+   * runSave 의 폴백(② machineMemo → ③ 기본 문구)에 맡긴다.
+   * 2026-10-20 사용자 요청: MCP 보관 계획 없이 한 요청의 변경을 함께 보관한다.
    * 푸시는 백그라운드
    * — 오프라인에서도 턴의 끝이 멈추지 않는다(실패는 제출이 기다려서 민다).
    * 커밋 게이트가 열리면 세션에 고침 브리프를 보내 화면 확인 게이트와 같은
@@ -943,7 +931,6 @@ export class ProjectFleet {
     sessionId: string,
     screenRoutes?: string[],
     checked?: GateChecked,
-    plan?: PlannedChange[],
   ): Promise<{ sha: string; requestId: string | null } | undefined> {
     const workspaces = this.workspaceOfSession(sessionId);
     const session = this.deps.manager.get(sessionId);
@@ -968,8 +955,6 @@ export class ProjectFleet {
       const saved = await workspaces.repo.save({
         ...subject,
         sessionId,
-        // describe_changes 가 적은 이번 턴의 보관 계획 — 변경마다 나눠 커밋한다.
-        ...(plan !== undefined && plan.length > 0 ? { plan } : {}),
         backgroundPush: true,
         onSessionTurn: (brief: string) => {
           this.deps.notice({

@@ -80,7 +80,7 @@ export function killPidTree(pid: number, signal: NodeJS.Signals): void {
  * 읽지 못하면(죽었거나 플랫폼이 말을 안 듣거나) null.
  */
 export async function pidCommandLine(pid: number): Promise<string | null> {
-  if (currentPlatform() === "win32") return null; // wmc 제거 이후의 Windows 는 앵커 없이 보수 간다
+  if (currentPlatform() === "win32") return (await pidCommandLines([pid])).get(pid) ?? null;
   const stdout = await run("ps", ["-p", String(pid), "-o", "command="], { timeout: 5_000 })
     .then((result) => String(result.stdout))
     .catch(() => "");
@@ -89,22 +89,83 @@ export async function pidCommandLine(pid: number): Promise<string | null> {
 }
 
 /**
+ * Windows 에서 pid 들의 명령줄을 읽는 명령 — wmic 가 빠진 뒤의 길은 PowerShell CIM 이다.
+ * 출력은 UTF-8 로 고정한다. 기본(CP949)이면 한글 계정 경로가 깨져 클론 경로 앵커가 어긋난다.
+ * execFile 인자 안의 큰따옴표는 PowerShell 이 다시 읽으며 깨지므로 작은따옴표와 [char]9 만 쓴다(2026-10-19).
+ */
+export function commandLinesCommand(pids: number[]): { command: string; args: string[] } {
+  const filter = pids
+    .filter((pid) => Number.isInteger(pid) && pid > 0)
+    .map((pid) => `ProcessId=${pid}`)
+    .join(" OR ");
+  return {
+    command: "powershell",
+    args: [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      `[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-CimInstance Win32_Process -Filter '${filter}' | ForEach-Object { $_.ProcessId.ToString() + [char]9 + $_.CommandLine }`,
+    ],
+  };
+}
+
+/** `pid<TAB>명령줄` 줄들을 읽는다. BOM · CRLF · 빈 명령줄(권한 밖 프로세스)을 견딘다. */
+export function parseCommandLines(text: string): Map<number, string> {
+  const lines = new Map<number, string>();
+  for (const raw of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    const match = /^(\d+)\t(.+)$/.exec(raw.trim());
+    if (match) lines.set(Number(match[1]), match[2] as string);
+  }
+  return lines;
+}
+
+/** 여러 pid 의 명령줄 — 읽지 못한 pid(죽음 · 권한)는 빠진다. Windows 는 PowerShell 한 번으로 읽는다. */
+export async function pidCommandLines(pids: number[]): Promise<Map<number, string>> {
+  const valid = [...new Set(pids)].filter((pid) => Number.isInteger(pid) && pid > 0);
+  if (valid.length === 0) return new Map();
+  if (currentPlatform() !== "win32") {
+    const entries = await Promise.all(
+      valid.map(async (pid) => [pid, await pidCommandLine(pid)] as const),
+    );
+    return new Map(
+      entries.filter((entry): entry is readonly [number, string] => entry[1] !== null),
+    );
+  }
+  const { command, args } = commandLinesCommand(valid);
+  const stdout = await run(command, args, { timeout: 15_000, encoding: "utf8" })
+    .then((result) => String(result.stdout))
+    .catch(() => "");
+  return parseCommandLines(stdout);
+}
+
+/** 명령줄이 클론 경로를 담았는지 — Windows 경로는 대소문자를 가리지 않는다. */
+export function commandLineMentions(line: string, root: string, platform: Platform): boolean {
+  return platform === "win32"
+    ? line.toLowerCase().includes(root.toLowerCase())
+    : line.includes(root);
+}
+
+/**
  * 주어진 URL 이 실제로 응답하는지 — 판별을 세 가지로 나눈 것.
  * "html" 은 브라우저가 열 수 있는 페이지(5xx 미만 + text/html), "ok" 는 그
  * 외의 5xx 미만 응답(API·리다이렉트·정적 파일), null 은 오류·타임아웃.
  * https 의 자체서명 인증서는 개발 서버의 일상이라 검증을 끈다.
  */
-export function probePreviewUrl(url: string): Promise<"html" | "ok" | null> {
+export function probePreviewUrl(
+  url: string,
+  signal?: AbortSignal,
+  timeoutMs = 2_000,
+): Promise<"html" | "ok" | null> {
   const { promise, resolve } = Promise.withResolvers<"html" | "ok" | null>();
   const get = url.startsWith("https:") ? httpsGet : httpGet;
-  const request = get(url, { rejectUnauthorized: false }, (response) => {
+  const request = get(url, { rejectUnauthorized: false, signal }, (response) => {
     response.resume();
     const status = response.statusCode ?? 0;
     if (status >= 500 || status === 0) return resolve(null);
     const type = response.headers["content-type"] ?? "";
     resolve(type.includes("text/html") ? "html" : "ok");
   });
-  request.setTimeout(2_000, () => {
+  request.setTimeout(timeoutMs, () => {
     request.destroy();
     resolve(null);
   });
@@ -121,7 +182,7 @@ export function probePreviewUrl(url: string): Promise<"html" | "ok" | null> {
 export const daemonOwnedPorts = new Set<number>();
 
 /** 주어진 pid 들이 쥐고 있는 TCP LISTEN 포트들 — 프로세스 트리의 소켓 스캔. */
-export async function pidListeningPorts(pids: number[]): Promise<number[]> {
+export async function pidListeningPorts(pids: number[], signal?: AbortSignal): Promise<number[]> {
   if (pids.length === 0) return [];
   const wanted = new Set(pids);
   const windows = currentPlatform() === "win32";
@@ -129,7 +190,7 @@ export async function pidListeningPorts(pids: number[]): Promise<number[]> {
     ? ["-a", "-n", "-o"]
     : ["-a", "-p", pids.join(","), "-iTCP", "-sTCP:LISTEN", "-Fn"];
   // netstat 은 .exe 라 셸이 필요 없다 — cmd 한 겹이 틱마다 하나 덜 뜬다(2026-10-07).
-  const stdout = await run(windows ? "netstat" : "lsof", args, { timeout: 10_000 })
+  const stdout = await run(windows ? "netstat" : "lsof", args, { timeout: 10_000, signal })
     .then((result) => String(result.stdout))
     .catch(() => "");
   const ports = new Set<number>();
@@ -219,10 +280,65 @@ export function descendantsOf(children: ReadonlyMap<number, number[]>, pid: numb
 }
 
 /** pid 아래의 전체 프로세스 트리 — 자식, 손자… (pid 자신은 제외). 표를 못 읽으면 빈 목록. */
-export async function descendantPids(pid: number): Promise<number[]> {
+export async function descendantPids(pid: number, signal?: AbortSignal): Promise<number[]> {
   const { command, args } = processTableCommand(currentPlatform());
-  const stdout = await run(command, args, { timeout: 10_000 })
+  const stdout = await run(command, args, { timeout: 10_000, signal })
     .then((result) => String(result.stdout))
     .catch(() => "");
   return descendantsOf(parseProcessTable(stdout), pid);
+}
+
+/**
+ * Windows 의 프로세스 표와 명령줄을 PowerShell 한 번으로 읽는 명령(2026-10-20, Windows 실측).
+ * `descendantPids` 와 `pidCommandLines` 를 차례로 부르면 PowerShell 이 두 번 뜬다. 한 번에
+ * 2.1~2.8초가 들어, 시작마다 미리보기 기동 앞의 거둠이 약 4.5초를 기다렸다. 한 번에 읽으면
+ * 2.2~2.4초다. 같은 순간의 표라 트리와 명령줄이 서로 어긋나지도 않는다.
+ * 큰따옴표는 쓰지 않는다 — `commandLinesCommand` 의 주석.
+ */
+export function processSnapshotCommand(): { command: string; args: string[] } {
+  return {
+    command: "powershell",
+    args: [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-CimInstance Win32_Process | ForEach-Object { $_.ProcessId.ToString() + [char]9 + $_.ParentProcessId.ToString() + [char]9 + $_.CommandLine }",
+    ],
+  };
+}
+
+/** 한 순간의 프로세스 표 — 부모 → 자식 목록과 pid → 명령줄. */
+export type ProcessSnapshot = {
+  children: Map<number, number[]>;
+  commandLines: Map<number, string>;
+};
+
+/**
+ * `pid<TAB>부모<TAB>명령줄` 줄들을 읽는다. BOM · CRLF 를 견딘다. 명령줄이 빈 줄(권한 밖
+ * 프로세스)은 트리에만 넣는다. 끝의 탭이 없어도 읽는다.
+ */
+export function parseProcessSnapshot(text: string): ProcessSnapshot {
+  const children = new Map<number, number[]>();
+  const commandLines = new Map<number, string>();
+  for (const raw of text.replace(/^\uFEFF/, "").split(/\r?\n/)) {
+    const match = /^\s*(\d+)\t(\d+)(?:\t(.*))?$/.exec(raw);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const parent = Number(match[2]);
+    const list = children.get(parent) ?? [];
+    list.push(pid);
+    children.set(parent, list);
+    const line = (match[3] ?? "").trim();
+    if (line !== "") commandLines.set(pid, line);
+  }
+  return { children, commandLines };
+}
+
+/** Windows 의 프로세스 표 한 장. 못 읽으면 빈 표다. */
+export async function processSnapshot(): Promise<ProcessSnapshot> {
+  const { command, args } = processSnapshotCommand();
+  const stdout = await run(command, args, { timeout: 15_000, encoding: "utf8" })
+    .then((result) => String(result.stdout))
+    .catch(() => "");
+  return parseProcessSnapshot(stdout);
 }

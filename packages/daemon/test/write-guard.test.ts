@@ -5,7 +5,6 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
@@ -29,6 +28,7 @@ import {
   sessionGuardHookDecision,
   type WriteScope,
 } from "../dist/write-guard.js";
+import { makeLink, NO_FILE_SYMLINK } from "./helpers/links.ts";
 
 // 쓰기 울타리(베타 준비 분석 2026-10-07) — AI 의 Write · Edit 는 클론과 임시 폴더 안만, Bash 는 뻔한 파괴만
 // 막는다. 이 시험은 두 얼굴을 함께 지킨다: 거절해야 하는 것, 그리고 **통과해야 하는 것** — 과잉 차단은
@@ -45,9 +45,11 @@ function scene() {
     mkdirSync(dir, { recursive: true });
   }
   writeFileSync(join(elsewhere, "secret.txt"), "secret");
-  symlinkSync(elsewhere, join(clone, "link-dir"));
-  symlinkSync(join(elsewhere, "secret.txt"), join(clone, "link-file"));
-  symlinkSync(join(clone, "src"), join(clone, "inner-link"));
+  // Windows 는 폴더 링크를 접합점으로 만든다. 파일 링크는 권한이 없으면 못 만든다 — fileLinks 가 false 다
+  // (helpers/links.ts, 2026-10-19 Windows 시험).
+  makeLink(elsewhere, join(clone, "link-dir"));
+  const fileLinks = makeLink(join(elsewhere, "secret.txt"), join(clone, "link-file"));
+  makeLink(join(clone, "src"), join(clone, "inner-link"));
   // 임시 폴더를 명시한다 — 장면 자신이 OS 임시 폴더 아래라 기본값이면 장면 전체가 "임시" 가 된다.
   const scope: WriteScope = { cwd: clone, home, tempRoots: [tmp] };
   return {
@@ -57,6 +59,7 @@ function scene() {
     elsewhere,
     tmp,
     scope,
+    fileLinks,
     dispose: () => rmSync(root, { recursive: true }),
   };
 }
@@ -127,7 +130,7 @@ test("클론 밖은 거절한다 — 설정 · 홈 · 바깥 폴더 · 부모 ·
   }
 });
 
-test("심볼릭 링크로 클론을 빠져나가는 길은 막는다 — 있는 파일 · 없는 파일 · 없는 폴더 아래", () => {
+test("심볼릭 링크로 클론을 빠져나가는 길은 막는다 — 있는 파일 · 없는 파일 · 없는 폴더 아래", (t) => {
   const s = scene();
   try {
     for (const path of [
@@ -135,10 +138,12 @@ test("심볼릭 링크로 클론을 빠져나가는 길은 막는다 — 있는 
       "link-dir/sub/dir/new.txt", // 링크 너머의 없는 폴더 아래
       "link-file", // 링크가 가리키는 바깥의 있는 파일
       join(s.clone, "link-dir", "secret.txt"),
-    ]) {
+    ].filter((path) => s.fileLinks || path !== "link-file")) {
       assert.equal(writes(s.scope, path), false, `${path} 는 링크 너머 바깥이라 거절`);
     }
-    assert.equal(writes(s.scope, "link-file", "Edit"), false);
+    if (s.fileLinks) assert.equal(writes(s.scope, "link-file", "Edit"), false);
+    // 파일 링크를 못 만든 Windows 는 폴더 링크(접합점) 단언이 모두 지난 뒤에 건너뜀을 단다.
+    if (!s.fileLinks) t.skip(NO_FILE_SYMLINK);
   } finally {
     s.dispose();
   }
@@ -156,6 +161,11 @@ test("임시 폴더는 지난다 — 스크래치 파일, 그러나 글자만 �
     if (process.platform !== "win32") {
       assert.equal(writes(elsewhereHome, "/tmp/cnd-write-guard-probe.txt"), true);
       assert.equal(writes(elsewhereHome, "/var/tmp/cnd-write-guard-probe.txt"), true);
+    } else {
+      // 8.3 짧은 이름(`DEVELO~1`)의 tmpdir() 과 펼친 긴 이름은 같은 폴더다 — 둘 다 지난다(2026-10-19).
+      const long = realpathSync.native(tmpdir());
+      assert.equal(writes(elsewhereHome, join(long, "cnd-write-guard-probe.txt")), true);
+      assert.equal(writes(elsewhereHome, join(`${long}-other`, "x.txt")), false);
     }
     assert.equal(writes(elsewhereHome, "/etc/cnd-write-guard-probe"), false);
   } finally {
@@ -515,6 +525,12 @@ test("Bash — Windows(Git Bash) 모양: /c/… 는 드라이브로, /tmp 는 �
     "echo x > /dev/null",
     `echo x > ${clonePosix}/out.txt`,
     "rm -rf C:/Users/김철수/.colonova-design/projects/p/repo/dist",
+    // `\` 를 글자로 읽어도 클론 안이면 지난다 — 큰따옴표 · PowerShell 모양 · 줄 이음(2026-10-19)
+    String.raw`rm -rf "C:\Users\김철수\.colonova-design\projects\p\repo\dist"`,
+    String.raw`rm -rf .\dist`,
+    String.raw`cd packages\web && rm -rf dist`,
+    "rm -rf dist \\\n  build",
+    "rm -rf dist \\\r\n  build",
   ]) {
     assert.deepEqual(bash(scope, command), { allow: true }, `통과해야 한다: ${command}`);
   }
@@ -526,6 +542,13 @@ test("Bash — Windows(Git Bash) 모양: /c/… 는 드라이브로, /tmp 는 �
     "rm -rf D:/data",
     "echo x > ~/.bashrc",
     "sudo ls",
+    // `\` 경로(2026-10-19) — Git Bash 는 큰따옴표 안의 `\` 를 남기고, PowerShell 은 `\` 가 글자다.
+    // 이스케이프로만 읽던 옛 훑개는 `C:Users…` 로 읽어 지났다.
+    String.raw`rm -rf "C:\Users\김철수\Documents"`,
+    String.raw`echo x > "C:\Users\김철수\.bashrc"`,
+    String.raw`rm -r -Force C:\Users\김철수\Documents`,
+    String.raw`Write-Output x > C:\Users\김철수\notes.txt`,
+    String.raw`cd ..\..; rm -r x`,
   ]) {
     assert.deepEqual(
       bash(scope, command),

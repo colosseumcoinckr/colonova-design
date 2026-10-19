@@ -30,6 +30,16 @@ import { STATS_EDIT_TOOLS, STATS_EXEC_TOOLS, STATS_READ_TOOLS } from "./tool-nam
 import { editPathsOf } from "./tool-paths.js";
 import { classifyFailure } from "./turn-retry.js";
 
+/**
+ * 핀 적중 비교의 열쇠 — 후보와 도구 경로를 같은 정규화로 견준다(2026-10-19, Windows 호환성).
+ * Windows 의 Codex 는 `C:/…` 나 섞인 구분자로 답한다. resolve 가 양쪽의 구분자를 맞춘다.
+ * Windows 의 경로는 대소문자를 가리지 않아 접는다. macOS · Linux 는 예전 그대로다.
+ */
+function pathKey(cwd: string, path: string): string {
+  const absolute = resolve(cwd, path);
+  return process.platform === "win32" ? absolute.toLowerCase() : absolute;
+}
+
 /** 보존 일수 — 데몬 하루 로그와 같은 창. */
 const RETENTION_DAYS = 7;
 const FILE_PREFIX = "turn-stats-";
@@ -486,9 +496,10 @@ export class TurnStats {
       const scan = this.takeScan(sessionId);
       turn.scanMs = scan?.ms ?? null;
       turn.cwd = scan?.cwd ?? null;
+      const base = turn.cwd ?? process.cwd();
       turn.candidates =
         scan?.candidates !== null && scan?.candidates !== undefined && scan.candidates.length > 0
-          ? new Set(scan.candidates)
+          ? new Set(scan.candidates.map((file) => pathKey(base, file)))
           : null;
       // 후보가 있던 턴은 이 미터가 성립한다 — 비적중도 답이다(false). 후보가
       // 없으면 비교 자체가 성립하지 않으므로 null 로 솔직하다.
@@ -522,7 +533,7 @@ export class TurnStats {
       // 절대 또는 cwd 상대). 경로는 기록하지 않는다.
       if (turn.candidates !== null && EDIT_TOOLS[event.name] === true) {
         for (const path of editPathsOf(event.input)) {
-          if (turn.candidates.has(resolve(turn.cwd ?? process.cwd(), path))) {
+          if (turn.candidates.has(pathKey(turn.cwd ?? process.cwd(), path))) {
             turn.pinHit = true;
             break;
           }

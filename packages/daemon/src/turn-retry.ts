@@ -142,8 +142,8 @@ const PERMANENT_RESULT =
 /** 시간이 풀어 줄 실패 — 한도 계열. 재충전 시각을 아는 것이 재시도의 조건. */
 const LIMIT_RESULT = /usage limit|rate limit|limit reached|weekly limit|quota/i;
 
-/** ratelimit 이벤트의 status 중 "막힘"이 아닌 말들 — claude `allowed`, codex `updated`. */
-const RATE_LIMIT_CLEAR = /^(allowed|updated|ok|)$/i;
+/** ratelimit 이벤트의 status 중 "막힘"이 아닌 말들 — claude 의 `allowed`. */
+const RATE_LIMIT_CLEAR = /^(allowed|ok|)$/i;
 
 /** 막힌 한도 상태인가 — status 가 조용한 말이 아니면 막힌 것이다. */
 function rateLimitBlocked(rateLimit: RetryInput["rateLimit"]): boolean {

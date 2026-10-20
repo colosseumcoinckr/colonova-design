@@ -208,7 +208,7 @@ test("fastChip: 켜져 있으면 능력을 몰라도 보인다 — 끌 길은 �
 
 test("fastCost: 프로바이더별 비용 문장 — 툴팁과 토스트가 같은 문장을 쓴다", () => {
   assert.equal(fastCost("claude", fast), "cost-c");
-  assert.equal(fastCost("codex", fast), "cost-x");
+  assert.equal(fastCost("second", fast), "cost-x");
 });
 
 test("fastBlockedWords: CLI 영어 원문을 단서로 가른다 — 단서의 순서가 곧 우선순위", () => {
@@ -259,7 +259,7 @@ test("fastTipWords: 주인과 상태가 제목과 비고 줄을 고른다", () =
   );
   // 그 밖의 AI — 비용 줄은 하나.
   assert.deepEqual(
-    fastTipWords({ subject: "session", on: false, blocked: null, provider: "codex" }, fast),
+    fastTipWords({ subject: "session", on: false, blocked: null, provider: "second" }, fast),
     { title: "off", notes: ["cost-x"] },
   );
   // 켜짐 — 주인을 묻지 않는다.
@@ -271,7 +271,7 @@ test("fastTipWords: 주인과 상태가 제목과 비고 줄을 고른다", () =
     },
   );
   assert.deepEqual(
-    fastTipWords({ subject: "next", on: true, blocked: null, provider: "codex" }, fast),
+    fastTipWords({ subject: "next", on: true, blocked: null, provider: "second" }, fast),
     {
       title: "on",
       notes: ["cost-x"],

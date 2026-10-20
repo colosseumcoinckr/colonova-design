@@ -59,10 +59,10 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 10px 12px 40px;
+  align-items: flex-start;
+  justify-content: flex-end;
+  text-align: left;
+  padding: 24px 0 28px;
   animation: nx-fade 0.3s;
 }
 
@@ -76,10 +76,11 @@
 }
 
 .nx-empty-chat h2 {
-  font-family: var(--serif);
-  font-weight: 400;
-  font-size: 26px;
-  margin: 12px 0 8px;
+  font-family: var(--font);
+  font-weight: 650;
+  font-size: 23px;
+  letter-spacing: -0.03em;
+  margin: 16px 0 12px;
 }
 
 .nx-empty-chat p {
@@ -89,6 +90,23 @@
   font-size: 13.5px;
   white-space: pre-line;
   word-break: keep-all;
+}
+
+.nx .nx-empty-pin {
+  margin-top: 20px;
+  min-height: 36px;
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+.nx-empty-chat .nx-shared-hint {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink3);
+  line-height: 1.7;
 }
 
 .nx-m-user {
@@ -485,9 +503,7 @@
   min-width: 0;
 }
 
-/* 고친 화면 묶음 — 답 바로 아래, 사진이 먼저 눈에 들어오는 카드들(2026-10-06 채팅 결과창
-   개선 — 옛 카드는 한 장마다 다섯 줄이 쌓였고, 사진이 어느 때의 것인지 설명이 카드마다
-   되풀이됐다). */
+/* 고친 화면 묶음 — 제목과 현재 화면 열기·추가 수정으로 이어진다. */
 .nx-results {
   margin: 16px 0 0 32px;
   container-type: inline-size;
@@ -580,216 +596,6 @@
 .nx-result-screen:focus-within {
   border-color: var(--accent-line);
   box-shadow: 0 4px 16px color-mix(in srgb, var(--ink) 8%, transparent);
-}
-
-.nx-result-photo {
-  position: relative;
-  display: block;
-  overflow: hidden;
-  aspect-ratio: 16 / 10;
-  max-height: 240px;
-  background: var(--panel-2);
-  border-bottom: 1px solid var(--line);
-}
-
-.nx-result-img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top;
-  transition: transform 400ms var(--drift);
-}
-
-.nx-result-screen:hover .nx-result-img {
-  transform: scale(1.025);
-}
-
-.nx-result-photo-label {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  border-radius: var(--r-pill);
-  padding: 3px 9px;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-  /* 고정 — 사진 위의 알약 테두리는 팔레트를 따르지 않는 얇은 그림자다. */
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
-  color: var(--ink2);
-  /* 2026-10-04 ux-review: 10px 글자는 읽기 어렵다 — 11.5px 로 통일한다. */
-  font-size: 11.5px;
-  font-weight: 500;
-}
-
-/* 카드 안 전/후(2026-10-06 UX 점검) — 사진 위 왼쪽 아래의 두 칸 알약. 카드를 덮는 제목 단추의 ::after 보다
-   위(z-index)에 서야 눌린다. 고른 쪽은 잉크색으로 차 올라 어느 사진인지 한눈에 읽힌다. */
-.nx-result-ba {
-  position: absolute;
-  bottom: 10px;
-  left: 10px;
-  z-index: 1;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-  /* 고정 — 사진 위의 알약 테두리는 팔레트를 따르지 않는 얇은 그림자다. */
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
-}
-
-.nx .nx-result-ba button {
-  height: 24px;
-  padding: 0 10px;
-  border-radius: var(--r-pill);
-  color: var(--ink2);
-  font-size: 11.5px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.nx .nx-result-ba button:hover {
-  background: var(--nx-hover);
-  color: var(--ink);
-}
-
-.nx .nx-result-ba button[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--bg);
-}
-
-.nx .nx-result-ba button:focus-visible {
-  outline-offset: -2px;
-}
-
-/* 사진 위의 두 알약(2026-10-08 베타 준비 분석) — `달라진 곳 표시`(눌림 단추)와 `사진 복사` 가 오른쪽 아래에 나란히 선다.
-   위쪽은 찍힌 화면의 머리띠 · 단추가 서는 자리라 가리지 않는다. 전/후 알약처럼 카드를 덮는 제목 단추의 ::after 보다
-   위(z-index)에 서야 눌린다. 윤곽 SVG(.nx-diff-svg)는 이 아래다. */
-.nx .nx-diff-tools {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
-  z-index: 1;
-  display: flex;
-  gap: 6px;
-}
-
-.nx .nx-diff-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 11px;
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-  /* 고정 — 사진 위의 알약 테두리는 팔레트를 따르지 않는 얇은 그림자다. */
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
-  color: var(--ink2);
-  font-size: 11.5px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-.nx .nx-diff-pill:hover {
-  background: var(--card);
-  color: var(--ink);
-}
-
-/* 켠 윤곽 — 전/후 알약의 고른 쪽과 같이 잉크로 차 오른다. */
-.nx .nx-diff-pill[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--bg);
-}
-
-.nx .nx-diff-pill:focus-visible {
-  outline-offset: -2px;
-}
-
-/* 복사하는 동안은 한 번 더 눌러도 아무 일도 없다 — 흐려져 바쁨을 말한다. */
-.nx .nx-diff-pill[aria-busy="true"] {
-  opacity: 0.6;
-  cursor: progress;
-}
-
-/* 윤곽은 사진과 같이 움직인다 — 사진은 카드에 올리면 살짝 커지는데(`.nx-result-img` 의 호버) 윤곽만 그대로면 가장자리가 어긋난다. */
-.nx-diff-svg--card {
-  transition: transform 400ms var(--drift);
-}
-
-.nx-result-screen:hover .nx-diff-svg--card {
-  transform: scale(1.025);
-}
-
-/* 사진을 기다리는 동안 — 사진이 설 자리의 비율을 그대로 잡아 두고(사진이 와도 카드가
-   밀리지 않는다) 연한 빛이 지나간다. */
-.nx-result-photo--loading {
-  background:
-    linear-gradient(
-      100deg,
-      var(--panel-2) 30%,
-      color-mix(in srgb, var(--panel-3) 70%, var(--panel-2)) 50%,
-      var(--panel-2) 70%
-    )
-    0 0 / 200% 100%;
-  animation: nx-shimmer 1.4s linear infinite;
-}
-
-@keyframes nx-shimmer {
-  to {
-    background-position: -200% 0;
-  }
-}
-
-/* 사진이 없거나 못 읽은 카드는 비율을 버리고 한 줄 높이로 눌린다. 두 칸 줄에서 옆 카드가
-   더 크면 그 높이를 이 자리가 채운다 — 제목과 이어 하기가 카드 밑에 가지런히 서고, 빈
-   공간이 이어 하기 아래에 남지 않는다. */
-.nx-result-photo--empty {
-  aspect-ratio: auto;
-  flex: 1 1 auto;
-}
-
-.nx-result-photo--empty,
-.nx-result-photo--loading {
-  display: flex;
-}
-
-.nx-result-placeholder {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 6px 8px;
-  min-height: 64px;
-  padding: 14px 16px;
-  color: var(--ink3);
-  font-size: 12px;
-  text-align: center;
-}
-
-/* 다시 읽기 — 카드를 덮는 제목 단추 위에 따로 선다. */
-.nx .nx-result-retry {
-  position: relative;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid var(--line2);
-  border-radius: var(--r-pill);
-  background: var(--card);
-  color: var(--ink2);
-  font-size: 12px;
-}
-
-.nx .nx-result-retry:hover {
-  background: var(--nx-hover);
-  color: var(--ink);
 }
 
 /* 제목 단추 — ::after 가 카드 전체를 덮어 사진 · 제목 어디를 눌러도 화면이 열린다. 탭
@@ -892,23 +698,6 @@
 }
 
 /* 사진이 어느 때의 모습인지 — 카드마다 되풀이하지 않고 묶음 아래에서 한 번만 말한다. */
-.nx-results-note {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  margin: 10px 0 0;
-  font-size: 11.5px;
-  line-height: 1.5;
-  color: var(--ink3);
-  word-break: keep-all;
-}
-
-.nx-results-note > .nx-i {
-  margin-top: 2px;
-}
-
-/* 확인한 것 — 턴 끝의 자동 확인이 문제 없이 지나갔을 때의 한 줄(2026-10-06 UX 점검). 안내 줄과 같은 크기의 조용한
-   글이되 초록 체크가 「확인됐다」 를 말한다. */
 .nx-results-checked {
   display: flex;
   align-items: flex-start;
@@ -1839,7 +1628,7 @@
   position: relative;
   background: var(--cmp);
   border: 1px solid var(--cmp-line);
-  border-radius: 18px;
+  border-radius: 14px;
   /* 고정 — 그림자는 테마를 따르지 않는 검은 빛이다. */
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   padding: 10px 10px 8px 12px;
@@ -1849,9 +1638,8 @@
 }
 
 .nx-composer:focus-within {
-  border-color: var(--line-strong);
-  /* 고정 — 집중 그림자. */
-  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.08);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 
 .nx-composer textarea {
@@ -1862,7 +1650,7 @@
   resize: none;
   background: transparent;
   line-height: 1.5;
-  min-height: 24px;
+  min-height: 48px;
   max-height: 180px;
   padding: 2px;
 }
@@ -2119,7 +1907,7 @@
   text-overflow: ellipsis;
 }
 
-/* 지금 AI 의 표식(칩 · 팝의 AI 줄) — Claude 는 제 흙빛을, Codex 는 글자색을 입는다. */
+/* 지금 AI 의 표식(칩 · 팝의 AI 줄) — Claude 는 제 흙빛을 입는다. */
 .nx-pmark {
   flex-shrink: 0;
 }
@@ -2949,12 +2737,6 @@ html[data-theme="github"] .nx .nx-model-pop .nx-mseg {
   }
 }
 
-.nx-empty-chat .nx-shared-hint {
-  font-size: 12px;
-  color: var(--ink3);
-  line-height: 1.7;
-}
-
 @container (max-width: 360px) {
   .nx-m-ai {
     gap: 8px;
@@ -2962,28 +2744,6 @@ html[data-theme="github"] .nx .nx-model-pop .nx-mseg {
   .nx-results,
   .nx-settle {
     margin-left: 0;
-  }
-}
-
-/* 좁은 묶음에서는 알약이 글자를 접고 그림만 남는다 — 왼쪽 아래의 전/후 알약과 겹치지 않게. 먼저 `달라진 곳 표시` 가
-   접히고, 더 좁아지면 `사진 복사` 도 접힌다(단추의 이름은 aria-label 이 그대로 말한다). */
-@container (max-width: 340px) {
-  .nx-diff-pill:not(:last-child) .nx-diff-pill-label {
-    display: none;
-  }
-
-  .nx .nx-diff-pill:not(:last-child) {
-    padding: 0 9px;
-  }
-}
-
-@container (max-width: 275px) {
-  .nx-diff-pill .nx-diff-pill-label {
-    display: none;
-  }
-
-  .nx .nx-diff-pill {
-    padding: 0 9px;
   }
 }
 
@@ -3002,19 +2762,12 @@ html[data-theme="github"] .nx .nx-model-pop .nx-mseg {
 @media (prefers-reduced-motion: reduce) {
   .nx-result-screen,
   .nx-result-go > :last-child,
-  .nx-result-img,
-  .nx-diff-svg--card,
   .nx .nx-bub-editbtn,
   .nx .nx-settle-btn {
     transition: none;
   }
-  .nx-result-screen:hover .nx-result-img,
-  .nx-result-screen:hover .nx-diff-svg--card {
-    transform: none;
-  }
   .nx-m-ai--live .nx-av,
   .nx-m-ai--live .nx-av-spark,
-  .nx-result-photo--loading,
   .nx-results--new .nx-result-screen,
   .nx-settle--draw .nx-settle-mark,
   .nx-settle--draw .nx-settle-mark .nx-i path {

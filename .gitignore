@@ -15,8 +15,6 @@ packages/desktop/test/*.png
 packages/desktop/release/
 packages/desktop/web-dist/
 packages/desktop/resources/bin/
-packages/desktop/.dev-userData/
-packages/desktop/.dev-userData*/
 .test-logs/
 # 재생 벤치(PLAN-HARNESS §3.A)의 결과 파일 — 실행마다 쌓이는 산출물이다.
 bench-results/

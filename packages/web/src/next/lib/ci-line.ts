@@ -18,7 +18,7 @@ export interface CiLine {
 
 export function ciLine(
   handoff: HandoffStatus | null | undefined,
-  attention: Attention | null | undefined,
+  _attention: Attention | null | undefined,
   W: CiLineWords,
 ): CiLine | null {
   if (!handoff || (handoff.state !== "open" && handoff.state !== "changes_requested")) return null;
@@ -27,12 +27,5 @@ export function ciLine(
   const A = W.afterSubmit;
   if (ci.state === "passing") return { tone: "passing", text: A.checkPassing };
   if (ci.state === "pending") return { tone: "pending", text: A.checkPending };
-  // 통과하지 못했다 — 누가 맡았는지는 화면의 문제 문장(주의)이 이미 정했다. 같은 말을 따로 짓지 않는다.
-  if (attention?.kind === "ai-fixing" && attention.key === "ci") {
-    return { tone: "fixing", text: A.checkFixing };
-  }
-  if (attention?.kind === "developer-notified" && attention.key?.startsWith("ci:")) {
-    return { tone: "notified", text: A.checkNotified };
-  }
   return { tone: "failing", text: A.checkFailing };
 }

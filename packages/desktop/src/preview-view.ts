@@ -122,6 +122,15 @@ function safeOrigin(url: string): string {
   }
 }
 
+/** 주소의 경로만 — 쿼리 · 해시는 뗀다. 읽을 수 없으면 null. */
+function pathOf(url: string): string | null {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The only origins this view may ever show: the daemon's loopback preview
  * servers. The renderer names urls, this decides — a compromised renderer
@@ -229,6 +238,11 @@ interface PreviewPage {
   epoch: number | null;
   /** What the page is showing — a repeat mount or open must not reload. */
   mountedUrl: string | null;
+  /**
+   * 문서를 통째로 마지막에 연 경로(did-navigate) — 앱 안 이동(did-navigate-in-page)은 바꾸지 않는다. 아직 모르면 null.
+   * 웹이 지금 경로와 견줘 개발 서버의 바로 반영이 닿지 않는 화면인지 가린다(2026-10-20 사용자 질문 · /tmp 재현).
+   */
+  loadedPath: string | null;
   /** The last main-frame load failed, or the renderer died — a return reloads. */
   failed: boolean;
   /** The zoom the page is at (D85 ⓔ) — steps clamp into [0.5, 2]. */
@@ -1201,6 +1215,7 @@ export class PlannerPreviewView {
         contents: guest,
         epoch: mounted?.epoch ?? null,
         mountedUrl: src,
+        loadedPath: null,
         failed: false,
         zoomFactor: 1,
         consoleLog: [],
@@ -1292,6 +1307,8 @@ export class PlannerPreviewView {
     });
     contents.on("did-navigate", (_event, url) => {
       page.mountedUrl = url;
+      // 새로 고침도 did-navigate 다(webContents · location 둘 다 — 2026-10-20 실측).
+      page.loadedPath = pathOf(url);
       page.failed = false;
       // 새 문서다 — 앞 문서의 제목은 이 주소의 이름이 아니다.
       page.title = "";
@@ -1454,6 +1471,7 @@ export class PlannerPreviewView {
       path,
       url,
       title: page.title,
+      loadedPath: page.loadedPath,
       canGoBack: contents.navigationHistory.canGoBack(),
       canGoForward: contents.navigationHistory.canGoForward(),
     });

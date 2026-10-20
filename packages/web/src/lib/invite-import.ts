@@ -109,7 +109,7 @@ function errorText(error: unknown): string {
  * 1) 토큰을 먼저: pass 가 아니면 그 즉시 끝낸다(프로젝트는 손대지 않는다).
  * 2) 작성자 이름: 초대장이 정했거나 사용자가 칸에 적었을 때만 저장한다.
  * 3) 행마다 하나씩 차례로. add 는 등록(첫 add 만 activate), update 는 기본
- *    가지·리뷰어만 맞춘다 — 이름과 지침은 사용자의 몫이므로 절대 보내지 않는다.
+ *    가지·리뷰어만 맞춘다 — 이름은 사용자의 몫이므로 절대 보내지 않는다.
  *    한 행이 실패해도 나머지는 계속한다.
  * 4) 도달 검사: 초대장에 없는 기존 GitHub 프로젝트가 새 토큰으로 넘길 수 있는지
  *    본다 — 못 넘기면 개발자에게 알리라는 경고를 남긴다.
@@ -167,7 +167,6 @@ export async function applyInvite(
           repoUrl: row.project.repoUrl,
           baseBranch: row.project.baseBranch,
           ...(row.project.reviewers ? { reviewers: row.project.reviewers } : {}),
-          ...(row.project.instructions ? { instructions: row.project.instructions } : {}),
           ...(row.project.approveCommands ? { approveCommands: true } : {}),
           // 초대 v4(PLAN 단계 5): 개발자가 실어 보낸 처음 값과 수명.
           ...(row.project.defaults ? { defaults: row.project.defaults } : {}),
@@ -178,7 +177,7 @@ export async function applyInvite(
         await daemon.api.projectUpdate(row.slug, {
           // 초대 v4(PLAN 단계 5): 개발자의 값(기본 가지 · 리뷰어 · 명령 허용 ·
           // 처음 값 · 수명)은 덮고, 초대장에 없으면 지우는 값(null)을 보낸다.
-          // 이름·지침은 사용자의 것이라 패치에 없다.
+          // 이름은 사용자의 것이라 패치에 없다.
           ...inviteUpdatePatch(row.project),
         });
       }

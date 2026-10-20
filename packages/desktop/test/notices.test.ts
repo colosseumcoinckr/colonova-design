@@ -106,7 +106,6 @@ const NOTICES: DaemonNotice[] = [
   { kind: "submit-blocked", slug: "members", title: NAME, reason: "developer-notified" },
   { kind: "submit-blocked", slug: "members", title: NAME, reason: "network" },
   { kind: "update-done", agent: "claude", version: "2.2.0" },
-  { kind: "update-done", agent: "codex", version: "0.9.1" },
 ];
 
 test("noticeCopy: 모든 알림이 해요체 · 사용자의 어휘로 말하고 제목이 짧다", () => {
@@ -209,10 +208,6 @@ test("noticeCopy: AI 업데이트 알림은 에이전트 이름과 버전을 말
     title: "AI를 업데이트했어요",
     body: "Claude Code 2.2.0 — 다음 새 대화부터 써요.",
   });
-  assert.match(
-    noticeCopy({ kind: "update-done", agent: "codex", version: "0.9.1" }).body,
-    /^Codex 0\.9\.1/,
-  );
 });
 
 // ---------------------------------------------------------------------------
@@ -391,7 +386,7 @@ test("초기화 확인: 지워지는 것 · 남는 것을 말하고, 도는 AI �
   const busy = resetOptions(true);
   for (const box of [idle, busy]) {
     assert.match(box.detail ?? "", /제출하지 않은 작업은 되돌릴 수 없어요/);
-    assert.match(box.detail ?? "", /Claude·Codex 로그인은 유지돼요/);
+    assert.match(box.detail ?? "", /Claude 로그인은 유지돼요/);
     assert.match(box.detail ?? "", /새 초대 파일을 넣어 주세요/);
     assert.doesNotMatch(box.detail ?? "", /초대장/, "UI 의 말은 초대 파일이다");
   }

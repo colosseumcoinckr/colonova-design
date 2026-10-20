@@ -40,6 +40,7 @@ import type { GitHubClient } from "./github.js";
 import type { DaemonLogger } from "./log.js";
 import type { MachineTurn } from "./machine-provider.js";
 import type { DaemonNotice } from "./notices.js";
+import { runPnpmInstall } from "./onboarding.js";
 import { realpathBestEffort } from "./paths.js";
 import type { PreviewDrivers } from "./preview-drivers.js";
 import type { ProjectPaths, ProjectRegistry } from "./projects.js";
@@ -85,6 +86,11 @@ export interface ProjectWorkspaces {
   diffAt: string | null;
   /** 준비 복구가 AI 에게 넘어가 있는 동안의 시각(ISO) — 주의의 ai-fixing. */
   bringUpFixing: string | null;
+  /**
+   * 연결 코드가 없어 설치가 멈춰 있는 동안의 시각(ISO) — 주의의 reconnect(github).
+   * AI 가 아니라 사람이 초대 파일을 열어야 풀린다(2026-10-20 사용자 보고).
+   */
+  bringUpAuth: string | null;
   /** 사이클 감독자 (PLAN L2) — 이 프로젝트의 사이클을 스스로 제자리로. */
   supervisor: CycleSupervisor;
 }
@@ -225,6 +231,7 @@ export class ProjectFleet {
       lastDiff: null,
       diffAt: null,
       bringUpFixing: null,
+      bringUpAuth: null,
       repo: new RepoWorkspace({
         root: paths.repoRoot,
         url: repo.url,
@@ -543,7 +550,6 @@ export class ProjectFleet {
           : false,
         handoff: repo?.currentHandoff ?? project.repo.handoff,
         ...(threads ? { threads } : {}),
-        ...(project.instructions ? { instructions: project.instructions } : {}),
         // 초대 v4(PLAN 단계 5): 개발자가 정한 처음 값과 수명 — 웹의 칩 씨앗과
         // 감독자의 브랜치 정리가 읽는다.
         ...(project.defaults ? { defaults: project.defaults } : {}),
@@ -586,8 +592,8 @@ export class ProjectFleet {
    * 대화(dispatch 의 gateThreadFor)도 같은 길로 연다.
    *
    * 새 대화의 공급자는 쓸 수 있는 것 중에서 고른다(auto-thread.ts — 최근
-   * 대화의 공급자 → defaults.provider → claude → codex). Claude 만 띄우던
-   * 때는 Codex 만 있는 기계에서 네 자동 흐름이 조용히 멈췄다(PLAN I1 · I4).
+   * 대화의 공급자 → defaults.provider → 등록 순서). 설치되지 않은 기계에서는
+   * 열지 못한다(null)(PLAN I1 · I4).
    * 판정이 CLI 를 띄우므로 비동기다. 열기가 던지면 못 연 것(null)으로 친다 —
    * 호출자가 기록을 되감거나 남겨 다음 틱이 다시 연다.
    */
@@ -597,8 +603,8 @@ export class ProjectFleet {
       .open({
         cwd,
         title,
-        defaults: this.deps.registry.get(workspaces.slug)?.defaults,
         instructions: this.projectInstructions(cwd),
+        defaults: this.deps.registry.get(workspaces.slug)?.defaults,
       })
       .catch((error: unknown) => {
         this.deps.logger.warn("[cycle] 자동 대화를 열지 못했습니다", {
@@ -762,6 +768,12 @@ export class ProjectFleet {
   private readonly recoveryResync = new Set<string>();
 
   /**
+   * pnpm 이 없어 멈춘 프로젝트 중 데몬이 corepack 을 이미 한 번 돌린 것 —
+   * 준비가 ready 에 닿으면 지운다. 두 번째 실패는 사람의 카드로 남는다.
+   */
+  private readonly pnpmEnableTried = new Set<string>();
+
+  /**
    * D4: 준비가 끝내 멈추면 사람을 기다리지 않고 도구가 실패를 읽은
    * 표(repo-guidance)로 대화를 열어 넘긴다 — 연결 레포의 오류는 사람에게
    * 올리지 않는다(2026-09-23, 웹의 진행 판은 "AI 가 고치는 중" 만 말한다).
@@ -771,12 +783,17 @@ export class ProjectFleet {
    */
   private autoBriefBringUpFailure(workspaces: ProjectWorkspaces, status: RepoStatus): void {
     const slug = workspaces.slug;
+    // 연결 코드 · pnpm 은 AI 가 풀 수 없다(HUMAN_BRING_UP_KINDS) — 장부 밖에서
+    // 사람의 손과 이 기계의 도구로 간다(2026-10-20 사용자 보고).
+    this.noteBringUpAuth(workspaces, status);
+    this.enablePnpmOnce(workspaces, status);
     const { episode, decision } = nextBringUpBrief(this.bringUpEpisodes.get(slug), status);
     if (episode) this.bringUpEpisodes.set(slug, episode);
     else this.bringUpEpisodes.delete(slug);
     // 주의의 재료 (PLAN L8): 준비가 ready 에 닿으면 ai-fixing 을 거두고
     // 서 있던 bring-up 알림을 푼다 — 실패 상태가 사라진 순간이다.
     if (status.phase === "ready") {
+      this.pnpmEnableTried.delete(slug);
       if (workspaces.bringUpFixing !== null) {
         workspaces.bringUpFixing = null;
         workspaces.repo.repoCore().emit();
@@ -830,6 +847,36 @@ export class ProjectFleet {
   }
 
   /**
+   * 연결 코드가 없어 설치가 멈춘 동안은 문제 줄의 `다시 연결` 이 선다 — 웹이
+   * `초대 파일 열기` 단추를 단다. 다른 단계로 옮겨 가면(다시 시도 · 준비 완료)
+   * 거둔다.
+   */
+  private noteBringUpAuth(workspaces: ProjectWorkspaces, status: RepoStatus): void {
+    const stuck = status.phase === "error" && status.errorKind === "registry-auth";
+    const next = stuck ? (workspaces.bringUpAuth ?? new Date().toISOString()) : null;
+    if (next === workspaces.bringUpAuth) return;
+    workspaces.bringUpAuth = next;
+    workspaces.repo.repoCore().emit();
+  }
+
+  /**
+   * pnpm 이 없어 멈추면 데몬이 corepack enable 을 한 번 돌리고(온보딩의 같은
+   * 손 — runPnpmInstall) 준비를 다시 돌린다. 실패하면 실패 카드와 `담당자에게
+   * 보낼 내용 복사` 가 남는다. 로그에는 성패만 남긴다.
+   */
+  private enablePnpmOnce(workspaces: ProjectWorkspaces, status: RepoStatus): void {
+    const slug = workspaces.slug;
+    if (status.phase !== "error" || status.errorKind !== "pnpm-missing") return;
+    if (this.pnpmEnableTried.has(slug)) return;
+    this.pnpmEnableTried.add(slug);
+    void (async () => {
+      const result = await runPnpmInstall().catch(() => ({ ok: false }));
+      this.deps.logger.info("[bring-up] pnpm 준비", { slug, ok: result.ok });
+      if (result.ok) await workspaces.repo.sync().catch(() => undefined);
+    })();
+  }
+
+  /**
    * 이 프로젝트의 주의 (PLAN L8) — 감독자의 판정(충돌 · 밀린 푸시 · 리뷰
    * 라운드 초과), failGate 의 실패(diff), 준비 복구의 진행을 한 재료로
    * 모아 composeAttention 에 건넨다. 재료가 없으면 null 이다.
@@ -842,7 +889,9 @@ export class ProjectFleet {
         parts.reconnect ??
         (failed?.reason === "push-auth"
           ? { what: "github" as const, since: workspaces.diffAt ?? new Date().toISOString() }
-          : null),
+          : workspaces.bringUpAuth !== null
+            ? { what: "github" as const, since: workspaces.bringUpAuth }
+            : null),
       aiFixingSince: parts.aiFixingSince ?? workspaces.bringUpFixing,
       // 무엇을 고치는지는 감독자의 것일 때만 말한다 — 준비 복구(bringUpFixing)의 고침은 이름이 없다.
       aiFixingKey: parts.aiFixingSince ? (parts.aiFixingKey ?? null) : null,
@@ -922,8 +971,7 @@ export class ProjectFleet {
    * 배로 타므로, 여기서 절대 돌리지 않는다. 말이 없으면(기계가 연 턴)
    * runSave 의 폴백(② machineMemo → ③ 기본 문구)에 맡긴다.
    * 2026-10-20 사용자 요청: MCP 보관 계획 없이 한 요청의 변경을 함께 보관한다.
-   * 푸시는 백그라운드
-   * — 오프라인에서도 턴의 끝이 멈추지 않는다(실패는 제출이 기다려서 민다).
+   * 보관은 로컬에서 끝나며 원격 전송은 사용자가 확인한 제출에서만 한다(2026-10-20 MVP).
    * 커밋 게이트가 열리면 세션에 고침 브리프를 보내 화면 확인 게이트와 같은
    * 루프로 스스로 닫는다.
    */
@@ -955,7 +1003,6 @@ export class ProjectFleet {
       const saved = await workspaces.repo.save({
         ...subject,
         sessionId,
-        backgroundPush: true,
         onSessionTurn: (brief: string) => {
           this.deps.notice({
             kind: "gate",
@@ -1174,8 +1221,6 @@ export class ProjectFleet {
     approveCommands?: boolean;
     /** E4(초대 v2): 넘긴 요청의 리뷰를 부탁할 개발자들. */
     reviewers?: string[];
-    /** 프로젝트별 지침(설정 문서 P1#8) — 세션의 시스템 프롬프트에 붙는다. */
-    instructions?: string;
     /** 초대 v4(PLAN 단계 5): 새 대화의 처음 값 — 개발자가 초대 파일에 정한다. */
     defaults?: ProjectDefaults;
     /** 초대 v4(PLAN 단계 5): 사이클 수명 설정 — 개발자가 초대 파일에 정한다. */
@@ -1201,7 +1246,6 @@ export class ProjectFleet {
       // clone with errorKind `commands` until 실행 허용 is pressed.
       commandsApproved: message.approveCommands === true,
       ...(message.reviewers ? { reviewers: message.reviewers } : {}),
-      ...(message.instructions ? { instructions: message.instructions } : {}),
       ...(message.defaults ? { defaults: message.defaults } : {}),
       ...(message.lifecycle ? { lifecycle: message.lifecycle } : {}),
     });
@@ -1231,21 +1275,8 @@ export class ProjectFleet {
     return realpathBestEffort(this.requireActive().paths.repoRoot);
   }
 
-  /**
-   * 세션이 늘 달고 다니는 지침: 앱 공통 블록(주인은 앱 릴리스) + 이 클론
-   * 주인의 "지켜 줄 것"(설정 문서 P1#8). 활성 프로젝트가 아니라 cwd 로
-   * 찾는다 — 크래시 부활과 게이트 스레드는 자기가 살던 클론으로 살아나므로,
-   * 그때의 프로젝트 규칙을 그대로 들고 가야 한다. 어느 클론이든 공통
-   * 블록은 빠지지 않는다.
-   */
-  projectInstructions(cwd: string): string {
-    const home = realpathBestEffort(cwd);
-    for (const project of this.deps.registry.list()) {
-      const root = realpathBestEffort(this.deps.registry.paths(project.slug).repoRoot);
-      if (root === home) {
-        return [COMMON_INSTRUCTIONS, project.instructions].filter(Boolean).join("\n\n");
-      }
-    }
+  /** 앱이 세션에 추가하는 공통 지침이다(2026-10-20 사용자 요청). */
+  projectInstructions(_cwd: string): string {
     return COMMON_INSTRUCTIONS;
   }
 

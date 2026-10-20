@@ -309,25 +309,6 @@ test("끝나지 않은 도구는 알리지 않는다 — 파일이 쓰이기 전
   assert.deepEqual(s.told, []);
 });
 
-test("한 호출이 여러 파일을 쓰면(Codex fileChange) 화면마다 한 번씩 알린다", async () => {
-  const s = scene();
-  s.edit("", {
-    name: "fileChange",
-    input: {
-      changes: [
-        { path: join(ROOT, "app/members/page.tsx") },
-        { path: join(ROOT, "app/billing/page.tsx") },
-        { path: join(ROOT, "src/Shared.tsx") },
-      ],
-    },
-  });
-  await s.flush();
-  assert.deepEqual(
-    s.told.map((entry) => entry.screen.route),
-    ["/members", "/billing"],
-  );
-});
-
 test("턴이 끝나면 장부를 비운다 — 다음 턴은 같은 화면을 다시 알린다", async () => {
   const s = scene();
   s.edit(join(ROOT, "app/members/page.tsx"));

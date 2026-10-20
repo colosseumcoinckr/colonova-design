@@ -23,7 +23,7 @@ test("리뷰어 요청 실패 뒤 재시작해도 같은 PR 에 요청을 마치
   };
   try {
     await cycleWith(scene);
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     const number = scene.core.openHandoff?.number;
     assert.ok(number, "리뷰 요청 전에 생성된 PR 을 기억한다");
@@ -81,7 +81,7 @@ test("제출 — 네 단계가 한 번에 서고 의도가 지워진다", async 
   const scene = await makeSupervisedScene();
   try {
     await cycleWith(scene);
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
 
     const ledger = ledgerOf(scene);
@@ -113,7 +113,7 @@ test("차선 작업 안에서 누른 제출도 틱은 자기 supervise 칸에서
   try {
     await cycleWith(scene);
     await scene.core.lane.run("submit", async () => {
-      scene.supervisor.submit("button");
+      await scene.supervisor.submit("button");
     });
     await scene.supervisor.settled();
 
@@ -135,7 +135,7 @@ test("S9 레지스트리가 PR 을 잃음 — head 로 입양, 새 PR 을 만들
     // 개발자 쪽에서 이미 열린 요청 — 레지스트리는 모른다(handoff null).
     const number = await scene.github.openPull({ head: BRANCH, title: "옛 제목" });
 
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
 
     assert.equal(scene.core.openHandoff?.number, number, "같은 요청을 입양해야 한다");
@@ -155,13 +155,13 @@ test("두 번 눌러도 제출은 하나 — 의도가 다시 적히지 않고 P
     await cycleWith(scene);
     // 원격을 잠시 죽여 의도가 남아 있게 한다 — 두 번 누르는 찰나를 본다.
     await scene.git(["remote", "set-url", "origin", DEAD_REMOTE]);
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     const first = ledgerOf(scene).submit;
     assert.ok(first, "실패한 의도는 남아 있다");
     const firstAt = first.requestedAt;
 
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     assert.equal(ledgerOf(scene).submit?.requestedAt, firstAt, "의도가 다시 적히지 않는다");
 
@@ -184,7 +184,7 @@ test("제출 중 네트워크 끊김 — ensurePushed 실패 · 의도 남음 �
   try {
     await cycleWith(scene);
     await scene.git(["remote", "set-url", "origin", DEAD_REMOTE]);
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
 
     const ledger = ledgerOf(scene);
@@ -221,13 +221,14 @@ test("끝난 PR (merged) 이 레지스트리에 남은 채 제출 — 새 PR, �
     // 병합 착지(랜딩)는 아직 일어나지 않은 세계 — 감독자 틱이 land 를 돌기 전에
     // 제출이 먼저 눌렸다. 끝난 요청은 새 요청으로만 이어진다.
 
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
 
     assert.equal(scene.github.pull(number)?.title, "옛 제목", "옛 PR 의 제목은 그대로");
     assert.equal(scene.github.pull(number)?.body, "옛 본문", "옛 PR 의 본문은 그대로");
     const handoff = scene.core.openHandoff;
-    assert.ok(handoff && handoff.number !== number, "새 PR 이 열려야 한다");
+    assert.equal(handoff?.number, number, "끝난 요청을 자동으로 새 제출로 바꾸지 않는다");
+    assert.equal(scene.github.pull(number + 1), undefined);
     assert.equal(ledgerOf(scene).submit, null);
   } finally {
     await scene.dispose();
@@ -239,7 +240,7 @@ test("개발자가 구간 밖에 쓴 글과 제목은 다시 제출해도 그대
   try {
     scene.authorName = "김기획";
     await cycleWith(scene);
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     const number = scene.core.openHandoff?.number;
     assert.ok(number);
@@ -254,7 +255,7 @@ test("개발자가 구간 밖에 쓴 글과 제목은 다시 제출해도 그대
 
     // 작업이 더 쌓이고 다시 제출 — 도구 구간만 갱신된다.
     await commit(scene, { "screen2.tsx": "export default () => null;\n" }, "두 번째 화면");
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
 
     const after = scene.github.pull(number)?.body ?? "";
@@ -274,7 +275,7 @@ test("승인된 채 다시 제출 — 승인이 철회돼도 선로의 approved 
   const scene = await makeSupervisedScene();
   try {
     await cycleWith(scene);
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     const number = scene.core.openHandoff?.number;
     assert.ok(number);
@@ -291,7 +292,7 @@ test("승인된 채 다시 제출 — 승인이 철회돼도 선로의 approved 
 
     // 승인된 채 다시 제출 — getPullRequest 가 approved 를 단 객체를 돌려주는 자리다.
     await commit(scene, { "screen2.tsx": "export default () => null;\n" }, "두 번째 화면");
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     assert.equal(scene.core.openHandoff?.number, number, "같은 요청에 쌓인다");
     assert.equal(
@@ -322,7 +323,7 @@ test("단계 예산 — PR 생성이 계속 실패하면 다섯 번 뒤 submit:p
     await scene.git(["push", "-u", "origin", BRANCH]);
     scene.github.failPullCreates();
 
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     let ledger = ledgerOf(scene);
     assert.ok(ledger.submit, "의도가 남아 있다");
@@ -368,7 +369,7 @@ test("채팅 제출 — submit(via chat) 이 원장에 chat 의도를 적는다"
   try {
     await cycleWith(scene);
     await scene.git(["remote", "set-url", "origin", DEAD_REMOTE]);
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     assert.equal(ledgerOf(scene).submit?.via, "chat", "의도의 출처가 chat 이어야 한다");
   } finally {
@@ -384,7 +385,7 @@ test("빈 본문의 열린 PR 입양 — GitHub 의 null 본문에도 도구 구
     // 본문 없이 연 요청 — GitHub 은 빈 본문을 null 로 돌려준다.
     const number = await scene.github.openPull({ head: BRANCH, title: "빈 요청" });
 
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
 
     const body = scene.github.pull(number)?.body ?? "";
@@ -404,7 +405,7 @@ test("한마디 — 작성자 줄 바로 아래 `> 한마디:`, 영수증 사건
   try {
     scene.authorName = "기획자";
     await cycleWith(scene);
-    scene.supervisor.submit("button", undefined, "검색은 이름만 돼요");
+    await scene.supervisor.submit("button", undefined, "검색은 이름만 돼요");
     await scene.supervisor.settled();
     const number = scene.core.openHandoff?.number;
     assert.ok(number);
@@ -418,13 +419,13 @@ test("한마디 — 작성자 줄 바로 아래 `> 한마디:`, 영수증 사건
 
     // 한마디 없는 다시 제출(채팅) — 지난 한마디가 구간에 그대로 남는다.
     await commit(scene, { "screen2.tsx": "export default () => null;\n" }, "두 번째 화면");
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     assert.ok((scene.github.pull(number)?.body ?? "").includes("> 한마디: 검색은 이름만 돼요"));
 
     // 새 한마디로 다시 제출 — 같은 요청의 구간이 새 말로 바뀐다.
     await commit(scene, { "screen3.tsx": "export default () => null;\n" }, "세 번째 화면");
-    scene.supervisor.submit("button", undefined, "색도 바꿨어요");
+    await scene.supervisor.submit("button", undefined, "색도 바꿨어요");
     await scene.supervisor.settled();
     const after = scene.github.pull(number)?.body ?? "";
     assert.ok(after.includes("> 한마디: 색도 바꿨어요"));
@@ -440,7 +441,7 @@ test("확인한 화면 — 버튼 제출의 영수증 사건에 실리고 다음
   try {
     await cycleWith(scene);
     const sent = { screens: 2, titles: ["회원 목록", "회원 상세"] };
-    scene.supervisor.submit("button", undefined, undefined, sent);
+    await scene.supervisor.submit("button", undefined, undefined, sent);
     await scene.supervisor.settled();
     const first = scene.chatEvents.filter((event) => event.kind === "cycle.handed").at(-1);
     assert.deepEqual(first?.sent, sent);
@@ -448,7 +449,7 @@ test("확인한 화면 — 버튼 제출의 영수증 사건에 실리고 다음
 
     // 확인 창을 거치지 않은 다음 제출(채팅)에는 지난 화면이 따라오지 않는다 — 모르는 것은 말하지 않는다.
     await commit(scene, { "screen2.tsx": "export default () => null;\n" }, "두 번째 화면");
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     const second = scene.chatEvents.filter((event) => event.kind === "cycle.handed").at(-1);
     assert.notEqual(second, first);
@@ -458,20 +459,23 @@ test("확인한 화면 — 버튼 제출의 영수증 사건에 실리고 다음
   }
 });
 
-test("확인한 화면 — 막혀 재시도하는 동안 다시 누르면 새 화면으로, 재시작 뒤에도 이어진다", async () => {
+test("확인한 화면 — 재시도 중 중복 요청과 재시작에도 최초 확인 내용을 유지한다", async () => {
   const scene = await makeSupervisedScene();
   try {
     await cycleWith(scene);
     await scene.git(["push", "-u", "origin", BRANCH]);
     scene.github.failPullCreates();
-    scene.supervisor.submit("button", undefined, undefined, { screens: 1, titles: ["회원 목록"] });
+    await scene.supervisor.submit("button", undefined, undefined, {
+      screens: 1,
+      titles: ["회원 목록"],
+    });
     await scene.supervisor.settled();
     assert.deepEqual(ledgerOf(scene).submit?.sent, { screens: 1, titles: ["회원 목록"] });
 
     // 도는 제출에 다시 누른 말 — 의도는 하나, 확인한 화면만 새것으로.
     const newer = { screens: 3, titles: ["회원 목록", "회원 상세", "결제 내역"] };
-    scene.supervisor.submit("button", undefined, undefined, newer);
-    assert.deepEqual(ledgerOf(scene).submit?.sent, newer);
+    await scene.supervisor.submit("button", undefined, undefined, newer);
+    assert.deepEqual(ledgerOf(scene).submit?.sent, { screens: 1, titles: ["회원 목록"] });
 
     // 재시작 — 원장이 같은 영수증을 낸다.
     scene.github.healPullCreates();
@@ -481,7 +485,7 @@ test("확인한 화면 — 막혀 재시도하는 동안 다시 누르면 새 �
     scene.setNow(Date.parse(intent.nextAttemptAt) + 1000);
     await reborn.tick("manual");
     const handed = scene.chatEvents.filter((event) => event.kind === "cycle.handed").at(-1);
-    assert.deepEqual(handed?.sent, newer);
+    assert.deepEqual(handed?.sent, { screens: 1, titles: ["회원 목록"] });
   } finally {
     await scene.dispose();
   }
@@ -491,7 +495,7 @@ test("요청이 열린 때 — 만들 때 GitHub 의 created_at 이 since 로 �
   const scene = await makeSupervisedScene();
   try {
     await cycleWith(scene);
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     const opened = scene.core.openHandoff;
     assert.ok(opened);
@@ -528,7 +532,7 @@ test("확인한 것 — 도구 구간에 화면 작업의 자동 확인 기록�
     const bodyOf = () => scene.github.pull(scene.core.openHandoff?.number ?? 0)?.body ?? "";
 
     // 확인 기록이 없는 사이클 — 절이 없다(하지 않은 확인을 말하지 않는다).
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     assert.ok(scene.core.openHandoff);
     assert.ok(!bodyOf().includes("### 확인한 것"));
@@ -539,7 +543,7 @@ test("확인한 것 — 도구 구간에 화면 작업의 자동 확인 기록�
       screen("/b", "s2"),
       screen("/a", "s1", { screens: 1, phone: true }),
     ];
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     const body = bodyOf();
     const block = body.slice(
@@ -555,7 +559,7 @@ test("확인한 것 — 도구 구간에 화면 작업의 자동 확인 기록�
 
     // 확인이 지난 작업이 없어지면 구간을 새로 짤 때 절도 거두어진다.
     scene.cycleScreens = [screen("/a", "s1")];
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     assert.ok(!bodyOf().includes("### 확인한 것"));
   } finally {
@@ -582,7 +586,7 @@ test("범위 · AI 작성 줄 · 타입 검사 — 도구 구간에 서고, 락�
     };
 
     // 화면 코드만 바뀐 사이클 — 개발자가 안심하는 한 줄이 선다. 지도가 공급자를 모르니 이름 없이 AI 로만 말한다.
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     let block = blockOf();
     assert.ok(
@@ -608,7 +612,7 @@ test("범위 · AI 작성 줄 · 타입 검사 — 도구 구간에 서고, 락�
       screen("/b", "s2", { provider: "claude", checked: { screens: 1, phone: true, types: true } }),
       screen("/a", "s1", { provider: "claude", checked: { screens: 1, phone: true } }),
     ];
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     block = blockOf();
     assert.ok(block.includes("코드는 AI(Claude Code)가 썼고"));
@@ -630,7 +634,7 @@ test("채팅 제출은 한마디 없이 그대로 간다 — 줄도 사건의 no
   const scene = await makeSupervisedScene();
   try {
     await cycleWith(scene);
-    scene.supervisor.submit("chat");
+    await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     const body = scene.github.pull(scene.core.openHandoff?.number ?? 0)?.body ?? "";
     assert.ok(!body.includes("한마디"));
@@ -654,7 +658,7 @@ test("제출 상태 — 잠깐 실패는 retrying, 예산이 다하면 blocked �
     await cycleWith(scene);
     await scene.git(["push", "-u", "origin", BRANCH]);
     scene.github.failPullCreates();
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     let view = scene.supervisor.submitView();
     assert.equal(view.phase, "retrying");
@@ -713,7 +717,7 @@ test("제출 상태 — 연결 코드 만료는 auth 막힘, 새 코드가 오�
     await scene.git(["push", "-u", "origin", BRANCH]);
     scene.authExpired = true;
     scene.github.failPullCreates();
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     const view = scene.supervisor.submitView();
     assert.equal(view.phase, "blocked");
@@ -753,7 +757,7 @@ test("권한 부족(403) — 첫 실패에 permission 막힘 · 개발자 알림
     scene.github.failPullCreates(
       "제출에 실패했습니다 — GitHub 403: Resource not accessible by personal access token",
     );
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     let view = scene.supervisor.submitView();
     assert.equal(view.phase, "blocked", "예산 다섯 번을 기다리지 않는다 — 기다려도 풀리지 않는다");
@@ -801,7 +805,7 @@ test("권한 부족 — 새 코드가 와도(retrySubmitNow) 옛 권한 거절 �
     await cycleWith(scene);
     await scene.git(["push", "-u", "origin", BRANCH]);
     scene.github.failPullCreates("GitHub 403: Resource not accessible by personal access token");
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     assert.equal(scene.supervisor.submitView().lastError, "permission");
     // 권한이 고쳐진 새 코드가 들어왔다 — 백오프를 기다리지 않는다.
@@ -823,7 +827,7 @@ test("한도(403 · 429) — 막힘이 아니라 느린 재시도 · 개발자 �
     scene.github.failPullCreates(
       "제출에 실패했습니다 — GitHub 403: You have exceeded a secondary rate limit. Please wait a few minutes",
     );
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     let view = scene.supervisor.submitView();
     assert.equal(view.phase, "retrying");
@@ -873,7 +877,7 @@ test("N6 사다리 — 잠깐 실패는 20·40·60·60초 간격으로 재시도
     await cycleWith(scene);
     await scene.git(["push", "-u", "origin", BRANCH]);
     scene.github.failPullCreates("fetch failed: ECONNREFUSED 127.0.0.1:1");
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     let view = scene.supervisor.submitView();
     assert.equal(view.phase, "retrying");
@@ -932,7 +936,7 @@ test("N6 — 다섯 번 실패의 막힘 판정은 3분 안팎에 선다 (12분�
     await cycleWith(scene);
     await scene.git(["push", "-u", "origin", BRANCH]);
     scene.github.failPullCreates("fetch failed: ECONNREFUSED 127.0.0.1:1");
-    scene.supervisor.submit("button");
+    await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     const first = Date.parse(ledgerOf(scene).budgets["submit:pr"]?.lastAt ?? "");
 

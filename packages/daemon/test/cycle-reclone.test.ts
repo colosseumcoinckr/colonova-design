@@ -455,7 +455,7 @@ test("clone:restore 알림은 제출이 한 번 성공하면 풀린다 — 작�
     await commit(scene, { "screen.tsx": "export default () => null;\n" }, "회원 목록 화면");
     scene.core.setCycle(BRANCH, null);
 
-    supervisor.submit("button");
+    await supervisor.submit("button");
     await supervisor.settled();
 
     assert.equal(

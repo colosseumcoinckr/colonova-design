@@ -71,12 +71,6 @@ export interface Project {
    */
   reviewers?: string[];
   /**
-   * 이 프로젝트에서 AI 가 지켜 줄 것(설정 문서 P1#8) — 브랜치·커밋·PR
-   * 규칙을 사용자의 말로 적는 한 줄 상자. 세션의 시스템 프롬프트 끝에
-   * 붙는다. 비면 붙지 않는다.
-   */
-  instructions?: string;
-  /**
    * 초대 v4(PLAN 단계 5): 새 대화의 처음 값 — 개발자가 초대장에 실어 보낸
    * 모델·생각 시간·공급자. 사용자가 칩에서 고르면 그것이 이긴다.
    */
@@ -285,9 +279,6 @@ function parseProject(raw: unknown): Project | null {
     ...(typeof value.commandsApproved === "boolean"
       ? { commandsApproved: value.commandsApproved }
       : {}),
-    ...(typeof value.instructions === "string" && value.instructions.trim()
-      ? { instructions: value.instructions.trim() }
-      : {}),
     // 초대 v4(PLAN 단계 5): 개발자가 실어 보낸 기본값과 수명 — 손편집으로
     // 깨진 값은 파서가 버리고, 남는 것이 없으면 필드 자체가 없어진다.
     ...(parseProjectDefaults(value.defaults)
@@ -430,8 +421,6 @@ export class ProjectRegistry {
     commandsApproved?: boolean;
     /** E4(초대 v2): 리뷰를 부탁할 개발자들. */
     reviewers?: string[];
-    /** 프로젝트별 지침(설정 문서 P1#8) — update 와 같은 규칙(trim, 비면 저장 안 함). */
-    instructions?: string;
     /** 초대 v4(PLAN 단계 5): 새 대화의 처음 값. */
     defaults?: ProjectDefaults;
     /** 초대 v4: 사이클의 수명 규칙. */
@@ -456,8 +445,6 @@ export class ProjectRegistry {
             reviewers: input.reviewers.map((login) => login.trim()).filter((login) => login !== ""),
           }
         : {}),
-      // 지침은 update 와 같은 규칙 — trim 해서 비어 있지 않을 때만 싣는다.
-      ...(input.instructions?.trim() ? { instructions: input.instructions.trim() } : {}),
       // 초대 v4(PLAN 단계 5): 개발자가 실어 보낸 값은 그대로 — 이미 정규화된
       // 모양이 넘어오므로 여기서 다시 가리지 않는다.
       ...(input.defaults ? { defaults: input.defaults } : {}),
@@ -487,7 +474,6 @@ export class ProjectRegistry {
       repoUrl?: string | null;
       baseBranch?: string;
       commandsApproved?: boolean;
-      instructions?: string | null;
       /** E4(초대 v2): null 은 지우기, 배열은 새 목록이다. */
       reviewers?: string[] | null;
       /** 초대 v4(PLAN 단계 5): null 은 지우기 — 개발자의 값이라 덮는다. */
@@ -505,13 +491,6 @@ export class ProjectRegistry {
     if (changes.commandsApproved !== undefined) {
       project.commandsApproved = changes.commandsApproved;
     }
-    // 지침은 지우개가 있어야 한다: null 은 "없음"이고, 빈 문자열도 없음으로
-    // 간다 — 사용자의 상자를 비우고 싶을 때 지워지지 않는 값이 되면 안 된다.
-    if (changes.instructions !== undefined) {
-      const instructions = changes.instructions?.trim();
-      if (instructions) project.instructions = instructions;
-      else delete project.instructions;
-    }
     if (changes.repoUrl !== undefined) project.repo.url = changes.repoUrl;
     if (changes.baseBranch !== undefined) {
       const baseBranch = changes.baseBranch.trim() || DEFAULT_BASE_BRANCH;
@@ -527,7 +506,7 @@ export class ProjectRegistry {
           : changes.reviewers.map((login) => login.trim()).filter((login) => login !== "");
     }
     // 초대 v4(PLAN 단계 5): 개발자의 값은 덮는다 — null 은 "초대장에 없다"는
-    // 뜻이므로 지운다. 이름·지침과 달리 사용자의 몫이 아니다.
+    // 뜻이므로 지운다. 이름과 달리 사용자의 몫이 아니다.
     if (changes.defaults !== undefined) {
       if (changes.defaults === null) delete project.defaults;
       else project.defaults = changes.defaults;

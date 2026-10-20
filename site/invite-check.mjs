@@ -629,7 +629,7 @@ async function checkRoot(request, base, { scopes }) {
       item(
         "preview",
         "warn",
-        "루트에 package.json 이 없어요 — 앱은 루트의 scripts 에서 미리보기 명령을 읽어요. 앱이 하위 폴더에 있다면 루트에 dev 스크립트를 두거나, 초대의 '지켜 줄 것'에 어느 폴더를 띄우는지 적어 주세요",
+        "루트에 package.json 이 없어요 — 앱은 루트의 scripts 에서 미리보기 명령을 읽어요. 앱이 하위 폴더에 있다면 루트에 실행할 앱을 띄우는 dev 스크립트를 두세요",
       ),
     );
   } else {
@@ -659,7 +659,7 @@ async function checkRoot(request, base, { scopes }) {
               "warn",
               `루트 package.json 에 미리보기 스크립트(${PREVIEW_SCRIPTS.join(" · ")})가 없어요 — 사용자 화면에서 AI 가 먼저 고치려 들 수 있어요${
                 monorepo
-                  ? ". 모노레포로 보여요: 루트에 dev 스크립트를 두거나, 초대의 '지켜 줄 것'에 어느 폴더의 앱을 띄우는지 적어 주세요"
+                  ? ". 모노레포로 보여요: 루트에 실행할 앱을 띄우는 dev 스크립트를 두세요"
                   : ""
               }`,
             ),

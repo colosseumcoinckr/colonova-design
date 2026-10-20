@@ -10,6 +10,7 @@ import { parseAddress } from "../../lib/preview-address";
 import { lookToTurn } from "../../lib/preview-turns";
 import { previewPathOf, registerScreenOpener, screenPath } from "../../lib/screen-link";
 import {
+  lastTurnEdited,
   lastTurnScreens,
   pageTitleOf,
   screenKey,
@@ -18,10 +19,10 @@ import {
   titleOfPath,
 } from "../../lib/turn-screens";
 import { L } from "../labels";
-import { arriveOnTurnEnd } from "../lib/preview-geometry";
+import { routePath } from "../lib/follow-edit";
+import { arriveOnTurnEnd, refreshOnTurnEnd } from "../lib/preview-geometry";
 import { useDiagnosticsText } from "../lib/use-diagnostics";
 import type { PreviewColumnProps } from "../slots";
-import { ComparisonDialog, openComparison } from "./ComparisonDialog";
 import { clockOf, HISTORY_OPEN_EVENT, HistoryDrawer } from "./HistoryDrawer";
 import { ArrowIcon, PinSmallIcon } from "./icons";
 import { LiveLayer } from "./LiveLayer";
@@ -163,6 +164,11 @@ export function PreviewColumn({
     ++viewEpoch.current;
     setTarget({ kind: "path", path });
   }, []);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = useCallback(() => {
+    invalidateView();
+    setReloadKey((n) => n + 1);
+  }, [invalidateView]);
 
   // 브라우저 경로의 궤적 — iframe 은 제 위치를 말하지 않으니 물음이 곧 역사다.
   const [trail, setTrail] = useState<{ list: string[]; at: number }>({ list: [], at: -1 });
@@ -253,6 +259,9 @@ export function PreviewColumn({
   // 있으면 그대로 둔다. 외부 페이지를 보는 중이면 사람이 일부러 나간 것이다.
   // 판정은 한 곳(arriveOnTurnEnd)이 내리고, 칸은 그 하나의 신호로 이동과
   // 도착의 표시(알약 물들임 · 빛줄기)를 함께 일으킨다.
+  // 옮기지 않을 때, 파일을 고친 턴이고 지금 화면이 앱 안 이동으로 온 화면이면 그 자리에서 다시 연다
+  // (refreshOnTurnEnd — 고친 코드가 바로 닿지 않는 화면이다, 2026-10-20). 사람의 손으로 세지 않는다.
+  // 활성 페이지가 없으면(홈 · 떠난 프로젝트) 새로 고침은 닿지 않고, 다음에 고친 턴이 다시 판정한다.
   const liveBefore = useRef({ live: turnLive, id: activeSessionId });
   const [arriveTick, setArriveTick] = useState(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 턴의 끝(상태 전이)만 본다.
@@ -273,9 +282,23 @@ export function PreviewColumn({
       })),
       hereKey: screenKey(herePath),
     });
-    if (!verdict) return;
-    setArriveTick((tick) => tick + 1);
-    if (!verdict.already) go(verdict.path);
+    const moving = verdict !== null && !verdict.already;
+    if (verdict) setArriveTick((tick) => tick + 1);
+    if (verdict && moving) go(verdict.path);
+    const refresh = refreshOnTurnEnd({
+      edited: lastTurnEdited(done),
+      moving,
+      native,
+      ready: phase === "ready" && previewUrl !== null,
+      here: location
+        ? {
+            kind: location.kind,
+            pathKey: routePath(location.path),
+            loadedKey: location.loadedPath ? routePath(location.loadedPath) : null,
+          }
+        : null,
+    });
+    if (refresh) reload();
   }, [turnLive, activeSessionId]);
 
   const cycleTitle = useCallback(
@@ -443,11 +466,6 @@ export function PreviewColumn({
   // --- 무대 ---------------------------------------------------------
   const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [zoom, setZoom] = useState(1);
-  const [reloadKey, setReloadKey] = useState(0);
-  const reload = useCallback(() => {
-    invalidateView();
-    setReloadKey((n) => n + 1);
-  }, [invalidateView]);
   // 실패의 다시 시도 — 있는 손만 쓴다: 미리보기를 다시 읽고(막대의 새로 고침과 같은),
   // 준비 파이프를 다시 걷는다(마운트 때와 같은 멱등 부름). 새 진행 표시는 만들지 않는다.
   // 실패 덮개의 `담당자에게 보낼 내용 복사`(2026-10-07 베타 준비 분석) — 진단 한 덩어리 + 실패의 종류(이름 · 경로 없이).
@@ -472,22 +490,6 @@ export function PreviewColumn({
   const [commentsOn, setCommentsOn] = useState(false);
   const commentsRef = useRef(commentsOn);
   commentsRef.current = commentsOn;
-  const [pinIntro, setPinIntro] = useState(false);
-  useEffect(() => {
-    try {
-      setPinIntro(!localStorage.getItem(`colonova-design.pin-intro:${daemon.activeSlug}`));
-    } catch {
-      setPinIntro(true);
-    }
-  }, [daemon.activeSlug]);
-  const finishPinIntro = () => {
-    setPinIntro(false);
-    try {
-      localStorage.setItem(`colonova-design.pin-intro:${daemon.activeSlug}`, "seen");
-    } catch {
-      /* optional hint */
-    }
-  };
   const pinLocked = preparing || !previewUrl ? L.pin.lockedPreparing : null;
   useEffect(() => {
     if (pinLocked) setCommentsOn(false);
@@ -506,10 +508,9 @@ export function PreviewColumn({
       setFrozen(null);
       const next = on ?? !commentsRef.current;
       setCommentsOn(next);
-      if (next) finishPinIntro();
       if (next && narrowRef.current) showTab("preview");
     },
-    [pinLocked, toast, showTab, daemon.activeSlug, noteUser],
+    [pinLocked, toast, showTab, noteUser],
   );
 
   const sync = useMemo(() => pinsSync(pins.ghosts, pins.list), [pins.ghosts, pins.list]);
@@ -853,7 +854,6 @@ export function PreviewColumn({
 
   return (
     <section ref={sectionRef} className={`nx-preview${historyOpen ? " nx-preview--hist" : ""}`}>
-      <ComparisonDialog daemon={daemon} onToast={toast} />
       <PreviewBar
         canBack={native ? location?.canGoBack === true : trail.at > 0}
         canForward={native ? location?.canGoForward === true : trail.at < trail.list.length - 1}
@@ -896,10 +896,6 @@ export function PreviewColumn({
         }}
         frozenReady={frozenReady}
         onFrozen={() => void openFrozen()}
-        onCompare={() => {
-          noteUser();
-          openComparison({ route: herePath, title: screenName, submitted: true });
-        }}
         onShowAi={() => void showAi()}
         showAiBusy={lookBusy}
         onShortcuts={() => setSheetOpen(true)}
@@ -950,22 +946,6 @@ export function PreviewColumn({
         )}
         {overlay && (
           <div className={`nx-over${prepHold === "out" ? " nx-over--out" : ""}`}>{overlay}</div>
-        )}
-        {pinIntro && !pinLocked && !overlay && !commentsOn && !frozen && (
-          <div className="nx-pin-intro" role="status">
-            <PinSmallIcon />
-            <span>{L.pin.firstHint}</span>
-            <button type="button" className="nx-btn nx-btn--sm" onClick={() => togglePins(true)}>
-              {L.preview.pin}
-            </button>
-            <button
-              type="button"
-              className="nx-btn nx-btn--ghost nx-btn--sm"
-              onClick={finishPinIntro}
-            >
-              {L.pin.firstDismiss}
-            </button>
-          </div>
         )}
         {commentsOn && !overlay && (
           <div className="nx-pinstrip" role="status">

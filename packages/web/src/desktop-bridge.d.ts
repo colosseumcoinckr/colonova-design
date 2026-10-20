@@ -131,6 +131,8 @@ declare global {
             url?: string;
             /** 문서가 스스로 단 제목(`<title>`) — 없으면 빈 칸. */
             title?: string;
+            /** 문서를 통째로 마지막에 연 경로 — 앱 안 이동은 바꾸지 않는다. 모르면 null, 옛 데스크톱은 싣지 않는다. */
+            loadedPath?: string | null;
             /** repo origin 위면 preview, 링크의 나라면 web — 외부 페이지 표시의 자리. */
             kind: "preview" | "web";
             canGoBack: boolean;

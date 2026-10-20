@@ -16,7 +16,8 @@
  * 데몬 · 프로토콜을 고치면 여전히 다시 실행해야 한다.
  */
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, watch } from "node:fs";
+import { existsSync, readlinkSync, watch } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -63,11 +64,10 @@ let finished = false;
 
 function startElectron() {
   if (finished) return;
-  // dev 는 설치본과 userData 를 나눈다 — productName 이 같아 기본 userData
-  // (~/Library/Application Support/ColoNova Design)를 공유하면 설치본이 잡은
-  // single-instance 잠금에 dev 가 두 번째 인스턴스로 합쳐져 조용히 종료된다.
-  // worktree 안에 두는 것도 의도다: 워크트리끼리도 같은 잠금 경쟁을 한다.
-  electronProc = spawn(electron, [`--user-data-dir=${devUserData}`, desktop], {
+  // userData 는 설치본과 하나를 쓴다(2026-10-20 사용자 결정) — 로그인 · 설정 ·
+  // 연결 상태를 개발 실행이 그대로 쓴다. 같은 userData 면 한 인스턴스 잠금도
+  // 같다 — 앱이 이미 돌면 이 실행은 그 창으로 합쳐지고 조용히 끝난다.
+  electronProc = spawn(electron, [desktop], {
     stdio: "inherit",
     cwd: desktop,
     shell,
@@ -120,7 +120,9 @@ async function finish(code) {
 
 for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
   process.on(signal, () => {
-    void finish(1);
+    // Ctrl+C 로 세션을 끝내는 것은 실패가 아니다 — 바깥 pnpm 이 실패 블록을
+    // 늘어놓지 않게 0 으로 나간다(2026-10-20).
+    void finish(0);
   });
 }
 process.on("exit", () => {
@@ -147,10 +149,16 @@ if (hmr) {
     console.error(`COLONOVA_DESIGN_DEV_SERVER(${DEV_SERVER}) 에 개발 서버가 없습니다.`);
     process.exit(1);
   } else {
-    vite = spawn("pnpm", ["--filter", "@colonova-design/web", "dev"], {
+    // pnpm 을 거치지 않고 vite 를 곧장 띄운다 — pnpm 이 끼면 끝낼 때마다
+    // 「RECURSIVE_RUN_FIRST_FAIL」 실패 블록이 늘어난다(2026-10-20).
+    const viteBin = join(repo, "packages", "web", "node_modules", "vite", "bin", "vite.js");
+    if (!existsSync(viteBin)) {
+      console.error("vite 를 찾을 수 없습니다 — pnpm install 을 먼저 실행해 주세요.");
+      process.exit(1);
+    }
+    vite = spawn(process.execPath, [viteBin], {
       stdio: "inherit",
-      cwd: repo,
-      shell,
+      cwd: join(repo, "packages", "web"),
     });
     // 이 스크립트가 어떻게 끝나든 vite 를 남기지 않는 일은 아래 finish() 가 맡는다.
     await waitForDevServer(DEV_SERVER);
@@ -162,11 +170,41 @@ if (!existsSync(electron)) {
   console.error("electron 바이너리가 없습니다 — pnpm install 을 먼저 실행해 주세요.");
   process.exit(1);
 }
-const devUserData = join(desktop, ".dev-userData");
-console.log(`[dev] userData → ${devUserData}`);
 if (hmr) console.log(`[dev] electron → ${DEV_SERVER} (HMR)`);
 
+const alreadyRunning = runningInstancePid();
+if (alreadyRunning) {
+  console.log(
+    `[dev] 같은 데이터 폴더를 쓰는 앱(pid ${alreadyRunning})이 이미 돌고 있습니다 — ` +
+      "그 인스턴스로 합쳐집니다. 개발 창이 필요하면 그 앱을 끈 뒤 다시 실행하세요.",
+  );
+}
+
 startElectron();
+
+/**
+ * 같은 userData 를 이미 쓰는 앱의 pid — SingletonLock 심링크(<호스트>-<pid>)로
+ * 판정한다. 합쳐짐 자체는 Electron 의 몫이고 이 확인은 안내 문구가 전부라,
+ * 심링크가 없는 플랫폼(Windows)은 조용히 건너뛴다.
+ */
+function runningInstancePid() {
+  const base =
+    process.platform === "darwin"
+      ? join(homedir(), "Library", "Application Support")
+      : process.platform === "linux"
+        ? join(homedir(), ".config")
+        : null;
+  if (!base) return null;
+  try {
+    const target = readlinkSync(join(base, "ColoNova Design", "SingletonLock"));
+    const pid = Number(target.split("-").at(-1));
+    if (!pid) return null;
+    process.kill(pid, 0); // 살아 있는 pid 만 센다 — 흘러 남은 잠금은 무시한다
+    return pid;
+  } catch {
+    return null;
+  }
+}
 
 // 데스크톱 메인/프리로드가 바뀌면 다시 빌드해 electron 을 갈아끼운다.
 let rebuildTimer = null;

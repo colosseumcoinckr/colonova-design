@@ -18,8 +18,7 @@ import { CONFIG_DIR, currentPlatform } from "./environment.js";
  * 잘라 낸 사실을 사용자에게 보이게 하는 경고(`repoSettingsWarning`), 데스크톱이
  * 실어 온 런타임을 레포 명령의 PATH 앞에 붙이는 일(`extraPathPrefix`), 그리고
  * 대화형 신뢰 대화상자가 없는 데몬이 클론을 신뢰로 등록하는 일
- * (`trustWorkspace`). Codex 는 정책이 파일이 아니라 턴 파라미터
- * (`drivers/codex/session.ts`)라 절단이 없다.
+ * (`trustWorkspace`).
  *
  * `RepoWorkspace` 에서 떼어 둔 이유: 앞의 셋은 워크스페이스의 상태를 읽지
  * 않고, 온보딩 쪽에서도 쓰인다. `extraPathPrefix` 가 여기 있으면

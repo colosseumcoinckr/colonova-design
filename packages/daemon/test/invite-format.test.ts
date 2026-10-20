@@ -107,7 +107,6 @@ test("여러 프로젝트 봉인 왕복 — normalizeInvite 가 같은 모양을
           name: "회원 관리",
           baseBranch: "develop",
           reviewers: ["dev1"],
-          instructions: "목 데이터는 a.mock.ts 에만 둔다",
           approveCommands: true,
         },
         {
@@ -218,7 +217,6 @@ test("각 한도 초과는 'limit' 으로 말한다 — 어느 프로젝트의 �
     [{ ...base, projects: [project({ baseBranch: "b".repeat(129) })] }, /기본 가지가 128자/],
     [{ ...base, projects: [project({ reviewers: eleven })] }, /리뷰어가 10명/],
     [{ ...base, projects: [project({ reviewers: ["x".repeat(81)] })] }, /리뷰어/],
-    [{ ...base, projects: [project({ instructions: "i".repeat(10_001) })] }, /지침이 10000자/],
   ];
   for (const [value, pattern] of cases) {
     const normalized = normalizeInvite(value);
@@ -542,13 +540,12 @@ test("v4 의 봇 알림은 토큰과 채널이 함께 있을 때만 산다", () 
   assert.equal(half.invite.notify, undefined);
 });
 
-test("inviteUpdatePatch — 이름·지침은 사용자의 것이라 보내지 않고, 없는 개발자 값은 지운다", () => {
+test("inviteUpdatePatch — 이름은 보내지 않고, 없는 개발자 값은 지운다", () => {
   const patch = inviteUpdatePatch({
     repoUrl: "https://github.com/org/a.git",
     name: "초대장의 이름",
     baseBranch: "develop",
     approveCommands: true,
-    instructions: "초대장의 지침",
     defaults: { model: "sonnet" },
   });
   assert.deepEqual(patch, {
@@ -558,7 +555,7 @@ test("inviteUpdatePatch — 이름·지침은 사용자의 것이라 보내지 �
     lifecycle: null,
     approveCommands: true,
   });
-  // 이름·지침은 패치에 아예 없다 — 사용자가 고른 값을 덮는 일이 없다.
+  // 이름은 패치에 아예 없다 — 사용자가 고른 값을 덮는 일이 없다.
   assert.equal("name" in patch, false);
   assert.equal("instructions" in patch, false);
 });
@@ -613,4 +610,26 @@ test("덧붙은 이름도 64자 한도를 넘지 않는다 — 앞의 이름을 
   assert.equal(names[0], long, "앞의 이름은 그대로");
   assert.equal(names[1]?.length, 64, "덧붙은 이름은 한도에서 끊난다");
   assert.ok(names[1]?.endsWith(" · b"));
+});
+
+test("기존 초대 파일의 지침은 길이와 무관하게 무시하고 프로젝트를 가져온다", () => {
+  for (const v of [3, 4]) {
+    const normalized = normalizeInvite({
+      v,
+      token: "t",
+      projects: [
+        {
+          repoUrl: "https://github.com/org/a.git",
+          name: "회원 관리",
+          instructions: "i".repeat(10_001),
+        },
+      ],
+    });
+    assert.equal(normalized.ok, true);
+    if (!normalized.ok) continue;
+    const project = normalized.invite.projects[0];
+    assert.ok(project);
+    assert.equal("instructions" in project, false);
+    assert.equal(project.name, "회원 관리");
+  }
 });

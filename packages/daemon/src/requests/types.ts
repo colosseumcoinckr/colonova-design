@@ -77,8 +77,6 @@ export interface RouterDeps {
    * 목업·서버 시험 깨지지 않게 하려는 것뿐이고, 서버는 항상 심는다.
    */
   appVersion?: () => string | null;
-  /** Wait for a turn's photos to finish persisting before serving its comparison. */
-  comparisonReady?: (slug: string) => Promise<void> | undefined;
 }
 
 /** 메시지 종류마다 해당 메시지만 받는다. */

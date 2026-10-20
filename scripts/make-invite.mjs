@@ -65,7 +65,6 @@ const keepRejectedDays = flag("keep-rejected-days");
 const noDeleteMerged = args.includes("--no-delete-merged");
 const noAutoReply = args.includes("--no-auto-reply");
 const noSubmitFromChat = args.includes("--no-submit-from-chat");
-const instructions = flag("instructions");
 const skipCheck = args.includes("--skip-check");
 /** GitHub REST 의 주소 — 데몬과 같은 환경 변수로 로컬 서버를 겨눈다(시험). */
 const apiBase = (process.env.COLONOVA_DESIGN_GITHUB_API ?? "https://api.github.com").replace(
@@ -89,14 +88,13 @@ if (repoUrls.length === 0 || !token) {
       "  초대 v4(PLAN 단계 5) — 개발자 알림과 프로젝트의 처음 값·수명:",
       "  --slack-webhook <url>   개발자 알림이 갈 Slack 웹훅 주소(https 만)",
       "  --slack-bot-token <t> --slack-channel <c>   웹훅 대신 봇 토큰+채널",
-      "  --provider <p>          새 대화의 처음 프로바이더 (예: claude · codex)",
+      "  --provider <p>          새 대화의 처음 프로바이더 (예: claude)",
       "  --model <m>             새 대화의 처음 모델 (예: sonnet)",
       "  --effort <e>            새 대화의 처음 생각 시간 (low · medium · high · xhigh · max)",
       "  --keep-rejected-days <n>  반려된 작업의 보관 일수 (1~365, 기본 14)",
       "  --no-delete-merged      병합된 사이클 브랜치를 정리하지 않는다 (기본은 정리)",
       "  --no-auto-reply         개발자 코멘트에 AI 가 자동으로 답하지 않는다 (기본은 답한다)",
       "  --no-submit-from-chat   채팅으로 제출하는 도구를 싣지 않는다 (기본은 싣는다)",
-      "  --instructions <text>   이 프로젝트에서 AI 가 늘 따를 규칙 — 레포가 하나일 때만",
       "",
       "  --skip-check            사전 점검(연결 코드 · 레포 권한 · 리뷰어 · 레포 루트)을 건너뛴다 —",
       "                          기본은 점검하고, 확정 실패가 있으면 파일을 만들지 않는다",
@@ -200,7 +198,7 @@ const projects = [];
 for (const [index, url] of repoUrls.entries()) {
   const slug = repoSlug(url);
   // 초대 v4(PLAN 단계 5): 처음 값과 수명은 프로젝트마다 같은 값을 실는다 —
-  // --name · --instructions 와 달리 레포가 여럿이어도 개발자의 한 뜻이다.
+  // --name 과 달리 레포가 여럿이어도 개발자의 한 뜻이다.
   const defaults = {
     ...(provider ? { provider } : {}),
     ...(model ? { model } : {}),
@@ -220,7 +218,6 @@ for (const [index, url] of repoUrls.entries()) {
       ? { baseBranch }
       : { baseBranch: report?.projects[index]?.info?.defaultBranch ?? (await defaultBranch(url)) }),
     ...(reviewers.length > 0 ? { reviewers } : {}),
-    ...(repoUrls.length === 1 && instructions ? { instructions } : {}),
     ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
     ...(Object.keys(lifecycle).length > 0 ? { lifecycle } : {}),
   });

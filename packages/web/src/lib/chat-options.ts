@@ -92,7 +92,7 @@ function bareId(id: string): string {
 
 /**
  * A model id read as a name — `claude-sonnet-5-5` → `Sonnet 5.5`. Ids that do
- * not follow Claude's shape (`gpt-5.2-codex`) are already a name and stay.
+ * not follow Claude's shape (`some-model-2`) are already a name and stay.
  */
 function idName(id: string): string {
   const claude = /^claude-([a-z]+)-(\d+(?:-\d{1,2})?)(?:-\d{8})?$/.exec(bareId(id));

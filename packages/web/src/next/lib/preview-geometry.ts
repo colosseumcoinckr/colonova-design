@@ -204,3 +204,29 @@ export function arriveOnTurnEnd(input: {
   const already = input.screens.some((screen) => screen.key === input.hereKey);
   return { path: first.path, already };
 }
+
+/**
+ * 답이 끝났을 때 지금 화면을 그 자리에서 다시 열까(2026-10-20 사용자 질문 · /tmp 재현). 연결 레포의 개발 서버(Next 16 ·
+ * Turbopack)는 문서를 통째로 연 화면의 코드만 바로 바꿔 넣는다. 링크나 `router.replace` 로 앱 안에서 옮겨 온 화면에는
+ * 고친 코드가 닿지 않아, 새로 고쳐야 보였다. 그래서 이번 턴이 파일을 고쳤고, 도착이 다른 화면으로 옮기지 않으며(옮기면
+ * 통째로 연다), 지금 화면이 통째로 연 화면과 다를 때만 다시 연다. 통째로 연 화면은 그대로 둔다 — 바로 반영되고 입력하던
+ * 상태도 남는다. 모르면(브라우저 경로 · 옛 데스크톱 · 첫 문서 전) 다시 열지 않는다. 같음은 경로만 본다 — 쿼리만 바뀐
+ * 이동은 같은 화면의 코드를 쓴다.
+ */
+export function refreshOnTurnEnd(input: {
+  /** 이번 턴이 끝나서 성공한 파일 편집을 했다. */
+  edited: boolean;
+  /** 턴 끝의 도착이 다른 화면으로 옮긴다 — 그 이동이 문서를 통째로 연다. */
+  moving: boolean;
+  /** 데스크톱의 미리보기다 — 브라우저 경로(iframe)는 제 문서를 말하지 않는다. */
+  native: boolean;
+  /** 미리보기 서버가 서 있다 — 준비 · 다시 켜는 중 · 실패에는 다시 열 문서가 없다. */
+  ready: boolean;
+  /** 지금 문서 — `pathKey` 는 지금 경로, `loadedKey` 는 통째로 연 경로의 같음 잣대(모르면 null). */
+  here: { kind: "preview" | "web"; pathKey: string; loadedKey: string | null } | null;
+}): boolean {
+  const { here } = input;
+  if (!input.edited || input.moving || !input.native || !input.ready) return false;
+  if (here === null || here.kind !== "preview" || here.loadedKey === null) return false;
+  return here.pathKey !== here.loadedKey;
+}

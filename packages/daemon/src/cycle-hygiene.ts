@@ -170,8 +170,7 @@ export function movedRepoUrl(url: string, fullName: string): string | null {
 /**
  * Claude CLI 가 그 cwd 의 대화 기록을 두는 폴더 — `<설정 폴더>/projects/<인코딩>`.
  * 인코딩은 CLI 의 것(실경로의 영숫자 아닌 글자를 `-` 로) — claude/driver.ts 의
- * deleteAll 과 같은 규칙이다. 다른 공급자의 기계 턴은 기록을 남기지 않는다
- * (codex 의 --ephemeral).
+ * deleteAll 과 같은 규칙이다.
  */
 export function claudeTranscriptDir(cwd: string): string {
   const configDir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");

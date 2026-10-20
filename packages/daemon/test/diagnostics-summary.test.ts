@@ -474,7 +474,7 @@ function poisonedInput() {
       projects: [{ name: POISON.project, repoUrl: POISON.repo }],
       providers: [
         { id: "claude", available: true, version: "2.1.292", loggedIn: true },
-        { id: "codex", available: false, reason: `${POISON.home}/codex 없음` },
+        { id: "second", available: false, reason: `${POISON.home}/second 없음` },
       ],
     }),
     turnStats: summarizeTurnStats(
@@ -510,7 +510,7 @@ test("buildDiagnosticsSummary: 독이 든 입력에서도 이메일 · 경로 ·
   assert.deepEqual(summary.tools.bash, { present: true, version: null });
   assert.deepEqual(summary.ai, [
     { id: "claude", present: true, version: "2.1.292", loggedIn: true },
-    { id: "codex", present: false, version: null, loggedIn: null },
+    { id: "second", present: false, version: null, loggedIn: null },
   ]);
   assert.deepEqual(summary.account, { method: "claude.ai", plan: "max" });
   assert.equal(summary.turnStats?.failures.account, 1);

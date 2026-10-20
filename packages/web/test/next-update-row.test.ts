@@ -26,7 +26,7 @@ test("hasNewerVersion: 점찍은 숫자끼리 비교한다", () => {
 
 test("hasNewerVersion: 문장 속의 버전을 읽고, 못 읽으면 거짓", () => {
   assert.equal(hasNewerVersion("2.1.4 (Claude Code)", "2.2.0"), true);
-  assert.equal(hasNewerVersion("codex-cli 0.46.0", "codex-cli 0.46.0"), false);
+  assert.equal(hasNewerVersion("some-cli 0.46.0", "some-cli 0.46.0"), false);
   assert.equal(hasNewerVersion(null, "2.2.0"), false);
   assert.equal(hasNewerVersion("2.1.4", null), false);
   assert.equal(hasNewerVersion("버전 없음", "2.2.0"), false);
@@ -34,8 +34,8 @@ test("hasNewerVersion: 문장 속의 버전을 읽고, 못 읽으면 거짓", ()
 
 test("plainDotted: 문장 속의 첫 버전만 뽑는다", () => {
   assert.equal(plainDotted("2.1.4 (Claude Code)"), "2.1.4");
-  assert.equal(plainDotted("codex-cli 0.46.0"), "0.46.0");
-  assert.equal(plainDotted("rust-v0.46.0"), "0.46.0");
+  assert.equal(plainDotted("some-cli 0.46.0"), "0.46.0");
+  assert.equal(plainDotted("release-v0.46.0"), "0.46.0");
   assert.equal(plainDotted(null), null);
   assert.equal(plainDotted("숫자가 없는 글"), null);
 });
@@ -72,11 +72,17 @@ test("updateRowCopy: 같은 버전이면 최신, 확인 전에는 현재만", ()
 
 test("updateRowCopy: 도는 중 · 미루기는 현재 버전만 보인다", () => {
   assert.deepEqual(
-    updateRowCopy({ id: "codex", version: "0.46.0", latestVersion: "0.47.0", phase: "running" }, t),
+    updateRowCopy(
+      { id: "claude", version: "0.46.0", latestVersion: "0.47.0", phase: "running" },
+      t,
+    ),
     { state: "running", version: "0.46.0", note: null, action: "none" },
   );
   assert.deepEqual(
-    updateRowCopy({ id: "codex", version: "0.46.0", latestVersion: "0.47.0", phase: "pending" }, t),
+    updateRowCopy(
+      { id: "claude", version: "0.46.0", latestVersion: "0.47.0", phase: "pending" },
+      t,
+    ),
     { state: "pending", version: "0.46.0", note: t.deferred, action: "none" },
   );
 });
@@ -119,12 +125,12 @@ test("updateRowCopy: 끝나면 깐 버전과 시각, 실패하면 이유와 다�
 test("agentUpdateEvents: 끝난 업데이트만 한 줄씩, 이름은 프로바이더의 것, 최신이 위", () => {
   const providers = [
     { id: "claude", label: "Claude Code" },
-    { id: "codex", label: "Codex" },
+    { id: "second", label: "Second AI" },
   ];
   const rows = agentUpdateEvents(
     {
       claude: { phase: "done", at: "2026-09-25T02:27:00Z", version: "2.2.0 (Claude Code)" },
-      codex: { phase: "running", at: "2026-09-25T02:30:00Z" },
+      second: { phase: "running", at: "2026-09-25T02:30:00Z" },
     },
     providers,
     L.update.doneEvent,
@@ -135,21 +141,21 @@ test("agentUpdateEvents: 끝난 업데이트만 한 줄씩, 이름은 프로바�
   );
   // 버전을 모르는 끝 · 없는 표는 줄이 없다.
   assert.deepEqual(
-    agentUpdateEvents({ codex: { phase: "done", at: "x" } }, providers, L.update.doneEvent),
+    agentUpdateEvents({ second: { phase: "done", at: "x" } }, providers, L.update.doneEvent),
     [],
   );
   assert.deepEqual(agentUpdateEvents(undefined, providers, L.update.doneEvent), []);
   const two = agentUpdateEvents(
     {
       claude: { phase: "done", at: "2026-09-25T01:00:00Z", version: "2.2.0" },
-      codex: { phase: "done", at: "2026-09-25T03:00:00Z", version: "0.47.0" },
+      second: { phase: "done", at: "2026-09-25T03:00:00Z", version: "0.47.0" },
     },
     providers,
     L.update.doneEvent,
   );
   assert.deepEqual(
     two.map((row) => row.id),
-    ["codex", "claude"],
+    ["second", "claude"],
   );
 });
 

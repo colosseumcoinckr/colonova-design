@@ -1074,8 +1074,8 @@ export function useSessions(
   const switchModel = async (model: string | null) => {
     const prev = selector?.model ?? null;
     // The pin lands under the provider that made it — the open session's
-    // provider, or the settings pick when no thread is running. A Codex id
-    // must never sit in the slot the next Claude session reads.
+    // provider, or the settings pick when no thread is running. One
+    // provider's id must never sit in the slot another provider's session reads.
     onChatChange(withChatPick(chat, selector?.provider ?? chat.provider, { model }));
     setSelector((current) => (current ? { ...current, model } : current));
     if (!activeId) return;

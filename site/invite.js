@@ -173,7 +173,6 @@ function buildValues() {
         repoUrl: project.repoUrl,
         name: project.name,
         baseBranch: project.baseBranch,
-        instructions: project.instructions,
         ...(reviewers.length > 0 ? { reviewers } : {}),
         ...(Object.keys(defaults).length > 0 ? { defaults } : {}),
         lifecycle,
@@ -412,7 +411,6 @@ function checkRepo(repo) {
     repoUrl: repo.cloneUrl,
     name: repo.fullName.split("/")[1] ?? repo.fullName,
     baseBranch: repo.defaultBranch,
-    instructions: "",
     reviewers: "",
     // 초대 v4(PLAN 단계 5): 새 대화의 처음 값과 수명 — 기본값이 채워져 있다.
     provider: "",
@@ -457,7 +455,6 @@ function addManual(url, baseBranch = "main") {
     repoUrl: trimmed,
     name: repoNameOf(trimmed),
     baseBranch,
-    instructions: "",
     reviewers: "",
     // 초대 v4(PLAN 단계 5): 새 대화의 처음 값과 수명 — 기본값이 채워져 있다.
     provider: "",
@@ -493,7 +490,7 @@ function prefillRepos() {
 }
 
 // ---------------------------------------------------------------------------
-// 고른 프로젝트 — 행마다 이름 · 기본 가지 · 접힌 지침과 리뷰어.
+// 고른 프로젝트 — 행마다 이름 · 기본 가지 · 접힌 리뷰어와 대화·사이클 설정.
 // ---------------------------------------------------------------------------
 
 
@@ -549,21 +546,6 @@ function chosenRow(project, index) {
   summary.textContent = "이 프로젝트만의 설정";
   fold.append(summary);
 
-  const guideLabel = document.createElement("label");
-  guideLabel.className = "ifield";
-  const guideText = document.createElement("span");
-  guideText.className = "ifield__label";
-  guideText.textContent = "지켜 줄 것 (선택)";
-  const guide = document.createElement("textarea");
-  guide.rows = 3;
-  guide.placeholder = "예: 목 데이터는 mock 폴더에만 둔다";
-  guide.value = project.instructions;
-  guide.addEventListener("input", () => {
-    project.instructions = guide.value;
-    render({ keepRows: true });
-  });
-  guideLabel.append(guideText, guide);
-
   const reviewerLabel = document.createElement("label");
   reviewerLabel.className = "ifield";
   const reviewerText = document.createElement("span");
@@ -591,7 +573,6 @@ function chosenRow(project, index) {
   for (const [value, label] of [
     ["", "프로바이더 — 도구 기본"],
     ["claude", "Claude"],
-    ["codex", "Codex"],
   ]) {
     const option = document.createElement("option");
     option.value = value;
@@ -685,7 +666,7 @@ function chosenRow(project, index) {
   );
   lifeLabel.append(lifeText, lifeRow);
 
-  fold.append(guideLabel, reviewerLabel, defaultsLabel, lifeLabel);
+  fold.append(reviewerLabel, defaultsLabel, lifeLabel);
   row.append(head, fold);
   return row;
 }

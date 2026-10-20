@@ -1,15 +1,13 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { DEFAULT_HANDOFF_BODY } from "@colonova-design/protocol";
 import { recordComments } from "../comments.js";
 import { browseFiles, listFiles } from "../environment.js";
-import { readComparison } from "../screen-comparisons.js";
 import { undoLog } from "../undo-log.js";
 import type { RequestHandlers, RouterDeps } from "./types.js";
 
 type RepositoryDeps = Pick<
   RouterDeps,
-  "fleet" | "registry" | "manager" | "handoffPreviews" | "previewDrivers" | "comparisonReady"
+  "fleet" | "registry" | "manager" | "handoffPreviews" | "previewDrivers"
 >;
 type RepositoryRequest = Extract<
   keyof RequestHandlers,
@@ -36,7 +34,7 @@ export function repositoryHandlers(
     );
   }
 
-  return {
+  const handlers: RequestHandlers<RepositoryRequest> = {
     "repo.files": async (message) => {
       // @-mention autocomplete draws from the repo clone only.
       const root = deps.fleet.requireActive().repo.root;
@@ -61,16 +59,11 @@ export function repositoryHandlers(
       });
     },
     "repo.handoff": async (message) => {
-      const active = deps.fleet.requireActive();
-      const commentsFile = join(active.paths.root, "comments.json");
-      return await active.repo.handoff({
-        title: message.title ?? deps.registry.get(active.slug)?.name ?? undefined,
-        body: message.body ?? DEFAULT_HANDOFF_BODY,
-        // D93: the comment store — the PR body's `### 수정 요청` section is
-        // the daemon's to build.
-        commentsFile,
+      // 옛 클라이언트의 제출도 같은 확인·원장·재시도 경로를 지난다.
+      return await handlers["repo.submit"]({
+        id: message.id,
+        type: "repo.submit",
         ...(message.sessionId ? { sessionId: message.sessionId } : {}),
-        ...briefTo(message.sessionId, "handoff"),
       });
     },
     "repo.submit": async (message) => {
@@ -99,7 +92,7 @@ export function repositoryHandlers(
           if ((await active.repo.repoCore().finalChangedFiles()).length === 0) {
             throw new Error("제출할 변경이 없어요.");
           }
-          active.supervisor.submit(
+          await active.supervisor.submit(
             "button",
             message.sessionId,
             message.note || undefined,
@@ -107,7 +100,7 @@ export function repositoryHandlers(
           );
         });
       } else {
-        active.supervisor.submit(
+        await active.supervisor.submit(
           "button",
           message.sessionId,
           message.note || undefined,
@@ -121,7 +114,11 @@ export function repositoryHandlers(
           resolve();
         });
       });
-      return active.lastDiff ?? { stage: "computing" as const };
+      const result = active.lastDiff ?? { stage: "computing" as const };
+      if (result.stage === "failed") {
+        throw new Error(result.detail ?? "제출하지 못했어요. 내용을 확인하고 다시 시도해 주세요.");
+      }
+      return result;
     },
     "repo.handoffStatus": async () => {
       // 상태 확인은 읽기만 한다 — 끝난 사이클의 착지(fetch·checkout·reset)는
@@ -178,40 +175,6 @@ export function repositoryHandlers(
         shotCount: 0,
       });
     },
-    "repo.comparison": async (message) => {
-      const active = deps.fleet.requireActive();
-      if (!message.submitted) {
-        await deps.comparisonReady?.(active.slug);
-        return readComparison(active.paths.root, message);
-      }
-      const route = message.route.split("?")[0] ?? "/";
-      if (!route.startsWith("/") || route.startsWith("//")) return null;
-      const before = await active.repo.handoffShot(route);
-      const shots = await deps.previewDrivers.captureHandoffShots([{ route }]);
-      const shot = shots[0];
-      const mediaType =
-        shot?.extension === ".png"
-          ? "image/png"
-          : shot?.extension === ".webp"
-            ? "image/webp"
-            : "image/jpeg";
-      return {
-        route,
-        requestId: "submitted",
-        sessionId: "",
-        sha: "",
-        title: "",
-        viewport: "desktop",
-        before: before ? { ...before, at: "" } : null,
-        after: shot
-          ? {
-              mediaType,
-              data: Buffer.from(shot.image).toString("base64"),
-              at: new Date().toISOString(),
-            }
-          : null,
-      };
-    },
     // 서비스의 첫 화면 사진(2026-10-07) — 첫 화면의 주소는 준비가 끝나며 읽은 것, 모르면 루트. 쿼리는 뗀다.
     "repo.firstLook": async () => {
       const active = deps.fleet.requireActive();
@@ -260,4 +223,5 @@ export function repositoryHandlers(
       return { recorded: message.items.length };
     },
   };
+  return handlers;
 }

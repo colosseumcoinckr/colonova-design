@@ -58,9 +58,8 @@ export async function sealInvite(invite) {
 }
 
 /** 프로젝트 항목의 빈 값은 싣지 않는다 — 읽는 쪽(normalizeInvite)도 같은 규칙이다. */
-function buildProject({ repoUrl, name, baseBranch, reviewers, instructions, defaults, lifecycle }) {
+function buildProject({ repoUrl, name, baseBranch, reviewers, defaults, lifecycle }) {
   const list = (reviewers ?? []).map((login) => login.trim()).filter((login) => login !== "");
-  const guide = instructions?.trim();
   // 초대 v4(PLAN 단계 5): defaults·lifecycle 은 개발자가 정한 값만 실린다 —
   // 비어 있으면 읽는 쪽의 기본값이 그대로 선다.
   const seed = defaults && Object.values(defaults).some((v) => v !== undefined && v !== "");
@@ -71,7 +70,6 @@ function buildProject({ repoUrl, name, baseBranch, reviewers, instructions, defa
     baseBranch: baseBranch?.trim() || "main",
     approveCommands: true,
     ...(list.length > 0 ? { reviewers: list } : {}),
-    ...(guide ? { instructions: guide } : {}),
     ...(seed ? { defaults } : {}),
     ...(life ? { lifecycle } : {}),
   };
@@ -110,7 +108,7 @@ function repoKey(url) {
  * 초대 파일의 내용(봉투 안쪽, v4) — 토큰 하나와 프로젝트 목록이다. token 은
  * 호출자가 trim 해 둔 것을 그대로 싣는다 — 이 함수는 비밀을 가공하지 않는다.
  * author 는 모든 프로젝트가 공유하는 "이 작업에 적을 이름"이고, projects 는
- * [{ repoUrl, name, baseBranch?, reviewers?, instructions?, defaults?,
+ * [{ repoUrl, name, baseBranch?, reviewers?, defaults?,
  * lifecycle? }]다. notify 는 기계 몫 — 개발자 알림이 갈 Slack 길(PLAN L11).
  *
  * 예전 단일 인자({ repoUrl, name, baseBranch, reviewers })도 받아 프로젝트

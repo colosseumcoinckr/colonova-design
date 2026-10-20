@@ -1,110 +1,16 @@
 /**
  * 사용량 칸의 읽기 (2026-09-28) — 칩이 창을 모두 세우도록 바꾼 자리의 시험.
- * 세 축을 누른다: 두 드라이버의 답 → 창 분류(Codex 의 무료 · 유료 · 모델별
- * 한도, Claude 의 모델별 주간), 대화 없이 Codex 계정을 읽는 probe(가짜
- * app-server 로), 쉬는 대화가 없을 때 그 AI 의 probe 로 읽는 추적기.
+ * 두 축을 누른다: 드라이버의 답 → 창 분류(Claude 의 모델별 주간), 쉬는 대화가
+ * 없을 때 그 AI 의 probe 로 읽는 추적기.
  */
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 // 컴파일된 dist 를 읽는다 — `@colonova-design/protocol` 의 import 가 얽혀 있다.
 import { toPlanUsage as claudePlan } from "../dist/agent/drivers/claude/session.js";
-import { toPlanUsage as codexPlan, probeCodexUsage } from "../dist/agent/drivers/codex/session.js";
 import { PlanTracker } from "../dist/plan-tracker.js";
-
-/** 2026-09-28 실측의 무료 요금제 답 — 30일 창 하나. */
-const FREE = {
-  limitId: "codex",
-  limitName: null,
-  primary: { usedPercent: 1, windowDurationMins: 43200, resetsAt: 1792275214 },
-  secondary: null,
-  planType: "free",
-};
-
-const window = (usedPercent: number, windowDurationMins: number) => ({
-  usedPercent,
-  windowDurationMins,
-  resetsAt: 1790000000,
-});
-
-test("Codex 무료 요금제 — 이름 없는 한 달 창 하나(이번 달)", () => {
-  const plan = codexPlan({ rateLimits: FREE, rateLimitsByLimitId: { codex: FREE } });
-  assert.equal(plan.subscriptionType, "free");
-  assert.equal(plan.fiveHour, null);
-  assert.equal(plan.sevenDay, null);
-  assert.deepEqual(plan.modelWeekly, [
-    {
-      utilization: 1,
-      resetsAt: "2026-10-17T22:13:34.000Z",
-      label: "이번 달",
-      name: null,
-      period: "month",
-    },
-  ]);
-});
-
-test("Codex 유료 요금제 — 5시간 · 주간 칸, 모델별 한도는 5시간과 주간이 두 줄", () => {
-  const main = {
-    limitId: "codex",
-    limitName: null,
-    primary: window(12, 300),
-    secondary: window(5, 10080),
-    planType: "plus",
-  };
-  const spark = {
-    limitId: "codex_bengalfox",
-    limitName: "GPT-5.3-Codex-Spark",
-    primary: window(30, 300),
-    secondary: window(9, 10080),
-  };
-  const plan = codexPlan({
-    rateLimits: main,
-    // 요금제 자신의 답이 id 맵에도 한 번 더 온다 — 두 번 세지 않는다.
-    rateLimitsByLimitId: { codex: main, codex_bengalfox: spark },
-  });
-  assert.equal(plan.subscriptionType, "plus");
-  assert.equal(plan.fiveHour?.utilization, 12);
-  assert.equal(plan.sevenDay?.utilization, 5);
-  assert.deepEqual(
-    plan.modelWeekly.map((row) => [row.label, row.name, row.period, row.utilization]),
-    [
-      ["GPT-5.3-Codex-Spark 5시간", "GPT-5.3-Codex-Spark", "fiveHour", 30],
-      ["GPT-5.3-Codex-Spark 주간", "GPT-5.3-Codex-Spark", "week", 9],
-    ],
-  );
-});
-
-test("Codex — 모델별 한도의 창은 요금제 자신의 빈 칸을 채우지 않는다", () => {
-  const plan = codexPlan({
-    rateLimits: FREE,
-    rateLimitsByLimitId: {
-      codex: FREE,
-      // 이름 없는 한도는 제 id 로 선다 — 이름이 없다고 줄이 사라지지 않는다.
-      extra_pool: { limitId: "extra_pool", limitName: null, primary: window(40, 300) },
-    },
-  });
-  assert.equal(plan.fiveHour, null);
-  assert.deepEqual(
-    plan.modelWeekly.map((row) => [row.label, row.name, row.period]),
-    [
-      ["이번 달", null, "month"],
-      ["extra_pool 5시간", "extra_pool", "fiveHour"],
-    ],
-  );
-});
-
-test("Codex — 세 기간 밖의 창은 기간 없이, 이름에 날 수를 적는다", () => {
-  const plan = codexPlan({
-    rateLimits: { limitId: "codex", primary: window(3, 3 * 1440), secondary: null },
-  });
-  assert.deepEqual(
-    plan.modelWeekly.map((row) => [row.label, row.period]),
-    [["3일", null]],
-  );
-});
 
 test("Claude — 5시간 · 주간 · 모델별 주간(Fable)은 이름과 기간을 함께 싣는다", () => {
   assert.equal(
@@ -136,62 +42,6 @@ test("Claude — 5시간 · 주간 · 모델별 주간(Fable)은 이름과 기�
   ]);
 });
 
-/**
- * 줄마다 JSON-RPC 로 답하는 가짜 `codex app-server` — 한도 읽기에 `answer` 를 돌려준다.
- * Windows 는 제품이 codex 를 `.exe` 로만 찾아 셸 없이 직접 띄운다 — 스크립트 가짜는 돌지 못한다.
- * 그래서 node.exe 를 실행 파일로 두고 같은 몸통을 cwd 의 `app-server` 파일에 쓴다 —
- * `node.exe app-server` 가 그 파일을 돈다(probe 의 cwd 는 dir 이다, 2026-10-19).
- */
-function fakeAppServer(dir: string, answer: unknown | "hang"): string {
-  const path = join(dir, process.platform === "win32" ? "app-server" : "codex");
-  writeFileSync(
-    path,
-    `#!/usr/bin/env node
-const answer = ${JSON.stringify(answer)};
-require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
-  const message = JSON.parse(line);
-  if (message.id === undefined) return;
-  if (message.method === "initialize") reply(message.id, {});
-  else if (message.method === "account/rateLimits/read" && answer !== "hang") reply(message.id, answer);
-});
-function reply(id, result) {
-  process.stdout.write(JSON.stringify({ jsonrpc: "2.0", id, result }) + "\\n");
-}
-`,
-    { mode: 0o755 },
-  );
-  return process.platform === "win32" ? process.execPath : path;
-}
-
-test("probeCodexUsage — 스레드 없이 핸드셰이크 뒤 한도를 읽는다", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "codex-probe-"));
-  try {
-    const executable = fakeAppServer(dir, { rateLimits: FREE });
-    const plan = await probeCodexUsage({ executable, cwd: dir });
-    assert.equal(plan?.provider, "codex");
-    assert.equal(plan?.modelWeekly[0]?.period, "month");
-    assert.equal(await probeCodexUsage({ executable: null, cwd: dir }), null);
-  } finally {
-    // probe 는 답을 받고 자식을 끝내라고만 알린다. Windows 는 아직 도는 자식의 cwd 를 지우지 못한다(EPERM).
-    // 동기 rmSync 는 이 EPERM 을 다시 해 보지 않는다 — 비동기 rm 의 재시도로 자식의 끝을 기다린다.
-    await rm(dir, { recursive: true, force: true, maxRetries: 20, retryDelay: 50 });
-  }
-});
-
-test("probeCodexUsage — 답하지 않는 CLI 는 데몬의 종료 신호에 끊기고 읽기 없음", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "codex-probe-"));
-  try {
-    const executable = fakeAppServer(dir, "hang");
-    const stop = new AbortController();
-    const started = Date.now();
-    setTimeout(() => stop.abort(), 200);
-    assert.equal(await probeCodexUsage({ executable, cwd: dir, signal: stop.signal }), null);
-    assert.ok(Date.now() - started < 5_000, "종료 신호가 probe 를 기다리게 두지 않는다");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test("PlanTracker — 쉬는 대화가 없으면 그 AI 의 probe 로, 있으면 그 대화로 읽는다", async () => {
   const dir = mkdtempSync(join(tmpdir(), "plan-tracker-"));
   const before = process.env.COLONOVA_DESIGN_PLAN_USAGE;
@@ -211,10 +61,10 @@ test("PlanTracker — 쉬는 대화가 없으면 그 AI 의 probe 로, 있으면
       idleSession: (provider: string) => idle.get(provider) ?? null,
       usageProbes: [
         {
-          provider: "codex",
+          provider: "second",
           read: async () => {
-            asked.push("probe:codex");
-            return reading("codex");
+            asked.push("probe:second");
+            return reading("second");
           },
         },
       ],
@@ -225,12 +75,12 @@ test("PlanTracker — 쉬는 대화가 없으면 그 AI 의 probe 로, 있으면
       },
       catalogSources: [],
     });
-    // 읽기가 없는 AI 는 하나씩 빚진다 — codex 는 probe 가, 그 밖의 AI 는 읽을 길이 없어 묻지 않는다.
-    tracker.currentAll(["codex", "other"]);
+    // 읽기가 없는 AI 는 하나씩 빚진다 — second 는 probe 가, 그 밖의 AI 는 읽을 길이 없어 묻지 않는다.
+    tracker.currentAll(["second", "other"]);
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.deepEqual(asked, ["probe:codex"]);
+    assert.deepEqual(asked, ["probe:second"]);
     assert.equal(changed, 1);
-    assert.equal(tracker.currentAll(["codex"]).codex?.fiveHour?.utilization, 10);
+    assert.equal(tracker.currentAll(["second"]).second?.fiveHour?.utilization, 10);
     // 쉬는 대화가 있으면 probe 를 띄우지 않고 그 대화가 답한다(간격의 하한은 새 AI 라 없다).
     idle.set("claude", {
       usage: async () => {
@@ -240,11 +90,11 @@ test("PlanTracker — 쉬는 대화가 없으면 그 AI 의 probe 로, 있으면
     });
     tracker.refresh("claude");
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.deepEqual(asked, ["probe:codex", "session:claude"]);
+    assert.deepEqual(asked, ["probe:second", "session:claude"]);
     // 2분 안의 다시 읽기는 모인다 — 칸을 여닫을 때마다 CLI 를 띄우지 않는다.
-    tracker.refresh("codex");
+    tracker.refresh("second");
     await new Promise((resolve) => setTimeout(resolve, 20));
-    assert.deepEqual(asked, ["probe:codex", "session:claude"]);
+    assert.deepEqual(asked, ["probe:second", "session:claude"]);
   } finally {
     if (before === undefined) delete process.env.COLONOVA_DESIGN_PLAN_USAGE;
     else process.env.COLONOVA_DESIGN_PLAN_USAGE = before;

@@ -73,8 +73,8 @@ export class SessionManager {
   private readonly threadCache = new Map<string, ThreadSummary[]>();
   /**
    * 스캔 겸침 (SCAN COALESCE): a session event marks the clone stale on every
-   * turn edge, and a store sweep is not free — the codex rollout walk reads a
-   * store that grows for years. Callers
+   * turn edge, and a store sweep is not free — a transcript store grows for
+   * years. Callers
    * arriving while one scan is in flight await the same promise instead of
    * stacking another identical sweep behind it. The entry carries the scan's
    * generation (scanEpoch): a removeWhere bumps the generation and drops the

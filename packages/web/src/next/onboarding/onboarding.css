@@ -8,10 +8,10 @@
 /* ── 체크리스트 한 장 ── */
 /* 창 전체를 쓰는 뿌리 — `.nx` 의 작업 틀 격자(264px 사이드바 칸)를 풀지 않으면
    몸통이 첫 칸에 끼인다. 머리 위의 은은한 번짐은 팔레트의 포인트 색을 섞어 어느 테마에서도 같은
-   결로 앉는다(`--ob-glow` 로 테마마다 세기를 고른다). `.nx` 의 바탕(var(--bg))과 겹치므로
+   결로 앉는다(`--ob-glow` 가 그 세기다). `.nx` 의 바탕(var(--bg))과 겹치므로
    `.nx.nx-ob` 로 한 단계 올려, 읽히는 순서에 기대지 않는다. */
 .nx.nx-ob {
-  --ob-glow: 11%;
+  --ob-glow: 4%;
   position: absolute;
   inset: 0;
   display: block;
@@ -145,7 +145,7 @@
 }
 
 .nx-ob-title {
-  font-family: var(--serif);
+  font-family: var(--font);
   font-weight: 400;
   font-size: 34px;
   line-height: 1.2;
@@ -162,6 +162,32 @@
   line-height: 1.6;
   white-space: pre-line;
   animation: nx-ob-rise 0.4s var(--drift) 140ms backwards;
+}
+
+/* 준비물(2026-10-20 온보딩 손질) — 시작 전에 손에 쥘 두 가지. 제목 아래에 낮은 목소리의 알약으로 선다. */
+.nx-ob-need {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  margin: 14px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  animation: nx-ob-rise 0.4s var(--drift) 180ms backwards;
+}
+
+.nx-ob-need-t {
+  color: var(--ink3);
+  margin-right: 2px;
+}
+
+.nx-ob-need-i {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink2);
 }
 
 /* `프로젝트가 없어요` — 링 아래에 놓는 자리 한 장만 선다. */
@@ -759,28 +785,16 @@
   margin-top: 1px;
 }
 
-/* Codex 의 선택 줄 — 카드가 아니라 곁줄이다. */
-.nx-ob-opt {
+/* 막혔나요(2026-10-20 온보딩 손질) — 체크리스트 아래의 낮은 줄. 진단 복사 단추 하나. */
+.nx-ob-foot {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   align-items: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 8px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  font-size: 13px;
-  color: var(--ink2);
-  animation: nx-ob-rise 0.4s var(--drift) 340ms backwards;
-}
-
-.nx-ob-opt .nx-grow small {
-  display: block;
+  gap: 6px;
+  margin-top: 14px;
+  font-size: 12.5px;
   color: var(--ink3);
-  font-size: 12px;
-}
-
-.nx-ob-opt .nx-i {
-  color: var(--green);
 }
 
 /* 상태 동그라미 — ok(체크) · run(돌기) · act(점) · wait(허선). 처음 한 번의 카드는 타일로
@@ -820,11 +834,6 @@
   border: 1.5px dashed var(--line2);
 }
 
-/* 테마마다 번짐의 세기 — 포인트 색이 검정인 팔레트는 번짐이 때처럼 보여 거의 끈다. */
-html[data-theme="codex"] .nx.nx-ob {
-  --ob-glow: 3%;
-}
-
 /* ── 창이 낮거나 좁을 때 ── */
 /* 낮은 창 — 머리가 작아지고, 놓는 칸은 가운데 모은 한 장에서 왼쪽 정렬의 짧은 칸(그림 · 글 · 단추)으로
    구조가 바뀐다. 그냥 줄이면 세 번째 카드가 첫 화면 밖으로 밀려 나간다. */
@@ -861,6 +870,10 @@ html[data-theme="codex"] .nx.nx-ob {
   .nx-ob-title {
     font-size: 30px;
     margin-top: 14px;
+  }
+
+  .nx-ob-need {
+    margin-top: 10px;
   }
 
   .nx-drop:not(.nx-drop--busy) {
@@ -1044,8 +1057,8 @@ html[data-theme="codex"] .nx.nx-ob {
   .nx-ring-seal,
   .nx-ob-title,
   .nx-ob-sub,
+  .nx-ob-need,
   .nx-ob-solo,
-  .nx-ob-opt,
   .nx-ob-step,
   .nx-ob-step--passed::after,
   .nx-ob-step--passed .nx-ob-tile,

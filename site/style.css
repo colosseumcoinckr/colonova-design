@@ -1,5 +1,5 @@
 /* ColoNova Design 소개 페이지 — 앱의 팔레트(styles.css)를 그대로 잇는다.
-   data-theme 으로 앱과 같은 여섯 팔레트(Claude · Codex · 밝음 · 어두움 · GitHub 밝음 ·
+   data-theme 으로 앱과 같은 다섯 팔레트(Claude · 밝음 · 어두움 · GitHub 밝음 ·
    GitHub 어두움)를 갈아입고, 시스템 따르기는 theme.js 가 밝음/어두움으로 풀어 준다 —
    기능 벤토의 테마 카드가 바꾼다. 팔레트 토큰은 앱의 것이라 건드리지 않는다 —
    최신화는 층(배경 · 그림자 · 유리), 타입, 간격, 모션으로 한다. */
@@ -155,34 +155,6 @@
   color-scheme: light;
 }
 
-/* ---------- 팔레트: Codex — 검정 잉크 한 색, 포인트가 색이 아니라 먹이다 ---------- */
-[data-theme="codex"] {
-  --bg: #ffffff;
-  --bg-2: #f9f9f9;
-  --panel: #f4f4f4;
-  --panel-2: #ececec;
-  --panel-3: #e3e3e3;
-  --line: #e5e5e5;
-  --line-soft: #efefef;
-  --line-strong: #d6d6d6;
-  --text: #0d0d0d;
-  --text-2: #5d5d5d;
-  --muted: #6e6e6e;
-  --accent: #0d0d0d;
-  --accent-strong: #0d0d0d;
-  --accent-soft: rgba(13, 13, 13, 0.06);
-  --accent-glow: rgba(13, 13, 13, 0.22);
-  --on-accent: #ffffff;
-  --ok: #23865a;
-  --ok-line: rgba(35, 134, 90, 0.38);
-  --ok-soft: rgba(35, 134, 90, 0.09);
-  --danger: #c43d3d;
-  --warn: #8a5a12;
-  --shadow-win: 0 30px 80px -32px rgba(0, 0, 0, 0.26), 0 0 120px -40px rgba(0, 0, 0, 0.1);
-  --scrim: rgba(0, 0, 0, 0.4);
-  color-scheme: light;
-}
-
 * {
   box-sizing: border-box;
   scrollbar-width: thin;
@@ -308,16 +280,6 @@ kbd {
   border-radius: 6px;
   padding: 0.04em 0.5em;
   white-space: nowrap;
-}
-
-/* Codex 는 포인트가 색이 아니라 먹이다 — 강조 낱말이 본문과 같은 검정이 되므로
-   글로우 대신 밑줄로 짚는다. */
-[data-theme="codex"] .hero h1 em,
-[data-theme="codex"] .section h2 em {
-  filter: none;
-  text-decoration: underline;
-  text-decoration-thickness: 0.07em;
-  text-underline-offset: 0.14em;
 }
 
 /* ---- 상단 바 — 브랜드와 이동, 개발자 진입을 나눈다. ---- */
@@ -454,8 +416,7 @@ main {
 }
 [data-theme="light"] .hero h1 em,
 [data-theme="claude"] .hero h1 em,
-[data-theme="github-light"] .hero h1 em,
-[data-theme="codex"] .hero h1 em {
+[data-theme="github-light"] .hero h1 em {
   color: #315fe8;
 }
 .hero h1 em::after {
@@ -3295,7 +3256,7 @@ main {
 /* 테마 카드 — 앱의 설정처럼, 그 테마를 입은 작은 앱 창이 미리 보인다 */
 .tc-row {
   display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 12px;
   margin-top: 12px;
 }
@@ -5000,7 +4961,7 @@ main {
     grid-column: span 2;
   }
   .tc-row {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
   .story__grid {
     grid-template-columns: 1fr;
@@ -5328,12 +5289,6 @@ main {
   }
   .tc-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .tc:last-child {
-    grid-column: 1 / -1;
-  }
-  .tc:last-child .tc__win {
-    aspect-ratio: 10 / 3.3;
   }
   .talk__lines {
     padding: 18px 16px 4px;

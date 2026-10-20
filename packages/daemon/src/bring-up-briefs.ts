@@ -45,6 +45,20 @@ export type BringUpDecision =
 
 const NONE: BringUpDecision = { action: "none" };
 
+/**
+ * 사람의 손이나 이 기계의 도구가 풀 실패 — AI 에게 넘기지도, 장부에 세지도
+ * 않는다. 세면 같은 실패의 되풀이가 상한을 넘어 개발자 알림까지 간다(AI 는
+ * 한 번도 돌지 않았는데). commands 는 첫 실행의 동의, registry-auth 는 초대
+ * 파일의 연결 코드, pnpm-missing 은 데몬의 corepack 한 번이 맡는다
+ * (2026-10-20 사용자 보고 — 인증 실패가 AI 로 가서 28초 쓰고 "해결 여부를
+ * 확인하지 못했어요" 로 끝났다). repo-guidance 의 `agent` 없는 종류와 같다.
+ */
+export const HUMAN_BRING_UP_KINDS: ReadonlySet<string> = new Set([
+  "commands",
+  "registry-auth",
+  "pnpm-missing",
+]);
+
 export function nextBringUpBrief(
   episode: BringUpEpisode | undefined,
   status: Pick<RepoStatus, "phase" | "errorKind" | "detail">,
@@ -56,9 +70,9 @@ export function nextBringUpBrief(
     return { episode: episode ? { ...episode, armed: true } : undefined, decision: NONE };
   }
   const kind = status.errorKind;
-  // 사람의 결정이 필요한 실패(commands — 첫 실행의 동의)는 AI 의 몫이 아니고,
+  // 사람의 손이 필요한 실패(HUMAN_BRING_UP_KINDS)는 AI 의 몫이 아니고,
   // C5 의 재시도 중 문장은 아직 실패가 아니다.
-  if (!kind || kind === "commands") return { episode, decision: NONE };
+  if (!kind || HUMAN_BRING_UP_KINDS.has(kind)) return { episode, decision: NONE };
   if (status.detail?.startsWith("화면을 다시 켜는 중") === true) return { episode, decision: NONE };
   if (episode && !episode.armed) return { episode, decision: NONE };
   const next: BringUpEpisode = {

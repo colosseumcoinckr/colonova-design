@@ -5,7 +5,8 @@ import type { Daemon } from "../../lib/daemon-client";
 import type { ComposerHandle } from "../chat/Composer";
 import { L } from "../labels";
 import type { ShellNav } from "../slots";
-import { SparkIcon } from "../ui/icons";
+import { ChevronRightIcon } from "../ui/icons";
+import { ProjectMark } from "../ui/ProjectMark";
 import { HomeComposer } from "./HomeComposer";
 import { HomeInbox } from "./HomeInbox";
 import { HomeReady } from "./HomeReady";
@@ -71,10 +72,29 @@ export function HomeView({
       }}
     >
       <div className="nx-home-inner">
-        <h1 className="nx-greet">
-          <SparkIcon />
-          <span>{author ? L.home.greet(author) : L.transcript.emptyTitle}</span>
-        </h1>
+        {active && (
+          <div className="nx-home-project">
+            <ProjectMark slug={active.slug} name={active.name} size="sm" />
+            <div className="nx-home-project-name">
+              <span>{L.home.workspace}</span>
+              <b>{active.name}</b>
+            </div>
+            <button
+              type="button"
+              className="nx-btn nx-home-open"
+              onClick={() => nav.openProjectScreen(active.slug)}
+            >
+              {L.home.openScreen}
+              <ChevronRightIcon />
+            </button>
+          </div>
+        )}
+        <div className="nx-home-intro">
+          <h1 className="nx-greet">
+            <span>{author ? L.home.greet(author) : L.transcript.emptyTitle}</span>
+          </h1>
+          <p className="nx-home-sub">{L.home.intro}</p>
+        </div>
         <HomeComposer
           daemon={daemon}
           sessions={sessions}
@@ -86,6 +106,34 @@ export function HomeView({
           onOpened={nav.showThread}
           onToast={nav.toast}
         />
+        {active &&
+          (active.threads?.length ?? 0) === 0 &&
+          !active.working &&
+          active.pendingCount === 0 && (
+            <ol className="nx-home-guide" aria-label={L.home.guideLabel}>
+              <li>
+                <span aria-hidden="true">1</span>
+                <div>
+                  <b>{L.home.guideAsk}</b>
+                  <p>{L.home.guideAskBody}</p>
+                </div>
+              </li>
+              <li>
+                <span aria-hidden="true">2</span>
+                <div>
+                  <b>{L.home.guideCheck}</b>
+                  <p>{L.home.guideCheckBody}</p>
+                </div>
+              </li>
+              <li>
+                <span aria-hidden="true">3</span>
+                <div>
+                  <b>{L.home.guideSubmit}</b>
+                  <p>{L.home.guideSubmitBody}</p>
+                </div>
+              </li>
+            </ol>
+          )}
         <HomeReady
           projects={daemon.projects}
           ready={ready}

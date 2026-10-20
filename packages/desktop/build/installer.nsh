@@ -31,3 +31,15 @@
 !macro customInit
   !insertmacro removeLegacyInstall
 !macroend
+
+; 설치 범위를 묻지 않는다(2026-10-20 비개발자 Windows 설치 검토). oneClick 이 아닌 마법사는
+; perMachine 이 비면 `모든 사용자 / 나만` 쪽을 띄운다 — `모든 사용자` 를 고르면 관리자 권한(UAC)을
+; 묻고, 일반 계정은 거기서 멈춘다. 관리자가 허락해 설치되어도 무인 자가 교체(/S, 승격 없음)의
+; 전제가 깨진다. 그래서 늘 현재 사용자로 설치한다. electron-builder 템플릿(multiUserUi.nsh)이
+; 설치 범위 쪽을 열기 전에 이 매크로를 부른다. 제거 프로그램은 같은 함수를 지나므로 건드리지
+; 않는다 — 예전에 `모든 사용자` 로 설치한 기계의 제거가 그 설치를 찾아야 한다.
+!macro customInstallMode
+  !ifndef BUILD_UNINSTALLER
+    StrCpy $isForceCurrentInstall "1"
+  !endif
+!macroend

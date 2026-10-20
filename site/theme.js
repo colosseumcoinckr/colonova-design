@@ -1,7 +1,7 @@
 /**
  * 팔레트 고르기 — <head> 에서 동기로 도는 작은 스크립트.
  *
- * 앱의 설정 → 테마와 같은 선택지다: Claude · Codex · 밝음 · 어두움 · GitHub 밝음 ·
+ * 앱의 설정 → 테마와 같은 선택지다: Claude · 밝음 · 어두움 · GitHub 밝음 ·
  * GitHub 어두움, 그리고 시스템 따르기(밝음과 어두움을 OS 설정으로 고른다). 저장된
  * 선택은 첫 페인트 전에 <html data-theme> 로 입힌다 — 모듈 스크립트가 도는 뒤에
  * 입히면 밝은 테마를 고른 사람이 새로 고칠 때마다 어두운 화면이 번쩍인다.
@@ -12,14 +12,13 @@
  */
 (() => {
   const KEY = "colonova-site-theme";
-  const CHOICES = ["dark", "light", "claude", "github", "github-light", "codex", "system"];
+  const CHOICES = ["dark", "light", "claude", "github", "github-light", "system"];
   const META = {
     dark: "#0d0d0f",
     light: "#ffffff",
     claude: "#faf9f5",
     github: "#0d1117",
     "github-light": "#ffffff",
-    codex: "#ffffff",
   };
 
   const root = document.documentElement;

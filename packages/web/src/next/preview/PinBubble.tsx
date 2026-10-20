@@ -97,8 +97,7 @@ export function PinBubble({
   });
   const [place, setPlace] = useState<BubblePlace | null>(null);
 
-  // 말풍선도 대화상자의 층다리를 탄다 — Tab 이 칸 밖으로 새지 않고(ComparisonDialog
-  // 의 같은 손), 닫히면 초점이 돌아간다. 초점 씨 뿌리기는 아래의 입력칸 몫이다.
+  // 말풍선도 대화상자의 층다리를 탄다 — Tab 이 칸 밖으로 새지 않고, 닫히면 초점이 돌아간다. 초점 씨 뿌리기는 아래의 입력칸 몫이다.
   // 2026-10-04 ux-review: role=dialog 만으로 트랩이 없었다.
   useModalFocus(ref);
 

@@ -1,5 +1,6 @@
 import type { ServerMessage } from "@colonova-design/protocol";
 import { collectDiagnostics } from "../diagnostics.js";
+import { forgetMissingGit } from "../environment.js";
 import { submitFeatureRequest } from "../feedback.js";
 import { runOnboardingChecks, runPnpmInstall, startGitInstall } from "../onboarding.js";
 import type { RequestHandlers, RouterDeps } from "./types.js";
@@ -52,6 +53,8 @@ export function systemHandlers(deps: SystemDeps): RequestHandlers<SystemRequest>
       // 방어(2026-09-24): 시작 때 못 푼 claude 경로는 여기서 한 번 다시 푼다 —
       // 사용자가 앱 밖에서 직접 설치한 경우도 재시작 없이 잡히게.
       if (deps.claudeExecutable() === null) await deps.refreshClaudeExecutable();
+      // git 도 같다(2026-10-20): 못 찾았다는 기억을 지워야 첫 화면의 `다시 확인` 이 새로 설치한 git 을 본다.
+      forgetMissingGit();
       return await runOnboardingChecks({
         claudeExecutableOverride: deps.claudeExecutableOverride(),
         gitHubClient: () => deps.github.client(),
@@ -64,8 +67,7 @@ export function systemHandlers(deps: SystemDeps): RequestHandlers<SystemRequest>
     },
     "onboarding.fix": async (message) => {
       switch (message.kind) {
-        case "install-claude":
-        case "install-codex": {
+        case "install-claude": {
           // 1단계: 데몬이 설치를 끝까지 지켜본다 — 진행 줄과 끝은 방송으로
           // 나가고, ok 면 웹이 게이트를 다시 묻는다. 종류마다 하나씩만 돈다.
           const kind = message.kind;
@@ -73,24 +75,18 @@ export function systemHandlers(deps: SystemDeps): RequestHandlers<SystemRequest>
             onProgress: (line) =>
               deps.broadcast({ type: "onboarding.install.progress", kind, line }),
             onDone: (ok, detail, executable) => {
-              // 방송 전에 먼저: claude 설치의 성공 판정에 쓴 경로를 심어야
+              // 방송 전에 먼저: 설치의 성공 판정에 쓴 경로를 심어야
               // 이어지는 재검사·로그인이 방금 설치한 CLI 를 본다(2026-09-24).
-              if (ok && kind === "install-claude" && executable) {
-                deps.setClaudeExecutable(executable);
-              }
+              if (ok && executable) deps.setClaudeExecutable(executable);
               deps.broadcast({ type: "onboarding.install.done", kind, ok, detail });
             },
           });
         }
-        case "login-claude":
-        case "login-codex": {
+        case "login-claude": {
           // P1-1: 데몬이 로그인을 대신 몰고, 주소·끝은 방송으로 나간다.
           // 각 드라이버가 자기 로그인 명령을 선언한다(loginCommand) — claude 는
-          // `auth login`(스파이크로 확인: 주소는 stdout, 코드는 stdin), codex 는
-          // `login`(주소는 stderr, 콜백 대기). login-codex 는 설정의 「로그인이
-          // 필요해요」 행이 부르는 같은 길이다(2026-09-28).
-          const provider =
-            message.provider ?? (message.kind === "login-codex" ? "codex" : "claude");
+          // `auth login`(스파이크로 확인: 주소는 stdout, 코드는 stdin).
+          const provider = message.provider ?? "claude";
           const driver = deps.agentDrivers.get(provider);
           const command = driver?.loginCommand?.();
           if (!command) {

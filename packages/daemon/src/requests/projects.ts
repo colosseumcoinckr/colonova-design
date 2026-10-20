@@ -49,9 +49,6 @@ export function projectHandlers(deps: ProjectDeps): RequestHandlers<ProjectReque
         ...(message.name !== undefined ? { name: message.name } : {}),
         ...(message.repoUrl !== undefined ? { repoUrl: message.repoUrl } : {}),
         ...(message.baseBranch !== undefined ? { baseBranch: message.baseBranch } : {}),
-        // 지침(P1#8): 다음 대화부터 적용된다 — 돌고 있는 세션의 시스템
-        // 프롬프트를 중간에 바꾸지 않는다(SDK 의 스냅샷 계약).
-        ...(message.instructions !== undefined ? { instructions: message.instructions } : {}),
         // 초대 v4(PLAN 단계 5): 개발자의 값은 덮는다 — null 은 지운다.
         ...(message.defaults !== undefined ? { defaults: message.defaults } : {}),
         ...(message.lifecycle !== undefined ? { lifecycle: message.lifecycle } : {}),

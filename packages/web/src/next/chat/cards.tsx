@@ -248,19 +248,12 @@ export function ReplyBox({
   );
 }
 
-/**
- * 개발자 코멘트 카드(U14) — 사람 · 글 · 상태(`AI가 반영하는 중` → `반영해 같은
- * 요청에 다시 제출했어요`) · `답하기`. 코멘트는 AI 가 바로 반영한다(L9) — 카드는
- * 할 일을 만들지 않고 알린다. 화면 이름은 선로가 아직 싣지 않아 비운다.
- * `ai` 면 AI 리뷰어(Codex · Claude …)의 의견이다(2026-10-14) — 이름 옆에 `AI 검토` 가 서고
- * 답하기는 없다: 답을 받을 사람이 없다.
- */
+/** 개발자 의견을 읽고 수정을 요청하도록 안내한다. 답하기는 사용자가 직접 보내는 답장이다. */
 export function ReviewCard({
   author,
   at,
   texts,
   replyId,
-  fixing,
   ai = false,
   body = "",
   onReply,
@@ -295,7 +288,7 @@ export function ReviewCard({
         </div>
       ))}
       <div className="nx-cfoot">
-        <Stat done={!fixing} doneText={L.cards.reviewDone} runText={L.cards.reviewFixing} />
+        <span className="nx-muted">{L.cards.reviewDone}</span>
         <span className="nx-grow" />
         {replyId !== null && (
           <button type="button" className="nx-btn nx-btn--sm" onClick={() => setOpen((v) => !v)}>

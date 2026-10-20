@@ -8,10 +8,10 @@ test("classifyInstallLine: 설치 프로그램의 날 줄을 세 단계로 가�
   assert.equal(classifyInstallLine("Downloading Claude Code 2.2.0..."), "download");
   assert.equal(classifyInstallLine("Installing Claude Code..."), "install");
   assert.equal(classifyInstallLine("Successfully installed Claude Code"), "install");
-  // Codex 진행기의 한국어 줄 — 접두어와 바이트 수가 섞여도 단계는 닿는다.
-  assert.equal(classifyInstallLine("Codex 내려받는 중 15 MB / 120 MB"), "download");
-  assert.equal(classifyInstallLine("Codex 확인하는 중…"), "verify");
-  assert.equal(classifyInstallLine("Codex 설치하는 중…"), "install");
+  // 한국어 줄 — 접두어와 바이트 수가 섞여도 단계는 닿는다.
+  assert.equal(classifyInstallLine("내려받는 중 15 MB / 120 MB"), "download");
+  assert.equal(classifyInstallLine("확인하는 중…"), "verify");
+  assert.equal(classifyInstallLine("설치하는 중…"), "install");
   // 해시 확인의 영어 표기.
   assert.equal(classifyInstallLine("verifying sha256 digest"), "verify");
 });

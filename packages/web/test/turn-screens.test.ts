@@ -3,6 +3,7 @@ import { test } from "node:test";
 // 둘 다 형제를 부르지 않는 순수 모듈 — src 에서 곧장 읽는다.
 import { previewPathOf } from "../src/lib/screen-link.ts";
 import {
+  lastTurnEdited,
   lastTurnScreens,
   pageTitleOf,
   screenKey,
@@ -77,6 +78,57 @@ test("마지막 턴의 화면만 — 앞 턴의 링크와 하위 에이전트의
 test("화면을 말하지 않은 턴은 빈 목록이다", () => {
   const blocks = [user("u1"), answer("t1", "색을 바꿨습니다."), turnEnd("e1")];
   assert.deepEqual(lastTurnScreens(blocks, toPath), []);
+});
+
+test("마지막 턴이 끝나서 성공한 파일 편집을 했는가 — 턴 끝의 새로 고침의 재료 (2026-10-20)", () => {
+  const tool = (
+    id: string,
+    name: string,
+    extra: { done?: boolean; isError?: boolean; agentId?: string } = {},
+  ) =>
+    ({
+      type: "tool",
+      id,
+      name,
+      input: {},
+      agentId: extra.agentId ?? null,
+      done: extra.done ?? true,
+      ...(extra.isError === undefined ? {} : { isError: extra.isError }),
+    }) as const;
+  // 앞 턴의 편집은 이번 턴의 것이 아니다.
+  assert.equal(
+    lastTurnEdited([user("u1"), tool("a", "Edit"), turnEnd("e1"), user("u2"), turnEnd("e2")]),
+    false,
+  );
+  // 편집 도구 넷과 하위 에이전트의 편집은 센다.
+  for (const name of ["Edit", "Write", "MultiEdit", "NotebookEdit"]) {
+    assert.equal(lastTurnEdited([user("u1"), tool("a", name), turnEnd("e1")]), true, name);
+  }
+  assert.equal(
+    lastTurnEdited([user("u1"), tool("a", "Edit", { agentId: "agent-1" }), turnEnd("e1")]),
+    true,
+  );
+  // 실패했거나 끝나지 않은 편집, 읽기 · 명령은 세지 않는다.
+  assert.equal(
+    lastTurnEdited([user("u1"), tool("a", "Edit", { isError: true }), turnEnd("e1")]),
+    false,
+  );
+  assert.equal(lastTurnEdited([user("u1"), tool("a", "Write", { done: false })]), false);
+  assert.equal(
+    lastTurnEdited([user("u1"), tool("a", "Read"), tool("b", "Bash"), turnEnd("e1")]),
+    false,
+  );
+  // 실패한 편집 뒤에 성공한 편집이 있으면 고친 턴이다.
+  assert.equal(
+    lastTurnEdited([
+      user("u1"),
+      tool("a", "Edit", { isError: true }),
+      tool("b", "Edit"),
+      turnEnd("e1"),
+    ]),
+    true,
+  );
+  assert.equal(lastTurnEdited([]), false);
 });
 
 test("대화의 화면은 최근에 말한 것이 앞, 제목은 마지막 것을 입되 맨 주소가 지우지 않는다", () => {

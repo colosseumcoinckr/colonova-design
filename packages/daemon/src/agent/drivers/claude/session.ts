@@ -185,7 +185,7 @@ export class ClaudeAgentSession implements AgentSession {
       prompt: this.queue,
       options: {
         cwd: launch.cwd,
-        // 프로젝트별 지침(P1#8): 기본 프롬프트를 대체하지 않고 끝에 붙인다 —
+        // 앱 공통 지침은 기본 프롬프트를 대체하지 않고 끝에 붙인다 —
         // 도구가 Claude 에게 주는 나머지 규칙은 그대로 살아 있어야 한다.
         ...(launch.appendSystemPrompt
           ? {

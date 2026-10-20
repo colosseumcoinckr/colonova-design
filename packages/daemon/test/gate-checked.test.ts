@@ -93,7 +93,6 @@ function stub(root: string) {
     gateFallbackCount: new Map(),
     screenMapDue: new Map(),
     autoSaveDue: new Set(["s"]),
-    comparisonSaves: new Map(),
     autoSaveLands: new Map(),
     changePlans: new Map(),
     config: {},
@@ -104,7 +103,6 @@ function stub(root: string) {
       gatedSessions: new Set(),
     },
     manager: { get: () => ({ lastAssistantText: "회원 목록을 고쳤어요" }) },
-    comparisons: { finish: async () => {} },
     broadcast: (message: unknown) => events.push(message),
     workspaceOfSession: () => ({
       slug: "p",
@@ -181,11 +179,8 @@ test("사진 없는 새 화면도 답변 링크로 보관하며 확인 통과 �
       routes = source;
       return { sha: "sha-new", requestId: "req-new" };
     };
-    server.comparisons.finish = () => {
-      throw new Error("보관은 사진을 찍지 않는다");
-    };
     server.runAutoSave("s");
-    await server.comparisonSaves.get("p");
+    await server.autoSaveLands.get("p");
     assert.deepEqual(routes, ["/new"]);
     const saved = events.find((message: any) => message.event?.kind === "screens.saved") as any;
     assert.deepEqual(saved.event.screens, [{ route: "/new", title: "새 화면" }]);

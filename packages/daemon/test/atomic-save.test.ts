@@ -1,5 +1,5 @@
-// 보관 계획의 집행(2026-10-11 피드백) — `describe_changes` 로 적힌 변경마다
-// 저장이 실제로 커밋을 나눠 거는지를 진짜 git 으로 본다. 몸통은 PublishCycle,
+// 한 요청의 보관 — 승인된 경로 전부가 메모 한 커밋에 담기는지를 진짜 git 으로 본다
+// (2026-10-20 사용자 요청: 내장 보관 계획 도구를 걷었다). 몸통은 PublishCycle,
 // 원격 · 클론은 cycle-harness 의 그것이다.
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -50,7 +50,7 @@ function pathsBySubject(clonePath: string, ref: string): Map<string, string[]> {
   return map;
 }
 
-/** 사이클 브랜치와 지저분한 작업 트리 하나 — 화면 파일 둘 · 문서 하나 · 계획 밖 파일. */
+/** 사이클 브랜치와 지저분한 작업 트리 하나 — 화면 파일 둘 · 문서 하나 · 그 밖의 파일. */
 async function setup() {
   const remote = await makeRemote();
   const clone = await makeClone(remote);
@@ -63,59 +63,12 @@ async function setup() {
   writeFileSync(join(clone.path, "screens", "list.tsx"), "export const list = 1;\n");
   writeFileSync(join(clone.path, "screens", "detail.tsx"), "export const detail = 1;\n");
   writeFileSync(join(clone.path, "docs", "guide.md"), "# 검색 안내\n");
-  writeFileSync(join(clone.path, "notes.txt"), "계획에 없던 메모\n");
+  writeFileSync(join(clone.path, "notes.txt"), "그 밖의 메모\n");
   const publish = new PublishCycle(core, { machineMemo: async () => "회원 관리 화면을 고친다" });
   return { remote, clone, core, publish };
 }
 
-test("계획대로 변경마다 커밋하고 그 밖의 변경은 폴백 한 커밋에 담는다", async () => {
-  const scene = await setup();
-  try {
-    const status = await scene.publish.runSave({
-      plan: [
-        {
-          kind: "feat",
-          subject: "회원 목록에 이름 검색 추가",
-          body: "검색어는 이름에만 걸린다.",
-          files: ["screens"],
-        },
-        { kind: "docs", subject: "검색 사용 안내 추가", files: ["docs/guide.md"] },
-      ],
-    });
-    assert.equal(status.stage, "published");
-    assert.equal(status.message, "feat: 회원 목록에 이름 검색 추가");
-    assert.deepEqual(subjects(scene.clone.path, BRANCH), [
-      "첫 커밋",
-      "feat: 회원 목록에 이름 검색 추가",
-      "docs: 검색 사용 안내 추가",
-      "회원 관리 화면을 고친다",
-    ]);
-    const paths = pathsBySubject(scene.clone.path, BRANCH);
-    assert.deepEqual(paths.get("feat: 회원 목록에 이름 검색 추가"), [
-      "screens/detail.tsx",
-      "screens/list.tsx",
-    ]);
-    assert.deepEqual(paths.get("docs: 검색 사용 안내 추가"), ["docs/guide.md"]);
-    assert.deepEqual(paths.get("회원 관리 화면을 고친다"), ["README.md", "notes.txt"]);
-    // 커밋 본문이 실린다.
-    const body = execFileSync(
-      "git",
-      ["log", "--format=%b", "-1", "--grep=^feat: 회원 목록에 이름 검색 추가$"],
-      { cwd: scene.clone.path, encoding: "utf8" },
-    ).trim();
-    assert.equal(body, "검색어는 이름에만 걸린다.");
-    // 작업 트리는 깨끗하다 — 계획 밖의 파일도 버려지지 않았다.
-    assert.equal(
-      execFileSync("git", ["status", "--porcelain"], { cwd: scene.clone.path, encoding: "utf8" }),
-      "",
-    );
-  } finally {
-    scene.clone.dispose();
-    scene.remote.dispose();
-  }
-});
-
-test("계획이 없는 저장은 종전대로 메모 한 커밋이다", async () => {
+test("저장은 승인된 경로 전부를 메모 한 커밋에 담는다", async () => {
   const scene = await setup();
   try {
     const status = await scene.publish.runSave({});
@@ -129,21 +82,6 @@ test("계획이 없는 저장은 종전대로 메모 한 커밋이다", async ()
       "screens/detail.tsx",
       "screens/list.tsx",
     ]);
-  } finally {
-    scene.clone.dispose();
-    scene.remote.dispose();
-  }
-});
-
-test("계획이 어느 경로에도 못 미치면 한 커밋으로 흘러간다", async () => {
-  const scene = await setup();
-  try {
-    const status = await scene.publish.runSave({
-      plan: [{ kind: "fix", subject: "없는 폴더의 변경", files: ["nope"] }],
-    });
-    assert.equal(status.stage, "published");
-    assert.equal(status.message, "회원 관리 화면을 고친다");
-    assert.deepEqual(subjects(scene.clone.path, BRANCH), ["첫 커밋", "회원 관리 화면을 고친다"]);
   } finally {
     scene.clone.dispose();
     scene.remote.dispose();

@@ -62,8 +62,6 @@ test("거절 문장은 git 명령을 시키지 않는다", () => {
 // 이 결함이다.
 test("준비 실패 안내의 브리프에는 git 쓰기 동사가 없다 — clone 직접 시도는 못 한다", () => {
   for (const kind of [
-    "auth",
-    "pnpm",
     "conflict",
     "install",
     "no-preview-command",
@@ -80,6 +78,9 @@ test("준비 실패 안내의 브리프에는 git 쓰기 동사가 없다 — cl
       `${kind} 브리프에 git 쓰기가 있으면 안 된다`,
     );
   }
+  // 연결 코드 · pnpm 은 AI 가 풀 수 없다 — 브리프가 없다(2026-10-20).
+  assert.equal(guidanceFor("auth", null).agent, undefined);
+  assert.equal(guidanceFor("pnpm", null).agent, undefined);
   // clone 안내는 다시 받는 주체가 도구임을 말한다.
   const clone = guidanceFor("clone", null);
   assert.ok(clone.agent?.brief.includes("git 명령 없이"));

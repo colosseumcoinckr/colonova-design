@@ -8,15 +8,13 @@
  *   → http://127.0.0.1:29181/dev/thread-fixture.html
  */
 import { markTurn } from "@colonova-design/protocol";
-import { type ComponentProps, StrictMode, useEffect, useRef, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { Block, Daemon } from "../src/lib/daemon-client";
+import type { Block } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
-import { ResultScreen } from "../src/next/chat/ResultScreens";
 import { RunLine } from "../src/next/chat/RunLine";
 import { Thread } from "../src/next/chat/Thread";
 import { L } from "../src/next/labels";
-import { ComparisonDialog, openComparison } from "../src/next/preview/ComparisonDialog";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
 import "../src/next/next.css";
@@ -71,56 +69,10 @@ function drawShot(title: string, width = 960, height = 600, before = false): HTM
   return canvas;
 }
 
-const SHOTS: Record<string, string> = {
-  "member/list": drawShot("회원 목록").toDataURL("image/png").split(",")[1] ?? "",
-  "member/1": drawShot("김기획 회원 상세").toDataURL("image/png").split(",")[1] ?? "",
-};
-const BEFORE_SHOTS: Record<string, string> = {
-  "member/list": drawShot("회원 목록", 960, 600, true).toDataURL("image/png").split(",")[1] ?? "",
-};
 const THUMBS = [
   drawShot("서비스", 120, 80).toDataURL("image/jpeg", 0.7).split(",")[1] ?? "",
   drawShot("연락처", 120, 80).toDataURL("image/jpeg", 0.7).split(",")[1] ?? "",
 ];
-
-/**
- * 견본의 사진 읽기 — 길에 따라 사진이 있는 · 없는 · 읽다 실패한 · 아직 읽는 중인 네 모양이
- * 한 줄에 서도록 한다.
- */
-const loadComparison: ComponentProps<typeof Thread>["loadComparison"] = async ({
-  route,
-  requestId,
-}) => {
-  // 카드가 넘기는 길은 `/member/empty` 처럼 앞 슬래시가 붙는다 — 견본의 열쇠는 뗀 모양이다.
-  const key = route.replace(/^\//, "");
-  const diffShot = diffShots()[key];
-  if (diffShot) {
-    return {
-      requestId: requestId ?? "",
-      sessionId: "s",
-      sha: "x",
-      route,
-      title: route,
-      viewport: "desktop",
-      before: diffShot.before ? { at: "", ...diffShot.before } : null,
-      after: { at: "", ...diffShot.after },
-    };
-  }
-  if (key === "member/empty") return null;
-  if (key === "member/fail") throw new Error("fixture");
-  if (key === "member/slow") return new Promise(() => {});
-  return {
-    requestId: requestId ?? "",
-    sessionId: "s",
-    sha: "x",
-    route,
-    title: route,
-    viewport: "desktop",
-    // 새 화면(`member/1`)은 수정 전 사진이 없다 — 토글 없이 `수정 후 모습` 이름표만 서는 모양.
-    before: BEFORE_SHOTS[key] ? { at: "", mediaType: "image/png", data: BEFORE_SHOTS[key] } : null,
-    after: { at: "", mediaType: "image/png", data: SHOTS[key] ?? SHOTS["member/list"] ?? "" },
-  };
-};
 
 const user = (id: string, text: string, thumbs?: string[]): Block => ({
   type: "user",
@@ -597,7 +549,7 @@ function WorkingLines() {
 
 /**
  * `?scene=tools` — 작업 과정 줄의 도구 이름(2026-10-07 베타 준비 분석). `browser_snapshot` 같은 영어가 그대로 뜨던 자리가
- * 한국어로 읽히는지 본다: Claude 의 `mcp__서버__이름` · Codex 의 `서버/이름` · 통계가 아는 공급자 이름 · 모르는 도구(원문 그대로).
+ * 한국어로 읽히는지 본다: Claude 의 `mcp__서버__이름` · 통계가 아는 공급자 이름 · 모르는 도구(원문 그대로).
  * 줄 머리를 눌러 펼쳐 본다 — 작업 과정 보기는 이 장면에서 켜져 있다.
  */
 const toolRow = (id: string, name: string, input: unknown = {}, isError = false): Block => ({
@@ -630,10 +582,8 @@ const toolsThread: Block[] = [
   toolRow("tl-f", "mcp__colonova-browser__screen_check", { route: "/member/list" }),
   toolRow("tl-g", "mcp__colonova-browser__repo_diagnostics"),
   toolRow("tl-h", "mcp__colonova-browser__submit_for_review", { note: "검색창 추가" }),
-  toolRow("tl-i", "colonova-browser/browser_navigate", { url: "http://127.0.0.1:5274/" }),
-  toolRow("tl-j", "colonova-browser/notify_developer", { title: "락파일" }),
-  toolRow("tl-k", "commandExecution", { command: "pnpm test" }),
-  toolRow("tl-l", "fileChange", { changes: [] }),
+  toolRow("tl-k", "Bash", { command: "pnpm test" }),
+  toolRow("tl-l", "Edit", { file_path: "src/pages/members.tsx" }),
   toolRow("tl-m", "Write", { file_path: "/home/u/.claude/settings.json" }, true),
   toolRow("tl-n", "mcp__other-server__mystery_tool"),
   answer("tl-z", "검색창을 확인했어요."),
@@ -727,213 +677,6 @@ const mergedLiveArrival = (): Block =>
     at: new Date().toISOString(),
   });
 
-/**
- * `?scene=diff` — 달라진 곳 윤곽 · 사진 복사(2026-10-08 베타 준비 분석 · 겹판 점검 E). 전/후 사진 쌍을 이 페이지가 캔버스로 직접
- * 합성해 `data:` 주소로 싣는다(1200×750 — 데몬이 찍는 PC 크기와 같다). 카드 일곱: 단추 하나만 바뀐 것 · 단추와 푸터가 바뀐 것
- * · 거의 같은 것(같은 그림을 JPEG 로 다시 구움) · WebP 두 장(단추 하나) · 세로가 두 배인 것(비교 불가 — 단추가 없다)
- * · 세로가 조금 긴 것(아래 넘침) · 통째로 바뀐 것. 그 아래에는 요청이 가리킨 곳(핀) 위치를 넘긴 카드 셋 — 핀 밖의 변경이 경고색으로 서는 모양 · 핀이 가리킨
- * 곳이 안 달라져서 경고를 거두는 모양 · 핀이 없는(말만 한) 모양. 제품은 지금 핀의 위치를 넘기지 않는다(docs/DEVELOPERS.md).
- * `?w=420|387|320` · `?theme=dark` 로 좁은 칸 · 어두운 팔레트에서 본다.
- */
-interface DiffLook {
-  button?: "blue" | "green";
-  footer?: "light" | "dark";
-  height?: number;
-  dark?: boolean;
-}
-
-function drawDiffPage(look: DiffLook = {}): HTMLCanvasElement {
-  const { button = "blue", footer = "light", height = 750, dark = false } = look;
-  const canvas = document.createElement("canvas");
-  canvas.width = 1200;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return canvas;
-  const paper = dark ? "#14161d" : "#f4f5f7";
-  const card = dark ? "#1d2029" : "#ffffff";
-  const ink = dark ? "#e8eaf0" : "#1f2430";
-  ctx.fillStyle = paper;
-  ctx.fillRect(0, 0, 1200, height);
-  ctx.fillStyle = card;
-  ctx.fillRect(0, 0, 1200, 76);
-  ctx.fillStyle = ink;
-  ctx.font = "700 26px sans-serif";
-  ctx.fillText("ColoNova 회원관리", 36, 48);
-  ctx.font = "500 18px sans-serif";
-  ctx.fillStyle = dark ? "#9aa1b2" : "#6b7280";
-  ctx.fillText("회원      결제      포인트", 380, 46);
-  // 오른쪽 위의 단추 — 초록은 더 크고 글이 길다.
-  const big = button === "green";
-  ctx.fillStyle = big ? "#16a34a" : "#2f6fed";
-  const bx = big ? 1012 : 1030;
-  const by = big ? 15 : 19;
-  const bw = big ? 170 : 140;
-  const bh = big ? 46 : 38;
-  ctx.fillRect(bx, by, bw, bh);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "600 17px sans-serif";
-  ctx.fillText(big ? "새 회원 추가" : "새 회원", bx + 24, by + bh / 2 + 6);
-  ctx.fillStyle = ink;
-  ctx.font = "700 30px sans-serif";
-  ctx.fillText("회원 목록", 36, 136);
-  ctx.fillStyle = card;
-  ctx.fillRect(36, 162, 420, 44);
-  ctx.strokeStyle = dark ? "#343947" : "#d5d9e2";
-  ctx.strokeRect(36.5, 162.5, 419, 43);
-  ctx.fillStyle = dark ? "#7d8497" : "#9aa1b2";
-  ctx.font = "500 16px sans-serif";
-  ctx.fillText("이름이나 연락처로 찾기", 54, 190);
-  for (let row = 0; row < 7; row += 1) {
-    const y = 232 + row * 62;
-    if (y + 52 > height - 70) break;
-    ctx.fillStyle = card;
-    ctx.fillRect(36, y, 1128, 52);
-    ctx.fillStyle = ink;
-    ctx.font = "600 17px sans-serif";
-    ctx.fillText(
-      ["김기획", "이운영", "박디자인", "최개발", "정마케팅", "한고객", "오파트너"][row] ?? "",
-      60,
-      y + 32,
-    );
-    ctx.fillStyle = dark ? "#343947" : "#e4e7ee";
-    ctx.fillRect(420, y + 20, 160 + ((row * 41) % 90), 12);
-    ctx.fillStyle = dark ? "#2b3a5c" : "#dbe6ff";
-    ctx.fillRect(1040, y + 14, 96, 24);
-  }
-  ctx.fillStyle = footer === "dark" ? "#1f2430" : "#e5e7ec";
-  ctx.fillRect(0, height - 60, 1200, 60);
-  ctx.fillStyle = footer === "dark" ? "#e8eaf0" : "#6b7280";
-  ctx.font = "500 16px sans-serif";
-  ctx.fillText("© ColoNova Design · 문의 help@example.com", 36, height - 24);
-  return canvas;
-}
-
-const shotOf = (canvas: HTMLCanvasElement, type = "image/png", quality?: number) => ({
-  mediaType: type,
-  data: canvas.toDataURL(type, quality).split(",")[1] ?? "",
-});
-
-type DiffShots = Record<
-  string,
-  | {
-      before: { mediaType: string; data: string } | null;
-      after: { mediaType: string; data: string };
-    }
-  | undefined
->;
-let diffShotsCache: DiffShots | null = null;
-function diffShots(): DiffShots {
-  if (query.get("scene") !== "diff") return {};
-  diffShotsCache ??= {
-    "diff/button": {
-      before: shotOf(drawDiffPage()),
-      after: shotOf(drawDiffPage({ button: "green" })),
-    },
-    "diff/footer": {
-      before: shotOf(drawDiffPage()),
-      after: shotOf(drawDiffPage({ button: "green", footer: "dark" })),
-    },
-    // 같은 그림을 JPEG 로 다시 구웠다 — 압축 흔적이 가장자리에 남아도 윤곽이 서면 안 된다.
-    "diff/same": {
-      before: shotOf(drawDiffPage()),
-      after: shotOf(drawDiffPage(), "image/jpeg", 0.7),
-    },
-    // 데몬의 사진처럼 WebP(품질 88)로 따로 구운 두 장 — 손실 압축의 잡음 속에서도 단추 하나만 잡혀야 한다.
-    "diff/webp": {
-      before: shotOf(drawDiffPage(), "image/webp", 0.88),
-      after: shotOf(drawDiffPage({ button: "green" }), "image/webp", 0.88),
-    },
-    "diff/size": {
-      before: shotOf(drawDiffPage()),
-      after: shotOf(drawDiffPage({ height: 1500 })),
-    },
-    "diff/tall": {
-      before: shotOf(drawDiffPage()),
-      after: shotOf(drawDiffPage({ height: 800 })),
-    },
-    "diff/wide": {
-      before: shotOf(drawDiffPage()),
-      after: shotOf(drawDiffPage({ dark: true, footer: "dark" })),
-    },
-  };
-  return diffShotsCache;
-}
-
-const diffScene: Block[] = [
-  withResult(
-    "df1",
-    "회원 목록의 새 회원 단추와 푸터를 눈에 띄게 바꿔 줘.",
-    "req-df",
-    [
-      { route: "diff/button", title: "단추 하나" },
-      { route: "diff/footer", title: "단추와 푸터" },
-      { route: "diff/same", title: "거의 같은 화면" },
-      { route: "diff/webp", title: "WebP 두 장 · 단추 하나" },
-      { route: "diff/size", title: "세로가 두 배" },
-      { route: "diff/tall", title: "아래가 조금 긴 화면" },
-      { route: "diff/wide", title: "통째로 바뀐 화면" },
-    ],
-    { screens: 7, phone: false },
-  ),
-  answer("df1a", "새 회원 단추를 초록으로 키우고 푸터를 어둡게 바꿨어요."),
-  turn("dfe1", 24000),
-];
-
-/** 마지막 토스트 — 이 견본에는 셸의 토스트가 없어 한 줄로 보여 준다(`window.__calls` 에도 남는다). */
-function say(text: string) {
-  calls.push(`toast:${text}`);
-  const line = document.getElementById("fixture-toast");
-  if (line) line.textContent = text;
-}
-
-/** 수정 후 사진(1200×750) 위 단추의 자리 — 정규화 좌표. */
-const PIN_BUTTON = { x: 0.84, y: 0.018, w: 0.15, h: 0.065 };
-/** 아무것도 안 바뀐 표의 한 줄. */
-const PIN_TABLE = { x: 0.03, y: 0.42, w: 0.5, h: 0.08 };
-
-const diffDaemon = {
-  api: { comparison: loadComparison },
-  activeSlug: "fixture",
-} as unknown as Daemon;
-
-/** 핀 위치를 넘기면 — 직접 그린 카드 셋과 `수정 전·후 보기` 대화상자. */
-function DiffPins() {
-  const open = (title: string, pins?: (typeof PIN_BUTTON)[]) =>
-    openComparison({
-      route: "/diff/footer",
-      title,
-      requestId: "req-df",
-      ...(pins ? { pins } : {}),
-    });
-  const cards: Array<{ title: string; pins?: (typeof PIN_BUTTON)[] }> = [
-    { title: "핀이 가리킨 곳 밖도 달라진 요청", pins: [PIN_BUTTON] },
-    { title: "핀이 가리킨 곳이 안 달라진 요청", pins: [PIN_TABLE] },
-    { title: "핀 없이 말로만 한 요청" },
-  ];
-  return (
-    <section className="nx-results" style={{ margin: "24px 20px 0" }}>
-      <div className="nx-results-heading">
-        <span>핀 위치를 넘긴 카드(견본 전용)</span>
-      </div>
-      <div className="nx-results-grid">
-        {cards.map((card) => (
-          <ResultScreen
-            key={card.title}
-            title={card.title}
-            route="/diff/footer"
-            requestId="req-df"
-            loadComparison={loadComparison}
-            onOpen={() => calls.push("open")}
-            onCompare={() => open(card.title, card.pins)}
-            onToast={say}
-            {...(card.pins ? { pins: card.pins } : {})}
-          />
-        ))}
-      </div>
-    </section>
-  );
-}
-
 const scene = query.get("scene");
 
 /** 도는 답 견본 — 사람 말이 올라온 뒤 글이 이어지고 마감까지를 시간대로 밟는다. */
@@ -1015,7 +758,6 @@ function LiveFixture() {
           dropped={[]}
           onFork={(turn) => calls.push(`fork:${turn}`)}
           onEditResend={() => {}}
-          loadComparison={loadComparison}
           onAdditionalEdit={() => {}}
           onRetry={() => {}}
           onRetryDropped={() => {}}
@@ -1088,9 +830,7 @@ function Fixture() {
                                             ? ciLiveScene
                                             : scene === "ci-one"
                                               ? ciOneScene
-                                              : scene === "diff"
-                                                ? diffScene
-                                                : blocks
+                                              : blocks
             }
             live={scene === "queue" || scene === "ci-live"}
             showThinking={false}
@@ -1111,7 +851,6 @@ function Fixture() {
             dropped={[]}
             onFork={(turn) => calls.push(`fork:${turn}`)}
             onEditResend={() => {}}
-            loadComparison={loadComparison}
             onAdditionalEdit={() => {}}
             onRetry={() => {}}
             onRetryDropped={() => {}}
@@ -1123,26 +862,15 @@ function Fixture() {
             }
             onReply={async () => {}}
             onNote={async () => {}}
-            onToast={scene === "diff" ? say : (text) => calls.push(`toast:${text}`)}
+            onToast={(text) => calls.push(`toast:${text}`)}
             onQueueEdit={() => {}}
             onQueueNow={() => {}}
             onBackgroundTask={() => {}}
             onStopTask={() => {}}
           />
           {scene === "working" && <WorkingLines />}
-          {scene === "diff" && <DiffPins />}
         </div>
       </section>
-      {scene === "diff" && (
-        <>
-          <ComparisonDialog daemon={diffDaemon} onToast={say} />
-          <p
-            id="fixture-toast"
-            role="status"
-            style={{ position: "fixed", left: 12, bottom: 12, margin: 0, fontSize: 13 }}
-          />
-        </>
-      )}
       {scene === null && <LiveFixture />}
     </div>
   );

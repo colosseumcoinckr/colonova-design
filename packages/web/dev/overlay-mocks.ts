@@ -10,7 +10,6 @@ import type {
   ProjectSummary,
   RepoHistoryEntry,
   RepoStatus,
-  ScreenComparison,
   ThreadSummary,
 } from "@colonova-design/protocol";
 import type { Daemon } from "../src/lib/daemon-client";
@@ -82,13 +81,6 @@ export const STATUS = {
       oneShot: true,
       capabilities: {},
     },
-    {
-      id: "codex",
-      label: "Codex",
-      available: false,
-      reason: "아직 설치되지 않았어요",
-      capabilities: {},
-    },
   ],
   machineProvider: null,
   machineProviderActive: { id: "claude", origin: "auto" },
@@ -99,87 +91,6 @@ export const STATUS = {
   noticeRoute: "slack",
   attention: null,
 } as unknown as NonNullable<Daemon["status"]>;
-
-/** 사진 한 장 — 캔버스로 그린 가짜 화면(비교 창은 png · jpeg · webp 만 받는다). */
-function screenPng(withSearch: boolean): string {
-  const canvas = document.createElement("canvas");
-  canvas.width = 1280;
-  canvas.height = 800;
-  const g = canvas.getContext("2d") as CanvasRenderingContext2D;
-  g.fillStyle = "#f6f7fb";
-  g.fillRect(0, 0, 1280, 800);
-  g.fillStyle = "#1f2a44";
-  g.fillRect(0, 0, 220, 800);
-  g.fillStyle = "#cfd6ea";
-  g.font = "600 20px system-ui";
-  g.fillText("관리자", 28, 52);
-  for (let i = 0; i < 6; i++) {
-    g.fillStyle = i === 1 ? "#33427a" : "transparent";
-    g.fillRect(12, 90 + i * 46, 196, 36);
-    g.fillStyle = "#aab4d4";
-    g.font = "16px system-ui";
-    g.fillText(
-      ["대시보드", "회원 목록", "결제 내역", "상품", "정산", "설정"][i] ?? "",
-      28,
-      114 + i * 46,
-    );
-  }
-  g.fillStyle = "#111827";
-  g.font = "700 28px system-ui";
-  g.fillText("회원 목록", 260, 76);
-  if (withSearch) {
-    g.fillStyle = "#fff";
-    g.strokeStyle = "#c7cde0";
-    g.lineWidth = 2;
-    g.beginPath();
-    g.roundRect(260, 104, 420, 44, 10);
-    g.fill();
-    g.stroke();
-    g.fillStyle = "#8a93ad";
-    g.font = "16px system-ui";
-    g.fillText("이름으로 찾기", 282, 133);
-    g.fillStyle = "#2c6bd6";
-    g.beginPath();
-    g.roundRect(696, 104, 88, 44, 10);
-    g.fill();
-    g.fillStyle = "#fff";
-    g.font = "600 16px system-ui";
-    g.fillText("검색", 724, 133);
-  }
-  g.fillStyle = "#fff";
-  g.beginPath();
-  g.roundRect(260, withSearch ? 172 : 108, 960, 520, 12);
-  g.fill();
-  for (let i = 0; i < 8; i++) {
-    const y = (withSearch ? 172 : 108) + 24 + i * 58;
-    g.fillStyle = i % 2 ? "#f1f3f9" : "#fafbfd";
-    g.fillRect(272, y, 936, 48);
-    g.fillStyle = "#374151";
-    g.font = "16px system-ui";
-    g.fillText(
-      ["김하늘", "이도윤", "박서연", "최지후", "정민서", "한유진", "오세훈", "윤아라"][i] ?? "",
-      292,
-      y + 30,
-    );
-    g.fillStyle = "#9ca3af";
-    g.fillText(`user${i + 1}@example.com`, 520, y + 30);
-    g.fillText(`2026-10-0${(i % 6) + 1}`, 900, y + 30);
-  }
-  return canvas.toDataURL("image/png").split(",")[1] ?? "";
-}
-
-export function mockComparison(): ScreenComparison {
-  return {
-    requestId: "r1",
-    sessionId: "t1",
-    sha: "abc1234",
-    route: "/members",
-    title: "회원 목록",
-    viewport: "desktop",
-    before: { at: ago(95), mediaType: "image/png", data: screenPng(false) },
-    after: { at: ago(4), mediaType: "image/png", data: screenPng(true) },
-  };
-}
 
 export const HISTORY: RepoHistoryEntry[] = [
   { sha: "a1", message: "회원 목록에 이름으로 찾는 검색창을 넣어 줘", at: ago(4), files: ["a"] },
@@ -356,26 +267,6 @@ export const INVITE_ROWS: InviteRow[] = [
 /** 호출 기록 — 화면 밖의 시험이 `window.__overlay.calls` 로 읽는다. */
 export const calls: string[] = [];
 
-/**
- * 비교 견본의 상태 — `?state=` 로 고른다: loading(끝나지 않음) · failed(늘 실패) · failonce(처음만 실패) ·
- * nobefore · noafter · none(둘 다 없음). 아무것도 없으면 두 사진 모두 있다(2026-10-06 겹판 손질).
- */
-let comparisonCalls = 0;
-function comparisonByState(): unknown {
-  const state = new URLSearchParams(location.search).get("state");
-  comparisonCalls += 1;
-  if (state === "loading") return new Promise(() => undefined);
-  if (state === "failed") return Promise.reject(new Error("mock failure"));
-  // StrictMode 가 처음 읽기를 두 번 부르므로(둘째가 살아남는다) 처음 두 번이 실패다 — 다시 시도(셋째)부터 성공.
-  if (state === "failonce" && comparisonCalls <= 2)
-    return Promise.reject(new Error("mock failure"));
-  const record = mockComparison();
-  if (state === "nobefore") return { ...record, before: null };
-  if (state === "noafter") return { ...record, after: null };
-  if (state === "none") return { ...record, before: null, after: null };
-  return record;
-}
-
 /** 서랍 견본의 상태 — `?hist=loading|fail|empty|now|rich|user`(읽기) · `?restore=fail|slow`(되돌리기). */
 function historyByState(): unknown {
   const state = new URLSearchParams(location.search).get("hist");
@@ -412,10 +303,7 @@ export const DIAGNOSTICS: DiagnosticsSummary = {
     pnpm: { present: false, version: null },
     bash: { present: true, version: null },
   },
-  ai: [
-    { id: "claude", present: true, version: "2.1.292", loggedIn: true },
-    { id: "codex", present: false, version: null, loggedIn: null },
-  ],
+  ai: [{ id: "claude", present: true, version: "2.1.292", loggedIn: true }],
   account: { method: "claude.ai", plan: "max" },
   turnStats: {
     days: 7,
@@ -442,7 +330,6 @@ export const DIAGNOSTICS: DiagnosticsSummary = {
 
 const HANDLERS: Record<string, (...args: unknown[]) => unknown> = {
   diagnosticsSummary: () => DIAGNOSTICS,
-  comparison: () => comparisonByState(),
   saveHistory: () => historyByState(),
   restore: () => restoreByState(),
 };
@@ -561,8 +448,9 @@ function settingsDesktop(flags: string[]): void {
  *  · 데스크톱 다리: desktop · app-new · app-defer · app-fail · app-slow · probe-fail · linux ·
  *    notify-block · notify-slow · reset-go · reset-fail · reset-slow
  *  · 업데이트 쪽: all-latest · no-latest · no-agents · update-run · update-fail · check-fail · auto-fail
- *  · AI 쪽: both-usable · login-needed · login-run · login-fail · login-expired · install-run ·
- *    install-fail · fix-reject · empty-providers · loading · codex-picked(고른 AI 를 못 씀)
+ *  · AI 쪽: login-needed · login-run · login-fail · login-expired · install-run · install-fail ·
+ *    fix-reject · empty-providers · loading — 설치 쪽 셋(install-run · install-fail · fix-reject)은
+ *    설치 전의 Claude 카드에서 선다
  *  · 연결 쪽: offline · github-expired · work(제출하지 않은 작업이 있는 프로젝트) · author-fail · author-slow
  *  · 계정 쪽(로그인 뒤의 한 줄): acct-none(요금제 모름) · acct-apikey · acct-long(긴 이메일) · acct-free(쓸 수 없는 요금제)
  */
@@ -571,11 +459,11 @@ export function SETTINGS_daemon(flags: string[]): Daemon {
   const has = (flag: string) => flags.includes(flag);
   type Provider = Record<string, unknown>;
   const claude = STATUS.providers?.[0] as unknown as Provider;
-  const codex = STATUS.providers?.[1] as unknown as Provider;
-  let providers: Provider[] = [{ ...claude }, { ...codex }];
-  if (has("all-latest")) providers = [{ ...claude, latestVersion: claude.version }, { ...codex }];
-  if (has("no-latest")) providers = [{ ...claude, latestVersion: undefined }, { ...codex }];
-  if (has("no-agents")) {
+  let providers: Provider[] = [{ ...claude }];
+  if (has("all-latest")) providers = [{ ...claude, latestVersion: claude.version }];
+  if (has("no-latest")) providers = [{ ...claude, latestVersion: undefined }];
+  // 설치 전의 Claude — 설치 카드의 진행 · 실패 · 거절도 이 모양에서 선다.
+  if (["no-agents", "install-run", "install-fail", "fix-reject"].some(has)) {
     providers = [
       {
         ...claude,
@@ -584,25 +472,11 @@ export function SETTINGS_daemon(flags: string[]): Daemon {
         latestVersion: undefined,
         reason: "아직 설치되지 않았어요",
       },
-      { ...codex },
     ];
   }
-  // AI 쪽 — 둘 다 쓸 수 있음 · 로그인 필요 · 목록이 빔(2026-10-06 설정 손질 · S2)
-  if (has("both-usable")) {
-    providers = [
-      { ...claude },
-      {
-        ...codex,
-        available: true,
-        loggedIn: true,
-        version: "0.46.0",
-        latestVersion: "0.46.0",
-        reason: undefined,
-      },
-    ];
-  }
+  // AI 쪽 — 로그인 필요 · 목록이 빔(2026-10-06 설정 손질 · S2)
   const loginNeeded = ["login-needed", "login-run", "login-fail", "login-expired"].some(has);
-  if (loginNeeded) providers = [{ ...claude, loggedIn: false }, { ...codex }];
+  if (loginNeeded) providers = [{ ...claude, loggedIn: false }];
   if (has("empty-providers") || has("loading")) providers = [];
   const status: Record<string, unknown> = { ...STATUS, providers };
   // 계정 쪽(2026-10-07 베타 준비 분석) — 로그인 뒤의 한 줄과 쓸 수 없는 요금제의 막힘.
@@ -694,13 +568,13 @@ export function SETTINGS_daemon(flags: string[]): Daemon {
     ];
   }
   if (has("install-run"))
-    patch.install = { kind: "install-codex", line: "Downloading codex 0.47.0" };
+    patch.install = { kind: "install-claude", line: "Downloading Claude Code 2.2.0..." };
   if (has("install-fail")) {
     patch.installDone = {
-      kind: "install-codex",
+      kind: "install-claude",
       ok: false,
       detail:
-        "네트워크에 닿지 못했습니다 — 인터넷 연결을 확인한 뒤 다시 시도해 주세요.\ncurl: (6) Could not resolve host: github.com",
+        "네트워크에 닿지 못했습니다 — 인터넷 연결을 확인한 뒤 다시 시도해 주세요.\ncurl: (6) Could not resolve host: claude.ai",
     };
   }
   if (has("login-run"))

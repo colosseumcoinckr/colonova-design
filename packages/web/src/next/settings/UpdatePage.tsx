@@ -181,7 +181,7 @@ function AppRow({ updates }: { updates: UpdatesModel }) {
   );
 }
 
-/** AI 줄 — Claude Code · Codex. 깔려 있지 않으면 `—` 대신 어디서 설치하는지 말한다. */
+/** AI 줄 — Claude Code. 깔려 있지 않으면 `—` 대신 어디서 설치하는지 말한다. */
 function AgentRow({
   row,
   updates,
@@ -284,7 +284,6 @@ export function UpdatePage({
   const stepNow = useInstallStep(daemon.install?.line ?? null);
   const stepWord = stepNow === null ? L.settings.installBusy : L.onboarding.installSteps[stepNow];
   const claude = updates.agents.find((row) => row.id === "claude");
-  const codex = updates.agents.find((row) => row.id === "codex");
 
   // 상태가 바뀌면 한 번 말한다 — 처음 그릴 때는 조용하다.
   const spoken = useRef<string | null>(null);
@@ -320,15 +319,6 @@ export function UpdatePage({
         {claude && (
           <AgentRow
             row={claude}
-            updates={updates}
-            daemon={daemon}
-            stepWord={stepWord}
-            onGoAi={onGoAi}
-          />
-        )}
-        {codex?.installed && (
-          <AgentRow
-            row={codex}
             updates={updates}
             daemon={daemon}
             stepWord={stepWord}

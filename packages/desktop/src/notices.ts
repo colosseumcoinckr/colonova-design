@@ -53,6 +53,6 @@ export function noticeCopy(notice: DaemonNotice): {
               : NOTICE.submitBlocked.notified,
       );
     case "update-done":
-      return NOTICE.updateDone(notice.agent === "claude" ? "Claude Code" : "Codex", notice.version);
+      return NOTICE.updateDone("Claude Code", notice.version);
   }
 }

@@ -234,9 +234,9 @@ export interface AgentSession {
   readonly alive: boolean;
   send(turn: Turn): Promise<void>;
   /**
-   * 바로 실어 보내기 — fold a mid-turn send into the turn now running
-   * (codex `turn/steer`). Absent on drivers whose protocol has no such
-   * road; the core then keeps the send in the wait room instead.
+   * 바로 실어 보내기 — fold a mid-turn send into the turn now running.
+   * Absent on drivers whose protocol has no such road (Claude); the core
+   * then interrupts the running turn and sends this as the first new turn.
    */
   steer?(turn: Turn): Promise<void>;
   interrupt(): Promise<"answered" | "timeout" | "dead">;
@@ -262,16 +262,14 @@ export interface AgentDriver {
   store?: TranscriptStore;
   /**
    * The CLI's model rows without a thread — a driver whose SDK can probe
-   * one (`probeModels`, Claude) or whose bare app-server can (`model/list`,
-   * Codex) answers here, so the daemon's per-provider cache fills before any
-   * session exists. Absent = a live session is the only source; the cache
+   * one (`probeModels`, Claude) answers here, so the daemon's per-provider
+   * cache fills before any session exists. Absent = a live session is the only source; the cache
    * then waits for the first session's report.
    */
   listModels?(opts: { cwd: string; signal?: AbortSignal }): Promise<SessionModelInfo[]>;
   /**
    * The account's plan limits without a thread — a driver whose CLI can read
-   * them on its own (Claude's probe query, Codex's bare app-server) answers
-   * here, so the chip shows a provider's budget before any thread of that
+   * them on its own (Claude's probe query) answers here, so the chip shows a provider's budget before any thread of that
    * provider exists. Null when there is nothing to read (no CLI, no plan
    * login); it must resolve, never hang — the daemon's shutdown aborts
    * `signal`. Absent = only a live session can read the limits.

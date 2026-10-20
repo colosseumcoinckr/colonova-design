@@ -1,7 +1,6 @@
 import type { ProjectSummary } from "@colonova-design/protocol";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../lib/daemon-client";
-import { composing } from "../../lib/ime";
 import { requestInvitePicker } from "../../lib/invite-bus";
 import { openLink } from "../../lib/open-link";
 import { setEmptyAfterProjectRemoval } from "../../lib/project-empty-bus";
@@ -198,9 +197,7 @@ const WEB_URL = /^https?:\/\//i;
 
 /**
  * 프로젝트 카드 — 전환기 목록의 `프로젝트 정보` 를 누르면 그 아래에 뜬다. 저장소 · 미리보기는
- * 링크의 규칙대로 열고(open-link), `지켜 줄 것` 은 흐림 · ⌘↵ 로 저장한다
- * (README 「프로젝트와 목록」 — 새로 시작하는 대화부터 끝에 붙는다). 바깥을 눌러
- * 닫혀도 적던 초안은 놓치지 않는다: 닫힘과 같은 커밋에서 저장한다.
+ * 링크의 규칙대로 연다(open-link).
  *
  * 맨 아래 `목록에서 빼기` 는 파일을 지우지 않는다(데몬의 `project.remove` — 대화와 작업 파일이 이
  * 컴퓨터에 남는다). 그래도 되돌리려면 초대 파일이 필요하니 확인을 거친다 — 대화 지우기와 같은
@@ -221,8 +218,6 @@ function ProjectInfo({
   onClose: () => void;
   onToast: (text: string) => void;
 }) {
-  const stored = project.instructions ?? "";
-  const [guide, setGuide] = useState(stored);
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   // 확인이 접히면(그만두기 · Esc) 초점이 돌아올 줄 — 확인이 떠 있는 동안은 줄이 없다.
@@ -233,31 +228,6 @@ function ProjectInfo({
   useEffect(() => {
     if (confirmingRemove) removeBox.current?.scrollIntoView({ block: "nearest" });
   }, [confirmingRemove]);
-  const latest = useRef({ guide, stored });
-  latest.current = { guide, stored };
-  const sent = useRef<string>(stored);
-  const removingProject = useRef(false);
-  /** 저장 — 같은 값은 다시 쓰지 않고, 비우면 지운다(null). */
-  const commit = useRef(() => {});
-  commit.current = () => {
-    const { guide: value, stored: now } = latest.current;
-    if (value === now || value === sent.current) return;
-    sent.current = value;
-    void daemon.api
-      .projectUpdate(project.slug, { instructions: value.trim() ? value : null })
-      .then(() => onToast(L.projInfo.guideSavedToast))
-      .catch(() => {
-        sent.current = now;
-        onToast(L.projInfo.guideSaveFailed);
-      });
-  };
-  // 바깥 누름 · Esc 로 카드가 떼어지는 길도 저장과 같은 커밋으로 나간다.
-  useEffect(
-    () => () => {
-      if (!removingProject.current) commit.current();
-    },
-    [],
-  );
   const submitPhase = daemon.activeSlug === project.slug ? daemon.repo?.submit?.phase : undefined;
   const projectBusy =
     project.working ||
@@ -267,7 +237,6 @@ function ProjectInfo({
   const removeProject = async () => {
     if (removing || projectBusy) return;
     if (lastProject) setEmptyAfterProjectRemoval(true);
-    removingProject.current = true;
     setRemoving(true);
     try {
       await daemon.api.projectRemove(project.slug);
@@ -275,7 +244,6 @@ function ProjectInfo({
       onToast(L.projInfo.removeDone(project.name));
     } catch {
       if (lastProject) setEmptyAfterProjectRemoval(false);
-      removingProject.current = false;
       setRemoving(false);
       setConfirmingRemove(false);
       onToast(L.projInfo.removeFailed);
@@ -317,27 +285,6 @@ function ProjectInfo({
         >
           <b>{L.projInfo.openInvite}</b>
         </button>
-      </div>
-      <div className="nx-pi-guide">
-        <b>{L.projInfo.guide}</b>
-        <p className="nx-pi-help">{L.projInfo.guideHelp}</p>
-        <textarea
-          className="nx-pi-box"
-          rows={5}
-          value={guide}
-          /* 2026-10-04 ux-review(2차): 눈에 보이는 제목(`지켜 줄 것`)이 칸과 이어져 있지
-             않다 — 접근 이름을 붙인다. */
-          aria-label={L.projInfo.guide}
-          placeholder={L.projInfo.guidePlaceholder}
-          onChange={(event) => setGuide(event.target.value)}
-          onBlur={() => commit.current()}
-          onKeyDown={(event) => {
-            // 한글이 조합 중이면 ⌘↵ 를 저장으로 읽지 않는다.
-            if (composing(event)) return;
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) commit.current();
-          }}
-        />
-        <p className="nx-pi-note">{L.projInfo.guideNote}</p>
       </div>
       <div className="nx-pi-remove" ref={removeBox}>
         {confirmingRemove ? (

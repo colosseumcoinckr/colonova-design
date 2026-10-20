@@ -84,6 +84,33 @@ test("첫 실행의 동의(commands)와 C5 재기동 중 문장은 넘기지 않
   assert.deepEqual(decisions, ["none", "none"]);
 });
 
+// 2026-10-20 사용자 보고: 인증 실패가 AI 로 가서 28초를 쓰고 "해결 여부를 확인하지 못했어요" 로 끝났다.
+test("연결 코드(registry-auth)와 pnpm 없음은 넘기지도 세지도 않는다 — 되풀이돼도 개발자 알림이 없다", () => {
+  for (const kind of ["registry-auth", "pnpm-missing"] as const) {
+    const { decisions, episode } = run([
+      failed(kind),
+      installing,
+      failed(kind),
+      installing,
+      failed(kind),
+      installing,
+      failed(kind),
+    ]);
+    assert.deepEqual(
+      decisions.filter((d) => d !== "none"),
+      [],
+      kind,
+    );
+    assert.equal(episode, undefined, kind);
+  }
+  // 사람이 연결 코드를 고친 뒤의 진짜 설치 실패는 첫 실패로 넘어간다.
+  assert.deepEqual(run([failed("registry-auth"), installing, failed("install")]).decisions, [
+    "none",
+    "none",
+    "brief",
+  ]);
+});
+
 test("단계가 번갈아 넘어져도 한 바퀴의 상한에서 멈춘다", () => {
   const { decisions } = run([
     failed("install"),

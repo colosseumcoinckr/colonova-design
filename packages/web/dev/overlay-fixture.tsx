@@ -73,10 +73,6 @@ const Palette = named(() => import("../src/components/shell/Palette"), "Palette"
 const CrashScreen = named(() => import("../src/next/CrashScreen"), "CrashScreen");
 const ConnectingScreen = named(() => import("../src/next/ConnectingScreen"), "ConnectingScreen");
 const InviteConfirm = named(() => import("../src/next/onboarding/InviteConfirm"), "InviteConfirm");
-const ComparisonDialog = named(
-  () => import("../src/next/preview/ComparisonDialog"),
-  "ComparisonDialog",
-);
 const HistoryDrawer = named(() => import("../src/next/preview/HistoryDrawer"), "HistoryDrawer");
 const PinBubble = named(() => import("../src/next/preview/PinBubble"), "PinBubble");
 const PrepareCard = named(() => import("../src/next/preview/PrepareCard"), "PrepareCard");
@@ -84,15 +80,6 @@ const StageNotice = named(() => import("../src/next/preview/PrepareCard"), "Stag
 const SettingsDialog = named(() => import("../src/next/settings/SettingsDialog"), "SettingsDialog");
 const InviteFlow = named(() => import("./invite-flow-case"), "InviteFlow");
 const AskCard = named(() => import("../src/next/chat/cards"), "AskCard");
-/** 비교 대화상자를 여는 창 이벤트 — `ComparisonDialog.tsx` 의 EVENT 와 같은 이름. */
-const openComparison = (detail: {
-  route: string;
-  title: string;
-  requestId?: string;
-  sha?: string;
-  submitted?: boolean;
-}) => window.dispatchEvent(new CustomEvent("nx:comparison:open", { detail }));
-
 applyStoredTheme();
 applyStoredTypeScale();
 const query = new URLSearchParams(location.search);
@@ -422,10 +409,6 @@ function SettingsCase() {
   // biome-ignore lint/correctness/useExhaustiveDependencies: 처음 한 번만
   useEffect(() => {
     if (theme) update({ theme: theme as ThemeChoice });
-    // 고른 AI 가 못 쓰는 AI 인 상태(`codex-picked`) — 설정 값이라 데몬 가짜가 아니라 여기서 건다.
-    if ((query.get("state") ?? "").split(",").includes("codex-picked")) {
-      update({ chat: { ...settings.chat, provider: "codex" } });
-    }
   }, []);
   return open ? (
     <SettingsDialog
@@ -651,78 +634,6 @@ function InviteCase() {
   );
 }
 
-/** `?state=loading|failed|failonce|nobefore|noafter|none`(사진 상태는 overlay-mocks) · `?submitted=1`(마지막 제출과 비교). */
-function CompareCase() {
-  const daemon = useMemo(() => mockDaemon(), []);
-  const submitted = query.get("submitted") === "1";
-  const open = () =>
-    openComparison({
-      route: "/members",
-      title: "회원 목록",
-      requestId: "r1",
-      sha: "abc1234",
-      submitted,
-    });
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 처음 한 번만
-  useEffect(() => {
-    const timer = window.setTimeout(open, 50);
-    return () => window.clearTimeout(timer);
-  }, []);
-  return (
-    <div style={{ padding: 24 }}>
-      <button type="button" className="nx-btn" id="reopen" onClick={open}>
-        비교 다시 열기
-      </button>
-      <ComparisonDialog daemon={daemon} />
-    </div>
-  );
-}
-
-/** `···` 메뉴의 줄에서 연 비교 — 줄이 사라진 뒤에도 닫으면 초점이 `···` 단추로 돌아와야 한다(2026-10-06). */
-function CompareMoreCase() {
-  const daemon = useMemo(() => mockDaemon(), []);
-  const [more, setMore] = useState(false);
-  const anchor = useRef<HTMLDivElement>(null);
-  return (
-    <div style={{ position: "fixed", top: 24, right: 24 }}>
-      <div className="nx-anchor" ref={anchor}>
-        <button
-          type="button"
-          className="nx-ibtn"
-          id="more"
-          aria-label="더 보기"
-          aria-haspopup="dialog"
-          aria-expanded={more}
-          onClick={() => setMore((value) => !value)}
-        >
-          ···
-        </button>
-        {more && (
-          <Popover anchor={anchor} onClose={() => setMore(false)} align="end" label="더 보기">
-            <button
-              type="button"
-              className="nx-mi"
-              id="more-compare"
-              onClick={() => {
-                setMore(false);
-                openComparison({
-                  route: "/members",
-                  title: "회원 목록",
-                  sha: "abc1234",
-                  submitted: true,
-                });
-              }}
-            >
-              마지막 제출과 비교
-            </button>
-          </Popover>
-        )}
-      </div>
-      <ComparisonDialog daemon={daemon} />
-    </div>
-  );
-}
-
 /**
  * `?col=360`(칸의 폭 — 480 이하면 시트) · `?hist=loading|fail|empty|now|rich|user`(읽기) · `?restore=fail|slow`(되돌리기)
  * · `?working=1`(AI 작업 중이라 잠김) · `?arm=a2&count=1`(결과 카드의 `방금 한 것 되돌리기` 가 건넨 되돌아갈 곳 — 그 줄의
@@ -818,8 +729,6 @@ function HistoryCase() {
           />
         </section>
       </div>
-      {/* 서랍의 `수정 전·후 보기` 가 여는 비교 — 실제 칸(PreviewColumn)도 둘을 함께 마운트한다. */}
-      <ComparisonDialog daemon={daemon} />
     </div>
   );
 }
@@ -1102,8 +1011,6 @@ const CASES: Record<string, () => ReactNode> = {
   invite: () => <InviteCase />,
   // 진짜 `useInviteImport` 로 파일을 읽고 확인하고 적용한다(`dev/invite-flow-case.tsx`).
   inviteflow: () => <InviteFlow />,
-  compare: () => <CompareCase />,
-  "compare-more": () => <CompareMoreCase />,
   history: () => <HistoryCase />,
   pin: () => <PinCase />,
   prepare: () => <PrepareCase />,

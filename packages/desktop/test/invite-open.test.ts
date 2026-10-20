@@ -1,7 +1,7 @@
 // 초대 파일 더블클릭으로 열기의 시험(2026-10-08 베타 준비 분석) — Electron 을 띄우지 않는다. 경로 판정 · 시작 인자 거르기 ·
 // 줄 · 한 파일 읽기는 순수 모듈(`invite-open.ts`)을 곧장 부르고, 메인 · 다리 · preload 의 배선과 electron-builder 의 파일 연결은
 // 소스의 글을 읽어 못박는다(앱의 시작은 부수 효과라 불러올 수 없다). 실기(진짜 더블클릭)는 베타 세션의 몫이다 —
-// docs/DEVELOPERS.md 「초대 파일 더블클릭으로 열기」와 beta-windows-session.md.
+// docs/DEVELOPERS.md 「초대 파일 더블클릭으로 열기」의 실기 확인 절이 이어 받는다.
 // `../dist` 임포트인 이유는 notices 시험과 같다(시험 전에 `tsc -p packages/desktop/tsconfig.json` 이 dist 를 만든다).
 import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";

@@ -9,6 +9,7 @@ import type {
   RepoHistory,
   RepoStatus,
 } from "@colonova-design/protocol";
+import type { SubmitVersion } from "./submit-version.js";
 
 // 셋 다 이 모듈이 쓰면서 동시에 이 모듈의 표면이다 — 검사와 온보딩이
 // `dist/repo.js` 에서 이 이름들을 가져간다.
@@ -314,7 +315,7 @@ export class RepoWorkspace {
   }
 
   /**
-   * 저장: review → commit → push, onto this cycle's own branch.
+   * 보관: 확인한 변경을 사이클 브랜치에 로컬 커밋한다.
    *
    * The base branch is never written to. A developer receives this work as a
    * pull request they can read, run and refuse — pushing past them was what
@@ -332,7 +333,7 @@ export class RepoWorkspace {
       onSessionTurn?: (brief: string) => void;
       /** hero-synthesis D1: the conversation this save belongs to. */
       sessionId?: string;
-      /** P2-1 자동 저장 — 푸시를 백그라운드로(실패 무시). */
+      /** 옛 호출 호환 필드. 보관은 로컬에서 끝난다. */
       backgroundPush?: boolean;
     } = {},
   ): Promise<DiffStatus> {
@@ -381,7 +382,12 @@ export class RepoWorkspace {
    * 구간 밖의 개발자 글은 병합(mergeToolBlock) 쪽이 지킨다.
    */
   handoffToolBlock(
-    options: { shots?: HandoffShot[]; commentsFile?: string; note?: string } = {},
+    options: {
+      shots?: HandoffShot[];
+      commentsFile?: string;
+      note?: string;
+      version?: SubmitVersion;
+    } = {},
   ): Promise<string> {
     return this.publish.handoffToolBlock(options);
   }
@@ -404,7 +410,7 @@ export class RepoWorkspace {
   }
 
   handoffDraft(
-    options: { commentsFile?: string; shotCount?: number } = {},
+    options: { commentsFile?: string; shotCount?: number; version?: SubmitVersion } = {},
   ): Promise<RepoHandoffDraft> {
     return this.summarizer.handoffDraft(options);
   }
@@ -466,7 +472,7 @@ export class RepoWorkspace {
     try {
       // The branch name lives in the registry; git's HEAD may have been left
       // anywhere by a restart. ensureCycleBranch checks it out when named.
-      const branch = await this.publish.ensureCycleBranch();
+      await this.publish.ensureCycleBranch();
       await this.core.git(["checkout", sha, "--", "."]);
       // `checkout sha -- .` 는 sha 가 아는 경로만 돌려놓는다 — 그 뒤에 태어난
       // 파일이 살아 남아 되돌리기 커밋에 그대로 실린다. 체크포인트 복원의
@@ -492,7 +498,6 @@ export class RepoWorkspace {
         "-m",
         `되돌리기: ${subject}`,
       ]);
-      await this.core.git(["push", "--set-upstream", "origin", branch]);
     } catch (error) {
       return this.core.setDiff({
         stage: "failed",

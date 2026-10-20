@@ -220,6 +220,7 @@ export function PreviewFrame({
           path: string;
           url?: string;
           title?: string;
+          loadedPath?: string | null;
           kind: "preview" | "web";
           canGoBack: boolean;
           canGoForward: boolean;

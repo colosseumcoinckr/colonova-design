@@ -25,6 +25,7 @@ export function Hero({
   done = false,
   title,
   sub,
+  need = [],
 }: {
   passes: GatePasses;
   /** 눌러 볼 것이 없이 기다리는 항목 — 링이 거기를 `지금` 으로 말하지 않는다. */
@@ -32,6 +33,8 @@ export function Hero({
   done?: boolean;
   title: string;
   sub: string;
+  /** 준비물 한 줄(2026-10-20 온보딩 손질) — 처음 한 번만 든다. 빈 목록이면 서지 않는다. */
+  need?: readonly string[];
 }) {
   const segments = ringSegments(passes, waiting);
   return (
@@ -78,6 +81,16 @@ export function Hero({
       </div>
       <h1 className="nx-ob-title">{title}</h1>
       <p className="nx-ob-sub">{sub}</p>
+      {need.length > 0 && (
+        <p className="nx-ob-need">
+          <span className="nx-ob-need-t">{L.onboarding.needTitle}</span>
+          {need.map((item) => (
+            <span key={item} className="nx-ob-need-i">
+              {item}
+            </span>
+          ))}
+        </p>
+      )}
     </header>
   );
 }

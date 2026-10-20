@@ -83,6 +83,7 @@ export function AiPage({
       )
     : null;
   const missing = providers.filter((provider) => !provider.available);
+  const connectedProvider = providers.length === 1 ? usable[0] : undefined;
   const usableAt = usable.findIndex((provider) => provider.id === settings.chat.provider);
   const pick = (provider: Provider | undefined) => {
     if (!provider || settings.chat.provider === provider.id) return;
@@ -189,48 +190,62 @@ export function AiPage({
         />
       )}
       {/* 쓸 수 있는 AI 는 카드 — 고르면 다음 새 대화부터 그 AI 가 쓰인다. */}
-      {usable.length > 0 && (
-        <div
-          className="nx-sgrid"
-          role="radiogroup"
-          aria-label={L.settings.ai}
-          onKeyDown={(event) =>
-            radioArrowStep(event, usableAt, usable.length, (index) => pick(usable[index]))
-          }
-        >
-          {usable.map((provider, index) => {
-            const on = settings.chat.provider === provider.id;
-            const connected =
-              (provider.id === "claude" ? claudeAccount : null) ?? L.settings.loggedIn;
-            return (
-              // biome-ignore lint/a11y/useSemanticElements: 카드 전체가 누르는 과녁이다 — 동그라미 입력칸 없이 radio 로 읽힌다(radiogroup 안).
-              <button
-                key={provider.id}
-                type="button"
-                role="radio"
-                aria-checked={on}
-                tabIndex={rovingTab(index, usableAt)}
-                className={`nx-ptile${on ? " nx-ptile--on" : ""}${fresh.has(provider.id) ? " nx-row--new" : ""}`}
-                onClick={() => pick(provider)}
-              >
-                <span className="nx-pmk">
-                  <ProviderMark provider={provider.id} />
-                </span>
-                <span className="nx-ptxt">
-                  <b>{provider.label}</b>
-                  <span>
-                    <i className="nx-dot nx-dot--green" />
-                    <span className="nx-ptxt-t" title={connected}>
-                      {connected}
-                    </span>
-                  </span>
-                  {on && <span className="nx-ptxt-now">{L.settings.aiPickedNow}</span>}
-                </span>
-                <span className="nx-rd" aria-hidden="true" />
-              </button>
-            );
-          })}
+      {connectedProvider ? (
+        <div className="nx-ai-connection">
+          <span className="nx-pmk">
+            <ProviderMark provider={connectedProvider.id} />
+          </span>
+          <div className="nx-ai-connection-text">
+            <span>{L.settings.aiConnected}</span>
+            <b>{connectedProvider.label}</b>
+            <p>{claudeAccount ?? L.settings.loggedIn}</p>
+          </div>
+          <span className="nx-dot nx-dot--green" aria-hidden="true" />
         </div>
+      ) : (
+        usable.length > 0 && (
+          <div
+            className="nx-sgrid"
+            role="radiogroup"
+            aria-label={L.settings.ai}
+            onKeyDown={(event) =>
+              radioArrowStep(event, usableAt, usable.length, (index) => pick(usable[index]))
+            }
+          >
+            {usable.map((provider, index) => {
+              const on = settings.chat.provider === provider.id;
+              const connected =
+                (provider.id === "claude" ? claudeAccount : null) ?? L.settings.loggedIn;
+              return (
+                // biome-ignore lint/a11y/useSemanticElements: 카드 전체가 누르는 과녁이다 — 동그라미 입력칸 없이 radio 로 읽힌다(radiogroup 안).
+                <button
+                  key={provider.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  tabIndex={rovingTab(index, usableAt)}
+                  className={`nx-ptile${on ? " nx-ptile--on" : ""}${fresh.has(provider.id) ? " nx-row--new" : ""}`}
+                  onClick={() => pick(provider)}
+                >
+                  <span className="nx-pmk">
+                    <ProviderMark provider={provider.id} />
+                  </span>
+                  <span className="nx-ptxt">
+                    <b>{provider.label}</b>
+                    <span>
+                      <i className="nx-dot nx-dot--green" />
+                      <span className="nx-ptxt-t" title={connected}>
+                        {connected}
+                      </span>
+                    </span>
+                    {on && <span className="nx-ptxt-now">{L.settings.aiPickedNow}</span>}
+                  </span>
+                  <span className="nx-rd" aria-hidden="true" />
+                </button>
+              );
+            })}
+          </div>
+        )
       )}
       {/* 아직 못 쓰는 AI 도 같은 격자에 흐린 카드로 선다 — 접힘 속에 「쓸 수 없는」으로 숨기면 고장 난
           것처럼 읽히고 이 쪽이 휑하다. 카드 안의 단추가 다음 걸음(설치 · 로그인)이고, 진행과 실패도 카드가 말한다. */}
@@ -318,7 +333,7 @@ function FixCard({
     if (phase === "installing") announce(L.settings.installBusy);
     else if (phase === "login") announce(L.settings.aiLoginWaiting);
   }, [phase, announce]);
-  const known = provider.id === "claude" || provider.id === "codex";
+  const known = provider.id === "claude";
   // 긴 설명(`foot`)이 있는 카드는 단추도 그 아래에 선다 — 좁은 카드에서 오른쪽 단추가 글줄을 짓눌러 글자가 세로로 서지 않게.
   const buttonBelow = known && foot !== undefined && phase === "idle";
   const sub =

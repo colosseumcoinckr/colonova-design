@@ -44,7 +44,7 @@ function summary(over: Partial<DiagnosticsSummary> = {}): DiagnosticsSummary {
     },
     ai: [
       { id: "claude", present: true, version: "2.1.292", loggedIn: true },
-      { id: "codex", present: false, version: null, loggedIn: null },
+      { id: "second", present: false, version: null, loggedIn: null },
     ],
     account: { method: "claude.ai", plan: "max" },
     turnStats: {
@@ -84,7 +84,7 @@ test("제목 줄 + `키: 값` — 사람이 읽고 Slack 에 붙이기 좋은 �
     "OS: darwin 25.2.0 · arm64",
     "데몬 Node: 24.1.0",
     "도구: node 24.1.0 · git 2.45.1 · pnpm 없음 · bash 있음",
-    "AI: claude 2.1.292 로그인됨 · codex 없음",
+    "AI: claude 2.1.292 로그인됨 · second 없음",
     "계정: claude.ai · 요금제 max",
     "최근 7일 턴: 37개 (직접 20 · 핀 9 · 도구 8)",
     "실패: 3개 (계정 2 · 한도 1)",

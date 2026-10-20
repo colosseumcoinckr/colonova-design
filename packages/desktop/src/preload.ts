@@ -111,6 +111,8 @@ contextBridge.exposeInMainWorld("colonovaDesignDesktop", {
       url?: string;
       /** 문서가 스스로 단 제목 — 없으면 빈 칸. */
       title?: string;
+      /** 문서를 통째로 마지막에 연 경로 — 앱 안 이동은 바꾸지 않는다. 모르면 null. */
+      loadedPath?: string | null;
       kind: "preview" | "web";
       canGoBack: boolean;
       canGoForward: boolean;

@@ -54,7 +54,7 @@ export function problemLineId(line: ProblemLineBody | null): string | null {
 }
 
 type RepoLike = Pick<RepoStatus, "phase" | "previewUrl"> &
-  Partial<Pick<RepoStatus, "attention" | "submit">>;
+  Partial<Pick<RepoStatus, "attention" | "submit" | "errorKind">>;
 
 function rank(attention: Attention): number {
   return attention.kind === "reconnect" ? 0 : attention.kind === "developer-notified" ? 1 : 2;
@@ -117,7 +117,11 @@ export function problemFor(
       ? {
           kind: "reconnect",
           title: W.problem.reconnect,
-          body: W.problem.reconnectInvite,
+          // 준비가 연결 코드에서 멈췄다 — 만료가 아니라 아직 이 컴퓨터에 없는 것일 수 있다(2026-10-20).
+          body:
+            repo?.errorKind === "registry-auth"
+              ? W.problem.reconnectPackages
+              : W.problem.reconnectInvite,
           action: "invite",
           dismissId: null,
         }

@@ -3,10 +3,41 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { markTurn, type TurnMarker } from "@colonova-design/protocol";
 // `../dist` 임포트인 이유: dispatch 는 형제(.js 지정자)를 부른다 — src 직접
 // 로드는 그 지정을 못 고친다(revive-budget 와 같은 길). 세션 · 저장소는 가짜로.
 import { RequestRouter, type RouterDeps } from "../dist/dispatch.js";
 import { QueueStore } from "../dist/queue-store.js";
+
+test("MVP: 옛 코멘트·CI 수정은 재시작하지 않고 기다리던 사용자 요청을 보존한다", async () => {
+  const markers: TurnMarker[] = [
+    { kind: "review", pr: 1, author: "개발자" },
+    { kind: "review", pr: 1, author: "AI 검토", source: "ai" },
+    { kind: "ci", pr: 1, failing: 1 },
+  ];
+  for (const marker of markers) {
+    const dir = mkdtempSync(join(tmpdir(), "mvp-startup-"));
+    try {
+      const queue = new QueueStore(dir);
+      queue.saveInflight("thread1", {
+        id: "automatic",
+        text: markTurn(marker, "자동 수정"),
+        attachments: [],
+      });
+      queue.saveHeld("thread1", [{ id: "human", text: "내가 기다리던 요청", attachments: [] }]);
+      const { router, created } = fakeManagerWorld({ storedProvider: "claude", queueStore: queue });
+      await router.recoverStartupTurns(queue.takeStartupRecoveries());
+      assert.deepEqual(created, []);
+      assert.deepEqual(
+        queue.lostItems("thread1").map((item) => item.id),
+        ["human"],
+      );
+      assert.deepEqual(queue.takeStartupRecoveries(), []);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
 
 /** 가짜 개발자 알림 — 올라가고 거둬지는 문제만 기록한다. */
 function fakeNotice() {

@@ -23,6 +23,7 @@ import {
   MEMO_MAX_CHARS,
   memoPrompt,
 } from "./repo-prompts.js";
+import type { SubmitVersion } from "./submit-version.js";
 
 /**
  * 기계 턴의 작업 폴더 — 클론 옆의 `summary/`. 위생(cycle-hygiene)이 같은 자리와
@@ -111,12 +112,16 @@ export class RepoSummarizer {
    * proposal, which is what it opened with before this existed.
    */
   async handoffDraft(
-    options: { commentsFile?: string; shotCount?: number } = {},
+    options: { commentsFile?: string; shotCount?: number; version?: SubmitVersion } = {},
   ): Promise<RepoHandoffDraft> {
     const empty: RepoHandoffDraft = { title: "", body: "", source: "fallback" };
     if (!this.core.isCloned() || !this.core.branch) return empty;
-    const range = `origin/${this.core.baseBranch}..${this.core.branch}`;
-    const tip = (await this.core.git(["rev-parse", this.core.branch]).catch(() => "")).trim();
+    const range = options.version
+      ? `${options.version.base}...${options.version.head}`
+      : `origin/${this.core.baseBranch}..${this.core.branch}`;
+    const tip = options.version
+      ? `${options.version.base}:${options.version.head}`
+      : (await this.core.git(["rev-parse", this.core.branch]).catch(() => "")).trim();
     if (!tip) return empty;
     // The extras are the daemon's own appended sections, computed fresh every
     // time — the draft's cache is about the agent.s words, not the pin list's.

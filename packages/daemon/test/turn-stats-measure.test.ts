@@ -189,50 +189,11 @@ test("첫 delta 가 없던 턴의 firstDeltaMs 는 null 이다", async () => {
   }
 });
 
-test("Codex 의 item 이름도 같은 묶음이다 — fileChange 의 changes[] 로 핀 적중을 본다", async () => {
-  const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
-  try {
-    const stats_ = stats(dir);
-    stats_.noteScan("s1", 5, { cwd: "/repo", candidates: ["/repo/src/b.tsx"] });
-    const marker = '<!-- colonova-design:comments {"pins":[],"items":[{}]} -->\n칩을 바꿔 주세요.';
-    stats_.observe("s1", { kind: "user.echo", text: marker, images: 0 } as ChatEvent);
-    stats_.observe("s1", {
-      kind: "tool.start",
-      toolUseId: "t1",
-      name: "commandExecution",
-      input: { command: "pnpm check" },
-      agentId: null,
-    } as ChatEvent);
-    stats_.observe("s1", {
-      kind: "tool.start",
-      toolUseId: "t2",
-      name: "fileChange",
-      input: { changes: [{ path: "src/b.tsx" }] },
-      agentId: null,
-    } as ChatEvent);
-    stats_.observe("s1", {
-      kind: "turn.end",
-      subtype: "success",
-      isError: false,
-      costUsd: null,
-      numTurns: 1,
-      durationMs: 700,
-      resultText: "바꿨습니다",
-    } as ChatEvent);
-    const rows = (await untilRows(dir, 1)).filter((row) => row.kind === "comments");
-    const row = rows[0] ?? {};
-    assert.deepEqual(row.tools, { read: 0, edit: 1, exec: 1, browser: 0, other: 0 });
-    assert.equal(row.pinHit, true);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("Windows — Codex 의 `c:/…` 경로도 `C:\\…` 후보에 적중한다", {
+test("Windows — 도구가 적은 `c:/…` 경로도 `C:\\…` 후보에 적중한다", {
   skip: process.platform !== "win32",
 }, async () => {
-  // Codex 는 cwd 에 패치의 상대경로를 이어 `/` 가 섞이고, 드라이브 글자의 대소문자도
-  // 다를 수 있다. Windows 의 경로는 대소문자를 가리지 않는다(2026-10-19).
+  // 도구 경로는 `/` 가 섞이거나 드라이브 글자의 대소문자가 다를 수 있다. Windows 의 경로는
+  // 대소문자를 가리지 않는다(2026-10-19).
   const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
   try {
     const stats_ = stats(dir);
@@ -242,8 +203,8 @@ test("Windows — Codex 의 `c:/…` 경로도 `C:\\…` 후보에 적중한다"
     stats_.observe("s1", {
       kind: "tool.start",
       toolUseId: "t1",
-      name: "fileChange",
-      input: { changes: [{ path: "c:/work/repo\\src/b.tsx" }] },
+      name: "Edit",
+      input: { file_path: "c:/work/repo\\src/b.tsx" },
       agentId: null,
     } as ChatEvent);
     stats_.observe("s1", {
@@ -262,7 +223,7 @@ test("Windows — Codex 의 `c:/…` 경로도 `C:\\…` 후보에 적중한다"
   }
 });
 
-test("브라우저 도구는 세 이름 형태 모두 browser 묶음으로 센다 (PLAN-MCP M-7)", async () => {
+test("브라우저 도구는 두 이름 형태 모두 browser 묶음으로 센다 (PLAN-MCP M-7)", async () => {
   const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
   try {
     const stats_ = stats(dir);
@@ -270,7 +231,6 @@ test("브라우저 도구는 세 이름 형태 모두 browser 묶음으로 센�
     for (const [id, name] of [
       ["t1", "screen_check"],
       ["t2", "mcp__colonova-browser__screen_check"],
-      ["t3", "colonova-browser/browser_snapshot"],
     ] as const) {
       stats_.observe("s1", {
         kind: "tool.start",
@@ -305,7 +265,7 @@ test("브라우저 도구는 세 이름 형태 모두 browser 묶음으로 센�
       resultText: "됐습니다",
     } as ChatEvent);
     const rows = await untilRows(dir, 1);
-    assert.deepEqual(rows[0]?.tools, { read: 0, edit: 1, exec: 0, browser: 3, other: 1 });
+    assert.deepEqual(rows[0]?.tools, { read: 0, edit: 1, exec: 0, browser: 2, other: 1 });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -519,7 +479,7 @@ test("turn.end 의 usage 는 토큰 · 비용 · 캐시 적중률 세 칸이 되
   }
 });
 
-test("Codex 처럼 캐시 쓰기를 모르는 usage 도 적중률이 선다 — 쓰기는 분모에 0 으로 든다", async () => {
+test("캐시 쓰기를 모르는 usage(null)도 적중률이 선다 — 쓰기는 분모에 0 으로 든다", async () => {
   const dir = mkdtempSync(join(tmpdir(), "colonova-stats-"));
   try {
     const stats_ = stats(dir);

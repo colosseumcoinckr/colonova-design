@@ -14,8 +14,8 @@ import { SessionManager } from "../dist/session-manager.js";
 function makeManager(onState: (state: string) => void): SessionManager {
   const registry = new DriverRegistry();
   registry.register({
-    id: "codex",
-    describe: () => ({ id: "codex", label: "Codex", capabilities: {} }),
+    id: "second",
+    describe: () => ({ id: "second", label: "Second", capabilities: {} }),
     createSession: () => ({
       vendorId: "vendor",
       alive: true,
@@ -39,7 +39,7 @@ test("세션 닫기: close 도중 던져도 live 명단에서 지운다", async 
     });
     manager.create({
       cwd,
-      provider: "codex",
+      provider: "second",
       sessionId: "public",
       launch: { model: "luna", effort: "low" },
     } as never);
@@ -63,7 +63,7 @@ test("세션 닫기: closeAll 은 하나의 실패로 전체를 거절하지 않
     for (const id of ["one", "two"]) {
       manager.create({
         cwd,
-        provider: "codex",
+        provider: "second",
         sessionId: id,
         launch: { model: "luna", effort: "low" },
       } as never);

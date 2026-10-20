@@ -15,7 +15,6 @@ import {
   markTurn,
 } from "@colonova-design/protocol";
 import { isOwnAppComment } from "./app-comment.js";
-import { type PlannedChange, partitionApproved } from "./change-plan.js";
 import { readComments } from "./comments.js";
 import { replyFooter } from "./developer-replies.js";
 import {
@@ -45,6 +44,7 @@ import {
 } from "./repo-core.js";
 import { saveablePaths } from "./saveable-paths.js";
 import { classifyGitHubFailure, SUBMIT_LOG_TEXT } from "./submit-state.js";
+import type { SubmitVersion } from "./submit-version.js";
 
 /** The `<img>` needs a media type; the committed file's extension is the
  *  capture's own (see HandoffShot.extension). */
@@ -186,18 +186,7 @@ export class PublishCycle {
     onSessionTurn?: (brief: string) => void;
     /** hero-synthesis D1: the conversation this save belongs to. */
     sessionId?: string;
-    /**
-     * 이번 턴의 보관 계획(2026-10-11 피드백) — `describe_changes` 가 적은
-     * 논리적 변경의 목록. 있으면 승인 경로를 변경마다 나눠 커밋하고, 계획에
-     * 없던 경로는 폴백 메모의 한 커밋에 담는다.
-     */
-    plan?: PlannedChange[];
-    /**
-     * P2-1 자동 저장의 푸시 — 백그라운드(실패 무시). 커밋은 로컬에 끝난 것으로
-     * 저장이 성립하고, 푸시는 조용히 따라간다: 오프라인에서도 턴의 끝이 멈추지
-     * 않게. 밀린 커밋은 제출(넘기기)이 기다렸다 민다 — 푸시 실패를 게이트로
-     * 올리는 길은 제출 쪽뿐이다.
-     */
+    /** 옛 내부 호출과의 호환 필드. MVP에서는 값과 무관하게 로컬에만 보관한다. */
     backgroundPush?: boolean;
   }): Promise<DiffStatus> {
     if (!this.core.isCloned()) {
@@ -319,73 +308,34 @@ export class PublishCycle {
     // the published status, so nothing is written in their name unseen.
     // A push retry writes no commit, so it asks for no memo turn: `null`
     // is what "nothing to commit here" means below.
-    // 2026-10-11 피드백: `describe_changes` 계획이 있으면 승인 경로를 변경마다
-    // 가라 — 폴백 메모는 계획이 다루지 않은 경로(그 밖의 변경)에만 필요하므로,
-    // 계획이 전부를 다루는 턴은 메모 턴조차 돌리지 않는다.
-    const { groups, leftover } = partitionApproved(approved, options.plan ?? null);
-    const fallbackNeeded = groups.length === 0 || leftover.length > 0;
     const memo = retryPush
       ? null
-      : !fallbackNeeded
-        ? null
-        : options.message?.trim() ||
-          (await this.deps.machineMemo(saveable).catch(() => null)) ||
-          DEFAULT_COMMIT_MESSAGE;
+      : options.message?.trim() ||
+        (await this.deps.machineMemo(saveable).catch(() => null)) ||
+        DEFAULT_COMMIT_MESSAGE;
 
     // Commit exactly the paths the planner approved — never `git add -A`, so
     // unreviewed output cannot ride along in the save.
     this.core.setDiff({ stage: "pushing" });
     // 브랜치 준비와 커밋은 push 와 다른 단계다 — 둘을 한 gate 로 보내면
     // 커밋 실패의 원인을 "올리기" 에서 찾게 된다.
-    let branch: string;
     try {
-      branch = await this.ensureCycleBranch();
-      if (memo !== null) {
-        if (groups.length > 0) {
-          for (const group of groups) await this.commitApproved(group.message, group.paths);
-          if (leftover.length > 0) await this.commitApproved(memo, leftover);
-        } else {
-          await this.commitApproved(memo, approved);
-        }
-      }
+      await this.ensureCycleBranch();
+      if (memo !== null) await this.commitApproved(memo, approved);
     } catch (error) {
       return this.failGate("commit", error, options.onSessionTurn);
     }
-    // 푸시 단계(P2-1): 자동 저장은 백그라운드 — 커밋이 로컬에 있으면 저장은
-    // 끝난 것이고, 원격 백업은 되는 대로 따라간다. 실패를 기다리는 것은 제출의
-    // 몫이니 여기선 삼킨다(밀린 커밋은 넘기기가 민다).
-    if (options.backgroundPush === true) {
-      // D6: 백그라운드 푸시도 바로 포기하지 않는다 — 30 초 간격 세 번. 턴의
-      // 끝이 오프라인 때문에 밀리지 않게 실패를 삼키던 자리(P2-1)에 조용한
-      // 재시도가 대신 선다. 세 번 다 지나면 제출이 기다려서 민다 — 제출만이
-      // 푸시 실패를 게이트로 올리는 유일한 길이다.
-      // 차선 밖으로 내보내 띄운다(PLAN L1): 저장 작업의 문맥 안에 남으면 각
-      // 시도가 재진입 즉시실행이 되어 줄을 비켜간다 — 시도 하나는 push 작업
-      // 하나로 다시 줄에 서야 한다.
-      void this.core.lane.outside(() => this.retryBackgroundPush(branch));
-    } else {
-      try {
-        await this.core.git(["push", "--set-upstream", "origin", branch]);
-      } catch (error) {
-        return this.failGate("push", error, options.onSessionTurn);
-      }
-    }
-
+    // 2026-10-20 MVP: 원격 전송은 확인한 제출만 담당한다. 보관은 로컬에서 끝난다.
     const commit = (await this.core.git(["rev-parse", "HEAD"])).trim();
     // The worktree is clean now; the chip moves off unsaved on this.
     await this.core.refreshPendingChanges();
-    // 계획으로 나눠 커밋한 저장은 첫 변경의 제목이 이 저장의 말이 된다 —
-    // 계획이 전부를 다뤘으면 memo 는 null 이므로 log 에서 읽을 필요도 없다.
     const message =
-      groups[0]?.subject ??
-      memo ??
-      (await this.core.git(["log", "-1", "--pretty=%s"]).catch(() => "")).trim();
+      memo ?? (await this.core.git(["log", "-1", "--pretty=%s"]).catch(() => "")).trim();
     const status = this.core.setDiff({
       stage: "published",
       commit,
       message,
-      // 이번 저장이 담은 경로 전부 — 라우트↔파일 지도가 HEAD 커밋만 읽으면
-      // 변경 단위로 나뉜 커밋 중 마지막 것의 파일만 남는다(2026-10-11).
+      // 이번 저장이 담은 경로 전부 — 라우트↔파일 지도의 재료다(2026-10-11).
       turnFiles: approved.length > 0 ? approved : retryFiles,
     });
     // hero-synthesis D1: the save lands on the session tape — a reloaded
@@ -625,9 +575,10 @@ export class PublishCycle {
       commentsFile?: string;
       /** 제출 확인의 `개발자에게 한마디`(PLAN-UI U3) — 작성자 줄 바로 아래. */
       note?: string;
+      version?: SubmitVersion;
     } = {},
   ): Promise<string> {
-    const branch = this.core.branch;
+    const branch = options.version?.branch ?? this.core.branch;
     if (!branch) return "";
     const sections: string[] = [];
     // P1-3: 작성자 줄 — 요청은 봇 계정으로 열리므로 이름이 없으면 개발자가 누구
@@ -641,7 +592,7 @@ export class PublishCycle {
     // AI 로만 말하고 확인 절은 서지 않는다.
     let cycleScreens: NonNullable<ReturnType<RepoCore["snapshot"]>["cycleScreens"]> = [];
     try {
-      cycleScreens = this.core.snapshot().cycleScreens ?? [];
+      cycleScreens = options.version?.screens ?? this.core.snapshot().cycleScreens ?? [];
     } catch {
       // 같은 이유.
     }
@@ -654,7 +605,9 @@ export class PublishCycle {
         "core.quotepath=false",
         "diff",
         "--numstat",
-        `origin/${this.core.baseBranch}..${branch}`,
+        options.version
+          ? `${options.version.base}...${options.version.head}`
+          : `origin/${this.core.baseBranch}...${branch}`,
       ]);
       const scopeSection = buildScopeSection(numstat);
       if (scopeSection) sections.push(scopeSection);
@@ -986,20 +939,6 @@ export class PublishCycle {
     this.deps.appendSubmitLog?.(SUBMIT_LOG_TEXT.noteSent);
   }
 
-  /**
-   * D6 → PLAN L7: 조용한 푸시는 한 번만 시도한다. 실패하면 조용히 두고
-   * 감독자(cycle-supervisor)의 12행이 원장의 백오프로 계속 민다 — 무한,
-   * 최대 10분 간격. 전경 푸시(제출)는 그대로다.
-   */
-  private async retryBackgroundPush(branch: string): Promise<void> {
-    try {
-      await this.core.lane.run("push", () =>
-        this.core.git(["push", "--set-upstream", "origin", branch]),
-      );
-    } catch {
-      // 밀린 커밋은 감독자의 push 행과 제출의 게이트가 잡는다.
-    }
-  }
   private failGate(
     gate: "commit" | "push" | "pr",
     error: unknown,

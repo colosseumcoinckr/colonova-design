@@ -15,7 +15,7 @@
  * 없어 effect 가 TypeError 로 죽던 것을 함께 고쳤다):
  *   ?theme=claude|dark|github|…  테마
  *   ?case=a|b|c|d                한 벌만 — 대화 칸 벌(b·c·d)은 창 바닥에 붙어 위로 열린다
- *   ?ai=1|2                      쓸 수 있는 AI 수 — 1 이면 AI 줄이 서지 않는다(기본 2)
+ *   ?ai=1|2                      쓸 수 있는 AI 수 — 2 면 가짜 둘째 AI 로 AI 줄을 세운다(기본 1 — 제품은 Claude 하나다)
  *   ?usage=ok|loading|failed|empty  사용량 읽기 — ok(0.7초 뒤 읽힘) · loading(끝내 안 옴) · failed · empty(요금제에 한도 없음)
  *   ?models=few|many             모델 줄 수 — many 는 거르는 칸이 서는 길이(기본 few)
  *   ?w=460                       입력창 칸의 폭
@@ -41,7 +41,7 @@ const query = new URLSearchParams(location.search);
 const theme = query.get("theme");
 if (theme) document.documentElement.dataset.theme = theme;
 const ONLY = query.get("case");
-const AI_COUNT = query.get("ai") === "1" ? 1 : 2;
+const AI_COUNT = query.get("ai") === "2" ? 2 : 1;
 const USAGE = query.get("usage") ?? "ok";
 const MANY = query.get("models") === "many";
 const WIDTH = Number(query.get("w")) || 460;
@@ -99,16 +99,17 @@ const CLAUDE_MODELS = [
   }),
 ];
 
-const CODEX_MODELS = [
+/** 가짜 둘째 AI 의 모델 — `?ai=2` 의 AI 줄을 눈으로 보는 견본일 뿐 실제 공급자가 아니다. */
+const SECOND_MODELS = [
   row({
-    value: "gpt-5.3-codex",
-    displayName: "GPT-5.3-Codex",
+    value: "second-large",
+    displayName: "Second Large",
     description: "Most capable for your hardest and longest-running tasks",
     supportsFastMode: false,
   }),
   row({
-    value: "gpt-5.3-codex-spark",
-    displayName: "GPT-5.3-Codex-Spark",
+    value: "second-small",
+    displayName: "Second Small",
     description: "Fastest for quick answers",
     supportsFastMode: false,
   }),
@@ -128,7 +129,7 @@ const MANY_MODELS = [
 ];
 
 const modelsOf = (provider: string): SessionModelInfo[] =>
-  provider === "codex" ? CODEX_MODELS : MANY ? MANY_MODELS : CLAUDE_MODELS;
+  provider === "second" ? SECOND_MODELS : MANY ? MANY_MODELS : CLAUDE_MODELS;
 
 const inMinutes = (min: number) => new Date(Date.now() + min * 60_000).toISOString();
 
@@ -149,12 +150,12 @@ const PLAN: PlanUsage = {
   provider: "claude",
 };
 
-const PLAN_CODEX: PlanUsage = {
+const PLAN_SECOND: PlanUsage = {
   subscriptionType: "plus",
   fiveHour: { utilization: 12, resetsAt: inMinutes(210) },
   sevenDay: { utilization: 20, resetsAt: inMinutes(5 * 24 * 60) },
   modelWeekly: [],
-  provider: "codex",
+  provider: "second",
 };
 
 const providers = [
@@ -165,7 +166,7 @@ const providers = [
     loggedIn: true,
     capabilities: { fastMode: true },
   },
-  { id: "codex", label: "Codex", available: true, loggedIn: true, capabilities: {} },
+  { id: "second", label: "Second AI", available: true, loggedIn: true, capabilities: {} },
 ].slice(0, AI_COUNT);
 
 /**
@@ -184,7 +185,7 @@ const daemon = {
   status: {
     providers,
     planUsageByProvider:
-      USAGE === "empty" || USAGE === "failed" ? {} : { claude: PLAN, codex: PLAN_CODEX },
+      USAGE === "empty" || USAGE === "failed" ? {} : { claude: PLAN, second: PLAN_SECOND },
   },
   api: { planRefresh },
 } as unknown as Daemon;

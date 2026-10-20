@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { parseClientMessage } from "@colonova-design/protocol";
 import { RequestRouter } from "../dist/dispatch.js";
 import { GitLane } from "../src/git-lane.ts";
 
@@ -89,33 +90,6 @@ test("a changed version, new unsaved work, or running conversation must not star
   assert.equal(matching.submitted(), 1);
 });
 
-test("comparison reads wait for the saved photos instead of returning a premature empty state", async () => {
-  let release!: () => void;
-  const ready = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  let replied = false;
-  const router = new RequestRouter({
-    fleet: {
-      requireActive: () => ({ slug: "test", paths: { root: "/missing-comparison-fixture" } }),
-    },
-    comparisonReady: (slug: string) => {
-      assert.equal(slug, "test");
-      return ready;
-    },
-  } as never);
-  const response = router
-    .dispatch({ id: "compare", type: "repo.comparison", route: "/", requestId: "new" })
-    .then((value) => {
-      replied = true;
-      return value;
-    });
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(replied, false);
-  release();
-  assert.equal(await response, null);
-});
-
 test("same saved head with a changed baseline/content token refuses the old review", async () => {
   const scene = setup({ token: "d".repeat(64) });
   await assert.rejects(
@@ -195,4 +169,25 @@ test("queued submission reviews collapse into one read and never join a real sub
   assert.equal(submitted, 1);
   // 제출 한 번(headCommitFiles 1) + 합류한 검토 읽기 한 번.
   assert.equal(reads, 2);
+});
+
+test("사진 비교 요청은 거절하고 제출 화면 단독 열기와 제출 확인은 유지한다", () => {
+  for (const submitted of [false, true]) {
+    const result = parseClientMessage(
+      JSON.stringify({
+        id: "retired-comparison",
+        type: "repo.comparison",
+        route: "/members",
+        requestId: "old-request",
+        submitted,
+      }),
+    );
+    assert.equal(result.ok, false);
+  }
+  for (const message of [
+    { id: "shot", type: "repo.handoffShot", route: "/members" },
+    { id: "submit", type: "repo.submitPreview" },
+  ]) {
+    assert.equal(parseClientMessage(JSON.stringify(message)).ok, true);
+  }
 });

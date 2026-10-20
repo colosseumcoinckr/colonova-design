@@ -4,8 +4,8 @@ import { compareVersions, isNewerVersion, parseVersion, plainVersion } from "../
 
 test("버전 읽기: CLI 의 글 · 릴리스 태그 · v 접두사에서 첫 버전을 뽑는다", () => {
   assert.equal(plainVersion("2.1.4 (Claude Code)"), "2.1.4");
-  assert.equal(plainVersion("codex-cli 0.46.0"), "0.46.0");
-  assert.equal(plainVersion("rust-v0.46.0"), "0.46.0");
+  assert.equal(plainVersion("some-cli 0.46.0"), "0.46.0");
+  assert.equal(plainVersion("release-v0.46.0"), "0.46.0");
   assert.equal(plainVersion("v1.2.0-beta.1"), "1.2.0-beta.1");
   assert.equal(plainVersion("1.2.0+build.5"), "1.2.0");
   assert.equal(plainVersion("버전 없음"), null);
@@ -17,7 +17,7 @@ test("버전 비교: 숫자로 조각마다 — 문자열 순서가 아니다", 
   assert.equal(compareVersions("2.1.10", "2.1.9"), 1);
   assert.equal(compareVersions("2.1.9", "2.1.10"), -1);
   assert.equal(compareVersions("v2.1.4", "2.1.4 (Claude Code)"), 0);
-  assert.equal(compareVersions("rust-v0.46.0", "codex-cli 0.45.2"), 1);
+  assert.equal(compareVersions("release-v0.46.0", "some-cli 0.45.2"), 1);
   // 빠진 조각은 0 — 2.1 == 2.1.0.
   assert.equal(compareVersions("2.1", "2.1.0"), 0);
 });

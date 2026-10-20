@@ -38,7 +38,6 @@ function fixture() {
   put(join(paths.userData, "credentials.json"));
   put(join(paths.userData, "desktop-settings.json"));
   put(join(paths.home, ".claude", "credentials"));
-  put(join(paths.home, ".codex", "auth.json"));
   return {
     paths,
     active,
@@ -98,7 +97,6 @@ test("재시작 전에는 보존하고, 다음 시작에서 잊힌 프로젝트�
       assert.equal(existsSync(join(f.paths.userData, name)), false);
     }
     assert.equal(readFileSync(join(f.paths.home, ".claude", "credentials"), "utf8"), "keep");
-    assert.equal(readFileSync(join(f.paths.home, ".codex", "auth.json"), "utf8"), "keep");
   } finally {
     f.dispose();
   }
@@ -177,7 +175,7 @@ test("홈·앱·설정 폴더와 개발용 외부 경로는 초기화 대상으�
       f.paths.userData,
       f.paths.appPath,
       dirname(f.paths.home),
-      join(f.paths.home, ".codex"),
+      join(f.paths.home, ".claude"),
     ]) {
       assert.throws(() => assertResetPaths({ ...f.paths, dataDir }, {}));
     }

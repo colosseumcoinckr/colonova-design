@@ -9,15 +9,14 @@
  * 버전마다 한 번만 시도한다 — 시도한 버전을 machine.json 에 적어 실패하는
  * 업데이트가 한 시간마다 도는 일을 막는다.
  *
- * 버전의 출처:
- * - Codex — 설치가 읽는 GitHub releases/latest 의 `tag_name`(`rust-v0.46.0`).
- * - Claude Code — 공식 설치 스크립트(claude.ai/install.sh · install.ps1)가 맨
- *   먼저 받는 `downloads.claude.ai/claude-code-releases/latest` 의 글 한 줄
- *   (`2.1.282`). 업데이트는 스크립트에 `latest` 를 건네 같은 버전을 깐다.
+ * 버전의 출처: 공식 설치 스크립트(claude.ai/install.sh · install.ps1)가 맨
+ * 먼저 받는 `downloads.claude.ai/claude-code-releases/latest` 의 글 한 줄
+ * (`2.1.282`). 업데이트는 스크립트에 `latest` 를 건네 같은 버전을 깐다.
+ * 에이전트는 Claude Code 하나다(2026-10-20 사용자 요청).
  */
 
 import type { AgentInstallKind, DaemonStatus, ServerMessage } from "@colonova-design/protocol";
-import { type AgentInstall, CODEX_RELEASE_API } from "./agent-install.js";
+import type { AgentInstall } from "./agent-install.js";
 import type { DaemonNotice } from "./notices.js";
 import { isNewerVersion, plainVersion } from "./versions.js";
 
@@ -30,8 +29,8 @@ export const STALE_CHECK_MS = 60 * 60_000;
 /** 확인 한 번의 시간 상한 — 넘으면 그 에이전트는 이번에 모르는 채로 둔다. */
 const CHECK_TIMEOUT_MS = 15_000;
 
-export type UpdateAgent = "claude" | "codex";
-const AGENTS: UpdateAgent[] = ["claude", "codex"];
+export type UpdateAgent = "claude";
+const AGENTS: UpdateAgent[] = ["claude"];
 type AgentUpdateMap = NonNullable<DaemonStatus["agentUpdates"]>;
 export type AgentUpdateState = NonNullable<AgentUpdateMap[UpdateAgent]>;
 
@@ -52,19 +51,6 @@ export function parseClaudeLatest(body: string): string | null {
   const text = body.trim();
   if (!/^\d+\.\d+\.\d+/.test(text)) return null;
   return plainVersion(text);
-}
-
-/** Codex releases/latest 의 JSON → 버전(`tag_name` 먼저, 없으면 `name`). */
-export function parseCodexRelease(json: unknown): string | null {
-  if (!json || typeof json !== "object") return null;
-  const release = json as { tag_name?: unknown; name?: unknown };
-  for (const field of [release.tag_name, release.name]) {
-    if (typeof field === "string") {
-      const version = plainVersion(field);
-      if (version) return version;
-    }
-  }
-  return null;
 }
 
 /**
@@ -104,30 +90,21 @@ export function wantsAutoUpdate(input: {
 // ---------------------------------------------------------------------------
 
 /**
- * 한 에이전트의 최신 버전. 주소는 환경 변수로 갈아 끼운다(시험용):
- * `COLONOVA_DESIGN_CLAUDE_LATEST_API` · `COLONOVA_DESIGN_CODEX_RELEASE_API`(설치와 공유).
+ * 한 에이전트의 최신 버전 — 에이전트는 Claude Code 하나라 이름은 부르는 쪽의 모양만
+ * 지킨다. 주소는 환경 변수로 갈아 끼운다(시험용): `COLONOVA_DESIGN_CLAUDE_LATEST_API`.
  * 실패는 던진다 — 부르는 쪽이 로그에 남긴다.
  */
 export async function fetchLatestVersion(
-  agent: UpdateAgent,
+  _agent: UpdateAgent,
   deps: { env?: NodeJS.ProcessEnv; fetchLike?: typeof fetch } = {},
 ): Promise<string | null> {
   const env = deps.env ?? process.env;
   const fetchLike = deps.fetchLike ?? fetch;
-  const signal = AbortSignal.timeout(CHECK_TIMEOUT_MS);
-  if (agent === "claude") {
-    const response = await fetchLike(env.COLONOVA_DESIGN_CLAUDE_LATEST_API ?? CLAUDE_LATEST_API, {
-      signal,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    return parseClaudeLatest(await response.text());
-  }
-  const response = await fetchLike(env.COLONOVA_DESIGN_CODEX_RELEASE_API ?? CODEX_RELEASE_API, {
-    headers: { accept: "application/vnd.github+json", "user-agent": "colonova-design" },
-    signal,
+  const response = await fetchLike(env.COLONOVA_DESIGN_CLAUDE_LATEST_API ?? CLAUDE_LATEST_API, {
+    signal: AbortSignal.timeout(CHECK_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return parseCodexRelease(await response.json());
+  return parseClaudeLatest(await response.text());
 }
 
 // ---------------------------------------------------------------------------
@@ -173,7 +150,7 @@ export class AgentUpdates {
 
   /** 확인해 둔 최신 버전 — 모르면 undefined(상태의 키가 빠진다). */
   latest(agent: string): string | undefined {
-    return agent === "claude" || agent === "codex" ? this.latestByAgent[agent] : undefined;
+    return agent === "claude" ? this.latestByAgent[agent] : undefined;
   }
 
   /** 상태에 실을 업데이트의 지금 — 이 실행에서 아무 일도 없었으면 undefined. */
@@ -205,7 +182,7 @@ export class AgentUpdates {
   }
 
   /**
-   * 두 에이전트의 최신 버전을 읽고, 자동 설치를 판정한다. 도는 확인이 있으면
+   * 에이전트의 최신 버전을 읽고, 자동 설치를 판정한다. 도는 확인이 있으면
    * 그것을 함께 기다린다. 버전이 바뀌었거나 업데이트가 걸렸을 때만 방송한다.
    */
   check(): Promise<void> {

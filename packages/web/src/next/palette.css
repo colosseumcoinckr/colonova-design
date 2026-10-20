@@ -235,7 +235,7 @@
   text-overflow: ellipsis;
 }
 
-/* 걷는 줄의 바탕은 한 단계 짙어져 옅은 글자가 4.5:1 밑으로 내려간다(github · codex) —
+/* 걷는 줄의 바탕은 한 단계 짙어져 옅은 글자가 4.5:1 밑으로 내려간다(github) —
    그 줄의 한마디만 한 단계 진하게. 색이 있는 곁말(기다림 · 반영)은 제 색을 지킨다. */
 .nx-pal-row--on
 .nx-pal-meta:not(.nx-tone--accent, .nx-tone--amber, .nx-tone--green, .nx-tone--red) {
@@ -361,7 +361,7 @@
   flex: none;
   padding: 8px 14px;
   background: color-mix(in srgb, var(--ink) 3%, transparent);
-  /* 옅은 바탕 위라 --ink3 는 codex 에서 4.5:1 에 못 미친다. */
+  /* 옅은 바탕 위라 --ink3 는 4.5:1 에 못 미칠 수 있다 — 한 단계 진하게 둔다. */
   color: var(--ink2);
   font-size: 12px;
 }

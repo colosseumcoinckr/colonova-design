@@ -15,7 +15,7 @@ function assertUserWords(label: string, source: string) {
   assert.doesNotMatch(label, FORBIDDEN, `${source} → ${label}: 개발 어휘`);
 }
 
-test("통계가 아는 공급자 이름(Claude · Codex)은 전부 한국어 이름이 있고, 같은 일은 같은 말이다", () => {
+test("통계가 아는 공급자 이름(Claude)은 전부 한국어 이름이 있다", () => {
   const groups: Array<[string, Record<string, true>]> = [
     ["읽기", STATS_READ_TOOLS],
     ["편집", STATS_EDIT_TOOLS],
@@ -25,13 +25,8 @@ test("통계가 아는 공급자 이름(Claude · Codex)은 전부 한국어 이
     assert.ok(Object.keys(table).length > 0, kind);
     for (const name of Object.keys(table)) assertUserWords(toolLabel(name), name);
   }
-  // Codex 가 같은 일을 다른 이름으로 부른다 — 사용자는 한 가지 말로 읽는다.
-  assert.equal(toolLabel("commandExecution"), toolLabel("Bash"));
-  assert.equal(toolLabel("execCommand"), toolLabel("Bash"));
-  assert.equal(toolLabel("fileChange"), toolLabel("Edit"));
-  assert.equal(toolLabel("applyPatch"), toolLabel("Edit"));
-  assert.equal(toolLabel("webSearch"), toolLabel("WebSearch"));
-  assert.equal(toolLabel("read_file"), toolLabel("Read"));
+  // 같은 일은 같은 말이다 — Windows 의 PowerShell 도 명령 실행이다.
+  assert.equal(toolLabel("PowerShell"), toolLabel("Bash"));
 });
 
 test("제출 도구의 이름은 AI 가 스스로 제출한다는 인상을 주지 않는다 — 사용자의 요청을 말한다", () => {

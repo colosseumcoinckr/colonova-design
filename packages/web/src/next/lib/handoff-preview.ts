@@ -27,7 +27,7 @@ export interface HandoffPreview {
 }
 
 /**
- * 데몬이 제목에 붙이는 종류 접두어 — 보관 계약의 COMMIT_KINDS(2026-10-13 조직 commitlint 에 맞춰 feat · fix · refactor ·
+ * 데몬이 제목에 붙이는 종류 접두어 — 조직 commitlint 의 일곱 종류(2026-10-13 · feat · fix · refactor ·
  * style · docs · test · chore)에 옛 제목이 쓰던 perf · build · ci 를 더한 읽기용 목록이다. 읽는 쪽은 너그럽다.
  */
 const KIND_PREFIX =

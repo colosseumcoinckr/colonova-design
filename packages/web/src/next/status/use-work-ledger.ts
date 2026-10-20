@@ -66,9 +66,8 @@ export function useWorkLedger(daemon: Daemon): WorkLedger {
       void api
         .handoffStatus()
         .then((report) => {
-          if (slugRef.current !== asked) return;
+          if (slugRef.current !== asked || keyRef.current !== askedKey) return;
           setReviews(report?.reviews?.filter((review) => review.pr === report.number) ?? []);
-          if (keyRef.current !== askedKey) return;
           setLoadedKey(askedKey);
           setFailedKey(null);
         })

@@ -14,7 +14,6 @@ import {
 import { useHeldPhase } from "../lib/use-held-phase";
 import { useSubmitReview } from "../lib/use-submit-review";
 import type { CycleScreen } from "../lib/work-ledger";
-import { openComparison } from "../preview/ComparisonDialog";
 import type { StatusLineProps } from "../slots";
 import { MenuIcon, PanelIcon, Spin } from "../ui/icons";
 import { ConvTitle } from "./ConvTitle";
@@ -562,14 +561,6 @@ export function StatusLine({
               setConfirmOpen(false);
               openScreen(screen);
             }}
-            onCompare={(screen) =>
-              openComparison({
-                route: screen.route,
-                title: screen.title,
-                requestId: screen.requestId,
-                sha: screen.sha,
-              })
-            }
           />
         )}
         {why && (

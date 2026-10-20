@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 
 /** A paintable palette. dark/light are the native pair "system" chooses
     between; the rest are whole looks of their own. */
-export type ThemeId = "dark" | "light" | "github" | "github-light" | "claude" | "codex";
+export type ThemeId = "dark" | "light" | "github" | "github-light" | "claude";
 /** What the picker stores: a palette, or "follow the OS". */
 export type ThemeChoice = "system" | ThemeId;
 /** Which keypress sends a message. The other one inserts a newline. */
@@ -121,8 +121,8 @@ export interface ChatSettings {
   fastMode: boolean;
   /**
    * Model/effort pins for providers other than `provider`. Switching the
-   * 프로바이더 picker swaps the top-level fields with this map's entry, so a
-   * Codex id never reaches a Claude session or vice versa.
+   * 프로바이더 picker swaps the top-level fields with this map's entry, so one
+   * provider's id never reaches another provider's session.
    */
   byProvider?: Record<string, { model: string | null; effort: EffortLevel | null; fast?: boolean }>;
   /**
@@ -134,9 +134,8 @@ export interface ChatSettings {
   disabledProviders: string[];
   /**
    * 턴이 도는 중에 온 말의 길. "queue"(기본)는 대기 줄에 세워 다음 턴에
-   * 보내고, "steer"는 도는 턴에 그대로 실어 보낸다 — 길을 내주는 드라이버
-   * (Codex)에서만 실제로 실리며, 그 외 에이전트는 데몬이 대기 줄로
-   * 물러나게 한다.
+   * 보내고, "steer"는 바로 보낸다 — 도는 턴에 실을 길이 없는 에이전트(지금의
+   * Claude)는 데몬이 도는 턴을 끊고 이 말을 첫 새 턴으로 보낸다.
    */
   midturn: "queue" | "steer";
   /**
@@ -257,8 +256,8 @@ const DEFAULT_CHAT_SETTINGS: ChatSettings = {
 const DEFAULT_SETTINGS: Settings = {
   /**
    * Claude — the palette the shell was redesigned around: warm paper, tonal
-   * elevation, terracotta accent. The picker (설정 → 테마) offers Codex and
-   * the other palettes beside it; this is just the one that greets first.
+   * elevation, terracotta accent. The picker (설정 → 테마) offers the other
+   * palettes beside it; this is just the one that greets first.
    */
   theme: "claude",
   sendKey: "enter",
@@ -281,7 +280,6 @@ export const THEMES: ThemeChoice[] = [
   "github",
   "github-light",
   "claude",
-  "codex",
 ];
 
 const KEY = "colonova-design.settings";
@@ -295,13 +293,12 @@ const BLOB_VERSION = 2;
 
 /**
  * 설정의 테마 줄이 보여주는 목록 — 팔레트 자체는 styles.css 에 있고(THEMES와 같은
- * 6개), 고르는 칸은 이 것만 선다. 검증도 같은 목록이므로 여기서 뺀 값은 저장에
+ * 5개), 고르는 칸은 이 것만 선다. 검증도 같은 목록이므로 여기서 뺀 값은 저장에
  * 남아 있어도 기본(Claude)으로 돌아온다.
  */
 export const PICKER_THEMES = [
   "system",
   "claude",
-  "codex",
   "light",
   "dark",
   "github-light",
@@ -406,9 +403,8 @@ function loadChat(raw: unknown): ChatSettings {
   const provider =
     typeof stored.provider === "string" && stored.provider ? stored.provider : "claude";
   const byProvider = loadByProvider(stored.byProvider);
-  // The stored model must belong to the stored provider's vocabulary — a
-  // Codex id pinned while Codex was selected must not greet the next Claude
-  // session. When that provider's catalog is known, a value it does not list
+  // The stored model must belong to the stored provider's vocabulary — an
+  // id pinned under another provider must not greet the next session. When that provider's catalog is known, a value it does not list
   // is a leftover from another provider and is dropped.
   const storedModel =
     typeof stored.model === "string" && stored.model ? stored.model : (legacy.model ?? null);
@@ -666,9 +662,9 @@ const MODELS_KEY = "colonova-design.models";
  * The model rows the daemon last served, per provider. Only a live session
  * can be asked for them, so caching the list is what lets the 모델 chip
  * offer real choices before a workspace is connected — instead of an empty
- * menu. Each provider keeps its own rows: a Claude alias and a Codex model
- * id are different vocabularies, and one shared list would offer a model
- * the session cannot run.
+ * menu. Each provider keeps its own rows: one provider's model ids are not
+ * another's vocabulary, and one shared list would offer a model the session
+ * cannot run.
  */
 export function loadModelCatalog(provider?: string): SessionModelInfo[] {
   let raw: unknown;

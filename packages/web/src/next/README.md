@@ -167,9 +167,6 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
   `usableScreen`: 입력창 아래 시작점 칩의 이름 · 초안 · 선택해 둘 화면 이름 자리.
 - `submit-view.ts` — 제출 확인의 상태(`submitView`): 목록 · 알림 줄 · 주 단추가 서로 어긋나지 않게 읽기
   실패와 보내기 실패를 가른다(보내기가 실패해도 목록은 남고 `다시 제출` 이 선다).
-- `compare-zoom.ts` — 비교 대화상자의 기본 보기(`나란히` · `겹쳐서` · `번갈아` — 좁으면 번갈아) · 확대의
-  한계 · 두 사진이 함께 움직이는 이동 · 와이프 선 · 키 한 번이 하는 일. 사진 둘은 `zoom`/`pan` 한 벌을 쓴다.
-- `roving.ts` · `use-roving.ts` — 라디오 군의 화살표 걸음 · 로빙 탭 순서(모델 칩의 AI · 모델 · 생각 시간).
 - `use-copied.ts` — 복사 뒤 1.5초만 `복사했어요` 로 바뀌는 단추의 손(`useCopied`). 낭독은 부르는 쪽이 실린다.
 - `use-closing.ts` — 겹판이 닫히는 동안의 모션 타이머 한 곳(`useClosing`).
 - `handoff-preview.ts` · `use-handoff-draft.ts` — 제출 확인의 `개발자에게는 이렇게 보여요`: `handoffPreviewOf(draft, firstSubject)` 가 데몬의 요청 초안
@@ -185,9 +182,7 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
   `lib/todo-plan.ts` 의 `currentTodoProgress` — 이 턴에 AI 가 목록을 냈을 때만, 숫자만.
 - `undo-last.ts` — `undoTargetFor(entries, screens, requestId)`: `방금 한 것 되돌리기` 가 돌아갈 곳(`{ sha, count }`) — 그 요청의 보관이
   기록의 맨 위부터 이어질 때만. `request-results.ts` 의 `latestResult` 가 「마지막 턴이 낸 결과」 를 고른다.
-- `result-photos.ts` — `readPhotos(record, { requestId, route })` · `photoUrl`: `고친 화면` 카드가 읽는 수정 전 · 수정 후 사진.
-  요청이나 화면이 다른 기록 · 그릴 수 없는 형식 · 한도(`MAX_PHOTO_CHARS`)를 넘는 사진은 없는 것으로 친다. 카드가 둘 다 쥐고
-  수정 전이 있으면 사진 위 토글(`nx-result-ba`)로 넘겨 본다.
+- `result-photos.ts` — `photoUrl`: 사진의 형식과 크기를 확인해 안전한 데이터 주소를 만든다. 첫 화면 사진 호환 경로가 사용한다.
 - `retry-send.ts` — `planRetry(send, original, restoredShots)` · `SentOriginal`: `다시 시도` 의 길 셋 — 보낸
   원본을 그대로 다시 · 입력창에 말을 돌려주고 다시 붙이게 · 기록이 가진 몫으로 다시 짜기. 대화 기록에는 첨부의
   바이트가 없어(개수와 이름뿐) `useSessions.sentOriginal` 이 대화마다 마지막으로 보낸 원본을 쥔다(세 대화 ·

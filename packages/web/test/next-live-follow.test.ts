@@ -291,6 +291,8 @@ test("칸: 사람의 손만 `noteUser` 로 남기고, 턴 끝의 도착 · 따�
     column.indexOf("const cycleTitle"),
   );
   assert.ok(arrival.includes("arriveOnTurnEnd"), "도착의 구간을 찾지 못했다");
+  // 턴 끝의 새로 고침(2026-10-20)도 같은 구간의 기계의 손이다.
+  assert.match(arrival, /if \(refresh\) reload\(\);/);
   assert.doesNotMatch(arrival, /noteUser/);
   assert.doesNotMatch(
     column.slice(column.indexOf("const retryStage"), column.indexOf("const pickDevice")),

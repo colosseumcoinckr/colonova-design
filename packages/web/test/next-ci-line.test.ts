@@ -46,17 +46,17 @@ test("통과 · 도는 중은 데몬이 읽은 그대로 말한다", () => {
 test("통과하지 못했다 — 누가 맡았는지는 문제 문장의 주의가 정한다", () => {
   const failing = handoff("open", { state: "failing", failing: 2 });
   assert.deepEqual(ciLine(failing, fixing, L), {
-    tone: "fixing",
-    text: "자동 검사가 통과하지 못해 AI가 고치고 있어요",
+    tone: "failing",
+    text: L.afterSubmit.checkFailing,
   });
   assert.deepEqual(ciLine(failing, notified, L), {
-    tone: "notified",
-    text: "자동 검사가 계속 통과하지 못해 개발자에게 알렸어요",
+    tone: "failing",
+    text: L.afterSubmit.checkFailing,
   });
   // 아무도 맡지 않았거나 다른 문제의 주의는 일반 문장이다.
   assert.deepEqual(ciLine(failing, null, L), {
     tone: "failing",
-    text: "자동 검사가 통과하지 못했어요",
+    text: L.afterSubmit.checkFailing,
   });
   const preview: Attention = { kind: "ai-fixing", since };
   assert.equal(ciLine(failing, preview, L)?.tone, "failing");

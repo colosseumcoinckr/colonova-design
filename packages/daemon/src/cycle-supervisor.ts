@@ -27,7 +27,6 @@ import {
   reviewToTurn,
   type SubmitSent,
 } from "@colonova-design/protocol";
-import { isOwnAppComment } from "./app-comment.js";
 import {
   BUDGETS,
   backoffDelay,
@@ -92,13 +91,7 @@ import {
 import { type DaemonLogger, sanitizeText } from "./log.js";
 import type { RepoWorkspace } from "./repo.js";
 import type { RepoCore } from "./repo-core.js";
-import {
-  conflictBrief,
-  DEFAULT_HANDOFF_TITLE,
-  detailOf,
-  SAVE_CONFLICT_OPEN_DETAIL,
-  STASH_MESSAGE,
-} from "./repo-core.js";
+import { conflictBrief, DEFAULT_HANDOFF_TITLE, detailOf, STASH_MESSAGE } from "./repo-core.js";
 import { alignCycleBranch, pickCycleBranchName } from "./repo-publish.js";
 import {
   advanceSubmitTrail,
@@ -109,6 +102,8 @@ import {
   SUBMIT_LOG_TEXT,
   type SubmitBlockReason,
 } from "./submit-state.js";
+import type { SubmitVersion } from "./submit-version.js";
+import { captureSubmitVersion, SUBMIT_CHANGED } from "./submit-version.js";
 
 export type TickReason =
   | "timer"
@@ -128,8 +123,6 @@ const MAX_TICK_ROUNDS = 5;
 const INACTIVE_FETCH_MS = 10 * 60 * 1000;
 /** 같은 알림을 다시 보내는 간격 — escalation 의 문장 기준 10분과 맞춘다. */
 const NOTICE_REPEAT_MS = 10 * 60 * 1000;
-/** 반려 이유로 읽는 창 — 닫힘 시각 이전 7일 (PLAN L9). */
-const REJECTION_REASON_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 /** 제출 취소 뒤 요청에 남는 한 줄(2026-10-14) — 개발자가 할 일이 없다는 것까지 말한다. 끝에 대리 표기가 붙는다. */
 const WITHDRAW_NOTE =
   "작성자가 이 요청을 거뒀습니다. 따로 하실 일은 없습니다. 다시 제출하면 새 요청으로 옵니다.";
@@ -425,38 +418,33 @@ export class CycleSupervisor {
    * `sessionId` 는 완료 사건(cycle.handed)의 귀속줄 — 원장이 아니라 메모리에
    * 둔다(재시작 뒤엔 fleet 의 기본 귀속 규칙이 이어받는다).
    */
-  submit(via: "button" | "chat", sessionId?: string, note?: string, sent?: SubmitSent): void {
-    this.submitSessionId = sessionId ?? null;
-    const words = note?.trim() ? note.trim() : undefined;
-    if (this.ledger.submit === null) {
+  async submit(
+    via: "button" | "chat",
+    sessionId?: string,
+    note?: string,
+    sent?: SubmitSent,
+  ): Promise<void> {
+    await this.deps.core.lane.run("submit", async () => {
+      // 중복 요청은 확정한 버전과 영수증을 바꾸지 않는다.
+      if (this.ledger.submit !== null) return;
+      if (this.deps.busy()) throw new Error("AI가 고치는 중이에요 — 끝난 뒤에 제출해 주세요.");
+      const version = await captureSubmitVersion(this.deps.core);
+      this.submitSessionId = sessionId ?? null;
       this.ledger = {
         ...this.ledger,
+        push: null,
         submit: {
           requestedAt: new Date(this.now()).toISOString(),
           via,
-          ...(words ? { note: words } : {}),
-          ...(sent ? { sent } : {}),
+          version,
+          ...(note?.trim() ? { note: note.trim() } : {}),
+          ...(sent ? { sent: structuredClone(sent) } : {}),
         },
       };
       writeLedger(this.ledgerPath, this.ledger);
       this.log(`제출 의도 (${via})`);
-    } else if (
-      (words && this.ledger.submit.note !== words) ||
-      (sent && JSON.stringify(this.ledger.submit.sent) !== JSON.stringify(sent))
-    ) {
-      // 도는 제출에 한마디(또는 확인한 화면)를 더한 누름 — 의도는 하나 그대로, 말만 새것으로
-      // (PLAN-UI U3). 단계는 처음부터 다시 시작하지 않는다.
-      this.ledger = {
-        ...this.ledger,
-        submit: {
-          ...this.ledger.submit,
-          ...(words ? { note: words } : {}),
-          ...(sent ? { sent } : {}),
-        },
-      };
-      writeLedger(this.ledgerPath, this.ledger);
-    }
-    this.syncSubmitTrail();
+      this.syncSubmitTrail();
+    });
     void this.tick("manual");
   }
 
@@ -1505,7 +1493,6 @@ export class CycleSupervisor {
       core.lane.outside(() => this.deps.cycleEvent?.(event));
     }
     // 제출 취소의 표식은 그 요청의 착지와 함께 다한다(2026-10-14).
-    const withdrawn = this.ledger.withdrawn?.pr === land.pr;
     if (this.ledger.withdrawn !== undefined) {
       const { withdrawn: _done, ...rest } = this.ledger;
       this.ledger = rest;
@@ -1514,7 +1501,7 @@ export class CycleSupervisor {
     // 반려의 착지 — 닫힘 이유를 반영 턴으로 넘긴다(PLAN L4 · L9). 병합에는
     // 이유가 없다. 턴은 원장에 적힌 뒤 14b행이 보낸다 — 착지는 다시 오지 않는다.
     // 사용자가 거둔 요청에는 물을 이유가 없다 — 청구 코멘트도 반영 턴도 없다.
-    if (land.outcome === "closed" && !withdrawn) await this.briefRejection(land.pr);
+    // MVP에서는 닫힌 이유도 사용자가 확인한 뒤 새 요청으로 수정한다.
   }
 
   /** 새 브랜치에 실제로 있는 커밋 수 — 빈 커밋 버림(--empty=drop)을 셈에
@@ -1609,84 +1596,6 @@ export class CycleSupervisor {
    * 예산 review:<pr> 안에서 보내고, 보낸 뒤에 지운다), 청구는 rejectionAsked 로
    * 한 번뿐이다.
    */
-  private async briefRejection(pr: number): Promise<void> {
-    const client = this.deps.github();
-    const slug = this.deps.slug();
-    if (client === null || slug === null) return;
-
-    // 닫힘 시각 — 착지 뒤 레지스트리는 이미 손을 놓았으므로 PR 을 직접 읽는다.
-    // 못 읽으면 지금이 닫힘 직후라고 본다(창이 넉넉해지는 쪽으로만 어긋난다).
-    let closedAt = this.now();
-    try {
-      const detail = await client.getPullRequest({ ...slug, number: pr });
-      const parsed = Date.parse(detail.closedAt ?? "");
-      if (Number.isFinite(parsed)) closedAt = parsed;
-    } catch {
-      // 닫힘 시각을 모른 채로 계속한다.
-    }
-    const since = closedAt - REJECTION_REASON_WINDOW_MS;
-    const mine = await client
-      .whoAmI()
-      .then((who) => (who.ok ? who.login : ""))
-      .catch(() => "");
-    // 목록 읽기가 이미 봇을 거른다(github.ts) — 여기서는 내 로그인과 창만 본다.
-    const reasons: DeveloperReview[] = [];
-    const pick = (row: Record<string, any>, at: string) => {
-      const body = String(row.body ?? "").trim();
-      const when = Date.parse(at);
-      if (body === "" || !Number.isFinite(when) || when < since) return;
-      // 건너뛰는 것은 토큰 주인이 쓴 앱의 글뿐이다(2026-10-07) — 개발자가 자기 토큰으로 쓴 이유는 이유다.
-      if (isOwnAppComment(row, mine === "" ? null : mine)) return;
-      reasons.push({
-        id: Number(row.id),
-        kind: "review",
-        author: String(row.user?.login ?? ""),
-        body,
-        pr,
-        at,
-      });
-    };
-    // 마지막 것만이 이유다 — 닫힘 전후의 말 중 가장 최근이 개발자의 결론이다.
-    const lastOf = async (
-      rows: Array<Record<string, any>>,
-      at: (row: Record<string, any>) => string,
-    ): Promise<void> => {
-      let last: Record<string, any> | null = null;
-      let lastAt = "";
-      for (const row of rows) {
-        const when = Date.parse(at(row));
-        if (!Number.isFinite(when)) continue;
-        if (last === null || when >= Date.parse(lastAt)) {
-          last = row;
-          lastAt = at(row);
-        }
-      }
-      if (last !== null) pick(last, lastAt);
-    };
-    try {
-      await lastOf(await client.listIssueComments({ ...slug, number: pr }), (row) =>
-        String(row.created_at ?? ""),
-      );
-      await lastOf(await client.listReviews({ ...slug, number: pr }), (row) =>
-        String(row.submitted_at ?? ""),
-      );
-    } catch {
-      // 이유 읽기에 실패하면 없는 것으로 본다 — 청구 코멘트가 대신 선다.
-      reasons.length = 0;
-    }
-    if (reasons.length === 0) {
-      await this.askRejectionReason(pr, client, slug);
-      return;
-    }
-    // 보내기 전에 적는다 — 착지는 다시 오지 않으므로, 대화를 못 열거나 그
-    // 사이에 끊겨도 이 기록이 반영 턴을 살린다(14b행이 보낸다).
-    this.updateReviewEntry(pr, (prev) => ({
-      ...prev,
-      pendingRejection: { reasons, since: new Date(this.now()).toISOString() },
-    }));
-    this.log(`반려 이유 ${reasons.length}건을 반영 대기로 적었습니다 — PR #${pr}`);
-  }
-
   /**
    * 14b행의 보내기 — 반려 이유 반영 턴. 세션을 여는 일이라 차선 밖에서 (PLAN
    * L1). 대화를 못 열었거나(null) 열기 · 보내기가 던지면 false — 기록이 남아
@@ -1716,27 +1625,6 @@ export class CycleSupervisor {
   }
 
   /** 반려 이유가 없을 때의 청구 — 닫힌 PR 에 코멘트 하나, 원장에 한 번만. */
-  private async askRejectionReason(
-    pr: number,
-    client: GitHubClient,
-    slug: { owner: string; repo: string },
-  ): Promise<void> {
-    // 표식은 notices 가 아니라 reviews[pr] 에 둔다 — notices 는 서 있는 개발자
-    // 알림이라 주의의 재료다(PLAN L8). 거기 두면 반려 한 번 뒤로 화면이 영원히
-    // "개발자에게 알렸어요" 를 말한다.
-    if (this.ledger.reviews[String(pr)]?.rejectionAsked === true) return;
-    try {
-      await client.commentOnIssue({
-        ...slug,
-        number: pr,
-        body: "반려 이유를 남겨 주시면 AI 가 반영해 새 요청으로 다시 보냅니다. — ColoNova Design",
-      });
-    } catch (error) {
-      this.log(`반려 이유 청구 실패(다시 시도하지 않음): ${detailOf(error, this.deps.core.pat)}`);
-    }
-    this.updateReviewEntry(pr, (prev) => ({ ...prev, rejectionAsked: true }));
-  }
-
   /** reviews[pr] 한 항목을 고쳐 쓴다 — 없으면 빈 장부에서 시작한다. */
   private updateReviewEntry(
     pr: number,
@@ -1859,79 +1747,67 @@ export class CycleSupervisor {
     const intent = this.ledger.submit;
     if (intent === null) return true;
 
-    // 턴이 도는 동안은 반쪽 작업을 보관하지 않는다(5행과 같은 규칙) — 의도는
-    // 남고 turn-idle 틱이 이어받는다. 채팅 도구가 턴 안에서 제출을 부른 세계다.
-    // 1) ensureCommitted — 남은 변경 보관. 충돌 정리 중이면 L5 가 끝날 때까지 기다린다.
+    const version = intent.version;
+    if (!version || core.branch !== version.branch || core.baseBranch !== version.baseBranch) {
+      return this.requireSubmitReview();
+    }
     if (this.ledger.pendingOp !== null) return false;
-    const dirty = (await core.git(["status", "--porcelain"]).catch(() => "?")).trim() !== "";
-    if (dirty) {
-      const saved = await this.deps.workspace.save({
-        message: LEFTOVER_COMMIT_MESSAGE,
-        backgroundPush: true,
-        // 보관의 게이트 브리프 — save 의 이 문은 동기라 기다리지 못한다. 열기 ·
-        // 보내기의 실패는 여기서 삼킨다(처리되지 않은 거절이 데몬을 넘어뜨리지 않게).
-        onSessionTurn: (brief) => {
-          void core.lane.outside(async () => {
-            try {
-              (await this.deps.openThread("제출 마저하기"))?.send(brief);
-            } catch {
-              // 못 연 대화는 옛 길(null)과 같다 — 실패 단계는 save 가 이미 적었다.
-            }
-          });
-        },
-      });
-      if (saved.stage !== "published") {
-        if (saved.detail === SAVE_CONFLICT_OPEN_DETAIL) return false; // 2행이 브리프한다.
-        return this.failSubmitStep("commit", saved.detail ?? "보관에 실패했습니다");
-      }
-    }
-    const branch = core.branch;
-    if (!branch) {
-      // 사이클도 보관할 것도 없다 — 사용자 문장은 save 의 saveBlocked 카드가
-      // 이미 냈다. 의도만 지운다(다시 누르면 같은 문장이 다시 선다).
-      this.clearSubmitIntent();
-      core.setDiff({
-        stage: "failed",
-        gate: "pr",
-        detail: "제출할 변경사항이 없습니다 — 먼저 화면을 만들거나 고쳐 주세요.",
-      });
-      return false;
-    }
-
-    // 2) ensurePushed — 로컬 = 원격까지. 실패의 기록 · 백오프 · 알림(push:auth ·
-    // push:behind)은 12행의 원장 push 가 소유한다 — 이 단계는 그 창을 존중한다.
+    const branch = version.branch;
     core.setDiff({ stage: "handing-off" });
-    const onRemote = (
-      await core.git(["rev-parse", "--verify", `refs/remotes/origin/${branch}`]).catch(() => "")
-    ).trim();
-    const waiting =
-      onRemote === ""
-        ? -1
-        : Number(
-            (
-              await core
-                .git(["rev-list", "--count", `origin/${branch}..${branch}`])
-                .catch(() => "-1")
-            ).trim(),
-          );
-    if (onRemote === "" || waiting !== 0) {
-      const push = this.ledger.push;
-      if (push !== null && Date.parse(push.nextAttemptAt) > this.now()) return false;
-      try {
-        await core.git(["push", "--set-upstream", "origin", branch]);
-        this.ledger = recordPushResult(this.ledger, { ok: true }, this.now());
-        writeLedger(this.ledgerPath, this.ledger);
-        await this.cleanupDeferredRemoteBranches(branch);
-      } catch (error) {
-        this.ledger = recordPushResult(
-          this.ledger,
-          { ok: false, error: classifyPushError(error) },
-          this.now(),
-        );
-        writeLedger(this.ledgerPath, this.ledger);
-        this.log(`제출의 푸시 실패: ${detailOf(error, core.pat)}`);
-        return false;
+    try {
+      // 원격의 현재 기준을 직접 읽는다. 응답 유실 뒤 같은 확정 버전의 재전송은 멱등하다.
+      const refs = await core.git([
+        "ls-remote",
+        "--heads",
+        "origin",
+        `refs/heads/${version.baseBranch}`,
+        `refs/heads/${branch}`,
+      ]);
+      const remote = new Map(
+        refs
+          .trim()
+          .split(/\r?\n/)
+          .map((line) => {
+            const [sha, ref] = line.split(/\s+/);
+            return [ref, sha];
+          }),
+      );
+      const base = remote.get(`refs/heads/${version.baseBranch}`);
+      const head = remote.get(`refs/heads/${branch}`) ?? null;
+      if (base !== version.base || (head !== version.remoteHead && head !== version.head)) {
+        return this.requireSubmitReview();
       }
+      if (head !== version.head) {
+        if (head !== null) {
+          const fastForward = await core
+            .git(["merge-base", "--is-ancestor", head, version.head])
+            .then(
+              () => true,
+              () => false,
+            );
+          if (!fastForward) return this.requireSubmitReview();
+        }
+        // SHA를 refspec으로 사용해 더 최신의 로컬 보관이 함께 전송되지 않게 한다.
+        // lease는 확인 이후 같은 PR에 생긴 개발자 변경을 덮어쓰지 않는 마지막 경계다.
+        await core.git([
+          "push",
+          `--force-with-lease=refs/heads/${branch}:${head ?? ""}`,
+          "origin",
+          `${version.head}:refs/heads/${branch}`,
+        ]);
+      }
+      this.ledger = recordPushResult(this.ledger, { ok: true }, this.now());
+      writeLedger(this.ledgerPath, this.ledger);
+      await this.cleanupDeferredRemoteBranches(branch);
+    } catch (error) {
+      this.ledger = recordPushResult(
+        this.ledger,
+        { ok: false, error: classifyPushError(error) },
+        this.now(),
+      );
+      writeLedger(this.ledgerPath, this.ledger);
+      this.log(`제출의 푸시 실패: ${detailOf(error, core.pat)}`);
+      return false;
     }
 
     // 3) ensurePullRequest — 열린 PR 보장. 4) ensureReviewers — 초대 파일의
@@ -1961,17 +1837,18 @@ export class CycleSupervisor {
       }
       let handoff: HandoffStatus;
       if (pull === null) {
-        const block = await this.submitToolBlock(intent.note);
+        const block = await this.submitToolBlock(version, intent.note);
         // 제목은 생성할 때만 정한다 — 입양 · 다시 제출에서는 개발자의 것이다.
         const draft = await this.deps.workspace
-          .handoffDraft({ commentsFile: this.deps.commentsFile() })
+          .handoffDraft({ commentsFile: this.deps.commentsFile(), version })
           .catch(() => null);
         const opening = draft?.body?.trim() ? `${draft.body.trim()}\n\n` : "";
+        if (!(await this.submittedVersionCurrent(version))) return this.requireSubmitReview();
         handoff = await client.createPullRequest({
           ...slug,
           head: branch,
           base: core.baseBranch,
-          title: await this.submitTitle(branch),
+          title: await this.submitTitle(version),
           body: `${opening}${block}`,
         });
       } else {
@@ -1983,11 +1860,15 @@ export class CycleSupervisor {
           .getPullRequest({ ...slug, number: pull.number })
           .catch(() => null);
         if (current === null) {
-          handoff = pull;
+          throw new Error("제출한 요청을 읽지 못했어요. 잠시 뒤 다시 시도해 주세요.");
         } else {
+          if (current.state !== "open" && current.state !== "changes_requested")
+            return this.requireSubmitReview();
+          if (!(await this.submittedVersionCurrent(version))) return this.requireSubmitReview();
           // 한마디가 없는 다시 제출(채팅 · 두 번째 누름)은 지난 한마디를 지운다고
           // 읽지 않는다 — 구간에 있던 말을 그대로 옮겨 싣는다(PLAN-UI U3).
           const block = await this.submitToolBlock(
+            version,
             intent.note ?? readToolNote(current.body ?? "") ?? undefined,
           );
           const body = mergeToolBlock(current.body ?? "", block);
@@ -2014,6 +1895,7 @@ export class CycleSupervisor {
       }
       // 네 단계가 모두 섰다 — 의도를 지우고, 성공은 예산도 되감는다(다음 제출은
       // 새 사건이다). 서 있던 submit:* 알림을 거둔다(PLAN L11).
+      if (!(await this.submittedVersionCurrent(version))) return this.requireSubmitReview();
       this.ledger = {
         ...this.ledger,
         submit: null,
@@ -2047,24 +1929,46 @@ export class CycleSupervisor {
     }
   }
 
-  /** PR 본문의 도구 구간 — 캡처는 이때 잡는(미리보기가 살아 있는 동안). */
-  private async submitToolBlock(note?: string): Promise<string> {
-    const shots = await this.deps.captureShots().catch(() => []);
+  private async submittedVersionCurrent(version: SubmitVersion): Promise<boolean> {
+    const refs = await this.deps.core.git([
+      "ls-remote",
+      "--heads",
+      "origin",
+      `refs/heads/${version.baseBranch}`,
+      `refs/heads/${version.branch}`,
+    ]);
+    const entries = new Map(
+      refs
+        .trim()
+        .split(/\r?\n/)
+        .map((line) => {
+          const [sha, ref] = line.split(/\s+/);
+          return [ref, sha];
+        }),
+    );
+    return (
+      entries.get(`refs/heads/${version.baseBranch}`) === version.base &&
+      entries.get(`refs/heads/${version.branch}`) === version.head
+    );
+  }
+
+  /** PR 본문도 확정한 버전만 읽는다. 새 제출은 미리보기를 자동 촬영하지 않는다. */
+  private async submitToolBlock(version: SubmitVersion, note?: string): Promise<string> {
     return await this.deps.workspace.handoffToolBlock({
       commentsFile: this.deps.commentsFile(),
-      ...(shots.length > 0 ? { shots } : {}),
+      version,
       ...(note ? { note } : {}),
     });
   }
 
   /** 생성할 때만 정하는 제목 — 초안 → 첫 커밋 제목 → 기본. */
-  private async submitTitle(branch: string): Promise<string> {
+  private async submitTitle(version: SubmitVersion): Promise<string> {
     const draft = await this.deps.workspace
-      .handoffDraft({ commentsFile: this.deps.commentsFile() })
+      .handoffDraft({ commentsFile: this.deps.commentsFile(), version })
       .catch(() => null);
     const first = (
       await this.deps.core
-        .git(["log", "--format=%s", "--reverse", `origin/${this.deps.core.baseBranch}..${branch}`])
+        .git(["log", "--format=%s", "--reverse", `${version.base}..${version.head}`])
         .catch(() => "")
     )
       .split(/\r?\n/)
@@ -2133,6 +2037,14 @@ export class CycleSupervisor {
     }
     writeLedger(this.ledgerPath, this.ledger);
     this.log(`제출 ${step} 단계 실패 (${spentCount}회 째): ${reason}`);
+    return false;
+  }
+
+  private requireSubmitReview(): false {
+    this.clearSubmitIntent();
+    this.ledger = { ...this.ledger, push: null };
+    writeLedger(this.ledgerPath, this.ledger);
+    this.deps.core.setDiff({ stage: "failed", gate: "pr", detail: SUBMIT_CHANGED });
     return false;
   }
 

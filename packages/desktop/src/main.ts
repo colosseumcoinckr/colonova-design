@@ -9,7 +9,7 @@ import {
   daemonOwnedPorts,
   eraseProjectConversations,
 } from "@colonova-design/daemon/server";
-import { app, BrowserWindow, dialog, Menu, safeStorage, session, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, safeStorage, session, shell, Tray } from "electron";
 import { shouldOfferMove } from "./app-location.js";
 import { PlannerNotices } from "./app-notify.js";
 import { assertResetPaths, finishPendingAppReset, requestAppReset } from "./app-reset.js";
@@ -28,6 +28,7 @@ import {
   resetUnfinished,
   START_ANSWER,
   startFailedOptions,
+  TRAY,
   unreadableCredentialsOptions,
 } from "./copy.js";
 import { startDaemonServer } from "./daemon-start.js";
@@ -35,6 +36,7 @@ import {
   loadMoveDeclined,
   loadNotificationPrefs,
   loadStoredPort,
+  loadTrayNoticeShown,
   saveDesktopSettings,
 } from "./desktop-settings.js";
 import { APP_BUNDLE_ID } from "./identity.js";
@@ -44,6 +46,12 @@ import { buildMenuTemplate } from "./menu.js";
 import { createPreviewDriverFactory } from "./preview-driver.js";
 import { PlannerPreviewView, registerPreviewIpc } from "./preview-view.js";
 import { SafeStorageCredentialStore } from "./safe-storage-store.js";
+import {
+  buildTrayMenuTemplate,
+  staysResidentWithoutWindows,
+  trayIconPath,
+  wantsTray,
+} from "./tray.js";
 import { daemonUrl, guardNavigations, MainWindowHost, windowUrl } from "./windows.js";
 
 // The preview-driver unit imports dist/main.js for this symbol — the seam
@@ -124,12 +132,21 @@ function openGuide(): void {
 
 /**
  * 리뷰 B3 + ⌘Q 의 구멍: 돌아가는 턴이 앱과 함께 조용히 죽지 않게 한 번
- * 묻는다. 비-mac 의 창 닫기(닫기=종료인 규칙)와 모든 플랫폼의 앱 종료(⌘Q ·
- * 메뉴)가 같은 질문을 공유한다 — mac 은 닫기가 창만 닫으므로 종료 경로에만
- * 묻는다. 한 번 확인한 종료는 이번 실행에서 다시 묻지 않는다.
+ * 묻는다. 닫기가 곧 종료인 창 닫기(Linux · 트레이 없는 Windows)와 모든 플랫폼의
+ * 앱 종료(⌘Q · 메뉴 · 트레이)가 같은 질문을 공유한다 — mac 과 트레이가 선
+ * Windows 는 닫기가 창만 닫으므로 종료 경로에만 묻는다. 한 번 확인한 종료는
+ * 이번 실행에서 다시 묻지 않는다.
  */
 let stopUnderTurnAllowed = false;
 let stopDialogOpen = false;
+/**
+ * Windows 의 트레이(2026-10-20 사용자 요청 — docs/DEVELOPERS.md 「창 닫기와 데몬」). 섰으면 창을 다 닫아도 앱이
+ * 남아 데몬 · 미리보기 서버가 그대로 산다(`staysResidentWithoutWindows`). 세우지 못했거나 시험 실행이면 null 이고,
+ * 그때는 옛 규칙(창 닫기=종료)이다.
+ */
+let tray: Tray | null = null;
+/** 종료가 확정돼 창이 닫히는 중이다 — 그 닫힘에는 트레이 안내를 띄우지 않는다. */
+let quitting = false;
 
 const host = new MainWindowHost();
 const notices = new PlannerNotices(host);
@@ -541,8 +558,20 @@ async function bootApp(): Promise<void> {
   // host 가 들고 reopen 이 만드는 창에도 같은 정리가 닿는다.
   host.onClosed = () => {
     plannerPreview.unmount();
+    offerTrayNotice();
   };
   registerCloseGuard(window);
+  // Windows 의 트레이 — 창보다 늦게 서므로 닫기 가드 · window-all-closed 는 그 순간의 `tray` 를 본다.
+  if (wantsTray(process.platform, underTest)) {
+    try {
+      tray = await installTray();
+    } catch (error) {
+      // 트레이를 못 세우면 옛 규칙(창 닫기=종료)으로 남는다 — 보이지 않는 앱을 만들지 않는다. 기록은 종류만이다.
+      daemonServer?.hostLog("tray-failed", {
+        reason: error instanceof Error ? error.name : "unknown",
+      });
+    }
+  }
   if (credentials.unreadable > 0 && !underTest) {
     void offerCredentialRecovery(window, credentials.unreadable).catch(() => undefined);
   }
@@ -554,21 +583,26 @@ async function bootApp(): Promise<void> {
   });
 }
 
+/**
+ * 창이 다 닫힌 뒤 — mac 은 Dock 에, Windows 는 트레이가 섰으면 트레이에 남고(2026-10-20 사용자 요청) 그 밖(Linux ·
+ * 트레이 없는 Windows)은 종료다. 남는 동안 데몬과 미리보기 서버는 그대로 살아 다시 열면 그 자리로 돌아온다.
+ */
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
+  if (!staysResidentWithoutWindows(process.platform, tray !== null)) app.quit();
 });
 
 app.on("browser-window-focus", () => {
   notices.markRead();
 });
 
-function guardStopUnderTurn(event: { preventDefault(): void }, proceed: () => void): void {
-  if (stopUnderTurnAllowed || !daemonServer?.anySessionBusy()) return;
+/** 지금 바로 가도 되면 true — 물어야 하면 막아 세우고 false, 답이 `끝내기` 면 그때 `proceed` 를 부른다. */
+function guardStopUnderTurn(event: { preventDefault(): void }, proceed: () => void): boolean {
+  if (stopUnderTurnAllowed || !daemonServer?.anySessionBusy()) return true;
   // 다이얼로그가 이미 떠 있는 두 번째 종료 시도도 막는다 — 통과시키면 확인
   // 없이 실행 중인 턴을 죽이는 뒷문이 된다.
   if (stopDialogOpen) {
     event.preventDefault();
-    return;
+    return false;
   }
   event.preventDefault();
   stopDialogOpen = true;
@@ -584,18 +618,57 @@ function guardStopUnderTurn(event: { preventDefault(): void }, proceed: () => vo
     .finally(() => {
       stopDialogOpen = false;
     });
+  return false;
 }
 
+/**
+ * 창 닫기의 가드 — 닫기가 곧 종료인 곳(Linux · 트레이 없는 Windows)에서만 묻는다. mac 과 트레이가 선 Windows 는
+ * 창만 닫히고 AI 는 계속 일하니 물을 것이 없다 — 종료 경로(`before-quit`)가 묻는다. 트레이는 창보다 늦게 설 수
+ * 있어 닫는 순간에 본다.
+ */
 function registerCloseGuard(window: BrowserWindow): void {
   window.on("close", (event) => {
-    if (process.platform === "darwin") return;
+    if (staysResidentWithoutWindows(process.platform, tray !== null)) return;
     guardStopUnderTurn(event, () => window.close());
   });
 }
 
-/** ⌘Q · 메뉴의 종료 — mac 의 창 닫기가 여기 오지 않으므로 플랫폼 무관 단다. */
+/**
+ * 트레이를 세운다(Windows). 아이콘은 resources/tray.ico(설치본) · build/icon.ico(개발 실행)이고, 둘 다 없으면 실행
+ * 파일의 아이콘이다 — 빈 아이콘은 찾을 수 없는 트레이가 돼 앱이 보이지 않게 된다. 클릭 · 더블클릭 · 메뉴의 열기가
+ * 창을 앞으로 가져오고(없으면 다시 연다), 종료는 `app.quit()` 이라 종료 확인과 데몬 정리를 그대로 지난다.
+ */
+async function installTray(): Promise<Tray> {
+  const path = trayIconPath({
+    packaged: app.isPackaged,
+    resourcesPath: process.resourcesPath,
+    appPath: app.getAppPath(),
+  });
+  const icon = existsSync(path) ? path : await app.getFileIcon(process.execPath, { size: "small" });
+  const created = new Tray(icon);
+  const targets = { open: () => host.focusMain(), quit: () => app.quit() };
+  created.setToolTip(TRAY.tooltip);
+  created.setContextMenu(Menu.buildFromTemplate(buildTrayMenuTemplate(targets)));
+  created.on("click", () => targets.open());
+  created.on("double-click", () => targets.open());
+  return created;
+}
+
+/**
+ * 창을 처음 닫을 때 한 번(설치마다 — desktop-settings.json 의 `trayNoticeShown`) 앱이 트레이에 남았다고, 끝내는
+ * 길이 무엇인지 알림 한 장으로 말한다. 종료가 확정돼 닫히는 창에는 띄우지 않는다. 누르면 창이 다시 열린다.
+ */
+function offerTrayNotice(): void {
+  if (quitting || tray === null) return;
+  const settingsPath = desktopSettingsPath();
+  if (loadTrayNoticeShown(settingsPath)) return;
+  saveDesktopSettings(settingsPath, { trayNoticeShown: true });
+  void notices.show(TRAY.closedNotice.title, TRAY.closedNotice.body, () => host.focusMain());
+}
+
+/** ⌘Q · 메뉴 · 트레이의 종료 — mac 의 창 닫기가 여기 오지 않으므로 플랫폼 무관 단다. 통과하면 종료가 확정이다. */
 app.on("before-quit", (event) => {
-  guardStopUnderTurn(event, () => app.quit());
+  if (guardStopUnderTurn(event, () => app.quit())) quitting = true;
 });
 
 /**

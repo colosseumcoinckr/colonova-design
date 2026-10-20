@@ -115,14 +115,16 @@ test("사이클 없이 base 에 로컬 커밋 — aheadOfBase, 조정은 adoptSt
   }
 });
 
-test("개발자가 base 에 올림 — behindBase, 조정은 fastForwardBase", async () => {
+test("개발자가 base 에 올림 — behindBase, 받아오기를 누르면 fastForwardBase", async () => {
   const scene = await makeScene();
   try {
     await scene.dev.pushToBase({ "dev.txt": "개발자\n" }, "베이스 커밋");
     const snap = await scene.observe({ fetch: true });
     assert.equal(snap.behindBase, 1);
     assert.equal(snap.aheadOfBase, 0);
-    const decision = nextCycleAction(snap, emptyLedger());
+    // 관찰은 요청을 모른다 — 누르기 전에는 당기지 않는다(2026-10-20 사용자 요청).
+    assert.notEqual(nextCycleAction(snap, emptyLedger()).action.kind, "fastForwardBase");
+    const decision = nextCycleAction({ ...snap, baseSyncRequested: true }, emptyLedger());
     assert.equal(decision.action.kind, "fastForwardBase");
   } finally {
     scene.dispose();

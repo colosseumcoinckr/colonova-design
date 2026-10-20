@@ -906,6 +906,10 @@ export interface SupervisedScene extends Scene {
   supervisor: CycleSupervisor;
   /** openThread 가 모은 브리프 — 가짜 대화의 받은 편지함. */
   briefs: string[];
+  /** openThread 가 받은 누른 대화(받아오기, 2026-10-20) — 브리프마다 하나, 없으면 undefined. */
+  briefSessions: Array<string | undefined>;
+  /** 켜면 busy 가 참이다 — 턴이 도는 세계(받아오기가 턴 끝을 기다리는 시험축). */
+  busyNow: boolean;
   /** raiseNotice 가 모은 알림 — [key, text, reason] 쌍. reason 은 개발자 알림의
    *  `자세히` 로 가는 몫(fleet 의 describeProblem(key, reason ?? text) 과 같은 길). */
   notices: Array<{ key: string; text: string; reason?: string }>;
@@ -1015,12 +1019,14 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
     freeBytes: 100 * 1024 ** 3,
     installJudge: null as (() => boolean) | null,
     authExpired: false,
+    busyNow: false,
   };
   authorOf = () => scene.authorName;
   screensOf = () => scene.cycleScreens;
   const submitBlocked: string[] = [];
   const machineNotices: SupervisedScene["machineNotices"] = [];
   const briefs: string[] = [];
+  const briefSessions: Array<string | undefined> = [];
   const notices: Array<{ key: string; text: string; reason?: string }> = [];
   const transitions: Array<{ kind: string; at: string; count?: number; title?: string }> = [];
   const reviewBriefs: Array<{ pr: number; ids: number[] }> = [];
@@ -1040,7 +1046,7 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
       ledgerPath,
       autoReply: () => scene.autoReply,
       authorName: () => scene.authorName,
-      busy: () => false,
+      busy: () => scene.busyNow,
       installStale: () => scene.installJudge?.() ?? false,
       deleteMergedBranches: () => scene.deleteMergedBranches,
       keepRejectedDays: () => scene.keepRejectedDays,
@@ -1059,7 +1065,15 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
       onSubmitBlocked: (reason) => submitBlocked.push(reason),
       slug: () => core.repoSlug(),
       isActive: () => scene.active,
-      openThread: async () => (scene.refuseThread ? null : { send: (text) => briefs.push(text) }),
+      openThread: async (_title, sessionId) =>
+        scene.refuseThread
+          ? null
+          : {
+              send: (text) => {
+                briefs.push(text);
+                briefSessions.push(sessionId);
+              },
+            },
       raiseNotice: (key, text, reason) => notices.push({ key, text, reason }),
       onPrTransition: (kind, at, count, title) =>
         transitions.push({ kind, at, count, ...(title === undefined ? {} : { title }) }),
@@ -1100,6 +1114,7 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
     workspace,
     supervisor,
     briefs,
+    briefSessions,
     notices,
     transitions,
     reviewBriefs,
@@ -1122,6 +1137,12 @@ export async function makeSupervisedScene(opts: HarnessCoreOptions = {}): Promis
     },
     get refuseThread() {
       return scene.refuseThread;
+    },
+    get busyNow() {
+      return scene.busyNow;
+    },
+    set busyNow(v: boolean) {
+      scene.busyNow = v;
     },
     set refuseThread(v: boolean) {
       scene.refuseThread = v;

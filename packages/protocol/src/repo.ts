@@ -281,6 +281,19 @@ export interface RepoStatus {
   landed?: LandedWork[];
 
   /**
+   * 개발자 쪽 새 내용 (2026-10-20 사용자 요청) — 마지막 관찰이 본, 클론에 아직 없는 베이스 커밋 수(`behind`)와
+   * 받아오기 요청이 서 있는지(`requested`). 받아오기는 사용자가 `repo.refresh` 로 누를 때만 돈다. 요청은 AI 가
+   * 고치는 중이면 끝날 때까지 기다린다. `last` 는 이 실행에서 마지막 요청이 끝난 모양이다 — `done` 합침 · `none`
+   * 받을 것이 없었음 · `overlap` 겹친 부분을 AI 에게 넘김 · `failed` 합치지 못함. 웹은 `at` 이 바뀔 때 한 번 말한다.
+   * 감독자가 없는 데몬은 키를 싣지 않는다.
+   */
+  baseSync?: {
+    behind: number;
+    requested: boolean;
+    last?: { at: string; outcome: "done" | "none" | "overlap" | "failed" };
+  };
+
+  /**
    * 제출의 진행과 막힘 (PLAN-UI U13) — 원장의 `submit` 과 개발자 알림에서
    * 데몬이 만든다. `log` 는 제출 기록의 최근 몇 줄, 문장은 웹이 짓는다.
    */

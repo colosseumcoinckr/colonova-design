@@ -292,6 +292,8 @@ export class ProjectFleet {
           return {
             cycleScreens: this.cycleScreens.get(slug)?.current() ?? [],
             ...(workspaces.supervisor ? { submit: workspaces.supervisor.submitView() } : {}),
+            // 개발자 쪽 새 내용 — 받아오기 단추가 읽는다(2026-10-20 사용자 요청).
+            ...(workspaces.supervisor ? { baseSync: workspaces.supervisor.baseSyncView() } : {}),
             ...(first ? { firstScreen: first } : {}),
             // 반영된 일 — 병합 뒤 새 사이클이 시작돼도 원장이 기억한다(2026-10-08 · A2b).
             ...(landed ? { landed } : {}),
@@ -324,7 +326,19 @@ export class ProjectFleet {
       githubAuthExpired: () => this.deps.githubAuthExpired(),
       slug: () => workspaces.repo.repoCore().repoSlug(),
       isActive: () => slug === this.deps.registry.activeSlug(),
-      openThread: (title) => this.autoFixThreadFor(workspaces, title),
+      // 받아오기를 누른 대화가 이 클론에서 살아 있으면 그 대화로, 아니면 도구가 연 대화로(2026-10-20).
+      openThread: async (title, sessionId) => {
+        const pressed = sessionId ? this.deps.manager.get(sessionId) : undefined;
+        if (
+          pressed &&
+          pressed.cwd === realpathBestEffort(workspaces.paths.repoRoot) &&
+          pressed.state !== "error" &&
+          pressed.state !== "closed"
+        ) {
+          return pressed;
+        }
+        return await this.autoFixThreadFor(workspaces, title);
+      },
       raiseNotice: (key, text, reason) =>
         void this.deps.developerNotice.raise({
           key,
@@ -1166,9 +1180,9 @@ export class ProjectFleet {
     // only says so in the clone this sync produces.
     if (next.repo.remoteUrl) {
       if (next.repo.previewLive) {
-        // Warm: the clone is brought current the way a session start does
-        // it — the phase never leaves `ready`, the preview never blinks. A
-        // dependency move still ends in the full sync (restart included).
+        // Warm: the remote is re-read the way a session start does it — the
+        // phase never leaves `ready`, the preview never blinks. 베이스 합치기는
+        // 받아오기를 누를 때만 한다(2026-10-20 사용자 요청).
         void next.repo.pull().catch(() => undefined);
       } else {
         void next.repo

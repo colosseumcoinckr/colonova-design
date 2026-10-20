@@ -239,14 +239,20 @@ test("S8 사이클 없이 base 에 로컬 커밋 — 사이클 브랜치가 생�
   }
 });
 
-test("11b 사이클 없이 뒤처진 base — fast-forward", async () => {
+test("11b 사이클 없이 뒤처진 base — 받아오기를 누르면 fast-forward", async () => {
   const scene = await makeSupervisedScene();
   try {
     await scene.dev.pushToBase({ "src/ff.ts": "개발자\n" }, "개발자");
     await scene.supervisor.tick("timer");
-    const baseTip = (await scene.git(["rev-parse", "main"])).trim();
+    const before = (await scene.git(["rev-parse", "main"])).trim();
     const originTip = (await scene.git(["rev-parse", "origin/main"])).trim();
+    assert.notEqual(before, originTip, "누르기 전에는 당기지 않는다(2026-10-20 사용자 요청)");
+    assert.equal(scene.supervisor.baseSyncView().behind, 1);
+    scene.supervisor.requestBaseSync();
+    await scene.supervisor.settled();
+    const baseTip = (await scene.git(["rev-parse", "main"])).trim();
     assert.equal(baseTip, originTip, "base 가 origin 으로 fast-forward 됐어야 한다");
+    assert.equal(scene.supervisor.baseSyncView().last?.outcome, "done");
   } finally {
     await scene.dispose();
   }
@@ -710,7 +716,7 @@ test("S5 반려 — 브랜치 전체가 새 브랜치로 이어지고 옛 원격
   }
 });
 
-test("S2 비활성 프로젝트의 베이스 이동 — timer 틱이 합치고 푸시한다", async () => {
+test("S2 비활성 프로젝트의 베이스 이동 — timer 틱은 세기만 하고 받아오기가 합친다", async () => {
   const scene = await makeSupervisedScene();
   try {
     await scene.git(["checkout", "-b", BRANCH]);
@@ -720,7 +726,19 @@ test("S2 비활성 프로젝트의 베이스 이동 — timer 틱이 합치고 �
     scene.active = false;
 
     await scene.dev.pushToBase({ "src/base.ts": "개발자\n" }, "베이스 이동");
+    // 비활성 프로젝트의 첫 timer 틱도 원격을 읽는다(10분 간격의 첫 번) — 세기만 한다(2026-10-20 사용자 요청).
     await scene.supervisor.tick("timer");
+    assert.equal(
+      await scene.git(["merge-base", "--is-ancestor", "origin/main", "HEAD"]).then(
+        () => true,
+        () => false,
+      ),
+      false,
+      "누르기 전에는 합치지 않는다",
+    );
+    assert.equal(scene.supervisor.baseSyncView().behind, 1);
+    scene.supervisor.requestBaseSync();
+    await scene.supervisor.settled();
 
     assert.ok(
       await scene.git(["merge-base", "--is-ancestor", "origin/main", "HEAD"]).then(
@@ -780,10 +798,14 @@ test("베이스 병합 충돌 — 브리프 뒤 가짜 AI 정리, 도구가 마�
     await scene.git(["push", "-u", "origin", BRANCH]);
     await scene.dev.pushToBase({ "src/a.ts": "export const v = 2;\n" }, "개발자 쪽");
 
-    // 감독자의 mergeBase 가 충돌로 멈춘다 — 브리프는 감독자가 낸다.
-    await scene.supervisor.tick("manual");
+    // 받아오기를 누르면 감독자의 mergeBase 가 충돌로 멈춘다 — 브리프는 감독자가 누른 대화로 낸다.
+    scene.supervisor.requestBaseSync("session-1");
+    await scene.supervisor.settled();
     assert.equal(ledgerOf(scene).pendingOp?.kind, "merge");
     assert.equal(scene.briefs.length, 1, "충돌 브리프가 하나 나가야 한다");
+    assert.deepEqual(scene.briefSessions, ["session-1"], "누른 대화가 과제를 받는다");
+    assert.equal(scene.supervisor.baseSyncView().last?.outcome, "overlap");
+    assert.equal(scene.supervisor.baseSyncView().requested, false);
 
     resolveMarkers(scene, { "src/a.ts": "export const v = 3;\n" });
     await scene.supervisor.tick("manual");
@@ -798,6 +820,86 @@ test("베이스 병합 충돌 — 브리프 뒤 가짜 AI 정리, 도구가 마�
       false,
       "복구 결과도 다음 제출 전에는 전송하지 않는다",
     );
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("받아오기 전 — 관찰은 받아올 수만 세고 사이클 브랜치에 베이스를 합치지 않는다(2026-10-20 사용자 요청)", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await scene.dev.pushToBase({ "src/a.ts": "export const v = 0;\n" }, "씨앗");
+    await scene.git(["fetch", "origin"]);
+    await scene.git(["checkout", "-b", BRANCH]);
+    scene.core.setCycle(BRANCH, null);
+    await commit(scene, { "src/b.ts": "export const b = 1;\n" }, "작업 쪽");
+    await scene.dev.pushToBase({ "src/c.ts": "export const c = 2;\n" }, "개발자 쪽");
+
+    for (const reason of ["start", "activate", "session-start", "timer", "manual"] as const) {
+      await scene.supervisor.tick(reason);
+    }
+    const log = await scene.git(["log", "--format=%s", "-5"]);
+    assert.equal(log.includes("개발자 쪽"), false, "누르기 전에는 합치지 않는다");
+    const view = scene.supervisor.baseSyncView();
+    assert.ok(view.behind > 0, "받아올 수는 센다");
+    assert.equal(view.requested, false);
+    assert.equal(view.last, undefined, "누른 적이 없으니 결과도 없다");
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("받아오기 — 누르면 합치고 결과를 남긴다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await scene.dev.pushToBase({ "src/a.ts": "export const v = 0;\n" }, "씨앗");
+    await scene.git(["fetch", "origin"]);
+    await scene.git(["checkout", "-b", BRANCH]);
+    scene.core.setCycle(BRANCH, null);
+    await commit(scene, { "src/b.ts": "export const b = 1;\n" }, "작업 쪽");
+    await scene.dev.pushToBase({ "src/c.ts": "export const c = 2;\n" }, "개발자 쪽");
+
+    scene.supervisor.requestBaseSync();
+    await scene.supervisor.settled();
+    const log = await scene.git(["log", "--format=%s", "-5"]);
+    assert.ok(log.includes("개발자 쪽"), "개발자 커밋이 합쳐져야 한다");
+    assert.ok(log.includes("작업 쪽"), "작업 커밋이 살아 있어야 한다");
+    const view = scene.supervisor.baseSyncView();
+    assert.equal(view.behind, 0);
+    assert.equal(view.requested, false);
+    assert.equal(view.last?.outcome, "done");
+    assert.equal(scene.briefs.length, 0, "겹치지 않으면 AI 과제가 없다");
+
+    // 받을 것이 없을 때 누르면 `none` 이다.
+    scene.supervisor.requestBaseSync();
+    await scene.supervisor.settled();
+    assert.equal(scene.supervisor.baseSyncView().last?.outcome, "none");
+  } finally {
+    await scene.dispose();
+  }
+});
+
+test("받아오기 — AI 작업 중에 누르면 서서 기다렸다가 턴이 끝난 틱이 합친다", async () => {
+  const scene = await makeSupervisedScene();
+  try {
+    await scene.dev.pushToBase({ "src/a.ts": "export const v = 0;\n" }, "씨앗");
+    await scene.git(["fetch", "origin"]);
+    await scene.git(["checkout", "-b", BRANCH]);
+    scene.core.setCycle(BRANCH, null);
+    await commit(scene, { "src/b.ts": "export const b = 1;\n" }, "작업 쪽");
+    await scene.dev.pushToBase({ "src/c.ts": "export const c = 2;\n" }, "개발자 쪽");
+
+    scene.busyNow = true;
+    scene.supervisor.requestBaseSync();
+    await scene.supervisor.settled();
+    assert.equal((await scene.git(["log", "--format=%s", "-5"])).includes("개발자 쪽"), false);
+    assert.equal(scene.supervisor.baseSyncView().requested, true, "요청은 서서 기다린다");
+
+    scene.busyNow = false;
+    await scene.supervisor.tick("turn-idle");
+    assert.ok((await scene.git(["log", "--format=%s", "-5"])).includes("개발자 쪽"));
+    assert.equal(scene.supervisor.baseSyncView().requested, false);
+    assert.equal(scene.supervisor.baseSyncView().last?.outcome, "done");
   } finally {
     await scene.dispose();
   }
@@ -1089,10 +1191,11 @@ test("이월의 병합 커밋 — cherry-pick 이 멈추지 않고 일반 커밋
     await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
     await scene.git(["push", "-u", "origin", BRANCH]);
     const pr = await openCycle(scene, BRANCH);
-    // PR 을 읽기 전 틱이 베이스를 사이클 브랜치에 합친다 — headSha 뒤에
+    // 받아오기가 베이스를 사이클 브랜치에 합친다 — headSha 뒤에
     // 병합 커밋이 선다(범위 cherry-pick 이 "-m 없음"으로 멈추는 세계).
     await scene.dev.pushToBase({ "src/base.ts": "개발자\n" }, "베이스 이동");
-    await scene.supervisor.tick("manual");
+    scene.supervisor.requestBaseSync();
+    await scene.supervisor.settled();
     const afterMergeBase = await scene.git(["log", "--format=%s", "-3"]);
     assert.ok(afterMergeBase.includes("Merge"), "병합 커밋이 사이클 브랜치에 있어야 한다");
 

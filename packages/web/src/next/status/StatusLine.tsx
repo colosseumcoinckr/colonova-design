@@ -2,6 +2,7 @@ import type { SubmitPreview, SubmitSent } from "@colonova-design/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openScreenPath } from "../../lib/screen-link";
 import { L } from "../labels";
+import { type BaseSyncSeen, baseSyncNews, baseSyncRow, baseSyncSeenOf } from "../lib/base-sync";
 import { keyHint } from "../lib/key-hint";
 import { FIRST_TURN_HINT_MS, MAKING_CHECK_MS, makingWordOf } from "../lib/making";
 import type { SubmitCopy } from "../lib/submit-copy";
@@ -94,6 +95,33 @@ export function StatusLine({
     } catch {}
   };
   const [workOpen, setWorkOpen] = useState(false);
+  // 받아오기(2026-10-20 사용자 요청) — 개발자가 반영한 내용은 누를 때만 합친다. 단추는 상태 줄과 `이번 작업` 둘이다.
+  const baseRow = baseSyncRow(daemon.repo, journey.making);
+  const [baseAsking, setBaseAsking] = useState(false);
+  const refreshBase = () => {
+    if (baseAsking) return;
+    setBaseAsking(true);
+    daemon.api
+      .refreshBase(sessions.activeId ?? undefined)
+      .catch(() => nav.toast(L.work.baseFailed))
+      .finally(() => setBaseAsking(false));
+  };
+  // 끝난 소식은 한 번 — 같은 클론에서 결과의 시각이 바뀐 순간에만 말한다. 신원은 같은 상태 객체에서 읽는다
+  // (활성 프로젝트 이름과 상태가 잠깐 어긋나는 전환 사이에 남의 결과를 소식으로 읽지 않게).
+  const baseSeen = useRef<BaseSyncSeen | null>(null);
+  const baseNow = baseSyncSeenOf(daemon.repo);
+  const baseRoot = baseNow?.root ?? null;
+  const baseLastAt = baseNow?.at ?? null;
+  const baseNews = baseSyncNews(baseSeen.current, daemon.repo);
+  const toast = nav.toast;
+  useEffect(() => {
+    if (baseRoot === null) return;
+    baseSeen.current = { root: baseRoot, at: baseLastAt };
+    if (baseNews === "done") toast(L.work.baseDone);
+    else if (baseNews === "none") toast(L.work.baseNone);
+    else if (baseNews === "overlap") toast(L.work.baseOverlap);
+    else if (baseNews === "failed") toast(L.work.baseFailed);
+  }, [baseRoot, baseLastAt, baseNews, toast]);
   // `이번 작업` 의 한마디 더 — 쓰던 글은 팝이 아니라 여기가 쥔다. Esc 나 바깥 누름으로 팝이 닫혀도 남는다.
   const [workNote, setWorkNote] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -431,6 +459,30 @@ export function StatusLine({
             );
           })}
         </button>
+        {(baseRow.kind === "ready" || baseRow.kind === "pulling" || baseRow.kind === "waiting") && (
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm nx-base-pull"
+            title={
+              baseRow.kind === "ready"
+                ? L.work.baseChipTitle(baseRow.behind)
+                : baseRow.kind === "waiting"
+                  ? L.work.baseWaiting
+                  : L.work.basePulling
+            }
+            disabled={baseRow.kind !== "ready" || baseAsking}
+            onClick={refreshBase}
+          >
+            {baseRow.kind === "ready" ? (
+              L.work.basePullCount(baseRow.behind)
+            ) : (
+              <>
+                <Spin />
+                {baseRow.kind === "waiting" ? L.work.basePull : L.work.basePulling}
+              </>
+            )}
+          </button>
+        )}
         {/* 보이지 않는 낭독 칸 — 점의 글자가 바뀔 때만 소리를 낸다. */}
         <span className="nx-sr" role="status">
           {announce}
@@ -452,6 +504,9 @@ export function StatusLine({
             onWithdraw={async () => {
               await daemon.api.withdrawSubmission();
             }}
+            baseRow={baseRow}
+            baseAsking={baseAsking}
+            onRefreshBase={refreshBase}
             onOpenScreen={openScreen}
             onToast={nav.toast}
             onClose={() => setWorkOpen(false)}

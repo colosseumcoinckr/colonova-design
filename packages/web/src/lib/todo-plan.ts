@@ -2,7 +2,7 @@ import type { Block } from "./daemon-client";
 
 /**
  * 할 일 목록의 읽기 — TodoWrite 입력의 방어적 파싱과 "최신 목록 하나" 규칙.
- * 스트립(WorkStrip)이 세는 `k/n` 도 여기서 나온다.
+ * 입력창 위 알약(`next/chat/RunPlan.tsx`)이 세는 `k/n` 과 펼친 목록도 여기서 나온다.
  *
  * 순수 함수로 여기 사는 이유는 progress.ts 와 같다: 블록 배열 in · 목록 out,
  * 판정 규칙은 테스트가 박아야 한다.
@@ -48,26 +48,38 @@ export function latestTodoItems(blocks: Block[]): TodoItem[] | null {
 /** 이보다 짧은 목록은 단계로 말하지 않는다 — `0/1 단계` 는 `작업 중` 보다 아는 것이 없다. */
 export const MIN_TODO_STEPS = 2;
 
+/** 마지막 사용자 말 바로 뒤의 자리 — 이번 턴의 블록은 여기서부터다. 사용자 말이 없으면 0. */
+export function turnStart(blocks: Block[]): number {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    if (blocks[index]?.type === "user") return index + 1;
+  }
+  return 0;
+}
+
 /**
- * 지금 도는 턴의 할 일 진행 `k/n` — AI 가 이 턴에 할 일 목록을 냈을 때만(2026-10-06 UX 점검). 테이프의 마지막 목록은
+ * 지금 도는 턴의 할 일 목록 — AI 가 이 턴에 할 일 목록을 냈을 때만(2026-10-06 UX 점검). 테이프의 마지막 목록은
  * 지난 턴의 것(다 끝난 `5/5`)일 수 있어, 마지막 사용자 말 뒤의 블록만 본다 — 목록을 안 낸 턴에 지난 목록이 서면 거짓이다.
- * 하위 에이전트의 목록은 세지 않는다(제 일의 목록이라 `k/n` 이 뒤로 간다). 새 목록이 아직 읽히지 않으면(입력이
+ * 하위 에이전트의 목록은 빼낸다(제 일의 목록이라 `k/n` 이 뒤로 간다). 새 목록이 아직 읽히지 않으면(입력이
  * 덜 온 참) 앞의 목록을 쓴다. 목록이 없거나 짧으면 null: 단계를 지어내지 않는다.
  */
-export function currentTodoProgress(blocks: Block[]): { done: number; total: number } | null {
-  let start = 0;
-  for (let index = blocks.length - 1; index >= 0; index -= 1) {
-    if (blocks[index]?.type === "user") {
-      start = index + 1;
-      break;
-    }
-  }
+export function currentTodoItems(blocks: Block[]): TodoItem[] | null {
   let items: TodoItem[] | null = null;
-  for (let index = start; index < blocks.length; index += 1) {
+  for (let index = turnStart(blocks); index < blocks.length; index += 1) {
     const block = blocks[index];
     if (block?.type !== "tool" || block.agentId !== null || block.name !== "TodoWrite") continue;
     items = readTodoList(block.input) ?? items;
   }
   if (items === null || items.length < MIN_TODO_STEPS) return null;
+  return items;
+}
+
+/** 목록의 `k/n` — 끝난 일 수와 전체 수. */
+export function todoProgress(items: TodoItem[]): { done: number; total: number } {
   return { done: items.filter((item) => item.status === "completed").length, total: items.length };
+}
+
+/** 지금 도는 턴의 할 일 진행 `k/n` — 셈의 규칙은 `currentTodoItems` 와 같다. */
+export function currentTodoProgress(blocks: Block[]): { done: number; total: number } | null {
+  const items = currentTodoItems(blocks);
+  return items === null ? null : todoProgress(items);
 }

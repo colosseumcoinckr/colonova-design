@@ -25,6 +25,8 @@
  * 화면의 `열기` 단추가 부른 길은 `window.__opened`(경로 목록)에 쌓인다. 상태 줄 아래에 문제 문장 줄(`ProblemLine`)이
  * 함께 선다 — `?case=g`(제출이 막힘 — 복사 단추) · `?case=p`(다시 로그인 — 로그인 단추).
  *
+ * 받아오기(2026-10-20) — `?case=l`(개발자가 반영한 내용 3건 · 여정 곁의 `받아오기 3`) · `m`(누른 뒤 AI 작업을 기다림).
+ *
  * 제출 뒤의 시야(2026-10-07 베타 준비 분석) — `?case=r`(개발자가 승인 → 여정의 둘째 점 `개발자가 확인했어요`) · `s`(자동 검사를
  * AI 가 고치는 중 — 문제 문장 줄) · `t`(몇 번 고쳐도 통과하지 못해 개발자에게 알림) · `u`(통과) · `v`(도는 중). 여정을 누르면 열리는
  * `이번 작업` 팝의 제출 칸에 자동 검사 한 줄이 같이 보인다.
@@ -384,6 +386,21 @@ const BASE_CASES: Case[] = [
     narrow: true,
     sidebarHidden: true,
   },
+  // 받아오기(2026-10-20 사용자 요청) — 개발자가 반영한 내용은 누를 때만 받아온다. 여정 곁의 단추와 `이번 작업` 의 칸.
+  {
+    id: "l",
+    label: "l · 개발자가 반영한 내용 3건 · 받아오기 단추",
+    title: "회원 목록에 이름으로 찾는 검색창을 넣어 줘",
+    repo: { cycleScreens: SCREENS, baseSync: { behind: 3, requested: false } },
+  },
+  {
+    id: "m",
+    label: "m · 받아오기를 눌렀는데 AI 가 도는 중 — 끝나면 받아와요",
+    title: "회원 목록에 이름으로 찾는 검색창을 넣어 줘",
+    repo: { cycleScreens: SCREENS, baseSync: { behind: 3, requested: true } },
+    running: true,
+    phase: "file",
+  },
 ];
 
 /** `?sweep=1` — 같은 상태(a · d · e · g · q · r)를 여러 막대 폭으로 늘어놓는다. 접히는 순서와 겹침을 본다. */
@@ -495,6 +512,10 @@ function Row({ spec }: { spec: Case }) {
       },
       withdrawSubmission: async () => {
         await later(600);
+        return { ok: true as const };
+      },
+      refreshBase: async () => {
+        await later(300);
         return { ok: true as const };
       },
       submit: async () => {

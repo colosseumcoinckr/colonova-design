@@ -34,6 +34,11 @@ export interface CycleSnapshot {
   aheadOfBase: number;
   /** HEAD 에 없는 origin/base 커밋 수. */
   behindBase: number;
+  /**
+   * 사용자가 `받아오기` 를 눌러 세운 요청(2026-10-20 사용자 요청) — 11 · 11b 행은 이것이 서야만 베이스를 합친다.
+   * 감독자가 관찰 뒤에 얹는다. 없으면(옛 시험의 손으로 지은 스냅샷) 요청이 없는 것이다.
+   */
+  baseSyncRequested?: boolean;
   remoteBranchExists: boolean;
   /**
    * 원격 브랜치의 끝 sha(마지막 fetch · push 가 아는 것) — 14c행이 「AI 가 끝났는데 PR 의 head 가 그대로」 를
@@ -573,15 +578,19 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
   }
 
   // ————— 11행 — 사이클 브랜치가 베이스에서 멀어졌다(L3 11행) —————
-  if (!turnRunning && snapshot.registryBranch !== null) {
+  // 2026-10-20 사용자 요청: 베이스 합치기는 `받아오기` 를 누른 뒤에만 한다. 관찰(fetch)은 그대로 돌아
+  // 받아올 수를 센다. 겹친 PR(dirty)도 누를 때까지 기다린다 — 그때 베이스가 앞서 있으므로 같은 행이 받는다.
+  const syncRequested = snapshot.baseSyncRequested === true;
+  if (!turnRunning && syncRequested && snapshot.registryBranch !== null) {
     if (snapshot.behindBase > 0) return decide({ kind: "mergeBase", reason: "behind" });
     if (pr?.mergeableState === "dirty") return decide({ kind: "mergeBase", reason: "dirty-pr" });
   }
 
   // ————— 11b 행 — 사이클 없는 클론이 곧은 채로 베이스보다 뒤처졌다 —————
-  // 없으면 다음 사이클이 낡은 베이스에서 시작한다(PLAN L3 11b).
+  // 받아오기를 누르면 곧게 앞으로 옮긴다(PLAN L3 11b). 누르기 전에는 다음 사이클이 그 자리에서 시작한다.
   if (
     !turnRunning &&
+    syncRequested &&
     snapshot.registryBranch === null &&
     snapshot.aheadOfBase === 0 &&
     snapshot.behindBase > 0 &&

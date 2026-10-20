@@ -13,8 +13,10 @@ import { createRoot } from "react-dom/client";
 import type { Block } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
 import { RunLine } from "../src/next/chat/RunLine";
+import { RunPlan } from "../src/next/chat/RunPlan";
 import { Thread } from "../src/next/chat/Thread";
 import { L } from "../src/next/labels";
+import { runPlan } from "../src/next/lib/run-plan";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
 import "../src/next/next.css";
@@ -517,8 +519,10 @@ const undoScene: Block[] = [
 ];
 
 /**
- * `?scene=working` — 맨 아래 `작업 중` 줄의 네 모양(2026-10-06): 묶음을 모를 때 · 살펴보는 중 · 고치는 중 + 할 일 진행 ·
- * 검사 중 + 1분이 넘은 시계. 좁은 칸(`?w=320`)에서 줄이 아래로 감겨도 잘리지 않는지 본다.
+ * `?scene=working` — 맨 아래 `작업 중` 줄의 네 모양(2026-10-06): 묶음을 모를 때 · 살펴보는 중 · 고치는 중 ·
+ * 검사 중 + 1분이 넘은 시계. 그 아래 입력창 위 알약(2026-10-20 사용자 요청)의 세 모양: 할 일만 · 보조 작업만 · 둘 다
+ * 펼친 목록(끝남 · 하는 중 · 남음 · 근황 한 줄 · 멈춘 보조 작업). 좁은 칸(`?w=320`)에서 줄과 목록이 감겨도 잘리지
+ * 않는지 본다.
  */
 const workingThread: Block[] = [
   { type: "user", id: "wk1", text: "회원 목록 맨 위에 검색창을 넣어 줘.", images: 0 },
@@ -529,20 +533,85 @@ function WorkingLines() {
   const longer = useRef(Date.now() - 125_000).current;
   return (
     <>
-      <RunLine quiet={false} word={L.chat.working} steps={null} startedAt={since} />
-      <RunLine quiet={false} word={L.journey.makingRead} steps={null} startedAt={since} />
-      <RunLine
-        quiet={false}
-        word={L.journey.makingFile}
-        steps={{ done: 2, total: 5 }}
-        startedAt={since}
-      />
-      <RunLine
-        quiet={false}
-        word={L.journey.makingCheck}
-        steps={{ done: 11, total: 12 }}
-        startedAt={longer}
-      />
+      <RunLine quiet={false} word={L.chat.working} startedAt={since} />
+      <RunLine quiet={false} word={L.journey.makingRead} startedAt={since} />
+      <RunLine quiet={false} word={L.journey.makingFile} startedAt={since} />
+      <RunLine quiet={false} word={L.journey.makingCheck} startedAt={longer} />
+    </>
+  );
+}
+
+/** 알약 견본의 턴 — AI 가 공통 규칙대로 쉬운 말로 쓴 할 일과 보조 작업 셋(끝남 · 도는 중 + 근황 · 멈춤). */
+const planTodos = [
+  ["회원 목록 화면을 살펴보기", "completed"],
+  ["목록 맨 위에 검색창 넣기", "completed"],
+  ["이름이나 전화번호로 찾으면 목록이 바로 줄어들게 하기", "in_progress"],
+  ["찾는 사람이 없을 때 「찾는 회원이 없어요」 문구 보이기", "pending"],
+  ["미리보기에서 검색창이 잘 보이는지 확인하기", "pending"],
+] as const;
+
+const planAgent = (
+  id: string,
+  description: string,
+  status: "running" | "completed" | "stopped",
+  summary: string | null,
+): Block => ({
+  type: "tool",
+  id,
+  name: "Agent",
+  input: { description, prompt: "…", subagent_type: "Explore" },
+  agentId: null,
+  done: status !== "running",
+  progress: {
+    task: {
+      id,
+      description,
+      summary,
+      lastTool: null,
+      subagentType: "Explore",
+      tokens: 0,
+      toolUses: 4,
+      backgrounded: false,
+      status,
+    },
+  },
+});
+
+const planThread: Block[] = [
+  { type: "user", id: "pl1", text: "회원 목록 맨 위에 검색창을 넣어 줘.", images: 0 },
+  {
+    type: "tool",
+    id: "pl2",
+    name: "TodoWrite",
+    input: { todos: planTodos.map(([content, status]) => ({ content, status })) },
+    agentId: null,
+    done: true,
+  },
+  planAgent("pl3", "다른 화면의 검색창 모양 살펴보기", "completed", null),
+  planAgent(
+    "pl4",
+    "회원 정보가 어디서 오는지 살펴보기",
+    "running",
+    "회원 목록을 불러오는 부분을 읽는 중이에요",
+  ),
+  planAgent("pl5", "검색 기록 남기는 자리 찾기", "stopped", null),
+];
+
+function PlanPills() {
+  const plan = runPlan(planThread);
+  if (plan === null) return null;
+  return (
+    <>
+      <div className="nx-cmp-wrap">
+        <RunPlan plan={{ todos: plan.todos, agents: [] }} />
+      </div>
+      <div className="nx-cmp-wrap">
+        <RunPlan plan={{ todos: null, agents: plan.agents }} />
+      </div>
+      {/* 펼친 목록은 알약 위로 뜬다 — 위에 자리를 비워 둔다. */}
+      <div className="nx-cmp-wrap" style={{ paddingTop: 440 }}>
+        <RunPlan plan={plan} initialOpen />
+      </div>
     </>
   );
 }
@@ -677,6 +746,94 @@ const mergedLiveArrival = (): Block =>
     at: new Date().toISOString(),
   });
 
+/**
+ * `?scene=long` — 긴 답의 읽기 모양(2026-10-20 사용자 요청 — 답이 눈에 잘 들어오고 읽기 편하게). 셋이 선다:
+ * ① 첫 문장 + `## 바뀐 점` · `## 직접 확인해 주세요` · 인용 · 표 · 끝의 화면 링크 · `## 기술 정보`(접힌다),
+ * ② 머리 없이 문단 둘과 목록만 있는 답, ③ 첫 문단이 긴 답(머리 문장 강조가 서지 않아야 한다).
+ * `?scene=long-live` 는 ① 이 흐르는 중(둘째 절 중간에서 멈춘 모양 — 머리 문장과 커서를 함께 본다).
+ */
+const longAnswer = [
+  "회원 목록에 **검색창**을 넣고, 결과가 없을 때의 안내 문구까지 함께 넣었어요.",
+  "",
+  "## 바뀐 점",
+  "",
+  "- 목록 머리 오른쪽에 **검색창**이 생겼어요. 이름이나 연락처를 치면 목록이 바로 좁혀져요.",
+  "- 검색 결과가 없으면 표 자리에 **「찾는 회원이 없어요」** 안내가 서요. 검색어를 지우는 단추도 곁에 있어요.",
+  "- 검색 중에도 쪽 번호는 그대로 동작해요 — 1쪽으로 돌아가서 다시 세요.",
+  "",
+  "## 직접 확인해 주세요",
+  "",
+  "1. 회원 목록을 열고 검색창에 `김` 을 쳐 보세요. 이름에 「김」이 든 회원만 남아야 해요.",
+  "2. 아무도 없는 이름(예: `zzz`)을 치면 안내 문구가 보여야 해요.",
+  "3. 검색어를 지우면 전체 목록으로 돌아와야 해요.",
+  "",
+  "> 검색은 지금 화면에 불러온 회원 안에서만 찾아요. 서버에서 찾는 방식은 개발자와 상의가 필요해요.",
+  "",
+  "| 화면 | 바뀐 곳 |",
+  "| --- | --- |",
+  "| 회원 목록 | 검색창 · 빈 결과 안내 |",
+  "| 회원 상세 | 바뀐 곳 없음 |",
+  "",
+  "## 기술 정보",
+  "",
+  "- `src/pages/members.tsx` 에 검색 상태를 더하고 거른 목록을 만들었어요.",
+  "- 빈 결과는 이미 있던 빈 화면 부품을 다시 썼어요.",
+  "",
+  `[회원 목록](${PREVIEW_URL}/member/list)`,
+].join("\n");
+const longScene: Block[] = [
+  withResult(
+    "lg1",
+    "회원 목록에 이름으로 찾는 검색창을 넣어 줘. 결과가 없을 때 안내도 있었으면 해.",
+    "req-lg1",
+    [{ route: "member/list", title: "회원 목록" }],
+    { screens: 1, phone: true },
+  ),
+  step("lg1a", "회원 목록 화면과 표 부품을 살펴봤어요"),
+  step("lg1b", "검색창과 빈 결과 안내를 넣었어요"),
+  step("lg1c", "화면을 다시 열어 확인했어요"),
+  answer("lg1d", longAnswer),
+  turn("lg1e", 96000),
+  user("lg2", "안내 문구 말투가 다른 화면이랑 좀 다른 것 같은데, 맞춰 줄 수 있어?"),
+  answer(
+    "lg2a",
+    [
+      "다른 화면의 빈 안내와 같은 말투(**~어요**)로 맞췄어요.",
+      "",
+      "바뀐 문장은 셋이에요. 결제 내역과 환불 내역의 빈 안내도 같은 표현을 쓰고 있어서 함께 보면 자연스러울 거예요.",
+      "",
+      "- 「찾는 회원이 없어요」 → 「찾으시는 회원이 없어요」",
+      "- 「검색어를 지우세요」 → 「검색어를 지우면 전체 목록이 보여요」",
+      "- 단추 이름 「초기화」 → 「지우기」",
+    ].join("\n"),
+  ),
+  turn("lg2e", 23000),
+  user("lg3", "검색이 느린 것 같아. 왜 그런지 설명해 줘."),
+  answer(
+    "lg3a",
+    [
+      "지금 검색은 글자를 칠 때마다 전체 회원 목록을 처음부터 다시 훑어서 거르기 때문에, 회원이 수천 명이면 한 글자마다 잠깐씩 멈춘 것처럼 느껴질 수 있어요. 표를 다시 그리는 데도 시간이 들어요.",
+      "",
+      "줄일 수 있는 방법은 두 가지예요.",
+      "",
+      "- 글자를 다 친 뒤 잠깐(0.3초쯤) 기다렸다가 한 번만 거르기",
+      "- 거른 결과를 쪽 단위로만 그려서 표를 가볍게 하기",
+      "",
+      "원하시면 두 가지 모두 적용해 볼게요.",
+    ].join("\n"),
+  ),
+  turn("lg3e", 12000),
+];
+const longLive: Block[] = [
+  longScene[0] as Block,
+  step("ll1a", "회원 목록 화면과 표 부품을 살펴봤어요"),
+  step("ll1b", "검색창과 빈 결과 안내를 넣었어요"),
+  {
+    ...answer("ll1d", longAnswer.split("\n").slice(0, 12).join("\n")),
+    streaming: true,
+  } as Block,
+];
+
 const scene = query.get("scene");
 
 /** 도는 답 견본 — 사람 말이 올라온 뒤 글이 이어지고 마감까지를 시간대로 밟는다. */
@@ -756,6 +913,7 @@ function LiveFixture() {
           queue={[]}
           preparing={false}
           dropped={[]}
+          outgoing={[]}
           onFork={(turn) => calls.push(`fork:${turn}`)}
           onEditResend={() => {}}
           onAdditionalEdit={() => {}}
@@ -830,9 +988,13 @@ function Fixture() {
                                             ? ciLiveScene
                                             : scene === "ci-one"
                                               ? ciOneScene
-                                              : blocks
+                                              : scene === "long"
+                                                ? longScene
+                                                : scene === "long-live"
+                                                  ? longLive
+                                                  : blocks
             }
-            live={scene === "queue" || scene === "ci-live"}
+            live={scene === "queue" || scene === "ci-live" || scene === "long-live"}
             showThinking={false}
             showTools={scene === "tools"}
             previewUrl={PREVIEW_URL}
@@ -849,6 +1011,7 @@ function Fixture() {
             queue={scene === "queue" ? queueItems : []}
             preparing={false}
             dropped={[]}
+            outgoing={[]}
             onFork={(turn) => calls.push(`fork:${turn}`)}
             onEditResend={() => {}}
             onAdditionalEdit={() => {}}
@@ -869,6 +1032,7 @@ function Fixture() {
             onStopTask={() => {}}
           />
           {scene === "working" && <WorkingLines />}
+          {scene === "working" && <PlanPills />}
         </div>
       </section>
       {scene === null && <LiveFixture />}

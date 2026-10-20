@@ -243,9 +243,10 @@ export class RepoWorkspace {
 
   /**
    * Session start · 레포 최신화: bring the clone current without tearing its
-   * preview down, and without asking the planner to read git. Off-cycle that
-   * is a fast-forward of the base branch; mid-cycle it is a merge of the
-   * developer's base into this cycle's work. Unsaved work rides along (see
+   * preview down, and without asking the planner to read git. Called without
+   * a brief target (the fleet's warm activation) it only reads the remote —
+   * 2026-10-20 사용자 요청: 베이스 합치기는 `받아오기`(감독자 11 · 11b 행)의 몫이다.
+   * With one, unsaved work rides along (see
    * refreshFromRemote), a conflict becomes the session's first task, and a
    * plain failure stays a `detail`: hiding a live preview mid-conversation
    * is worse than being a commit behind until the next sync() reports the
@@ -286,9 +287,7 @@ export class RepoWorkspace {
         // (the automatic pre-send pull, the fleet) all run quietly.
         return undefined;
       });
-    // The outcome is the caller's answer: the 최신화 button's "N건을 받아
-    // 왔습니다" record and the tests both read it. A bare `await run` dropped
-    // it on the floor, leaving that record dead code.
+    // The outcome is the caller's answer — the tests read it.
     return await run;
   }
 

@@ -41,6 +41,12 @@ extraResources:
   - from: resources/bin
     to: bin
     filter: ["**/*"]
+  # 트레이 아이콘(Windows, 2026-10-20 사용자 요청 — 창을 닫아도 앱이 트레이에 남는다). asar 밖 resources/tray.ico
+  # 에 두어 경로로 곧장 읽는다(tray.ts 의 trayIconPath). 플랫폼별 extraResources 가 위 목록을 덮는지 확실하지 않아
+  # 여기 둔다 — mac 에도 실리지만 쓰지 않는다. 개발 실행은 build/icon.ico 를 읽고, 둘 다 없으면 main.ts 가 실행
+  # 파일의 아이콘으로 물러난다.
+  - from: build/icon.ico
+    to: tray.ico
 mac:
   identity: "ColoNova Design Dev"
   # 서명을 건너뛴 빌드는 여기서 실패한다 — 알림이 죽은 앱을 배포하지 않는다.

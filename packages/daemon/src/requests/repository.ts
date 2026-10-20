@@ -166,6 +166,12 @@ export function repositoryHandlers(
       await deps.fleet.requireActive().supervisor.withdraw();
       return { ok: true as const };
     },
+    // 받아오기(2026-10-20 사용자 요청) — 요청을 세우고 곧바로 답한다. 합치기 · 겹친 부분의 AI 과제는 감독자의
+    // 틱이 잇고, 진행은 `RepoStatus.baseSync` 로 간다. 턴 중이어도 거절하지 않는다 — 요청이 턴 끝을 기다린다.
+    "repo.refresh": async (message) => {
+      deps.fleet.requireActive().supervisor.requestBaseSync(message.sessionId);
+      return { ok: true as const };
+    },
     // --- 되돌리기와 넘기기 (PLAN D52 · D53) ------------------------------
     "repo.handoffDraft": async () => {
       const active = deps.fleet.requireActive();

@@ -294,21 +294,41 @@ test("10행 — 원격 브랜치가 앞서면 당겨 온다", () => {
   });
 });
 
-test("11행 — 사이클 브랜치가 베이스 뒤처졌거나 PR 이 충돌 중이면 베이스를 합친다", () => {
-  assert.deepEqual(nextCycleAction(snap({ behindBase: 3 }), led()).action, {
-    kind: "mergeBase",
-    reason: "behind",
-  });
+test("11행 — 받아오기를 누르면 뒤처진 사이클 브랜치나 충돌 중인 PR 에 베이스를 합친다", () => {
+  assert.deepEqual(
+    nextCycleAction(snap({ behindBase: 3, baseSyncRequested: true }), led()).action,
+    { kind: "mergeBase", reason: "behind" },
+  );
   const pr = { number: 12, state: "open" as const, headSha: "abc", mergeableState: "dirty" };
-  assert.deepEqual(nextCycleAction(snap({ pr }), led()).action, {
+  assert.deepEqual(nextCycleAction(snap({ pr, baseSyncRequested: true }), led()).action, {
     kind: "mergeBase",
     reason: "dirty-pr",
   });
+  // 턴 중이면 요청이 서 있어도 기다린다.
+  assert.notEqual(
+    kindOf(
+      nextCycleAction(snap({ behindBase: 3, baseSyncRequested: true, turnRunning: true }), led()),
+    ),
+    "mergeBase",
+  );
 });
 
-test("11b 행 — 사이클 없이 곧은 클론이 뒤처졌으면 앞으로 당겨 온다", () => {
+test("11행 — 누르기 전에는 뒤처져도 · PR 이 충돌 중이어도 합치지 않는다(2026-10-20 사용자 요청)", () => {
+  assert.equal(kindOf(nextCycleAction(snap({ behindBase: 3 }), led())), "none");
+  const pr = { number: 12, state: "open" as const, headSha: "abc", mergeableState: "dirty" };
+  assert.equal(kindOf(nextCycleAction(snap({ pr }), led())), "none");
+});
+
+test("11b 행 — 받아오기를 누르면 사이클 없이 곧은 클론을 앞으로 당겨 온다", () => {
+  assert.equal(
+    kindOf(
+      nextCycleAction(snap({ registryBranch: null, headBranch: "main", behindBase: 2 }), led()),
+    ),
+    "none",
+    "누르기 전에는 당기지 않는다",
+  );
   const out = nextCycleAction(
-    snap({ registryBranch: null, headBranch: "main", behindBase: 2 }),
+    snap({ registryBranch: null, headBranch: "main", behindBase: 2, baseSyncRequested: true }),
     led(),
   );
   assert.deepEqual(out.action, { kind: "fastForwardBase" });

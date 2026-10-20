@@ -803,6 +803,16 @@ const clientMessageSchema = z.discriminatedUnion("type", [
    */
   z.object({ ...withId, type: z.literal("repo.withdraw") }),
   /**
+   * 개발자가 반영한 내용 받아오기(2026-10-20 사용자 요청): 베이스의 새 커밋을 클론에 합치는 일은 이
+   * 요청으로만 시작한다. 감독자가 요청을 세우고 틱을 돈다 — AI 가 고치는 중이면 끝난 뒤에 합친다.
+   * 겹친 부분은 AI 의 과제가 되고, `sessionId` 가 살아 있으면 그 대화로 간다(없으면 도구가 연 대화).
+   */
+  z.object({
+    ...withId,
+    type: z.literal("repo.refresh"),
+    sessionId: z.string().min(1).optional(),
+  }),
+  /**
    * 기능 제안 접수 (PLAN-FEEDBACK) — 앱 전체 기능이다: 프로젝트·레포·세션을
    * 전혀 건드리지 않고 데몬이 RELEASES_REPO 에 이슈로 올린다. 입력 검증은
    * `featureRequestInputSchema` 를 그대로 펼친 것(공백 정리·길이 상한의 한 곳),

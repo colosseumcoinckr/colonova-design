@@ -26,9 +26,9 @@ export function TodoList({ todos }: { todos: TodoItem[] }) {
 
 /**
  * 끝난 턴의 할 일 한 줄 — "할 일 N개 끝". 도는 턴의 할 일은 이 카드가
- * 그리지 않는다: WorkStrip 이 컴포저 위에 같은 목차를 고정으로 세우므로,
- * 테이프가 또 그리는 것은 같은 정보의 두 번째 사본이다(라이브 카드는
- * Transcript 에서 걸러진다). 펼치면 ✓ ● ○ 목록이 남는다 — 기록은 접힌
+ * 그리지 않는다: 입력창 위 알약(`next/chat/RunPlan.tsx`)이 같은 목차를 펼쳐
+ * 보이므로, 테이프가 또 그리는 것은 같은 정보의 두 번째 사본이다(라이브 카드는
+ * Thread 에서 걸러진다). 펼치면 ✓ ● ○ 목록이 남는다 — 기록은 접힌
  * 한 줄 뒤에 있다. 목록을 쓰지 않은 TodoWrite 는 카드가 아니라 도구 줄로.
  */
 export function TodoCard({ block }: { block: TodoToolBlock }) {

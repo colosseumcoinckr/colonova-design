@@ -354,7 +354,10 @@ export interface RepoWorkspaceOptions {
    * 이번 작업의 두 조각 (PLAN-UI U2 · U13) — 바뀐 화면과 제출 상태. fleet 이
    * 화면 캐시와 감독자에서 모아 넣는다. 동기로 읽히므로 캐시된 값만 돌려준다.
    */
-  cycleView?: () => Pick<RepoStatus, "cycleScreens" | "submit" | "firstScreen" | "landed">;
+  cycleView?: () => Pick<
+    RepoStatus,
+    "cycleScreens" | "submit" | "baseSync" | "firstScreen" | "landed"
+  >;
 }
 
 /**
@@ -551,7 +554,7 @@ export class RepoCore {
   readonly attention: (() => Attention | null) | null;
   /** 이번 작업의 두 조각 (PLAN-UI U2 · U13) — 스냅샷이 싣는다. */
   readonly cycleView:
-    | (() => Pick<RepoStatus, "cycleScreens" | "submit" | "firstScreen" | "landed">)
+    | (() => Pick<RepoStatus, "cycleScreens" | "submit" | "baseSync" | "firstScreen" | "landed">)
     | null;
   /** 넘긴 요청에 적을 작성자 이름 — PR 제목·본문이 읽는다(P1-3). */
   readonly authorName: (() => string | null) | null;
@@ -602,7 +605,10 @@ export class RepoCore {
     /** 이 프로젝트의 주의 (PLAN L8) — 스냅샷이 읽는 재료의 묶음. */
     attention?: () => Attention | null;
     /** 이번 작업의 두 조각 (PLAN-UI U2 · U13) — 스냅샷이 싣는다. */
-    cycleView?: () => Pick<RepoStatus, "cycleScreens" | "submit" | "firstScreen" | "landed">;
+    cycleView?: () => Pick<
+      RepoStatus,
+      "cycleScreens" | "submit" | "baseSync" | "firstScreen" | "landed"
+    >;
   }) {
     this.root = options.root;
     this.url = options.url;
@@ -956,15 +962,11 @@ export class RepoCore {
     // conflicts is exactly the leftover state above; the same brief covers it.
     if ((await this.recoverParkedWork(onSessionTurn)) === "conflict") return "conflict";
 
-    // Mid-cycle, merging the developer's base needs the agent within reach — a
-    // conflict has to land as a first task, not as an error nobody can read.
-    // A bare bring-up mid-cycle stays put on the merge, but the fetch still
-    // runs BEFORE the early return: bootstrap·활성화는 brief 받을 대화 없이
-    // 지나가는 자리이므로, 여기서 origin 을 새로 읽지 않으면
-    // aheadBehindBase() 가 지난 원격을 읽고 위에 쌓인 커밋이 있어도 조용히
-    // 넘어간다. 못 읽은 fetch 는 지난 origin 을 남길 뿐 — 예전의 조용한
-    // no-op 그대로다.
-    if (this.branch && !onSessionTurn) {
+    // 2026-10-20 사용자 요청: 개발자의 베이스를 합치는 일은 `받아오기` 를 누를 때만 한다(감독자의
+    // 11 · 11b 행). 브리프 받을 대화 없이 지나가는 자리(bootstrap · 활성화)는 사이클 안팎 모두 원격만
+    // 새로 읽는다 — 읽어 두어야 aheadBehindBase() 가 받아올 수를 지금의 원격으로 센다. 못 읽은 fetch 는
+    // 지난 origin 을 남길 뿐이다. 대화를 건네는 부름(시험의 직접 부름)만 아래에서 합친다.
+    if (!onSessionTurn) {
       await this.git(["fetch", "origin", this.baseBranch]).catch(() => undefined);
       return "clean";
     }

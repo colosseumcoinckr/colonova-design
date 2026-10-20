@@ -898,6 +898,8 @@ interface DaemonApi {
   noteToDeveloper: (text: string) => Promise<{ ok: true }>;
   /** 제출 취소(2026-10-14): the planner closes their own OPEN request; the work stays and moves on. */
   withdrawSubmission: () => Promise<{ ok: true }>;
+  /** 받아오기(2026-10-20): ask the supervisor to merge what the developer landed — progress rides `RepoStatus.baseSync`. */
+  refreshBase: (sessionId?: string) => Promise<{ ok: true }>;
   /**
    * 기능 제안 접수 (PLAN-FEEDBACK) — `commandId` 는 재시도가 같은 접수를 두 번
    * 만들지 않게 하는 안정된 멱등 키다: 응답을 못 받은 재전송은 같은 id 로,
@@ -2103,6 +2105,9 @@ export function useDaemon(url: string | null): Daemon {
       noteToDeveloper: (text: string) => call<{ ok: true }>({ type: "repo.note", text }, 60_000),
       // 제출 취소(2026-10-14) — 데몬이 요청을 닫고 착지 틱까지 돈 뒤 답한다.
       withdrawSubmission: () => call<{ ok: true }>({ type: "repo.withdraw" }, 60_000),
+      // 받아오기(2026-10-20) — 데몬은 요청을 세우고 곧바로 답한다. 합치기는 감독자의 틱이 잇는다.
+      refreshBase: (sessionId?: string) =>
+        call<{ ok: true }>({ type: "repo.refresh", ...(sessionId ? { sessionId } : {}) }, 60_000),
       // 대화 분기: 답을 하나도 보내지 않는다 — 포크의 악수(절단 재개)만
       // 기다린다.
       branch: (sessionId, turn) =>

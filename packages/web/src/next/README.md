@@ -178,8 +178,9 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 - `receipt.ts` — 제출 영수증이 말하는 것: `sentOf(screens)` 가 확인 창의 이번 제출 화면을 사건에 실을 모양(`SubmitSent`)으로,
   `receiptFacts(block, same, more)` 가 받을 개발자 · 보낸 화면 · `nobody`(링크를 직접 전해야 하는가)를 가린다. 모르는 것은 말하지 않는다.
 - `making.ts` · `use-held-phase.ts` — 단계 말: `makingPhase(blocks)` 가 도는 도구의 묶음을 고르고 `makingWordOf(phase, words)` 가 말로 옮긴다.
-  `useHeldPhase(phase, on)` 은 말을 1.5초 이상 머물게 한다(상태 줄의 알약과 대화 칸의 진행 줄이 함께 쓴다). `k/n 단계` 는
-  `lib/todo-plan.ts` 의 `currentTodoProgress` — 이 턴에 AI 가 목록을 냈을 때만, 숫자만.
+  `useHeldPhase(phase, on)` 은 말을 1.5초 이상 머물게 한다(상태 줄의 알약과 대화 칸의 진행 줄이 함께 쓴다).
+- `run-plan.ts` — 입력창 위 알약(`chat/RunPlan.tsx`)의 내용: `runPlan(blocks)` 가 이 턴의 할 일 목록(`lib/todo-plan.ts` 의
+  `currentTodoItems`)과 본 대화가 띄운 보조 작업(`lib/progress.ts` 의 `agentBriefs`)을 고른다. 둘 다 없으면 null(2026-10-20 사용자 요청).
 - `undo-last.ts` — `undoTargetFor(entries, screens, requestId)`: `방금 한 것 되돌리기` 가 돌아갈 곳(`{ sha, count }`) — 그 요청의 보관이
   기록의 맨 위부터 이어질 때만. `request-results.ts` 의 `latestResult` 가 「마지막 턴이 낸 결과」 를 고른다.
 - `result-photos.ts` — `photoUrl`: 사진의 형식과 크기를 확인해 안전한 데이터 주소를 만든다. 첫 화면 사진 호환 경로가 사용한다.

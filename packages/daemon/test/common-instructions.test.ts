@@ -7,6 +7,11 @@ test("공통 지침은 레포의 개발 규칙을 우선하고 앱의 역할만 
   assert.match(COMMON_INSTRUCTIONS, /보관·되돌리기·푸시·제출은 앱이 맡는다/);
   assert.match(COMMON_INSTRUCTIONS, /제출 버튼을 안내/);
   assert.match(COMMON_INSTRUCTIONS, /확인했다고 말하지 않는다/);
+  // 할 일 · 보조 작업의 글은 입력창 위 알약에 그대로 보인다(2026-10-20 사용자 요청).
+  assert.match(
+    COMMON_INSTRUCTIONS,
+    /할 일 목록\(TodoWrite\)의 항목과 보조 작업\(Agent\)의 설명은 사용자 화면에/,
+  );
   assert.doesNotMatch(
     COMMON_INSTRUCTIONS,
     /notify_developer|screen_check|describe_changes|repo_diagnostics|목 데이터|락파일|package\.json|3:1|aria-label/,

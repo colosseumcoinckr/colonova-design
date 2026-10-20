@@ -198,8 +198,9 @@ export interface SupervisorDeps {
    * 자동 대화 열기 — fleet 의 autoFixThreadFor 를 넘긴다. 공급자를 고르느라
    * 비동기다(auto-thread.ts). 부르기와 반환된 손잡이의 send 는 lane.outside
    * 안에서만 하고, 기다린다. null 은 대화를 열 수 없었다는 뜻이다.
+   * `sessionId` 는 사용자가 누른 대화다(받아오기, 2026-10-20) — 이 클론에서 살아 있으면 그 대화를 돌려준다.
    */
-  openThread: (title: string) => Promise<{ send(text: string): void } | null>;
+  openThread: (title: string, sessionId?: string) => Promise<{ send(text: string): void } | null>;
   /** 개발자 알림 — fleet 의 DeveloperNotice 로 간다. `reason` 은 조정 표가
    *  붙인 사유로, 알림 본문의 `자세히` 가 된다. */
   raiseNotice: (key: string, text: string, reason?: string) => void;
@@ -304,6 +305,16 @@ export class CycleSupervisor {
   private submitRetryTimer: (() => void) | null = null;
   /** 건 타이머가 기다리는 순간(epoch ms) — 같은 순간을 두 번 걸지 않는 잣체. */
   private submitRetryArmedAt: number | null = null;
+  /**
+   * 받아오기 요청(2026-10-20 사용자 요청) — 11 · 11b 행이 베이스를 합치는 유일한 계기다. 메모리에만 둔다:
+   * 재시작이 요청을 잃어도 다시 누르면 된다. 대화는 겹친 부분의 브리프가 갈 곳이다.
+   */
+  private baseSyncRequested = false;
+  private baseSyncSessionId: string | null = null;
+  /** 마지막 관찰이 센 받아올 커밋 수 — `RepoStatus.baseSync.behind`. */
+  private lastBehindBase = 0;
+  /** 마지막 요청이 끝난 모양 — `RepoStatus.baseSync.last`. */
+  private lastBaseSync: NonNullable<RepoStatus["baseSync"]>["last"] | null = null;
 
   constructor(deps: SupervisorDeps) {
     this.deps = deps;
@@ -467,6 +478,50 @@ export class CycleSupervisor {
         : {}),
       log: (this.ledger.submitTrail?.log ?? []).slice(-SUBMIT_LOG_MAX),
     };
+  }
+
+  /**
+   * 받아오기(2026-10-20 사용자 요청) — 개발자가 반영한 베이스를 합치라는 요청을 세우고 곧바로 틱을 돈다.
+   * 원격을 새로 읽고(manual 틱은 fetch 한다) 11 · 11b 행이 합친다. AI 가 고치는 중이면 요청이 서서
+   * 기다리다 턴이 끝난 틱(turn-idle)이 이어받는다. 겹친 부분은 2행의 브리프가 `sessionId` 대화로 낸다.
+   */
+  requestBaseSync(sessionId?: string): void {
+    this.baseSyncRequested = true;
+    this.baseSyncSessionId = sessionId ?? null;
+    this.log("받아오기 요청");
+    this.deps.onChange?.();
+    void this.tick("manual");
+  }
+
+  /** `RepoStatus.baseSync` — 받아올 수와 서 있는 요청. */
+  baseSyncView(): NonNullable<RepoStatus["baseSync"]> {
+    return {
+      behind: this.lastBehindBase,
+      requested: this.baseSyncRequested,
+      ...(this.lastBaseSync ? { last: this.lastBaseSync } : {}),
+    };
+  }
+
+  /** 관찰이 센 받아올 수를 얹는다 — 바뀌면 상태를 다시 방송한다. */
+  private noteBehindBase(behind: number): void {
+    if (behind === this.lastBehindBase) return;
+    this.lastBehindBase = behind;
+    this.deps.onChange?.();
+  }
+
+  /**
+   * 받아오기 요청을 끝난 모양과 함께 거둔다. 요청과 결과가 한 방송에 함께 실려야 웹이 사이의 모습(요청은 졌는데
+   * 결과는 모르는)을 읽지 않는다. 깨끗이 합쳤으면 받아올 수도 그 자리에서 0 이다.
+   */
+  private settleBaseSync(outcome: "done" | "none" | "overlap" | "failed"): void {
+    if (!this.baseSyncRequested) return;
+    this.baseSyncRequested = false;
+    this.lastBaseSync = { at: new Date(this.now()).toISOString(), outcome };
+    if (outcome === "done") this.lastBehindBase = 0;
+    // 누른 대화는 겹친 부분의 브리프만 받는다 — 겹치지 않았으면 여기서 잊는다(나중의 다른 충돌로 새지 않게).
+    if (outcome !== "overlap") this.baseSyncSessionId = null;
+    this.log(`받아오기 끝 (${outcome})`);
+    this.deps.onChange?.();
   }
 
   /**
@@ -722,6 +777,9 @@ export class CycleSupervisor {
         now: this.now(),
       });
       if (fetch) this.lastFetchAt = this.now();
+      // 받아오기 요청은 관찰이 아니라 사용자의 누름이다 — 판정 앞에 얹는다(2026-10-20).
+      snapshot.baseSyncRequested = this.baseSyncRequested;
+      this.noteBehindBase(snapshot.behindBase);
       // 선로로 나가는 휘발 신호 — 승인과 자동 검사의 요약(2026-10-07). 레지스트리에는 남기지 않는다.
       this.syncHandoffSignals(snapshot);
       // 병합을 처음 본 틱이면 성취 카드의 재료(제목 · 화면 수)를 얹는다 — 판정은 순수하게 남는다(2026-10-08 · A2b).
@@ -770,7 +828,14 @@ export class CycleSupervisor {
         this.emitEvents(decision);
         // 반영된 일이 늘었다 — 상태 방송이 홈의 `반영된 일` 을 채운다.
         if (changed || this.ledger.landed !== landedBefore) this.deps.onChange?.();
-        if (decision.action.kind === "none") return;
+        if (decision.action.kind === "none") {
+          // 턴이 없는데도 합치지 않았다 — 받을 것이 없었거나 앞선 행(충돌 정리 · 베이스 없음)이 막았다.
+          // 요청은 거둔다(다시 누르면 된다). 턴 중이면 요청은 서서 턴이 끝난 틱을 기다린다.
+          if (!snapshot.turnRunning) {
+            this.settleBaseSync(snapshot.behindBase === 0 ? "none" : "failed");
+          }
+          return;
+        }
         const acted = await this.runAction(decision.action, snapshot);
         if (!acted) return;
         // 조치가 세계를 바꿨다 — 같은 틱 안에서 다시 읽고 판정한다. fetch 는
@@ -780,6 +845,8 @@ export class CycleSupervisor {
           now: this.now(),
         });
         Object.assign(snapshot, next);
+        snapshot.baseSyncRequested = this.baseSyncRequested;
+        this.noteBehindBase(snapshot.behindBase);
       }
       this.log(`틱이 ${MAX_TICK_ROUNDS}회 판정에 닿아 멈췄습니다 (${reason})`);
     });
@@ -960,6 +1027,7 @@ export class CycleSupervisor {
     const core = this.deps.core;
     switch (action.kind) {
       case "clearPendingOp": {
+        this.baseSyncSessionId = null;
         this.ledger = { ...this.ledger, pendingOp: null };
         writeLedger(this.ledgerPath, this.ledger);
         return true;
@@ -969,6 +1037,7 @@ export class CycleSupervisor {
         // 않는다 — 되돌려 놓고 원장을 비운다.
         await core.git([action.op, "--abort"]).catch(() => "");
         this.log(`남의 ${action.op} 를 중단했습니다`);
+        this.baseSyncSessionId = null;
         this.ledger = { ...this.ledger, pendingOp: null };
         writeLedger(this.ledgerPath, this.ledger);
         return true;
@@ -977,6 +1046,8 @@ export class CycleSupervisor {
         const pending = this.ledger.pendingOp;
         if (pending === null) return true;
         await this.finishToolOp(pending);
+        // 받아오기의 겹친 부분이 정리됐다 — 누른 대화를 잊는다.
+        this.baseSyncSessionId = null;
         this.ledger = { ...this.ledger, pendingOp: null };
         writeLedger(this.ledgerPath, this.ledger);
         // 마무리가 워크트리를 바꿨다 — 변경 수를 다시 센다.
@@ -999,8 +1070,11 @@ export class CycleSupervisor {
           { kind: "gate", step },
           conflictBrief(pending.files, pending.kind, await core.conflictSides(pending.kind)),
         );
+        // 받아오기를 누른 대화가 있으면 그 대화가 과제를 받는다(2026-10-20) — 누른 자리에서 AI 가 정리하는 것이 보인다.
+        const pressedIn =
+          pending.kind === "merge" ? (this.baseSyncSessionId ?? undefined) : undefined;
         await core.lane.outside(async () => {
-          (await this.deps.openThread("최신 변경 합치기"))?.send(brief);
+          (await this.deps.openThread("최신 변경 합치기", pressedIn))?.send(brief);
         });
         return false;
       }
@@ -1049,8 +1123,15 @@ export class CycleSupervisor {
         return true;
       }
       case "fastForwardBase": {
-        await core.git(["checkout", core.baseBranch]);
-        await core.git(["merge", "--ff-only", `origin/${core.baseBranch}`]);
+        // 받아오기 요청을 여기서 쓴다 — 실패해도 같은 요청으로 다시 돌지 않는다(다시 누르면 된다).
+        try {
+          await core.git(["checkout", core.baseBranch]);
+          await core.git(["merge", "--ff-only", `origin/${core.baseBranch}`]);
+        } catch (error) {
+          this.settleBaseSync("failed");
+          throw error;
+        }
+        this.settleBaseSync("done");
         return true;
       }
       case "push": {
@@ -1095,11 +1176,12 @@ export class CycleSupervisor {
       }
       case "mergeBase": {
         // 사이클 브랜치 위에서 베이스를 합친다 — 트리는 5행 덕에 깨끗하다.
-        // 더러우면 아무것도 하지 않고 멈춘다(다음 틱이 다시 본다).
+        // 더러우면 아무것도 하지 않고 멈춘다(요청이 서 있으니 다음 틱이 다시 본다).
         if ((await core.git(["status", "--porcelain"])).trim() !== "") {
           this.log("mergeBase: 작업 트리가 더러워 건너뜁니다");
           return false;
         }
+        // 받아오기 요청을 여기서 쓴다 — 합치기가 끝나든 겹치든 실패하든 같은 요청으로 다시 돌지 않는다.
         try {
           await core.git([
             ...(await core.identityArgs()),
@@ -1115,11 +1197,15 @@ export class CycleSupervisor {
               startedAt: new Date(this.now()).toISOString(),
               briefs: 0,
             });
+            // 겹친 부분은 다음 판정의 2행이 AI 에게 브리프한다.
+            this.settleBaseSync("overlap");
             return true;
           }
           this.log(`베이스 병합 실패: ${detailOf(error, core.pat)}`);
+          this.settleBaseSync("failed");
           return false;
         }
+        this.settleBaseSync("done");
         return true;
       }
       case "retargetBase": {

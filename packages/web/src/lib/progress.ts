@@ -176,8 +176,8 @@ export function attachProgress(blocks: Block[], event: ProgressEvent): Block[] {
 }
 
 /**
- * 하위 작업의 목차 — 테이프의 `Task` 도구 호출 하나가 에이전트 하나다. 스트립
- * (WorkStrip)이 접힌 머리에 세는 숫자와 펼쳤을 때 읽는 목록이 이 한 셈에서
+ * 하위 작업의 목차 — 테이프의 `Task` 도구 호출 하나가 에이전트 하나다. 입력창 위
+ * 알약(`next/chat/RunPlan.tsx`)이 세는 숫자와 펼쳤을 때 읽는 목록이 이 한 셈에서
  * 나온다. `progress.task` 가 아직 안 붙은 호출(시작 사건보다 도구 행이 먼저
  * 온 경우)도 설명은 입력에서 읽어 채운다 — 도는 중 판정은 위의 `isToolRunning`
  * 하나만 믿는다. 하위 대화(`agentId` 로 물린 조각)는 활동 카드의 몫이고,

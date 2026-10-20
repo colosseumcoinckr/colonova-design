@@ -335,6 +335,8 @@ test("문장은 copy.ts 한 곳에 — 알림 · 대화상자 · 다리 · 메�
     "menu.ts",
     "invite-open.ts",
     "links.ts",
+    // 트레이(2026-10-20) — 메뉴 · 안내의 말은 copy.ts 의 TRAY 다.
+    "tray.ts",
   ]) {
     assert.deepEqual(
       hangulLiterals(file),

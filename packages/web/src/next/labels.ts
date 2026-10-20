@@ -533,7 +533,7 @@ export const L = {
     receiptNextComments: "개발자가 코멘트를 남기면 이 대화에 카드로 와요. 내용을 확인하고 수정을 요청한 뒤 다시 제출해 주세요",
     receiptNextOriginal: "서비스 원본은 개발자가 반영하기 전까지 그대로예요",
     receiptNote: (note: string) => `내 한마디 · “${note}”`,
-    /** 첫 제출의 영수증에만 — 앱이 꺼져 있으면 소식이 알림으로 오지 않는다(2026-10-06 UX 점검: 데몬은 앱 안에서 돌아 앱과 함께 끝난다). */
+    /** 첫 제출의 영수증에만 — 앱이 꺼져 있으면 소식이 알림으로 오지 않는다(2026-10-06 UX 점검: 데몬은 앱 안에서 돌아 앱과 함께 끝난다). 창을 닫아도 mac 은 Dock 에, Windows 는 트레이에 남은 앱이라 켜져 있는 앱이다(2026-10-20). */
     receiptAway: "개발자 소식은 앱이 켜져 있으면 알림으로 오고, 꺼 두면 다시 켤 때 홈에서 알려요",
     askTitle: "AI가 물어봐요",
     askFree: "직접 답하기",
@@ -584,8 +584,23 @@ export const L = {
     connecting: "연결하는 중이에요",
     stopping: "멈추는 중…",
     working: "작업 중",
-    // AI 가 이 턴에 할 일 목록을 냈을 때만 — 숫자만 말한다(항목의 글은 개발 말이 섞여 있어 싣지 않는다).
-    workTodo: (done: number, total: number) => `${done}/${total} 단계`,
+    /**
+     * 입력창 위 알약(2026-10-20 사용자 요청) — 도는 동안 이번 요청의 할 일 진행과 보조 작업 수. 누르면 AI 가 쓴
+     * 항목이 펼쳐진다(항목은 AI 의 글이라 공통 규칙이 쉬운 말로 쓰게 한다).
+     */
+    plan: {
+      todo: (done: number, total: number) => `할 일 ${done}/${total}`,
+      agents: (n: number) => `보조 작업 ${n}`,
+      title: "이번 요청의 할 일",
+      agentsTitle: "보조 작업",
+      agentUnnamed: "이름 없는 보조 작업",
+      // 표식은 눈으로 읽힌다 — 화면 낭독기에는 이 말이 대신 읽힌다.
+      done: "끝남",
+      doing: "하는 중",
+      waiting: "남음",
+      agentFailed: "못 끝냄",
+      agentStopped: "멈춤",
+    },
     queuedAfter: "지금 답이 끝나면 바로 보낼게요",
     queueEdit: "고쳐서 보내기",
     queueNow: "지금 보내기",
@@ -1031,6 +1046,20 @@ export const L = {
     withdrawWhySubmitting: "제출하는 중 — 끝나면 취소할 수 있어요",
     withdrawDone: "제출을 취소했어요 · 만든 화면은 그대로예요",
     withdrawFailed: "제출을 취소하지 못했어요 · 잠시 뒤 다시 시도해 주세요",
+    // 2026-10-20 사용자 요청 — 개발자가 반영한 내용은 누를 때만 받아온다. 겹치는 부분은 AI가 정리한다.
+    baseHeading: "개발자 쪽 새 내용",
+    baseBehind: (n: number) => `개발자가 반영한 내용 ${n}건이 아직 이 작업에 없어요.`,
+    baseHint: "받아오면 지금 작업 위에 합쳐요. 겹치는 부분은 AI가 정리해요.",
+    basePull: "받아오기",
+    /** 상태 줄의 작은 단추 — 받아올 수를 붙인다. */
+    basePullCount: (n: number) => `받아오기 ${n}`,
+    baseChipTitle: (n: number) => `개발자가 반영한 내용 ${n}건 · 눌러서 지금 작업에 받아와요`,
+    basePulling: "받아오는 중…",
+    baseWaiting: "AI 작업이 끝나면 받아와요",
+    baseOverlap: "겹치는 부분을 AI가 정리하고 있어요",
+    baseDone: "개발자가 반영한 내용을 받아왔어요",
+    baseNone: "새로 받아올 내용이 없어요",
+    baseFailed: "받아오지 못했어요 · 잠시 뒤 다시 눌러 주세요",
   },
 
 

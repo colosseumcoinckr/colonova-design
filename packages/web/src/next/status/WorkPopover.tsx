@@ -5,6 +5,7 @@ import { openLink } from "../../lib/open-link";
 import { canOpenScreen } from "../../lib/screen-link";
 import { clockOf } from "../chat/cards";
 import { L } from "../labels";
+import type { BaseSyncRow } from "../lib/base-sync";
 import { ciLine } from "../lib/ci-line";
 import type { Journey } from "../lib/journey";
 import { ledgerLine } from "../lib/submit-copy";
@@ -61,6 +62,9 @@ export function WorkPopover({
   onNoteDraft,
   onNote,
   onWithdraw,
+  baseRow,
+  baseAsking,
+  onRefreshBase,
   onOpenScreen,
   onToast,
   onClose,
@@ -81,6 +85,11 @@ export function WorkPopover({
   onNote: (text: string) => Promise<void>;
   /** 제출 취소 — 열린 요청을 닫는다. 던지면 실패다(까닭은 말하지 않고 한 문장으로 알린다). */
   onWithdraw: () => Promise<void>;
+  /** 받아오기 칸의 지금(2026-10-20) — 상태 줄의 단추와 같은 판정이다. */
+  baseRow: BaseSyncRow;
+  /** 받아오기 요청이 데몬에 가는 중 — 단추를 잠근다. */
+  baseAsking: boolean;
+  onRefreshBase: () => void;
   /** 화면 줄을 눌렀다 — 미리보기를 그 화면으로 옮긴다. */
   onOpenScreen: (screen: CycleScreen) => void;
   onToast: (text: string) => void;
@@ -194,6 +203,39 @@ export function WorkPopover({
       </div>
 
       <div className="nx-wp-body">
+        {/* 2026-10-20 사용자 요청 — 개발자가 반영한 내용은 누를 때만 받아온다. 받을 것도 요청도 없으면 칸이 없다. */}
+        {baseRow.kind !== "hidden" && (
+          <div className="nx-wp-sec">
+            <h5>{L.work.baseHeading}</h5>
+            {baseRow.kind === "ready" ? (
+              <>
+                <div className="nx-wp-empty">{L.work.baseBehind(baseRow.behind)}</div>
+                <div className="nx-wp-empty nx-wp-gap">{L.work.baseHint}</div>
+                <div className="nx-wp-copy">
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm"
+                    disabled={baseAsking}
+                    onClick={onRefreshBase}
+                  >
+                    {L.work.basePull}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="nx-wp-empty nx-wp-icon nx-wp-ci--pending" role="status">
+                <span className="nx-wp-ci-i">
+                  <Spin />
+                </span>
+                {baseRow.kind === "waiting"
+                  ? L.work.baseWaiting
+                  : baseRow.kind === "overlap"
+                    ? L.work.baseOverlap
+                    : L.work.basePulling}
+              </div>
+            )}
+          </div>
+        )}
         {/* 2026-10-04 ux-review: 초안이고 바뀐 화면이 없으면 `아직 없다` 류 안내가
             겹친다 — 바뀐 화면 칸을 접고 제출 칸의 `아직 제출하지 않았어요` 한 문장만
             둔다. */}

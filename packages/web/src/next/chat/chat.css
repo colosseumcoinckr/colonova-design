@@ -351,12 +351,16 @@
   }
 }
 
+/* 답의 본문(2026-10-20 사용자 요청 — 답이 눈에 잘 들어오고 읽기 편하게). 대화에서 가장 오래
+   읽는 글이라 틀의 글자(14px)보다 한 눈금 크고(15px) 줄 사이가 넉넉하다. 과정 줄(13px) ·
+   사람의 말풍선(14px)과 세 단이 되어 「답」이 어디서 시작하는지 크기만으로 읽힌다. 규칙은
+   `.nx-m-body > .md` 안에만 — styles.css 의 `.md` 는 과정 줄과 자세한 내용 폴드도 쓴다. */
 .nx-m-body {
   min-width: 0;
   flex: 1;
   word-break: keep-all;
   overflow-wrap: anywhere;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .nx-m-body > :first-child {
@@ -364,23 +368,81 @@
 }
 
 .nx-m-body > .md {
-  gap: 14px;
-  line-height: 1.8;
+  gap: 15px;
+  line-height: 1.75;
 }
 
-.nx-m-body > .md :is(h1, h2, h3) {
-  margin-top: 14px;
+.nx-m-body > .md :is(p, li) {
+  text-wrap: pretty;
+}
+
+/* 머리 문장 — 짧은 첫 문단 뒤에 더 할 말이 있을 때(Thread 의 hasLeadSentence) 그 문단이
+   「무엇이 달라졌는지」 한 줄이다. 한 눈금 더 크고 조금 굵게, 그 안의 굵은 말은 그대로 두드러진다. */
+.nx-m-body--lead > .md > p:first-child {
+  font-size: 16.5px;
+  font-weight: 500;
+  line-height: 1.55;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+/* 절 머리(바뀐 점 · 직접 확인해 주세요) — 앞에 포인트 색 짧은 막대가 서서 절이 바뀌는 자리가
+   훑어만 봐도 잡힌다. 크기는 둘(h1 은 h2 와 같게 — 앞머리 글이 거대한 제목으로 서던 일이 있었다). */
+.nx-m-body > .md :is(h1, h2, h3, h4) {
+  margin: 10px 0 0;
   padding-bottom: 0;
   border-bottom: 0;
   letter-spacing: -0.02em;
+  line-height: 1.4;
+  font-weight: 650;
+}
+
+.nx-m-body > .md :is(h1, h2) {
+  font-size: 16.5px;
+}
+
+.nx-m-body > .md :is(h3, h4) {
+  font-size: 15.5px;
+}
+
+.nx-m-body > .md :is(h1, h2, h3)::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 0.8em;
+  margin-right: 8px;
+  border-radius: 2px;
+  background: var(--accent);
+  vertical-align: -0.06em;
 }
 
 .nx-m-body > .md > :first-child {
   margin-top: 0;
 }
 
+/* 굵은 말 — 글자 아래 포인트 색 띠(형광펜)가 흐르는 글에서 바뀐 이름 · 확인할 곳을 건진다. */
+.nx-m-body > .md strong {
+  font-weight: 700;
+  color: var(--ink);
+  background: linear-gradient(transparent 64%, var(--accent-soft) 64%);
+  border-radius: 2px;
+}
+
+.nx-m-body > .md :is(ul, ol) {
+  gap: 7px;
+  padding-left: 1.45em;
+}
+
 .nx-m-body > .md li + li {
-  margin-top: 2px;
+  margin-top: 0;
+}
+
+.nx-m-body > .md li::marker {
+  font-weight: 600;
+}
+
+.nx-m-body > .md blockquote {
+  color: var(--ink2);
 }
 
 .nx-m-body .md__table-scroll {
@@ -842,13 +904,6 @@
 .nx-m-run .nx-since {
   color: var(--ink3);
   font-variant-numeric: tabular-nums;
-}
-
-/* 할 일의 `k/n 단계` — 시계와 같은 옅은 글씨. 숫자가 바뀌어도 줄이 흔들리지 않게 폭을 맞춘다. */
-.nx-m-run-todo {
-  color: var(--ink3);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 .nx-m-note {
@@ -1607,6 +1662,127 @@
   color: var(--ink3);
   text-align: center;
   margin: 0 0 6px;
+}
+
+/* 입력창 위 알약 — 도는 동안 이번 요청의 `할 일 k/n` · `보조 작업 n`(2026-10-20 사용자 요청). 알약은 감싸개 안의
+   한 줄이고, 누르면 목록이 그 위로(`Popover` 의 `up`) 떠 대화를 밀지 않는다. 숫자가 바뀌어도 알약이 흔들리지 않게
+   폭을 맞춘다. */
+.nx-plan {
+  display: flex;
+  width: fit-content;
+  margin: 0 0 8px 4px;
+  animation: nx-fade 0.2s;
+}
+
+.nx .nx-plan-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line2);
+  background: var(--card);
+  color: var(--ink2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.nx .nx-plan-pill:hover,
+.nx .nx-plan-pill--on {
+  background: var(--nx-hover);
+  color: var(--ink);
+}
+
+/* 자리 · 높이 상한 · 들고 나는 움직임은 `.nx-pop` 과 `Popover` 가 맡는다 — 여기는 폭만 정한다. */
+.nx-pop.nx-plan-pop {
+  width: max-content;
+  min-width: 240px;
+  max-width: calc(100cqw - 32px);
+  padding: 6px 4px;
+}
+
+.nx-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nx-plan-head {
+  padding: 8px 10px 2px;
+  font-size: 11.5px;
+  color: var(--ink3);
+}
+
+.nx-plan-list + .nx-plan-head {
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.nx-plan-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 6px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.nx-plan-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+.nx-plan-row--done .nx-plan-text {
+  color: var(--ink3);
+  text-decoration: line-through;
+}
+
+.nx-plan-row--off .nx-plan-text {
+  color: var(--ink3);
+}
+
+/* 보조 작업의 근황 한 줄 · 멈춘 까닭 — 항목 아래 옅은 글씨. */
+.nx-plan-sub {
+  display: block;
+  font-size: 12px;
+  color: var(--ink3);
+}
+
+/* 표식 — 끝남은 체크, 하는 중은 채운 점, 남음은 빈 동그라미, 멈춘 보조 작업은 점선. */
+.nx-plan-sign {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: 1.5px;
+  border-radius: 50%;
+  border: 1.5px solid var(--ink3);
+  color: var(--ink3);
+}
+
+.nx-plan-sign svg {
+  width: 10px;
+  height: 10px;
+}
+
+.nx-plan-sign--doing {
+  border-color: var(--accent);
+}
+
+.nx-plan-sign--doing::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.nx-plan-sign--off {
+  border-style: dashed;
 }
 
 /* 안내 줄 안의 행동 — `새 대화` 처럼 문장에 이어 서는 밑줄 단추다. */

@@ -17,6 +17,7 @@ import { blockOnTape, mergeThinking } from "../../lib/tape-visibility";
 import { turnAnswerText, turnBlockNumbers } from "../../lib/turn-numbering";
 import { type TurnScreen, withoutTrailingScreenLinks } from "../../lib/turn-screens";
 import { L } from "../labels";
+import { hasLeadSentence } from "../lib/answer-lead";
 import { assistantDisplay } from "../lib/assistant-display";
 import { hasLandedFacts, landedIsFresh } from "../lib/landed";
 import type { OutgoingSend } from "../lib/outgoing-send";
@@ -464,6 +465,8 @@ export function Thread(props: ThreadProps) {
           elementReference: L.chat.elementReference,
           fileReference: L.chat.fileReference,
         });
+        // 짧은 첫 문단 뒤에 더 할 말이 있으면 그 문단이 머리 문장이다(2026-10-20) — 글자를 조금 키운다.
+        const lead = hasLeadSentence(display.answer);
         return (
           <div
             className={`nx-m-ai${first ? "" : " nx-m-ai--cont"}${
@@ -477,7 +480,11 @@ export function Thread(props: ThreadProps) {
                 </span>
               )}
             </div>
-            <div className={`nx-m-body${block.streaming ? " nx-m-live" : ""}`}>
+            <div
+              className={`nx-m-body${block.streaming ? " nx-m-live" : ""}${
+                lead ? " nx-m-body--lead" : ""
+              }`}
+            >
               <Markdown text={display.answer} />
               {display.technical !== null && (
                 <details className="nx-card-fold nx-answer-details">

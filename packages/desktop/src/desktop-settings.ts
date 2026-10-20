@@ -18,6 +18,8 @@ export interface DesktopSettings {
   zoom?: unknown;
   /** `응용 프로그램 폴더로 옮길까요?` 에서 `다시 묻지 않기` 를 골랐다(mac, 2026-10-20). */
   moveDeclined?: unknown;
+  /** 창을 처음 닫을 때의 트레이 안내를 이미 보였다(Windows, 2026-10-20) — 설치마다 한 번이다. */
+  trayNoticeShown?: unknown;
 }
 
 export function loadDesktopSettings(path: string): DesktopSettings {
@@ -50,6 +52,11 @@ export function loadNotificationPrefs(path: string): NotificationPrefs {
 /** 옮기기 질문을 다시 묻지 않기로 했는가 — `true` 만 믿는다. */
 export function loadMoveDeclined(path: string): boolean {
   return loadDesktopSettings(path).moveDeclined === true;
+}
+
+/** 트레이 안내를 이미 보였는가 — `true` 만 믿는다. */
+export function loadTrayNoticeShown(path: string): boolean {
+  return loadDesktopSettings(path).trayNoticeShown === true;
 }
 
 /** 지난 실행이 저장한 데몬 포트 — 손으로 고친 값도 읽히므로 범위를 본다. */

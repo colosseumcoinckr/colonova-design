@@ -123,9 +123,10 @@ export class BringUp {
         if (this.core.active) this.warmTree();
         this.core.setPhase("pulling", null);
         await this.core.scrubOriginCredential();
-        // Already cloned: 최신화, not a blind ff. Unsaved work survives the
-        // move off-cycle, and a conflict left by an earlier run resurfaces
-        // with its Korean reason instead of a raw git error.
+        // Already cloned: re-read the remote and recover, never a blind ff —
+        // 베이스 합치기는 받아오기를 누를 때만 한다(2026-10-20 사용자 요청). A
+        // conflict left by an earlier run resurfaces with its Korean reason
+        // instead of a raw git error.
         await this.core.refreshFromRemote();
         // 원격이 .claude/settings.json 을 갱신해 권한 확장이 돌아왔을 수
         // 있다 — 클론 길에서와 같은 칼을 다시 댄다(이미 깨끗하면 무동작).

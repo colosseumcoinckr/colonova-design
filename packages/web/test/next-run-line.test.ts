@@ -8,8 +8,9 @@ import { L } from "../src/next/labels.ts";
 import { makingWordOf } from "../src/next/lib/making.ts";
 
 /**
- * 대화 칸의 `작업 중` 줄(2026-10-06 UX 점검) — 도는 도구의 묶음이 말을 고르고, AI 가 이 턴에 할 일 목록을 냈을
- * 때만 `k/n 단계` 가 붙는다. 목록을 안 낸 턴에 지난 목록이 서거나 하위 에이전트의 목록이 끼면 숫자가 거짓이 된다.
+ * 대화 칸의 `작업 중` 줄(2026-10-06 UX 점검) — 도는 도구의 묶음이 말을 고른다. 이 턴의 할 일 `k/n` 은 입력창 위
+ * 알약이 센다(2026-10-20 사용자 요청, next-run-plan.test.ts). 목록을 안 낸 턴에 지난 목록이 서거나 하위 에이전트의
+ * 목록이 끼면 숫자가 거짓이 된다.
  */
 
 let seq = 0;
@@ -117,10 +118,7 @@ test("makingWordOf: 묶음마다 말을 고르고, 모르면 대신하는 말을
   assert.equal(makingWordOf(null, words), "작업 중");
 });
 
-test("workTodo: 숫자와 `단계` 뿐 — AI 가 쓴 항목의 글은 싣지 않는다", () => {
-  assert.equal(L.chat.workTodo(2, 5), "2/5 단계");
-  assert.equal(L.chat.workTodo(0, 3), "0/3 단계");
-  // 줄의 말은 상태 줄의 알약과 같은 말이다 — 따로 지은 문장이 없다.
+test("줄의 말은 상태 줄의 알약과 같은 말이다 — 따로 지은 문장이 없다", () => {
   assert.equal(typeof L.journey.makingRead, "string");
   assert.equal(typeof L.chat.working, "string");
 });
@@ -132,23 +130,26 @@ const statusLine = read("../src/next/status/StatusLine.tsx");
 const hook = read("../src/next/lib/use-held-phase.ts");
 const css = read("../src/next/chat/chat.css");
 
-test("대화 칸은 단계 말과 `k/n` 을 줄에 넘기고 항목의 글은 넘기지 않는다", () => {
+test("대화 칸은 단계 말을 줄에 넘기고, 할 일 · 보조 작업은 입력창 위 알약에 넘긴다", () => {
   assert.match(
     column,
     /useHeldPhase\(clockMounted \? makingPhase\(blocks\) : null, clockMounted\)/,
   );
-  assert.match(column, /currentTodoProgress\(blocks\)/);
   assert.match(
     column,
-    /<RunLine quiet=\{!showClock\} word=\{runWord\} steps=\{runSteps\} startedAt=\{clockStart\} \/>/,
+    /<RunLine quiet=\{!showClock\} word=\{runWord\} startedAt=\{clockStart\} \/>/,
   );
-  assert.doesNotMatch(column, /latestTodoItems|readTodoList/, "목록의 글은 이 칸에 오지 않는다");
+  // 알약은 도는 동안만 — 끝난 목록은 대화록의 `할 일 N개 끝` 카드가 맡는다.
+  assert.match(column, /const runningPlan = clockMounted \? runPlan\(blocks\) : null;/);
+  assert.match(column, /\{runningPlan && <RunPlan plan=\{runningPlan\} \/>\}/);
+  // 알약은 입력창 감싸개 안에 선다 — 글이 흐르면 접히는 줄과 달리 턴 내내 그 자리다.
+  const wrap = column.indexOf('className="nx-cmp-wrap"');
+  assert.ok(wrap !== -1 && column.indexOf("<RunPlan", wrap) > wrap);
 });
 
-test("줄은 낭독 칸이고, 단계는 목록이 있을 때만 서며 숫자만 말한다", () => {
+test("줄은 낭독 칸이고 단계 말과 시계만 싣는다", () => {
   assert.match(runLine, /role="status"/);
-  assert.match(runLine, /steps !== null && \(/);
-  assert.match(runLine, /L\.chat\.workTodo\(steps\.done, steps\.total\)/);
+  assert.doesNotMatch(runLine, /steps|workTodo/);
   assert.match(runLine, /startedAt !== null && <Elapsed startedAt=\{startedAt\} \/>/);
 });
 
@@ -163,12 +164,8 @@ test("유지 훅은 켜지는 렌더에서 지난 말을 비우고, 꺼진 동�
   assert.match(hook, /if \(!on\) return;/);
 });
 
-test("할 일 줄은 시계처럼 옅고 폭이 맞으며 줄이 좁으면 아래로 감긴다", () => {
-  const start = css.indexOf(".nx-m-run-todo {");
-  assert.notEqual(start, -1);
-  const body = css.slice(start, css.indexOf("}", start));
-  assert.match(body, /font-variant-numeric: tabular-nums;/);
-  assert.match(body, /white-space: nowrap;/);
+test("줄이 좁으면 아래로 감긴다", () => {
+  assert.equal(css.indexOf(".nx-m-run-todo {"), -1, "할 일 숫자는 줄을 떠났다");
   const runStart = css.indexOf(".nx-m-run {");
   assert.match(css.slice(runStart, css.indexOf("}", runStart)), /flex-wrap: wrap;/);
 });

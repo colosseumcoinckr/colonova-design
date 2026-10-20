@@ -213,7 +213,8 @@ export class RequestRouter {
       // exactly when its account's numbers matter.
       this.deps.plans.refresh(provider);
       // A session start is the moment the 화면 half goes back to the remote.
-      // 감독자의 틱이 최신화·착지를 치르고(PLAN L2 흡수표), 충돌은 원장에
+      // 감독자의 틱이 원격을 읽고 착지를 치르고(PLAN L2 흡수표 — 베이스 합치기는
+      // 받아오기를 누를 때만, 2026-10-20), 충돌은 원장에
       // 적혀 브리프 턴이 된다 — 새 세션이 열린 뒤에 부르는 이유는 그 브리프가
       // 이 대화를 찾을 수 있게 하기 위해서다.
       void this.workspaceOfSession(session.id)?.supervisor.tick("session-start");
@@ -242,7 +243,7 @@ export class RequestRouter {
       // Refusals answer through the dispatch-wide Korean boundary above.
       const carrier = target.sendable ? target : await this.resurrectSession(target);
       // 2026-10-20 응답 지연 개선: 준비 중인 프로젝트만 대기 줄에 둔다.
-      // 최신화는 감독자의 관찰 주기에서, 핀의 코드 탐색은 AI가 맡는다.
+      // 원격 읽기는 감독자의 관찰 주기에서(합치기는 받아오기 단추), 핀의 코드 탐색은 AI가 맡는다.
       this.deps.fleet.holdIfPreparing(carrier.id);
       carrier.send(
         message.text,

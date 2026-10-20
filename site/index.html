@@ -37,7 +37,7 @@
     <link rel="stylesheet" href="style.css?v=15">
     <script type="module" src="invite.js?v=11"></script>
     <script type="module" src="demo.js?v=12"></script>
-    <script type="module" src="bento.js?v=1"></script>
+    <script type="module" src="bento.js?v=2"></script>
     <script type="module" src="page.js?v=2"></script>
     <script type="module" src="motion.js?v=2"></script>
     <script type="module" src="flair.js?v=2"></script>
@@ -636,8 +636,8 @@
           <div class="bento__cell" id="bento-submit">
             <p class="bento__name">제출은 버튼 하나</p>
             <p class="bento__desc">
-              확인 한 장에 <b>개발자에게 한마디</b>를 얹어 보내요. 개발자의 코멘트와 자동 검사 결과를
-              확인하고 다시 고쳐요. 반영된 내용은 도구가 받아 와요.
+              확인 한 장에 <b>개발자에게 한마디</b>를 얹어 보내요. 개발자의 코멘트와 자동 검사 결과는
+              대화에서 확인하고, 수정을 요청한 뒤 다시 제출해요. 반영된 내용은 도구가 받아 와요.
             </p>
             <div class="bs-card" id="bs-card" data-state="ask">
               <div class="bs-ask">
@@ -707,12 +707,13 @@
             <p class="bento__foot" id="bh-foot">기록은 지워지지 않아요</p>
           </div>
 
-          <!-- 오류는 사람 몫이 아니에요 — 도구가 먼저 열어 보고, AI 가 고친다 -->
+          <!-- 오류는 사람 몫이 아니에요 — 깨진 미리보기를 앱이 확인하고 AI 가 먼저 고친다(2026-10-20 자동 확인 축소) -->
           <div class="bento__cell bento__cell--wide" id="bento-safety">
             <p class="bento__name">오류는 AI가 먼저 살펴요</p>
             <p class="bento__desc">
-              화면을 만진 답이 끝나면 도구가 그 화면을 다시 열어 봐요. 빈 화면이나 오류를 찾으면 AI
-              가 그림을 보고 고치고, 꺼진 미리보기는 도구가 먼저 다시 켜요.
+              미리보기가 안 뜨거나 깨져 보이면 앱이 화면을 확인하고, 정말 깨져 있으면 AI가 먼저
+              고쳐요. 꺼진 미리보기는 도구가 먼저 다시 켜요. 만진 답마다 다시 열어 확인하지는
+              않아요 — 확인은 프로젝트의 규칙대로 AI가 해요.
             </p>
             <div class="bg-stage" id="bg-stage" data-step="4">
               <div class="bg-screen" aria-hidden="true">
@@ -726,10 +727,10 @@
                 <span class="bg-screen__blank">빈 화면</span>
               </div>
               <ol class="bg-log" id="bg-log" aria-live="polite">
-                <li data-at="1">화면을 다시 열어 봤어요</li>
-                <li data-at="2" class="bad">빈 화면이에요 — <b>AI가 고치는 중이에요</b></li>
-                <li data-at="3">휴대폰 크기로도 열어 봤어요 — 옆으로 밀리지 않아요</li>
-                <li data-at="4" class="good">예시 화면을 고쳤어요 · 다시 확인해 보세요</li>
+                <li data-at="1">미리보기가 깨져 보여요 — 앱이 화면을 확인해요</li>
+                <li data-at="2" class="bad">빈 화면이에요 — <b>AI가 막힌 곳을 고치고 있어요</b></li>
+                <li data-at="3">미리보기가 고친 화면으로 옮겨 가요</li>
+                <li data-at="4" class="good">다시 떴어요 · 이상한 곳은 말로 알려 주세요</li>
               </ol>
             </div>
             <div class="bg-foot">
@@ -899,7 +900,7 @@
         <h2>이렇게 말해 <em>보세요</em></h2>
         <p class="section__lead">
           문장을 누르면 복사돼요. 앱 입력창에 그대로 붙여 넣어 보세요. “개발자에게 보내 줘”라고
-          명시하면 AI가 확인창 없이 제출을 요청해요.
+          하면 AI가 화면의 제출 버튼을 안내해요.
         </p>
         <ul class="say" id="say-list" data-stagger>
           <li>
@@ -961,7 +962,7 @@
             <button type="button" class="say__row" data-copy="개발자에게 보내 줘">
               <span class="say__bubble">개발자에게 보내 줘</span>
               <span class="say__arrow" aria-hidden="true">→</span>
-              <span class="say__result">확인 없이 AI 가 제출해 줘요</span>
+              <span class="say__result">AI가 화면의 제출 버튼을 안내해요</span>
               <span class="say__copy" aria-hidden="true">복사</span>
             </button>
           </li>
@@ -1096,7 +1097,8 @@
                 SmartScreen 창에서 <b>추가 정보 → 실행</b>, mac 은 시스템 설정 → 개인정보 보호 및
                 보안 → <b>그래도 열기</b>(macOS 14 이하는 앱을 우클릭 → <b>열기</b>). 앱을
                 <b>응용 프로그램</b> 폴더로 옮길 때 관리자 암호를 물으면, 사용자 폴더의
-                <code>Applications</code> 에 넣어도 돼요.
+                <code>Applications</code> 에 넣어도 돼요. mac 은 DMG 에서 바로 켜지 말고 응용
+                프로그램 폴더로 옮겨 켜요 — 그대로 켜면 앱이 옮기기를 권해요.
               </p>
               <p class="steps__note">
                 Windows 에서 <b>스마트 앱 컨트롤</b>이 켜져 있으면 서명이 없는 설치 파일을 막을 수
@@ -1205,7 +1207,7 @@
           <details class="faq__item">
             <summary>오류 화면이 뜨면 어떻게 하나요?</summary>
             <p>
-              도구가 화면을 다시 열어 확인하고, 깨져 있으면 AI가 먼저 고쳐요. 해결하지 못하면
+              앱이 화면을 확인하고, 깨져 있으면 AI가 먼저 고쳐요. 해결하지 못하면
               개발자에게 알려요. <b>다시 연결이 필요해요</b>가 나오면 새 초대 파일을 놓거나
               브라우저에서 다시 로그인해 주세요.
             </p>
@@ -1373,8 +1375,8 @@
                   <th scope="row">Checks</th>
                   <td>Read <em>권장</em></td>
                   <td>
-                    앱이 자동 검사 결과를 읽어 AI 가 고치게 하려면 필요해요(같은 릴리스에서
-                    들어와요). 없어도 앱은 돌아가요 — 제출 뒤 <code>자동 검사</code> 문장만 약해져요
+                    앱이 제출 뒤의 자동 검사 결과를 읽어 보여 주려면 필요해요. 없어도 앱은 돌아가요 —
+                    제출 뒤 <code>자동 검사</code> 줄이 서지 않아요
                   </td>
                 </tr>
               </tbody>

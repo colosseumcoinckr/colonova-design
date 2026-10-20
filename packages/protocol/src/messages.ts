@@ -818,7 +818,8 @@ const clientMessageSchema = z.discriminatedUnion("type", [
    * `featureRequestInputSchema` 를 그대로 펼친 것(공백 정리·길이 상한의 한 곳),
    * `id` 는 멱등 키라 같은 id 의 재전송은 두 번 접수하지 않는다.
    */
-  featureRequestInputSchema.extend({
+  z.object({
+    ...featureRequestInputSchema.shape,
     ...withId,
     type: z.literal("feedback.submit"),
   }),

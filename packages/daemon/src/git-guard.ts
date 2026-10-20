@@ -7,8 +7,7 @@
  * 2. 모든 공급자의 git 수준 가드 (`gitGuardEnv` + `ensureGitGuardHooks`):
  *    AI CLI 프로세스의 환경에 core.hooksPath 를 심어, 참조를 바꾸는 git
  *    (commit · reset · checkout · merge · stash · push …)을 훅이 거절한다.
- *    Codex 의 BYPASS_APPROVAL_POLICY 처럼 권한을 아예 묻지 않는 공급자도
- *    이 겹은 지난다.
+ *    권한을 아예 묻지 않는 실행(bypassPermissions)도 이 겹은 지난다.
  *
  * 한계: 협조적인 AI 의 실수를 막는 장치다 — 환경 변수를 지우는 적대적
  * 명령(GIT_CONFIG_COUNT=0 git …)까지 막지는 않는다. 도구 자신의 git

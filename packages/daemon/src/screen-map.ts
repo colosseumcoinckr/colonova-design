@@ -45,7 +45,7 @@ export interface ScreenMapRow {
    */
   checked?: GateChecked;
   /**
-   * 그 턴을 돈 세션의 AI 공급자 id(`claude` · `codex`) — 제출 본문의 「코드는 AI 가 썼어요」 줄이 종류를 말할 때만 읽는다
+   * 그 턴을 돈 세션의 AI 공급자 id(`claude`) — 제출 본문의 「코드는 AI 가 썼어요」 줄이 종류를 말할 때만 읽는다
    * (2026-10-07 베타 준비 분석). 옛 행에는 없다. 읽는 쪽이 아는 id 만 이름으로 바꾸므로 손으로 고친 값은 이름이 되지 못한다.
    */
   provider?: string;

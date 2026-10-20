@@ -1,34 +1,14 @@
 /**
- * 조정 표 (PLAN L3 · 단계 2a) — 관찰 스냅샷(cycle-observe)과 원장(cycle-ledger)을
- * 받아 다음 조치 하나를 고르는 순수 함수. 표를 위에서부터 읽어 첫 어긋남을
- * 고친다. 부작용은 없다: 원장을 고치면 새 원장을 돌려주고, 알림은 의도(intent)만
- * 돌려준다 — 올리는 일은 감독자(cycle-supervisor)가 developer-notice 로 한다.
- *
- * 턴 중 규칙(L3): "턴 중 아니요" 행이 맞았는데 그 클론에서 턴이 돌면 그 행을
- * 건너뛰고 "예" 행(7 · 12 · 13 · 14)만 계속 본다. 단 손상 행과 1~4행(클론의
- * 무결성)은 예 행도 보지 않고 none — 깨진 클론에서 푸시 · 제출을 하지 않는다. 예외는
- * 하나: 12행 푸시는 이미 커밋된 것을 올리는 일이라 작업 트리를 건드리지
- * 않으므로 2행(도구의 병합 충돌) 동안에도 된다.
- *
- * 알림의 "한 번"(L7): 예산 소진으로 올리는 알림(conflict:stuck · review:*:rounds ·
- * base-missing · clone:corrupt)은 예산 항목의 escalated 표식으로, 밀림 · 인증 알림(push:behind ·
- * push:auth)은 원장의 서 있는 알림(notices) 기록으로 여기서 억제한다. 조정자가
- * 실제로 올린 뒤 notices 에 적고, 풀리면 지운다 — 이 함수는 그 기록을 읽기만
- * 한다. 반려 반영 턴의 예산 소진 알림(review:*:rejection)은 올리는 판정이 보낼
- * 기록(pendingRejection)을 함께 지우는 것으로 한 번이다(14b행). 자동 검사 반영의 알림(ci:*:rounds)은
- * 예산 ci:<pr> 의 escalated 표식으로 한 번이고, 검사가 통과하면 풀린다(14c행).
+ * 관찰 스냅샷과 원장으로 다음 조치를 고르는 순수 함수다.
+ * 2026-10-20 MVP: 보관은 로컬에서 끝내고 확정된 제출만 전송한다.
+ * 무결성·충돌 복구·병합과 닫힘의 작업 보존·상태 관찰은 유지한다.
+ * 코멘트·반려·CI·AI 리뷰는 새 수정 작업이나 자동 전송을 시작하지 않는다.
  */
 
 import type { DeveloperReview, LandedWork } from "@colonova-design/protocol";
-import { BUDGETS, markEscalated, resetBudget, spend } from "./budgets.js";
-import { type CiChecks, failingNames } from "./ci-checks.js";
-import {
-  type CycleLedger,
-  type CyclePendingOp,
-  markCiBriefed,
-  notePushBehind,
-  recordLanded,
-} from "./cycle-ledger.js";
+import { BUDGETS, markEscalated, spend } from "./budgets.js";
+import type { CiChecks } from "./ci-checks.js";
+import { type CycleLedger, type CyclePendingOp, recordLanded } from "./cycle-ledger.js";
 
 export interface CycleSnapshot {
   now: number;
@@ -284,6 +264,9 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
   const { now, turnRunning, gitOp } = snapshot;
   const notices: NoticeIntent[] = [];
   const attentions: CycleAttention[] = [];
+  for (const key of Object.keys(ledger.notices)) {
+    if (/^(review|ci|ai-review):/.test(key)) notices.push({ op: "resolve", key });
+  }
   const tapeEvents: CycleDecision["tapeEvents"] = [];
   const handoffEvents: CycleDecision["handoffEvents"] = [];
   // 판정 안에서만 갱신하는 원장 조각 — 입력 원장은 그대로 둔다.
@@ -295,10 +278,10 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
   let lastPr = ledger.lastPr;
   let corrupt = ledger.corrupt;
   let reclone = ledger.reclone;
-  let ci = ledger.ci;
+  const ci = ledger.ci;
   let landed = ledger.landed;
   let aiFixing = false;
-  let aiFixingKey: "ci" | null = null;
+  const aiFixingKey: "ci" | null = null;
 
   const decide = (action: CycleAction): CycleDecision => ({
     action,
@@ -563,49 +546,6 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
     notices.push({ op: "resolve", key: "base-missing" });
   }
 
-  // review:<pr>:rounds 알림은 그 PR 이 더 이상 열려 있지 않을 때 풀린다 —
-  // 병합 · 반려 · (인증이 살아 있는 한) 사라짐. changes_requested 도 열린
-  // 상태다. 인증 만료로 pr 을 못 읽는 세계에서는 거두지 않는다 — 문제가
-  // 풀린 게 아니라 못 보는 것이다.
-  if (!snapshot.githubAuthExpired) {
-    for (const key of Object.keys(ledger.notices)) {
-      const match = /^review:(\d+):rounds$/.exec(key);
-      if (match === null) continue;
-      const gone =
-        pr === null ||
-        pr.number !== Number(match[1]) ||
-        pr.state === "merged" ||
-        pr.state === "closed";
-      if (gone) notices.push({ op: "resolve", key });
-    }
-  }
-  // ci:<pr>:rounds 알림(14c행)은 그 PR 이 더 이상 열려 있지 않거나 자동 검사가 통과하면 풀린다. 못 읽은 것은 풀린 것이
-  // 아니다 — PR 을 못 읽는 세계(pr === null 이면서 레지스트리는 열린 요청을 안다)와 검사를 못 읽는 세계(checks 없음)
-  // 에서는 거두지 않는다.
-  if (!snapshot.githubAuthExpired) {
-    for (const key of Object.keys(ledger.notices)) {
-      const match = /^ci:(\d+):rounds$/.exec(key);
-      if (match === null) continue;
-      const gone =
-        pr === null
-          ? snapshot.githubReachable && snapshot.handoffState === null
-          : pr.number !== Number(match[1]) ||
-            pr.state === "merged" ||
-            pr.state === "closed" ||
-            pr.checks?.state === "passing";
-      if (gone) notices.push({ op: "resolve", key });
-    }
-  }
-  // review:<pr>:rejection 알림(14b행)은 다음 요청이 서면 풀린다 — 반려된 작업이
-  // 새 요청으로 개발자에게 다시 갔다. 그 PR 은 올릴 때 이미 닫혀 있으므로 위의
-  // "열려 있지 않음" 잣대로는 올리자마자 풀린다. 인증 만료로 pr 을 못 읽는
-  // 세계(pr === null)에서는 거두지 않는다.
-  for (const key of Object.keys(ledger.notices)) {
-    const match = /^review:(\d+):rejection$/.exec(key);
-    if (match === null) continue;
-    if (pr !== null && pr.number !== Number(match[1])) notices.push({ op: "resolve", key });
-  }
-
   // ————— 8 · 9행 — PR 이 병합되거나 닫혔다(L4 랜딩) —————
   // 레지스트리가 이미 그 끝을 들고 있으면(handoffState === pr.state) 착지는
   // 끝난 것이다 — 원장의 ended 와 함께 재착지를 막는 두 번째 잣대(옛
@@ -651,274 +591,16 @@ export function nextCycleAction(snapshot: CycleSnapshot, ledger: CycleLedger): C
     return decide({ kind: "fastForwardBase" });
   }
 
-  // ————— 12행(턴 중 예) — 올라갈 커밋이 있다(L3 12행) —————
-  // 턴 중에도 된다 — 커밋된 것을 올리는 일이라 작업 트리를 건드리지 않는다.
-  // 2행(도구의 병합 충돌) 동안에도 되는 이유가 같다.
-  const pushDue =
-    snapshot.localAheadOfRemote > 0 ||
-    (snapshot.registryBranch !== null && !snapshot.remoteBranchExists);
-  if (pushDue) {
-    // 밀림이 처음 보이는 순간을 찍는다 — 1시간 알림의 기준점은 첫 실패가
-    // 아니라 첫 관찰이다(L3 12행).
-    if (push === null) push = notePushBehind(ledger, now).push;
-    if (push !== null) {
-      // 밀림이 1시간을 넘으면 한 번 알린다(L7 푸시) — 서 있는 알림이 잣대다.
-      if (
-        now - Date.parse(push.behindSince) >= BUDGETS.push.behindAlarmMs &&
-        ledger.notices["push:behind"] === undefined
-      ) {
-        notices.push({
-          op: "raise",
-          key: "push:behind",
-          reason: "푸시가 1시간 넘게 올라가지 못하고 있습니다",
-        });
-        attentions.push("developer-notified");
-      }
-      if (push.lastError === "auth") {
-        attentions.push("reconnect");
-        if (ledger.notices["push:auth"] === undefined) {
-          notices.push({
-            op: "raise",
-            key: "push:auth",
-            reason: "GitHub 인증이 만료되어 푸시할 수 없습니다",
-          });
-        }
-      }
-      // 권한이 모자라 거절된 푸시 — 코드는 맞으니 `다시 연결이 필요해요` 가 아니다. 새 초대 파일은
-      // 해결이 아니고 개발자가 코드의 권한을 고쳐야 한다: 개발자에게 바로 알린다(2026-10-07).
-      if (push.lastError === "permission") {
-        attentions.push("developer-notified");
-        if (ledger.notices["push:permission"] === undefined) {
-          notices.push({
-            op: "raise",
-            key: "push:permission",
-            reason:
-              "GitHub 이 푸시를 권한 부족으로 거절했습니다(403) — 연결 코드의 Contents 쓰기 권한을 확인해 주세요",
-          });
-        }
-      }
-    }
-    if (push === null || Date.parse(push.nextAttemptAt) <= now) {
-      return decide({ kind: "push" });
-    }
-    // 백오프 창 안이다 — 이 행을 건너뛴다.
-  } else if (push !== null) {
-    // 밀림이 풀렸다 — 서 있는 알림을 지우고 원장의 푸시 흔적을 치운다.
-    notices.push({ op: "resolve", key: "push:behind" });
-    notices.push({ op: "resolve", key: "push:auth" });
-    if (ledger.notices["push:permission"] !== undefined) {
-      notices.push({ op: "resolve", key: "push:permission" });
-    }
-    push = null;
-  }
-
-  // ————— 13행(턴 중 예) — 제출 의도가 남아 있다(L6) —————
-  // 백오프 창을 안다: 단계 자신의 창(submit.nextAttemptAt)과, 올라갈
-  // 커밋이 남아 있는 동안의 12행 푸시 창이다. 창 안이면 이 행을 건너뛴다 —
-  // submitStep 이 매 틱 발동했다가 곧 멈추는 것만으로 아래 행(코멘트 반영 ·
-  // 위생)이 밀리지 않게. 의도는 그대로 남아 다음 틱이 이어받는다(I5).
+  // 2026-10-20 MVP: 보관은 전송하지 않는다. 원장에 확정된 제출만 재시도한다.
   if (ledger.submit !== null) {
     const stepWait =
       ledger.submit.nextAttemptAt !== undefined && Date.parse(ledger.submit.nextAttemptAt) > now;
-    const pushDue =
-      snapshot.localAheadOfRemote > 0 ||
-      (snapshot.registryBranch !== null && !snapshot.remoteBranchExists);
-    const pushWait = pushDue && ledger.push !== null && Date.parse(ledger.push.nextAttemptAt) > now;
+    const pushWait = ledger.push !== null && Date.parse(ledger.push.nextAttemptAt) > now;
     if (!stepWait && !pushWait) return decide({ kind: "submitStep" });
-  }
-
-  // ————— 14행(턴 중 예) — 새 개발자 코멘트(L9) —————
-  if (
-    snapshot.pendingReviews.length > 0 &&
-    pr !== null &&
-    (pr.state === "open" || pr.state === "changes_requested")
-  ) {
-    const key = `review:${pr.number}`;
-    const round = spend(budgets, key, BUDGETS.reviewRounds, now);
-    budgets = round.ledger;
-    if (round.allowed) {
-      // 브리프를 내리는 순간 장부에 적는다 — 판정과 실행 사이에 끊겨도 같은
-      // 코멘트가 두 번 턴으로 나가지 않게(I5). 장부의 키는 PR 번호(L9),
-      // 예산의 키는 review:<pr>(L3 14행) — 서로 다른 표의 키다.
-      const entryKey = String(pr.number);
-      const prev = reviews[entryKey] ?? { known: [], briefed: [], rounds: 0 };
-      const ids = snapshot.pendingReviews.map((review) => review.id);
-      // 항목의 다른 필드(replied — 이미 답한 코멘트, 반려 표식)는 그대로 둔다 —
-      // 지우면 다음 라운드의 정산이 앞 라운드의 답장 기록을 잃는다.
-      reviews = {
-        ...reviews,
-        [entryKey]: {
-          ...prev,
-          known: [...new Set([...prev.known, ...ids])],
-          briefed: [...new Set([...prev.briefed, ...ids])],
-          rounds: budgets[key]?.spent ?? prev.rounds + 1,
-        },
-      };
-      aiFixing = true;
-      return decide({ kind: "briefReviews", pr: pr.number, reviews: snapshot.pendingReviews });
-    }
-    attentions.push("developer-notified");
-    if (!budgets[key]?.escalated) {
-      notices.push({
-        op: "raise",
-        key: `${key}:rounds`,
-        reason: "코멘트 반영이 PR 당 라운드 상한에 닿았습니다",
-      });
-      budgets = markEscalated(budgets, key);
-    }
-    // 조치는 없다 — 아래 위생 행은 계속 본다.
-  }
-
-  // ————— 14b 행 — 보내지 못한 반려 이유 반영 턴(L9 · 단계 7) —————
-  // 랜딩(9행)은 이유를 reviews[pr].pendingRejection 에 적고 떠난다 — 턴은
-  // 여기서 나가고, 대화를 못 열었으면 기록이 남아 다음 틱이 다시 보낸다.
-  // 턴 중 아니요: 도는 대화 사이에 반려 턴을 끼우지 않는다. 예산은 14행과 같은
-  // review:<pr> — 반려 반영도 그 PR 의 반영 한 라운드다. 시도하는 순간 쓴다:
-  // 못 연 대화도 한 번이다(14행의 보내기 거절과 같다). 다하면 알림 한 번을
-  // 올리고 기록을 지운다 — 도구가 손을 놓았으니 남겨 봐야 틱마다 같은 판정이
-  // 되풀이될 뿐이고, 지우는 것이 곧 알림의 "한 번"이다. 14행의 escalated
-  // 표식을 쓰지 않는 이유: 라운드 초과 알림이 이미 그 표식을 세웠을 수 있다.
-  if (!turnRunning) {
-    for (const [entryKey, entry] of Object.entries(reviews)) {
-      const pendingRejection = entry.pendingRejection;
-      if (pendingRejection === undefined) continue;
-      const key = `review:${entryKey}`;
-      const round = spend(budgets, key, BUDGETS.reviewRounds, now);
-      budgets = round.ledger;
-      if (round.allowed) {
-        aiFixing = true;
-        return decide({
-          kind: "briefRejection",
-          pr: Number(entryKey),
-          reasons: pendingRejection.reasons,
-        });
-      }
-      attentions.push("developer-notified");
-      notices.push({
-        op: "raise",
-        key: `${key}:rejection`,
-        reason: "반려 이유 반영 턴을 PR 당 라운드 상한 안에 보내지 못했습니다",
-      });
-      const { pendingRejection: _dropped, ...rest } = entry;
-      reviews = { ...reviews, [entryKey]: rest };
-    }
-  }
-
-  // ————— 14c 행 — 자동 검사가 통과하지 못했다 (2026-10-07 베타 준비 분석 · W6) —————
-  // 14행(코멘트 반영)과 같은 틀이다: 관찰 → 브리프 턴 → AI 가 고침 → 자동 보관 → 푸시 → 검사가 다시 돈다. 사람의 말이
-  // 먼저다 — 아직 브리프하지 않은 개발자 코멘트가 있으면 이 행은 서지 않는다(14행이 라운드를 다한 뒤에도 마찬가지:
-  // 개발자가 확인할 차례다). 「턴 중 아니요」: 도는 대화 사이에 끼우지 않고 기다린다.
-  // 아무것도 하지 않는 세계 — 검사를 읽지 못함(pr.checks 없음: 권한 없음 · 닿지 못함), 검사가 없음(none), 도는 중
-  // (pending), 통과(passing), 통과도 실패도 아닌 결론(unknown). 거짓 실패로 AI 를 깨우지 않는다. 한 head 에는 한 번만
-  // 브리프하고(장부 ci), PR 당 3 라운드(예산 ci:<pr>)를 다하면 개발자에게 한 번 알린다.
-  if (
-    pr !== null &&
-    (pr.state === "open" || pr.state === "changes_requested") &&
-    pr.checks !== undefined
-  ) {
-    const checks = pr.checks;
-    const budgetKey = `ci:${pr.number}`;
-    const entry = ci?.[String(pr.number)];
-    if (checks.state === "passing") {
-      // 풀렸다 — 같은 PR 의 다음 실패는 새 사건이다(라운드와 알림의 한 번을 다시 쓴다).
-      budgets = resetBudget(budgets, budgetKey);
-    } else if (
-      checks.state === "failing" &&
-      pr.headSha !== "" &&
-      snapshot.pendingReviews.length === 0
-    ) {
-      if (entry?.briefed.includes(pr.headSha) !== true) {
-        if (!turnRunning) {
-          const round = spend(budgets, budgetKey, BUDGETS.ciRounds, now);
-          budgets = round.ledger;
-          if (round.allowed) {
-            // 브리프를 내리는 순간 장부에 적는다 — 판정과 실행 사이에 끊겨도 같은 head 가 두 번 나가지 않게(I5).
-            ci = markCiBriefed(ci, pr.number, pr.headSha, new Date(now).toISOString());
-            aiFixing = true;
-            aiFixingKey = "ci";
-            return decide({
-              kind: "briefCiFailure",
-              pr: pr.number,
-              headSha: pr.headSha,
-              checks,
-            });
-          }
-          attentions.push("developer-notified");
-          if (!budgets[budgetKey]?.escalated) {
-            notices.push({
-              op: "raise",
-              key: `ci:${pr.number}:rounds`,
-              reason: `통과하지 못한 검사: ${failingNames(checks)} — AI 가 PR 당 정해진 라운드(${BUDGETS.ciRounds.max}번)까지 고쳐 보았지만 같은 검사가 계속 통과하지 못했습니다`,
-            });
-            budgets = markEscalated(budgets, budgetKey);
-          }
-        }
-      } else {
-        // 이 head 는 이미 브리프했다 — 다시 브리프하지 않는다. AI 가 고치는 중이면 그 사실만 말한다: 턴이 도는 중이거나
-        // 고친 것이 올라가는 길(보관 · 푸시, 또는 원격은 올랐는데 PR 의 head 가 아직 따라오지 않음)에 있다.
-        const remote = snapshot.remoteBranchSha;
-        const onItsWay =
-          turnRunning ||
-          snapshot.dirtyFiles > 0 ||
-          snapshot.localAheadOfRemote > 0 ||
-          (typeof remote === "string" && remote !== pr.headSha);
-        if (onItsWay) {
-          aiFixing = true;
-          aiFixingKey = "ci";
-        } else if (
-          remote === pr.headSha &&
-          entry?.at !== undefined &&
-          now - Date.parse(entry.at) >= BUDGETS.ciStuckMs
-        ) {
-          // AI 가 끝났는데 올라온 것이 없다 — 하나도 고치지 못한 채 끝났다. 같은 head 를 다시 맡기지 않으니(셈이 남아도)
-          // 개발자에게 한 번 알린다. 턴이 아직 시작하지 못한 순간(대기 줄 · 로그인 대기)을 이 판정이 잘못 읽지 않도록
-          // 브리프한 지 ciStuckMs 가 지난 뒤에만 선다.
-          attentions.push("developer-notified");
-          if (!budgets[budgetKey]?.escalated) {
-            notices.push({
-              op: "raise",
-              key: `ci:${pr.number}:rounds`,
-              reason: `통과하지 못한 검사: ${failingNames(checks)} — AI 가 고치려 했지만 같은 커밋에서 변경이 올라오지 않았습니다`,
-            });
-            budgets = markEscalated(budgets, budgetKey);
-          }
-        }
-      }
-    }
-  }
-
-  // ————— 14d 행 — AI 리뷰어의 줄 코멘트 (2026-10-14 사용자 결정) —————
-  // Codex · Claude 같은 AI 리뷰어의 의견도 14행과 같은 길(briefReviews → 반영 턴 → 자동 보관 → 푸시 → 답장)로
-  // 반영한다. 사람의 말이 먼저다 — 아직 브리프하지 않은 개발자 코멘트가 있으면 서지 않고, 다른 고침(14c행의 자동
-  // 검사)이 진행 중이어도 기다린다. 「턴 중 아니요」. 예산은 사람의 것과 따로인 ai-review:<pr> 다 — Codex 는 새
-  // 커밋마다 다시 리뷰하므로(조직 레포의 요약 표 `New commits`) 고침 → 푸시 → 새 의견의 고리를 이 예산이 끊는다.
-  // 다하면 남은 의견은 읽은 것으로 적고 넘긴다: 개발자에게 알리지 않는다 — 개발자는 요청에서 그 의견을 직접 본다.
-  if (
-    snapshot.pendingAiReviews.length > 0 &&
-    snapshot.pendingReviews.length === 0 &&
-    !turnRunning &&
-    !aiFixing &&
-    pr !== null &&
-    (pr.state === "open" || pr.state === "changes_requested")
-  ) {
-    const key = `ai-review:${pr.number}`;
-    const round = spend(budgets, key, BUDGETS.aiReviewRounds, now);
-    budgets = round.ledger;
-    // 브리프하든 넘기든 장부에 먼저 적는다 — 같은 의견이 두 번 나가지 않게(I5). 사람의 라운드 수(rounds)는 두지 않는다.
-    const entryKey = String(pr.number);
-    const prev = reviews[entryKey] ?? { known: [], briefed: [], rounds: 0 };
-    const ids = snapshot.pendingAiReviews.map((review) => review.id);
-    reviews = {
-      ...reviews,
-      [entryKey]: {
-        ...prev,
-        known: [...new Set([...prev.known, ...ids])],
-        briefed: [...new Set([...prev.briefed, ...ids])],
-      },
-    };
-    if (round.allowed) {
-      aiFixing = true;
-      return decide({ kind: "briefReviews", pr: pr.number, reviews: snapshot.pendingAiReviews });
+  } else {
+    push = null;
+    for (const key of ["push:behind", "push:auth", "push:permission"]) {
+      if (ledger.notices[key]) notices.push({ op: "resolve", key });
     }
   }
 

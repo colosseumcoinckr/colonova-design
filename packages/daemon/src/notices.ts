@@ -64,7 +64,7 @@ export type DaemonNotice =
       reason: "auth" | "permission" | "developer-notified" | "network";
     }
   /** 에이전트 CLI 를 새 버전으로 바꿨다(PLAN-UI U12). */
-  | { kind: "update-done"; agent: "claude" | "codex"; version: string };
+  | { kind: "update-done"; agent: "claude"; version: string };
 
 /**
  * 상태 전환 중 부르는 값이 되는 것: AI 가 멈췄거나(idle), 중단됐거나

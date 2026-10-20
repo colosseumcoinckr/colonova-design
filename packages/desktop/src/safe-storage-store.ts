@@ -13,25 +13,40 @@ export interface SafeStorageLike {
 
 export class SafeStorageCredentialStore implements CredentialStore {
   readonly kind = "keychain" as const;
+  /**
+   * 저장돼 있는데 복호화가 실패한 항목(2026-10-20 비개발자 mac 설치 검토). 임시 서명(ad-hoc) 앱은
+   * 업데이트마다 키체인 허용을 다시 묻고, 거기서 거부하면 저장해 둔 연결 코드를 읽지 못한다. 없는
+   * 항목은 세지 않는다 — 메인이 이 수를 보고 상자로 알린다.
+   */
+  private readonly unreadableItems = new Set<string>();
 
   constructor(
     private readonly safeStorage: SafeStorageLike,
     private readonly file: string,
   ) {}
 
+  /** 이번 실행에서 저장돼 있는데 읽지 못한 항목 수. */
+  get unreadable(): number {
+    return this.unreadableItems.size;
+  }
+
   async save(item: string, secret: string): Promise<void> {
     const entries = this.read();
     entries[item] = this.safeStorage.encryptString(secret).toString("base64");
     this.write(entries);
+    this.unreadableItems.delete(item);
   }
 
   async load(item: string): Promise<string | null> {
     const blob = this.read()[item];
     if (!blob) return null;
     try {
-      return this.safeStorage.decryptString(Buffer.from(blob, "base64"));
+      const secret = this.safeStorage.decryptString(Buffer.from(blob, "base64"));
+      this.unreadableItems.delete(item);
+      return secret;
     } catch {
-      // 키체인 키가 바뀌는 등 복호화가 실패하면 없던 것으로 취급한다.
+      // 키체인 키가 바뀌거나 허용을 거부하면 복호화가 실패한다 — 없던 것으로 취급하되 센다.
+      this.unreadableItems.add(item);
       return null;
     }
   }
@@ -40,6 +55,7 @@ export class SafeStorageCredentialStore implements CredentialStore {
     const entries = this.read();
     delete entries[item];
     this.write(entries);
+    this.unreadableItems.delete(item);
   }
 
   /** 모든 항목을 지운다(테스트 정리용). */

@@ -1,5 +1,5 @@
 /**
- * 업데이트 줄 한 줄의 판정(PLAN-UI U12) — 앱 · Claude Code · Codex 가 같은
+ * 업데이트 줄 한 줄의 판정(PLAN-UI U12) — 앱 · Claude Code 가 같은
  * 판정을 지나 같은 모양으로 선다. 문장은 labels.ts(L.update)를 인자로 받는다:
  * 시험이 src 에서 곧장 읽는 순수 모듈이라 형제를 부르지 않기 때문이다
  * (journey.ts 와 같은 규칙). `최신이에요` 초록 표식은 문장이 아니라 그림이라
@@ -9,7 +9,7 @@ import { hasNewerVersion, plainDotted } from "./version.ts";
 
 /** 상태 필드 — `DaemonStatus.providers[]` 한 행과 `agentUpdates` 한 칸을 합친 모양. */
 export interface UpdateToolInput {
-  /** 프로바이더 id — `claude` · `codex` (앱 줄은 부르는 쪽이 이름을 붙인다). */
+  /** 프로바이더 id — `claude` (앱 줄은 부르는 쪽이 이름을 붙인다). */
   id: string;
   /** 현재 버전(모르면 null — 앱은 확인 전까지 모른다). */
   version: string | null;

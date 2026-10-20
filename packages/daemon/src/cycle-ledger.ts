@@ -19,6 +19,7 @@ import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node
 import { dirname } from "node:path";
 import type { DeveloperReview, LandedWork, SubmitSent } from "@colonova-design/protocol";
 import { BUDGETS, type BudgetEntry, backoffDelay } from "./budgets.js";
+import { parseSubmitVersion, type SubmitVersion } from "./submit-version.js";
 
 /** 원장 파일의 자리 — 프로젝트 폴더(<slug>) 아래의 cycle.json. */
 export function cycleLedgerFile(projectRoot: string): string {
@@ -128,6 +129,7 @@ export interface CycleLedger {
   submit: {
     requestedAt: string;
     via: "button" | "chat";
+    version?: SubmitVersion;
     /** 마지막으로 실패한 단계 — pr · commit. */
     step?: string;
     /** 그 단계의 연속 실패 수 — 백오프의 축(12행과 같은 backoffDelay). */
@@ -376,6 +378,8 @@ function parseSubmit(raw: unknown): CycleLedger["submit"] {
     ? record.reviewers.filter((login): login is string => typeof login === "string")
     : null;
   const submit: CycleLedger["submit"] = { requestedAt, via };
+  const version = parseSubmitVersion(record.version);
+  if (version) submit.version = version;
   if (step !== null) submit.step = step;
   if (attempts !== null && attempts >= 0) submit.attempts = attempts;
   if (nextAttemptAt !== null) submit.nextAttemptAt = nextAttemptAt;

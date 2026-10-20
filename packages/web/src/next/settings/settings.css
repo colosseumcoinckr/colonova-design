@@ -373,6 +373,41 @@
   margin: -6px 2px 0;
 }
 
+.nx-ai-connection {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--cmp);
+}
+
+.nx-ai-connection-text {
+  display: grid;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+
+.nx-ai-connection-text > span {
+  font-size: 12px;
+  color: var(--ink3);
+}
+
+.nx-ai-connection-text > b {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.nx-ai-connection-text > p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink2);
+  overflow-wrap: anywhere;
+}
+
 /* ── AI 카드 — 로고 · 이름 · 로그인 상태, 오른쪽에 라디오 눈금. 고른 것은 강조 윤곽. */
 .nx-sgrid {
   display: grid;
@@ -1171,7 +1206,7 @@
   padding: 0 6px;
 }
 
-/* ── 업데이트 줄 — 앱 · Claude Code · Codex 가 한 상자. 표식 · 이름과 버전 · 오른쪽 단추, 아래 한 줄은
+/* ── 업데이트 줄 — 앱 · Claude Code 가 한 상자. 표식 · 이름과 버전 · 오른쪽 단추, 아래 한 줄은
    진행 막대나 실패. 좁아지면 단추가 아래로 감긴다. */
 .nx-urow {
   display: flex;

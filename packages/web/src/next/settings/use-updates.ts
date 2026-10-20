@@ -16,7 +16,7 @@ import {
 } from "../lib/update-row";
 
 /** 업데이트 쪽의 상태와 손 — 앱 줄의 걸음 · AI 줄 · `지금 확인` · 자동 설치 스위치(2026-10-06 설정 손질 · S7). */
-export type AgentId = "claude" | "codex";
+export type AgentId = "claude";
 
 export interface AgentUpdateRow {
   id: AgentId;
@@ -47,7 +47,7 @@ export interface UpdatesModel {
   auto: { on: boolean; error: string | null; set: (next: boolean) => void };
 }
 
-const AGENTS: readonly AgentId[] = ["claude", "codex"];
+const AGENTS: readonly AgentId[] = ["claude"];
 
 export function useUpdates(daemon: Daemon): UpdatesModel {
   const status = daemon.status;

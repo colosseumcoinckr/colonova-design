@@ -89,11 +89,6 @@ const LOGIN = {
   wantsCode: true,
 };
 
-const NO_CODEX_STATUS = {
-  ...STATUS,
-  providers: (STATUS.providers ?? []).filter((entry) => entry.id !== "codex"),
-};
-
 /** 로그인 뒤의 계정 줄(2026-10-07 베타 준비 분석) — 상태의 이메일 · 요금제 · 로그인 방식만 갈아 끼운다. */
 const withAccount = (account: {
   email: string | null;
@@ -109,6 +104,8 @@ interface Case {
   done?: boolean;
   checking?: boolean;
   screen?: "first-run" | "no-projects";
+  /** 고침 단추(onboardingFix)의 답 — 도구 칸의 안내 줄을 보려고 갈아 끼운다. */
+  fixReply?: unknown;
 }
 
 const CASES: Case[] = [
@@ -153,7 +150,7 @@ const CASES: Case[] = [
   },
   {
     id: "g",
-    label: "g · AI 까지 통과 — 초대 파일만 남았다(Codex 는 묻는 줄)",
+    label: "g · AI 까지 통과 — 초대 파일만 남았다",
     daemon: { onboarding: gates(CLAUDE_OK) },
   },
   {
@@ -174,7 +171,8 @@ const CASES: Case[] = [
   },
   {
     id: "j",
-    label: "j · 도구 확인이 막혔다(git 없음)",
+    label:
+      "j · 도구 확인이 막혔다(mac 의 git 없음) — `git 설치` 를 누르면 설치 창 안내가 단추 아래에 선다",
     daemon: {
       onboarding: [
         GIT_MISSING,
@@ -182,6 +180,10 @@ const CASES: Case[] = [
         CLAUDE_INSTALL,
         GITHUB_OK,
       ] as unknown as OnboardingStep[],
+    },
+    fixReply: {
+      started: true,
+      guidance: "설치 창을 열었어요 — 설치가 끝나면 이 단계를 다시 확인해 주세요.",
     },
   },
   {
@@ -205,19 +207,6 @@ const CASES: Case[] = [
     label: "m · 끝 — `done` 제목(흐려지기 전의 얼굴 · `?hold=1` 로 걷는다)",
     daemon: { onboarding: gates(CLAUDE_OK), projects: PROJECTS },
     done: true,
-  },
-  {
-    id: "n",
-    label: "n · Codex 가 이 기계에 없다 — 줄이 없다",
-    daemon: { onboarding: gates(CLAUDE_OK), status: NO_CODEX_STATUS },
-  },
-  {
-    id: "o",
-    label: "o · Codex 설치 중",
-    daemon: {
-      onboarding: gates(CLAUDE_OK),
-      install: { kind: "install-codex", line: "Downloading codex" },
-    },
   },
   {
     id: "p",
@@ -342,6 +331,47 @@ const CASES: Case[] = [
     label: "z · 로그인 전 — 요금제가 필요하다는 말이 먼저 선다(로그인 단추 곁)",
     daemon: { onboarding: gates(CLAUDE_LOGIN) },
   },
+  // ── 2026-10-20 온보딩 손질 — 막다른 칸의 빠져나갈 길(첫 검사가 오래 걸리는 모습은 `a` 를 20초 넘게 둔다)
+  {
+    id: "w1",
+    label: "w1 · Windows 의 git 없음 — 고침 단추가 없어 다시 확인이 으뜸 단추다",
+    daemon: {
+      onboarding: [
+        {
+          id: "git",
+          status: "fail",
+          detail:
+            "git이 없어요 — 터미널에서 winget install --id Git.Git -e --source winget 로 설치한 뒤 다시 확인해 주세요.",
+        },
+        RUNTIME_OK,
+        CLAUDE_INSTALL,
+        GITHUB_OK,
+      ] as unknown as OnboardingStep[],
+    },
+  },
+  {
+    id: "w2",
+    label: "w2 · AI 칸이 고칠 단추 없이 막혔다(Windows 의 bash 없음) — 이유와 다시 확인",
+    daemon: {
+      onboarding: gates({
+        id: "claude",
+        status: "fail",
+        detail: "AI 가 명령을 실행할 준비(bash)를 찾지 못했어요 — 앱을 다시 설치해 주세요.",
+      }),
+    },
+  },
+  {
+    id: "w3",
+    label: "w3 · AI 칸 경고(환경의 API 키) — 이유는 말하되 흐린 채 기다린다(지금 칸은 초대 파일)",
+    daemon: {
+      onboarding: gates({
+        id: "claude",
+        status: "warn",
+        detail:
+          "ANTHROPIC_API_KEY 환경변수가 설정되어 있어 구독 대신 이 키로 결제돼요. 데몬 환경에서 키를 제거하고 다시 시작해 주세요.",
+      }),
+    },
+  },
 ];
 
 /** 한 화면이 걸어가는 길 — 같은 FirstRun 이 상태만 바뀐다(통과의 순간 · 접힘이 보인다). */
@@ -388,15 +418,31 @@ const controller = (state: InviteImportState): InviteImportController => ({
   takeFile: (file) => calls.push(`takeFile:${file.name}`),
 });
 
-const daemonOf = (patch: Record<string, unknown>) =>
-  mockDaemon({ projects: [], onboarding: null, ...patch }) as Daemon;
+const daemonOf = (patch: Record<string, unknown>, fixReply?: unknown) => {
+  const daemon = mockDaemon({ projects: [], onboarding: null, ...patch }) as Daemon;
+  if (fixReply === undefined) return daemon;
+  const base = daemon.api as unknown as Record<string, unknown>;
+  const api = new Proxy(base, {
+    get: (target, key: string) =>
+      key === "onboardingFix"
+        ? () => {
+            calls.push("onboardingFix");
+            return Promise.resolve(fixReply);
+          }
+        : target[key],
+  });
+  return { ...daemon, api } as unknown as Daemon;
+};
 
 function Screen({
   spec,
 }: {
-  spec: Pick<Case, "daemon" | "invite" | "done" | "checking" | "screen">;
+  spec: Pick<Case, "daemon" | "invite" | "done" | "checking" | "screen" | "fixReply">;
 }) {
-  const daemon = useMemo(() => daemonOf(spec.daemon ?? {}), [spec.daemon]);
+  const daemon = useMemo(
+    () => daemonOf(spec.daemon ?? {}, spec.fixReply),
+    [spec.daemon, spec.fixReply],
+  );
   const invite = useMemo(() => controller(spec.invite ?? { phase: "idle" }), [spec.invite]);
   const importing = invite.state.phase === "reading" || invite.state.phase === "applying";
   return spec.screen === "no-projects" ? (

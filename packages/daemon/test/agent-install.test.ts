@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,9 +8,7 @@ import { ClaudeDriver } from "../dist/agent/drivers/claude/driver.js";
 import {
   AgentInstall,
   classifyInstallFailure,
-  codexAssetFor,
   meaningfulInstallLine,
-  verifyDigest,
   windowsScriptCommand,
 } from "../dist/agent-install.js";
 
@@ -48,7 +45,7 @@ function emitSteps(winGapMs = 50): string {
 /** 설치 한 바퀴를 기다린다 — 진행 줄은 순서 그대로 모은다. */
 function runInstall(
   deps: ConstructorParameters<typeof AgentInstall>[0],
-  kind: "install-claude" | "install-codex" | "update-claude" | "update-codex" = "install-claude",
+  kind: "install-claude" | "update-claude" = "install-claude",
 ): Promise<{
   started: boolean;
   guidance: string;
@@ -192,64 +189,6 @@ test("진행 방송: 기본 간격(1초)에서는 1초에 한 번 이하 — 끝
     "✔ Claude Code successfully installed!",
   ]);
   assert.equal(result.ok, true);
-});
-
-// ---------------------------------------------------------------------------
-// Codex 자산 선택 · digest 검증
-// ---------------------------------------------------------------------------
-
-const RELEASE_ASSETS = [
-  {
-    name: "codex-aarch64-apple-darwin.tar.gz",
-    browser_download_url: "https://x/1",
-    digest: "sha256:11",
-    size: 95,
-  },
-  {
-    name: "codex-x86_64-apple-darwin.tar.gz",
-    browser_download_url: "https://x/2",
-    digest: "sha256:22",
-    size: 96,
-  },
-  {
-    name: "codex-x86_64-pc-windows-msvc.exe.zip",
-    browser_download_url: "https://x/3",
-    digest: "sha256:33",
-    size: 97,
-  },
-  {
-    name: "codex-aarch64-pc-windows-msvc.exe.zip",
-    browser_download_url: "https://x/4",
-    digest: "sha256:44",
-    size: 98,
-  },
-];
-
-test("자산 선택: 플랫폼/칩 조합이 자산 이름을 고른다 — linux/x64 는 없다", () => {
-  assert.equal(
-    codexAssetFor("darwin", "arm64", RELEASE_ASSETS)?.name,
-    "codex-aarch64-apple-darwin.tar.gz",
-  );
-  assert.equal(
-    codexAssetFor("darwin", "x64", RELEASE_ASSETS)?.name,
-    "codex-x86_64-apple-darwin.tar.gz",
-  );
-  assert.equal(
-    codexAssetFor("win32", "x64", RELEASE_ASSETS)?.name,
-    "codex-x86_64-pc-windows-msvc.exe.zip",
-  );
-  assert.equal(
-    codexAssetFor("win32", "arm64", RELEASE_ASSETS)?.name,
-    "codex-aarch64-pc-windows-msvc.exe.zip",
-  );
-  assert.equal(codexAssetFor("linux", "x64", RELEASE_ASSETS), null);
-});
-
-test("digest 검증: sha256 접두사를 떼고 비교, 없으면 거짓", () => {
-  const hex = createHash("sha256").update("codex").digest("hex");
-  assert.equal(verifyDigest(`sha256:${hex}`, hex), true);
-  assert.equal(verifyDigest(`sha256:${"0".repeat(64)}`, hex), false);
-  assert.equal(verifyDigest(undefined, hex), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -402,85 +341,6 @@ test("install-claude: 설치는 대상을 건네지 않는다 — 스크립트�
   });
   assert.equal(result.ok, true, result.detail);
   assert.equal(result.detail, "Claude Code 설치가 끝났어요.");
-});
-
-test("update-codex: 로컬 릴리스 서버의 자산을 받아 확인하고 tools/bin 에 바꿔 둔다", async () => {
-  const { createServer } = await import("node:http");
-  const { execFileSync } = await import("node:child_process");
-  const { readFileSync } = await import("node:fs");
-  const dir = mkdtempSync(join(tmpdir(), "colonova-codex-update-test-"));
-  // Windows 는 제 자산(zip)을 제품의 win32 길(System32 의 tar.exe)로 연다. 압축도 그 tar 로 cwd 의
-  // 상대 경로에서 만든다 — Git Bash 의 GNU tar 는 `C:\…` 의 `C:` 를 원격 호스트로 읽는다(2026-10-19).
-  const target = WIN
-    ? {
-        platform: "win32",
-        arch: "x64",
-        inner: "codex-x86_64-pc-windows-msvc.exe",
-        bin: "codex.exe",
-      }
-    : { platform: "darwin", arch: "arm64", inner: "codex-aarch64-apple-darwin", bin: "codex" };
-  const assetName = WIN ? `${target.inner}.zip` : "codex-aarch64-apple-darwin.tar.gz";
-  writeFileSync(join(dir, target.inner), "#!/bin/sh\necho codex-cli 0.46.0\n");
-  if (WIN) {
-    const tar = join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe");
-    execFileSync(tar, ["-a", "-cf", assetName, target.inner], { cwd: dir });
-  } else {
-    execFileSync("tar", ["-czf", join(dir, assetName), "-C", dir, "codex-aarch64-apple-darwin"]);
-  }
-  const archive = readFileSync(join(dir, assetName));
-  const digest = `sha256:${createHash("sha256").update(archive).digest("hex")}`;
-  const server = createServer((request, response) => {
-    if (request.url === "/release") {
-      const { port } = server.address() as { port: number };
-      response.setHeader("content-type", "application/json");
-      response.end(
-        JSON.stringify({
-          tag_name: "rust-v0.46.0",
-          assets: [
-            {
-              name: assetName,
-              browser_download_url: `http://127.0.0.1:${port}/asset`,
-              digest,
-              size: archive.length,
-            },
-          ],
-        }),
-      );
-      return;
-    }
-    response.end(archive);
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  try {
-    const { port } = server.address() as { port: number };
-    const toolsBinDir = join(dir, "tools", "bin");
-    const result = await runInstall(
-      {
-        env: {
-          ...process.env,
-          COLONOVA_DESIGN_CODEX_RELEASE_API: `http://127.0.0.1:${port}/release`,
-        },
-        platform: target.platform,
-        arch: target.arch,
-        toolsBinDir,
-        resolveCodex: async () => join(toolsBinDir, target.bin),
-        progressIntervalMs: 0,
-      },
-      "update-codex",
-    );
-    assert.equal(result.ok, true, result.detail);
-    assert.equal(result.guidance, "Codex 업데이트를 시작했어요 — 진행 상황을 보여 드릴게요.");
-    assert.equal(result.detail, "Codex 를 새 버전으로 바꿨어요.");
-    assert.ok(result.lines.includes("Codex 확인하는 중…"));
-    assert.ok(result.lines.includes("Codex 설치하는 중…"));
-    assert.equal(
-      readFileSync(join(toolsBinDir, target.bin), "utf8"),
-      "#!/bin/sh\necho codex-cli 0.46.0\n",
-    );
-  } finally {
-    server.close();
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 test("Windows 설치 스크립트는 UTF-8 출력으로 부르고 스크립트의 종료 코드를 그대로 돌려준다(2026-10-19)", (t) => {

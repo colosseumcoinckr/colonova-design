@@ -523,9 +523,10 @@ test("buildAiLine — 종류를 알 때와 모를 때: 사실만, 과장도 축�
     buildAiLine(["Claude Code"]),
     "코드는 AI(Claude Code)가 썼고, 요청한 사람은 코드가 아니라 화면으로 확인했습니다.",
   );
+  // 이름이 여럿이면 가운뎃점으로 잇는다 — 지금 아는 이름은 Claude Code 하나다(2026-10-20).
   assert.equal(
-    buildAiLine(["Claude Code", "Codex"]),
-    "코드는 AI(Claude Code · Codex)가 썼고, 요청한 사람은 코드가 아니라 화면으로 확인했습니다.",
+    buildAiLine(["A", "B"]),
+    "코드는 AI(A · B)가 썼고, 요청한 사람은 코드가 아니라 화면으로 확인했습니다.",
   );
 });
 
@@ -538,11 +539,8 @@ test("aiKindsOf — 작업마다 공급자를 알 때만 종류를 말한다", (
   assert.deepEqual(aiKindsOf([work("c2", "claude"), work("c2", "claude"), work("c1", "claude")]), [
     "Claude Code",
   ]);
-  // 이름은 알파벳순이라 어느 커밋이 먼저여도 같은 글이다.
-  assert.deepEqual(aiKindsOf([work("c2", "codex"), work("c1", "claude")]), [
-    "Claude Code",
-    "Codex",
-  ]);
+  // 옛 행의 codex(2026-10-20 에 뺀 공급자)는 이름을 모르는 공급자다 — 종류를 말하지 않는다.
+  assert.deepEqual(aiKindsOf([work("c2", "codex"), work("c1", "claude")]), []);
   // 하나라도 모르면 말하지 않는다 — 일부만 알고 「Claude Code 가 썼다」 고 하지 않는다.
   assert.deepEqual(aiKindsOf([work("c2", "claude"), work("c1")]), []);
   assert.deepEqual(aiKindsOf([work("c2", "claude"), work("c1", "gemini")]), []);
@@ -556,14 +554,13 @@ test("aiKindsOf — 작업마다 공급자를 알 때만 종류를 말한다", (
       work("c4", "claude"),
       work("c3", undefined, { kind: "restore" }),
       work("c2", undefined, { kind: "merge" }),
-      { provider: "codex" },
+      { provider: "gemini" },
     ]),
     ["Claude Code"],
   );
-  // 코멘트 반영은 개발자의 말을 받아 AI 가 쓴 코드다 — 다른 공급자가 썼다면 그 이름도 싣고, 모르면 말하지 않는다.
-  assert.deepEqual(aiKindsOf([work("c2", "codex", { kind: "comment" }), work("c1", "claude")]), [
+  // 코멘트 반영은 개발자의 말을 받아 AI 가 쓴 코드다 — 공급자를 알면 세고, 모르면 말하지 않는다.
+  assert.deepEqual(aiKindsOf([work("c2", "claude", { kind: "comment" }), work("c1", "claude")]), [
     "Claude Code",
-    "Codex",
   ]);
   assert.deepEqual(
     aiKindsOf([work("c2", undefined, { kind: "comment" }), work("c1", "claude")]),

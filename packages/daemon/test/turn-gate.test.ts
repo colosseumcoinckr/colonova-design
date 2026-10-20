@@ -76,8 +76,8 @@ test("server saves edits and deletions without reopening screens or repairing; r
         activity.observe({
           kind: "tool.start",
           toolUseId: "edit",
-          name: "fileChange",
-          input: { changes: [{ path: page }] },
+          name: "Edit",
+          input: { file_path: page },
           agentId: null,
         });
         activity.observe({

@@ -6,7 +6,8 @@ import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
 import { accountLine, accountText } from "../lib/account-line";
 import { INSTALL_STEPS } from "../lib/install-step";
-import { CheckIcon, Spin } from "../ui/icons";
+import { useDiagnosticsText } from "../lib/use-diagnostics";
+import { Spin } from "../ui/icons";
 import { CopyButton } from "./CopyButton";
 import { Fold } from "./Fold";
 import { Hero } from "./Hero";
@@ -34,6 +35,11 @@ import "./onboarding.css";
  * 2026-10-06 온보딩 손질: 머리는 진행 링(Hero)이 맡고, 카드는 위계를 가진다 — 지난 항목은 한 줄로
  * 가라앉고, 지금 손이 갈 항목(`currentGate`)은 강조되고, 나머지는 평평히 기다린다. 한 카드의 상태별
  * 몸통은 접히고 펴져(Fold) 상태가 바뀌어도 높이가 튀지 않는다.
+ *
+ * 2026-10-20 온보딩 손질(비개발자 Windows · mac 설치 검토): 막다른 칸을 없앤다 — 첫 검사가 오래 걸리거나,
+ * 도구 칸이 막히거나, 고칠 단추가 없는 AI 칸에는 `다시 확인` 이 서고, AI 칸은 도구가 알려 준 이유를
+ * 말한다. 도구 칸의 고침 단추가 돌려준 안내는 버리지 않고 단추 아래에 둔다. 머리는 준비물(유료 계정 ·
+ * 초대 파일)을 먼저 말하고, 체크리스트 아래에는 `막혔나요?` 진단 복사가 선다.
  */
 export function FirstRun({
   daemon,
@@ -80,18 +86,24 @@ export function FirstRun({
   const loginFailed = daemon.loginDone && !daemon.loginDone.ok ? daemon.loginDone.detail : null;
   // 로그인은 됐는데 이 요금제로는 쓸 수 없다고 알려졌다(2026-10-07 베타 준비 분석) — 데몬이 막았다.
   const planBlocked = claudeStep?.reason === "plan" && claudeStep.status !== "pass";
-  const agentState: "pass" | "installing" | "login" | "blocked" | "plan" | "idle" = agentPass
-    ? "pass"
-    : installing
-      ? "installing"
-      : loginLive
-        ? "login"
-        : installFailed
-          ? "blocked"
-          : planBlocked
-            ? "plan"
-            : "idle";
-  // 로그인 뒤의 한 줄 — Claude 의 계정만 읽는다(Codex 의 계정은 상태에 없다). 모르면 예전 문구로 둔다.
+  // 검사가 답했는데 고칠 단추가 없다(bash 를 못 찾음 · 환경의 API 키 경고 …) — `기다리는 중` 으로 두면 끝없이
+  // 기다리게 된다. 도구가 알려 준 이유를 말하고 다시 확인을 건넨다(2026-10-20 온보딩 손질).
+  const agentStuck = claudeStep !== null && claudeStep.status !== "pass" && !claudeStep.fix;
+  const agentState: "pass" | "installing" | "login" | "blocked" | "plan" | "stuck" | "idle" =
+    agentPass
+      ? "pass"
+      : installing
+        ? "installing"
+        : loginLive
+          ? "login"
+          : installFailed
+            ? "blocked"
+            : planBlocked
+              ? "plan"
+              : agentStuck
+                ? "stuck"
+                : "idle";
+  // 로그인 뒤의 한 줄 — Claude 의 계정을 읽는다. 모르면 예전 문구로 둔다.
   const status = daemon.status;
   const account =
     provider === "claude" && status
@@ -136,6 +148,56 @@ export function FirstRun({
       .catch(() => undefined);
   };
 
+  // ── 다시 확인 — 앱 밖에서 고친 것(설치 창 · IT 의 허용 · 다시 설치)을 앱을 다시 켜지 않고 읽는다.
+  const [rechecking, setRechecking] = useState(false);
+  const recheck = () => {
+    if (rechecking) return;
+    setRechecking(true);
+    void daemon.api
+      .onboardingCheck(provider)
+      .catch(() => undefined)
+      .finally(() => setRechecking(false));
+  };
+  // 첫 검사의 답이 오래 오지 않으면 도는 표시만 두지 않는다 — 검사는 AI 의 로그인 확인까지 돌아 몇 초는 걸린다.
+  const firstCheckPending = daemon.onboarding === null;
+  const [checkSlow, setCheckSlow] = useState(false);
+  useEffect(() => {
+    if (!firstCheckPending) {
+      setCheckSlow(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setCheckSlow(true), CHECK_SLOW_MS);
+    return () => window.clearTimeout(timer);
+  }, [firstCheckPending]);
+  // 도구 칸의 고침 단추가 돌려준 한 줄(설치 창을 열었어요 · 직접 설치하는 안내 …) — 버리지 않고 단추 아래에 둔다.
+  const [toolNote, setToolNote] = useState<string | null>(null);
+  const runToolFix = (step: OnboardingStep) => {
+    const kind = step.fix?.kind;
+    if (!kind) return;
+    setToolNote(null);
+    void daemon.api
+      .onboardingFix(kind)
+      .then((reply) => {
+        setToolNote(fixReplyLine(reply));
+        // 이 고침은 끝까지 돌고 돌아온다 — 곧바로 다시 확인한다.
+        if (kind === "install-pnpm") recheck();
+      })
+      .catch(() => undefined);
+  };
+  const recheckButton = (primary: boolean) => (
+    <button
+      type="button"
+      className={`nx-btn${primary ? " nx-btn--pri" : ""}`}
+      disabled={rechecking || checking}
+      onClick={recheck}
+    >
+      {rechecking ? L.onboarding.toolsChecking : L.onboarding.recheck}
+    </button>
+  );
+
+  // ── 막혔나요 — 도움말 메뉴와 같은 진단 글을 첫 화면에서 바로 복사한다.
+  const buildReport = useDiagnosticsText(daemon);
+
   // ── 초대 파일 — 첫 프로젝트가 생기면 끝난다.
   const inviteImporting = invite.state.phase === "reading" || invite.state.phase === "applying";
 
@@ -160,51 +222,34 @@ export function FirstRun({
     installStep === null ? L.settings.installBusy : L.onboarding.installSteps[installStep];
   const installPhase = installStep === null ? 0 : INSTALL_STEPS.indexOf(installStep);
 
-  // ── Codex — 건너뛰어도 되는 선택 줄.
-  const codexMissing =
-    daemon.status?.providers?.find((entry) => entry.id === "codex" && !entry.available) ?? null;
-  const codexInstalling = daemon.install?.kind === "install-codex";
-  const codexFailed =
-    daemon.installDone?.kind === "install-codex" && !daemon.installDone.ok
-      ? daemon.installDone
-      : null;
-  const [codexSkipped, setCodexSkipped] = useState(false);
-  const codexState: "none" | "ask" | "installing" | "ok" | "skip" | "failed" = !codexMissing
-    ? "none"
-    : codexInstalling
-      ? "installing"
-      : daemon.installDone?.kind === "install-codex" && daemon.installDone.ok
-        ? "ok"
-        : codexSkipped
-          ? "skip"
-          : codexFailed
-            ? "failed"
-            : "ask";
-
   const agentFix = claudeStep && claudeStep.status !== "pass" ? (claudeStep.fix ?? null) : null;
   const agentBusy = installing || loginLive || checking;
 
   const agentRight =
     agentState === "pass"
       ? (account ?? L.onboarding.agentOk)
-      : agentState === "plan"
-        ? L.account.planBlockedPill
-        : agentState === "installing"
-          ? L.onboarding.agentInstalling
-          : agentState === "login"
-            ? L.onboarding.agentLogin
-            : agentState === "blocked"
-              ? failureParts?.itLine
-                ? L.onboarding.agentBlocked
-                : L.onboarding.agentFailed
-              : agentFix?.kind === "install-claude"
-                ? L.onboarding.agentNeedInstall
-                : agentFix?.kind === "login-claude"
-                  ? L.onboarding.agentNeedLogin
-                  : L.onboarding.agentIdle;
+      : agentState === "stuck"
+        ? L.onboarding.agentStuck
+        : agentState === "plan"
+          ? L.account.planBlockedPill
+          : agentState === "installing"
+            ? L.onboarding.agentInstalling
+            : agentState === "login"
+              ? L.onboarding.agentLogin
+              : agentState === "blocked"
+                ? failureParts?.itLine
+                  ? L.onboarding.agentBlocked
+                  : L.onboarding.agentFailed
+                : agentFix?.kind === "install-claude"
+                  ? L.onboarding.agentNeedInstall
+                  : agentFix?.kind === "login-claude"
+                    ? L.onboarding.agentNeedLogin
+                    : L.onboarding.agentIdle;
 
   // 카드의 모양 — 지금 손이 갈 곳은 하나다. 눌러 볼 것이 없는 칸(검사 답을 기다리는 AI)은 건너뛴다.
-  const agentWaiting = agentState === "idle" && !agentFix;
+  // 경고(warn)의 막힘은 길을 막지 않는다(환경의 API 키 — 초대 파일이 들어오면 넘어간다) — 이유는 말하되 차례는 뺏지 않는다.
+  const agentStuckWarn = agentState === "stuck" && claudeStep?.status !== "fail";
+  const agentWaiting = (agentState === "idle" && !agentFix) || agentStuckWarn;
   const current = done ? null : currentGate(passes, { agent: agentWaiting });
   const agentCard: CardState =
     agentState === "pass"
@@ -213,7 +258,7 @@ export function FirstRun({
         ? "fail"
         : agentState === "installing" || agentState === "login"
           ? "run"
-          : agentFix
+          : agentFix || (agentState === "stuck" && !agentStuckWarn)
             ? "act"
             : "wait";
   // 로그인은 사용자가 브라우저에서 할 일을 기다리는 칸 — 도는 표시 대신 지구본이 숨 쉰다.
@@ -228,13 +273,16 @@ export function FirstRun({
           done={done}
           title={done ? L.onboarding.doneTitle : L.onboarding.title}
           sub={done ? L.onboarding.doneSub : L.onboarding.sub}
+          need={done ? [] : L.onboarding.needs}
         />
 
         <ol className="nx-ob-steps">
           {/* 도구 준비 */}
           <Step
             glyph={<WrenchIcon />}
-            state={toolsPass ? "ok" : toolsFailed ? "act" : "run"}
+            state={
+              toolsPass ? "ok" : toolsFailed || (firstCheckPending && checkSlow) ? "act" : "run"
+            }
             current={current === "tools"}
             fresh={freshPasses.includes("tools")}
             title={L.onboarding.tools}
@@ -246,34 +294,49 @@ export function FirstRun({
                   : L.onboarding.toolsChecking
             }
           >
+            {/* 막힌 도구 — 이유 문장들, 그 고침 단추들과 `다시 확인` 이 한 줄에 선다. 고침이 돌려준 안내는 그 아래. */}
             <Fold open={toolsOpen.length > 0}>
               {toolsOpen.map((step) => (
-                <div key={step.id}>
-                  <p className="nx-ob-d">{step.detail}</p>
-                  {step.fix && (
-                    <div className="nx-ob-acts">
-                      {step.fix.href ? (
-                        <a
-                          className="nx-btn nx-btn--pri"
-                          href={step.fix.href}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {step.fix.label}
-                        </a>
-                      ) : (
-                        <button
-                          type="button"
-                          className="nx-btn nx-btn--pri"
-                          onClick={() => runFix(step)}
-                        >
-                          {step.fix?.label}
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
+                <p key={step.id} className="nx-ob-d">
+                  {step.detail}
+                </p>
               ))}
+              <div className="nx-ob-acts">
+                {toolsOpen.map((step) =>
+                  !step.fix ? null : step.fix.href ? (
+                    <a
+                      key={step.id}
+                      className="nx-btn nx-btn--pri"
+                      href={step.fix.href}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {step.fix.label}
+                    </a>
+                  ) : (
+                    <button
+                      key={step.id}
+                      type="button"
+                      className="nx-btn nx-btn--pri"
+                      onClick={() => runToolFix(step)}
+                    >
+                      {step.fix.label}
+                    </button>
+                  ),
+                )}
+                {recheckButton(toolsOpen.every((step) => !step.fix))}
+              </div>
+              {toolNote && (
+                <p className="nx-ob-d" role="status">
+                  {toolNote}
+                </p>
+              )}
+            </Fold>
+
+            {/* 첫 검사의 답이 오래 오지 않는다 — 도는 표시만 두지 않고 다시 확인을 건넨다. */}
+            <Fold open={firstCheckPending && checkSlow}>
+              <p className="nx-ob-d">{L.onboarding.checkSlow}</p>
+              <div className="nx-ob-acts">{recheckButton(true)}</div>
             </Fold>
           </Step>
 
@@ -310,6 +373,12 @@ export function FirstRun({
                   {agentFix?.label ?? L.account.switchAccount}
                 </button>
               </div>
+            </Fold>
+
+            {/* 고칠 단추가 없는 막힘 — 도구가 알려 준 이유와 다시 확인. */}
+            <Fold open={agentState === "stuck"}>
+              <p className="nx-ob-d">{claudeStep?.detail}</p>
+              <div className="nx-ob-acts">{recheckButton(true)}</div>
             </Fold>
 
             {/* 아직 시작 전 — 설치 · 로그인의 첫 걸음. */}
@@ -469,66 +538,37 @@ export function FirstRun({
           </Step>
         </ol>
 
-        {/* Codex — 건너뛰어도 되는 선택 줄 */}
-        {codexState !== "none" && (
-          <div className="nx-ob-opt">
-            {codexState === "ok" ? (
-              <>
-                <CheckIcon />
-                <span className="nx-grow">{L.onboarding.codexOk}</span>
-              </>
-            ) : codexState === "installing" ? (
-              <>
-                <Spin />
-                <span className="nx-grow">{L.onboarding.codexInstalling}</span>
-              </>
-            ) : codexState === "skip" ? (
-              <span className="nx-grow nx-muted">{L.onboarding.codexSkipped}</span>
-            ) : (
-              <>
-                <span className="nx-grow">
-                  {L.onboarding.codexAsk}
-                  <small>{codexFailed ? codexFailed.detail : L.onboarding.codexAskSub}</small>
-                </span>
-                {codexState === "failed" && (
-                  <button
-                    type="button"
-                    className="nx-btn"
-                    disabled={installing}
-                    onClick={() =>
-                      void daemon.api.onboardingFix("install-codex").catch(() => undefined)
-                    }
-                  >
-                    {L.onboarding.retry}
-                  </button>
-                )}
-                {codexState === "ask" && (
-                  <>
-                    <button
-                      type="button"
-                      className="nx-btn"
-                      onClick={() =>
-                        void daemon.api.onboardingFix("install-codex").catch(() => undefined)
-                      }
-                    >
-                      {L.onboarding.codexInstall}
-                    </button>
-                    <button
-                      type="button"
-                      className="nx-btn nx-btn--ghost"
-                      onClick={() => setCodexSkipped(true)}
-                    >
-                      {L.onboarding.codexSkip}
-                    </button>
-                  </>
-                )}
-              </>
-            )}
+        {/* 막혔나요 — 도움말 메뉴를 찾지 않아도(Windows 는 Alt 뒤에 숨는다) 담당자에게 보낼 진단을 복사한다. */}
+        {!done && (
+          <div className="nx-ob-foot">
+            <span>{L.onboarding.stuckAsk}</span>
+            <CopyButton
+              small
+              text={() => buildReport()}
+              label={L.onboarding.stuckCopy}
+              doneLabel={L.help.reportCopied}
+              failLabel={L.help.reportFailed}
+            />
           </div>
         )}
       </div>
     </div>
   );
+}
+
+/** 첫 검사의 답을 기다리는 시간 — 넘으면 `다시 확인` 이 선다. 검사는 AI 의 로그인 확인까지 돈다. */
+const CHECK_SLOW_MS = 20_000;
+
+/**
+ * 고침 단추의 답에서 화면에 둘 한 줄 — git 설치는 `guidance`, pnpm 설치는 `detail` 로 답한다(데몬의
+ * startGitInstall · runPnpmInstall). 모양이 다르면 아무것도 두지 않는다.
+ */
+function fixReplyLine(reply: unknown): string | null {
+  if (typeof reply !== "object" || reply === null) return null;
+  const { guidance, detail } = reply as { guidance?: unknown; detail?: unknown };
+  if (typeof guidance === "string" && guidance !== "") return guidance;
+  if (typeof detail === "string" && detail !== "") return detail;
+  return null;
 }
 
 /** 카드 한 칸의 상태 — 통과 · 도는 중 · 손이 필요 · 기다림 · 막힘. */

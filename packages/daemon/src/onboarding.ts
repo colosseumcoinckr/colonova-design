@@ -214,10 +214,9 @@ function gitMissing(): OnboardingStep {
       label: "git 설치",
     });
   }
-  return fail("git", gitMissingGuidanceText(), {
-    kind: "install-git",
-    label: "설치 안내 보기",
-  });
+  // 고침 단추를 달지 않는다(2026-10-20 온보딩 손질) — `설치 안내 보기` 는 이 문장을 한 번 더 말할 뿐이었다.
+  // 직접 설치한 뒤에는 첫 화면의 `다시 확인` 이 읽는다.
+  return fail("git", gitMissingGuidanceText());
 }
 
 function gitMissingGuidanceText(): string {
@@ -412,9 +411,8 @@ export async function runPnpmInstall(
  * 띄워 대신 몰고, 앱은 브라우저와 붙여넣기만 담당한다. 스파이크로 확인한
  * CLI 의 출력 계약 — `claude auth login` 은 OAuth 주소를 stdout 에 내놓고
  * `Paste code here if prompted >` 에서 stdin 의 코드를 기다린다(틀린 코드는
- * stderr 한 줄로 답하고 다시 기다린다). `codex login` 은 주소를 stderr 에
- * 내놓고 콜백을 기다린다(코드 입력 없음) — 주소는 어느 줄에서 왔든 첫
- * https URL 로 잡고, "코드 붙여넣기" 칸은 CLI 가 실제로 코드를 청했을 때만
+ * stderr 한 줄로 답하고 다시 기다린다). 주소는 stdout · stderr 어느 줄에서
+ * 왔든 첫 https URL 로 잡고, "코드 붙여넣기" 칸은 CLI 가 실제로 코드를 청했을 때만
  * 연다(wantsCode). 주소보다 프롬프트가 늦게 오면 wantsCode=true 로 다시
  * 방송한다 — 같은 판을 다시 그릴 뿐이다.
  */
@@ -455,7 +453,7 @@ export class AgentLogin {
         stdio: ["pipe", "pipe", "pipe"],
         shell: plan.shell,
         windowsHide: true,
-        // 로그인도 Claude 자식이다 — 자기 업데이트를 끈다(PLAN-UI U12, Codex 에는 무해).
+        // 로그인도 Claude 자식이다 — 자기 업데이트를 끈다(PLAN-UI U12).
         env: withoutSelfUpdate(process.env),
       });
       this.child = child;

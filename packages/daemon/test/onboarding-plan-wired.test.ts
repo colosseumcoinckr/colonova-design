@@ -12,7 +12,7 @@ import { runOnboardingChecks } from "../dist/onboarding.js";
  *
  * Windows 는 제품이 claude 를 셸 없이 `.exe` 로 띄운다 — `#!/bin/sh` 가짜는 돌지 못한다. node.exe 자신을
  * 가짜로 쓰고, `NODE_OPTIONS=--require` 로 미리 읽힌 조각이 `auth status` 에만 JSON 을 답한다.
- * `--version` 은 node 의 버전이다(codex-detect 의 가짜와 같은 길, 2026-10-19).
+ * `--version` 은 node 의 버전이다(2026-10-19).
  */
 
 const WIN = process.platform === "win32";

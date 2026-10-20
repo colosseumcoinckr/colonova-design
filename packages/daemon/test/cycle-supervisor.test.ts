@@ -40,59 +40,6 @@ function resolveMarkers(scene: SupervisedScene, files: Record<string, string>) {
   }
 }
 
-test("S1 푸시 밀림 — 원격이 죽으면 백오프가 쌓이고, 돌아오면 전부 올라간다", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    // 사이클 브랜치 위에 커밋 셋 — 턴 셋이 지나간 모양.
-    await scene.git(["checkout", "-b", BRANCH]);
-    scene.core.setCycle(BRANCH, null);
-    for (let i = 0; i < 3; i += 1) {
-      await commit(scene, { [`f${i}.ts`]: `export const v${i} = ${i};\n` }, `작업 ${i}`);
-    }
-
-    // 원격을 죽인다 — 연결을 거절하는 주소로 겨눈다.
-    await scene.git(["remote", "set-url", "origin", "http://127.0.0.1:1/nope.git"]);
-    scene.setNow(Date.now());
-    await scene.supervisor.tick("manual");
-    let ledger = ledgerOf(scene);
-    assert.ok(ledger.push !== null, "밀림이 원장에 적혀야 한다");
-    assert.equal(ledger.push?.attempts, 1);
-    assert.equal(ledger.push?.lastError, "network");
-
-    // 백오프 창 안에서는 다시 밀지 않는다.
-    await scene.supervisor.tick("manual");
-    assert.equal(ledgerOf(scene).push?.attempts, 1);
-
-    // 1시간이 지나도 원격이 죽어 있으면 push:behind 알림이 한 번 나간다.
-    scene.setNow(Date.now() + 61 * 60_000);
-    await scene.git(["remote", "set-url", "origin", scene.remote.path]);
-    // 알림만 보는 틱 — 원격은 아직 죽어 있어야 하므로 다시 죽인다.
-    await scene.git(["remote", "set-url", "origin", "http://127.0.0.1:1/nope.git"]);
-    // nextAttemptAt 을 지나게 한다 — 백오프가 풀린 뒤의 시도가 알림을 올린다.
-    const behind = ledgerOf(scene).push;
-    assert.ok(behind !== null);
-    scene.setNow(Date.parse(behind.nextAttemptAt) + 61 * 60_000);
-    await scene.supervisor.tick("manual");
-    assert.ok(
-      scene.notices.some((n) => n.key === "push:behind"),
-      "push:behind 알림이 한 번 나가야 한다",
-    );
-
-    // 원격을 되돌리고 백오프를 지나 틱 — 전부 올라가고 원장 push 가 null.
-    await scene.git(["remote", "set-url", "origin", scene.remote.path]);
-    const stalled = ledgerOf(scene).push;
-    assert.ok(stalled !== null);
-    scene.setNow(Date.parse(stalled.nextAttemptAt) + 1000);
-    await scene.supervisor.tick("manual");
-    ledger = ledgerOf(scene);
-    assert.equal(ledger.push, null, "올라간 뒤 원장의 push 는 비어야 한다");
-    const remoteLog = await scene.git(["log", "--format=%s", `origin/${BRANCH}`]);
-    assert.ok(remoteLog.includes("작업 2"), "원격 브랜치에 커밋이 올라가야 한다");
-  } finally {
-    await scene.dispose();
-  }
-});
-
 test("S3 베이스와 충돌 — 브리프 하나, git 명령 없음, AI 정리 뒤 도구가 마무리", async () => {
   const scene = await makeSupervisedScene();
   try {
@@ -446,10 +393,10 @@ test("S4 스쿼시 병합 뒤 남은 커밋 — 새 사이클 브랜치에 그 �
       "",
       "옛 로컬 브랜치가 지워져야 한다",
     );
-    assert.equal(
+    assert.notEqual(
       (await scene.git(["ls-remote", "--heads", "origin", BRANCH])).trim(),
       "",
-      "옛 원격 브랜치가 지워져야 한다",
+      "다음 제출 전에는 옛 원격 브랜치를 보존한다",
     );
     const ledger = ledgerOf(scene);
     assert.equal(ledger.ended?.pr, pr, "원장에 끝난 PR 이 적혀야 한다");
@@ -651,7 +598,7 @@ test("제출 취소 — 열린 요청이 없으면 거절하고, 닫기가 거�
     assert.ok(scene.transitions.some((t) => t.kind === "closed"));
     const closed = scene.chatEvents.find((e) => e.kind === "cycle.closed");
     assert.equal(closed?.withdrawn, undefined);
-    assert.ok(scene.github.commentsFor(pr)[0]?.body.includes("반려 이유를 남겨 주시면"));
+    assert.equal(scene.github.commentsFor(pr).length, 0, "자동 이유 청구는 하지 않는다");
   } finally {
     await scene.dispose();
   }
@@ -783,9 +730,10 @@ test("S2 비활성 프로젝트의 베이스 이동 — timer 틱이 합치고 �
       "비활성 프로젝트의 사이클 브랜치에도 베이스가 합쳐져야 한다",
     );
     const remoteLog = await scene.git(["log", "--format=%s", `origin/${BRANCH}`]);
-    assert.ok(
+    assert.equal(
       remoteLog.includes("베이스 이동") || remoteLog.includes("Merge"),
-      "합쳐진 브랜치가 푸시돼야 한다",
+      false,
+      "자동 병합 결과는 다음 제출까지 로컬에 남는다",
     );
   } finally {
     await scene.dispose();
@@ -845,7 +793,11 @@ test("베이스 병합 충돌 — 브리프 뒤 가짜 AI 정리, 도구가 마�
       () => undefined,
     );
     const remoteLog = await scene.git(["log", "--format=%s", `origin/${BRANCH}`]);
-    assert.ok(remoteLog.includes("Merge"), "합쳐진 브랜치가 푸시돼야 한다");
+    assert.equal(
+      remoteLog.includes("Merge"),
+      false,
+      "복구 결과도 다음 제출 전에는 전송하지 않는다",
+    );
   } finally {
     await scene.dispose();
   }
@@ -938,10 +890,7 @@ test("폴러를 지운 뒤에도 — PR 상태 변화 알림과 리뷰 브리프
       scene.chatEvents.some((e) => e.kind === "review.arrived"),
       "review.arrived 사건이 나가야 한다",
     );
-    assert.ok(
-      scene.reviewBriefs.some((r) => r.pr === pr),
-      "리뷰 반영 브리프가 나가야 한다",
-    );
+    assert.ok(scene.reviewBriefs.length === 0, "코멘트는 알리고 자동 수정은 시작하지 않는다");
 
     // 반려 — 상태 변화 알림과 cycle.closed 사건.
     scene.github.close(pr);
@@ -967,9 +916,8 @@ test("L9 세 목록을 페이지 끝까지 읽는다 — 3페이지의 코멘트
       scene.github.addComment(pr, { kind: "issue", body: `코멘트 ${i}` });
     }
     await scene.supervisor.tick("manual");
-    const brief = scene.reviewBriefs.at(-1);
-    assert.ok(brief, "리뷰 브리프가 나가야 한다");
-    assert.equal(brief.ids.length, 101, "101개를 모두 읽어야 한다");
+    const arrived = scene.chatEvents.find((event) => event.kind === "review.arrived");
+    assert.equal(arrived?.reviews?.length, 101, "101개를 모두 읽어야 한다");
     assert.equal(
       scene.transitions.find((t) => t.kind === "comments")?.count,
       101,
@@ -1002,66 +950,11 @@ test("L9 봇 코멘트는 AI 에게 가지 않는다", async () => {
     const human = scene.github.addComment(pr, { kind: "issue", body: "여백을 좀 줄여 주세요" });
     await scene.supervisor.tick("manual");
 
-    const brief = scene.reviewBriefs.at(-1);
-    assert.ok(brief, "리뷰 브리프가 나가야 한다");
-    assert.deepEqual(brief.ids, [human], "봇(user.type · [bot] 로그인)은 빠지고 사람만 가야 한다");
-    assert.ok(!brief.ids.includes(bot1) && !brief.ids.includes(bot2));
-  } finally {
-    await scene.dispose();
-  }
-});
-
-test("AI 리뷰어의 줄 코멘트 — 사람의 코멘트 뒤에 따로 브리프되고, 도착 사건 · 코멘트 알림은 없다 (2026-10-14)", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    await scene.git(["checkout", "-b", BRANCH]);
-    await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
-    await scene.git(["push", "-u", "origin", BRANCH]);
-    const pr = await openCycle(scene, BRANCH);
-    await scene.supervisor.tick("manual");
-
-    const codex = scene.github.addComment(pr, {
-      kind: "pull",
-      login: "chatgpt-codex-connector[bot]",
-      path: "src/a.ts",
-      body: "**<sub><sub>![P2 Badge](https://img.shields.io/badge/P2-yellow?style=flat)</sub></sub>  이름을 맞추세요**",
-    });
-    const human = scene.github.addComment(pr, { kind: "issue", body: "여백을 좀 줄여 주세요" });
-    await scene.supervisor.tick("manual");
-    assert.deepEqual(scene.reviewBriefs.at(-1)?.ids, [human], "사람의 말이 먼저 간다");
-
-    await scene.supervisor.tick("manual");
-    assert.deepEqual(scene.reviewBriefs.at(-1)?.ids, [codex], "AI 의견은 다음 틱에 따로 간다");
-
-    const arrived = scene.chatEvents
-      .filter((event) => event.kind === "review.arrived")
-      .flatMap((event) => (event.reviews as Array<{ id: number }>).map((review) => review.id));
-    assert.deepEqual(arrived, [human], "대화록의 코멘트 도착은 사람의 것뿐이다");
-    const counted = scene.transitions
-      .filter((event) => event.kind === "comments")
-      .reduce((sum, event) => sum + (event.count ?? 0), 0);
-    assert.equal(counted, 1, "개발자 코멘트 알림은 사람의 것만 센다");
-
-    // 반영이 끝나면 답장은 AI 리뷰어의 스레드에도 간다 — @부름은 걷는다(봇이 요청에 직접 커밋하지 않게).
-    await scene.supervisor.settleReviewReplies(
-      pr,
-      [
-        {
-          id: codex,
-          kind: "inline",
-          author: "Codex",
-          body: "[P2] 이름을 맞추세요",
-          pr,
-          at: "",
-          source: "ai",
-        },
-      ],
-      `고쳤습니다.\n\n개발자에게 (#${codex}): 이름을 맞췄습니다. @codex review`,
-      "0123456789abcdef",
-    );
-    const reply = scene.github.pullCommentsFor(pr).at(-1);
-    assert.ok(reply?.body.includes("이름을 맞췄습니다. codex review"));
-    assert.ok(!reply?.body.includes("@codex"));
+    const arrived = scene.chatEvents.find((event) => event.kind === "review.arrived");
+    const ids = arrived?.reviews?.map((review) => review.id) ?? [];
+    assert.deepEqual(ids, [human], "일반 봇 알림은 제외하고 사람의 의견을 알린다");
+    assert.ok(!ids.includes(bot1) && !ids.includes(bot2));
+    assert.deepEqual(scene.reviewBriefs, []);
   } finally {
     await scene.dispose();
   }
@@ -1102,214 +995,27 @@ test("L9 재시작 뒤 첫 코멘트를 삼키지 않는다 — 원장 known 이
 
     const first = scene.github.addComment(pr, { kind: "issue", body: "첫 코멘트" });
     await scene.supervisor.tick("manual");
-    assert.deepEqual(scene.reviewBriefs.at(-1)?.ids, [first], "끊기기 전 코멘트는 브리프된다");
+    assert.deepEqual(
+      scene.chatEvents
+        .filter((e) => e.kind === "review.arrived")
+        .at(-1)
+        ?.reviews?.map((r) => r.id),
+      [first],
+    );
 
     // 재시작 — 메모리가 아니라 원장(cycle.json)의 known 이 이어받는다.
     const supervisor2 = scene.respawn();
     const second = scene.github.addComment(pr, { kind: "issue", body: "재시작 뒤 첫 코멘트" });
     await supervisor2.tick("manual");
     assert.deepEqual(
-      scene.reviewBriefs.at(-1)?.ids,
+      scene.chatEvents
+        .filter((e) => e.kind === "review.arrived")
+        .at(-1)
+        ?.reviews?.map((r) => r.id),
       [second],
       "재시작 뒤 첫 코멘트가 기준선에 삼켜지지 않는다",
     );
     assert.notEqual(second, first);
-  } finally {
-    await scene.dispose();
-  }
-});
-test("L9 자동 답장 — 턴의 답변 문장에서 코멘트마다 스레드에 답한다", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    await scene.git(["checkout", "-b", BRANCH]);
-    await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
-    await scene.git(["push", "-u", "origin", BRANCH]);
-    const pr = await openCycle(scene, BRANCH);
-    scene.authorName = "김기획";
-    const inline = scene.github.addComment(pr, { kind: "pull", body: "문구를 바꿔 주세요" });
-    const issue = scene.github.addComment(pr, { kind: "issue", body: "여백도 봐 주세요" });
-
-    await scene.supervisor.settleReviewReplies(
-      pr,
-      [
-        { id: inline, kind: "inline", author: "dev1", body: "문구를 바꿔 주세요", pr },
-        { id: issue, kind: "review", author: "dev1", body: "여백도 봐 주세요", pr },
-      ],
-      `고쳤습니다.\n\n개발자에게 (#${inline}): 문구를 '보관'으로 바꿨습니다.`,
-      "0123456789abcdef",
-    );
-
-    // 줄이 있는 인라인 코멘트 — 스레드 답글로, 문장 그대로.
-    const threadReply = scene.github.pullCommentsFor(pr).at(-1);
-    assert.ok(threadReply, "인라인 답장이 스레드에 올라야 한다");
-    assert.ok(threadReply.body.includes("문구를 '보관'으로 바꿨습니다."));
-    assert.ok(
-      threadReply.body.includes("— ColoNova Design 이 김기획 님 대신 남김"),
-      "대리 표기가 답장 끝에 붙는다",
-    );
-    // 줄이 없는 코멘트 + 보관 커밋 — sha 7자 폴백.
-    const issueReply = scene.github.commentsFor(pr).at(-1);
-    assert.ok(issueReply, "본문형 코멘트에도 답장이 올라야 한다");
-    assert.ok(issueReply.body.includes("반영했습니다 · 0123456"));
-    assert.ok(issueReply.body.includes("— ColoNova Design 이 김기획 님 대신 남김"));
-
-    // 같은 코멘트에 두 번 답하지 않는다 — 원장 replied 가 잡는다.
-    const mine = (rows: Array<{ login: string }>) =>
-      rows.filter((row) => row.login === "colonova-planner").length;
-    const repliesBefore =
-      mine(scene.github.pullCommentsFor(pr)) + mine(scene.github.commentsFor(pr));
-    await scene.supervisor.settleReviewReplies(
-      pr,
-      [
-        { id: inline, kind: "inline", author: "dev1", body: "문구를 바꿔 주세요", pr },
-        { id: issue, kind: "review", author: "dev1", body: "여백도 봐 주세요", pr },
-      ],
-      `개발자에게 (#${inline}): 다시 답합니다.`,
-      null,
-    );
-    assert.equal(
-      mine(scene.github.pullCommentsFor(pr)) + mine(scene.github.commentsFor(pr)),
-      repliesBefore,
-      "두 번째 정산은 답장을 하나도 더 올리지 않는다",
-    );
-  } finally {
-    await scene.dispose();
-  }
-});
-
-test("L9 반려 — 닫힘 이유가 있으면 반영 턴 하나가 열리고 예산을 쓴다", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    await scene.git(["checkout", "-b", BRANCH]);
-    await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
-    await scene.git(["push", "-u", "origin", BRANCH]);
-    const pr = await openCycle(scene, BRANCH);
-    scene.github.addComment(pr, {
-      kind: "issue",
-      body: "이 흐름은 지금 서비스에 안 맞아요 — 목록으로 되돌려 주세요.",
-    });
-    scene.github.close(pr);
-
-    await scene.supervisor.tick("manual");
-
-    assert.equal(scene.briefs.length, 1, "반려 이유 반영 턴이 하나 나가야 한다");
-    assert.ok(
-      scene.briefs[0]?.includes("개발자가 이번 요청을 닫았습니다"),
-      "반려의 첫 문장이 앞에 선다",
-    );
-    assert.ok(scene.briefs[0]?.includes("목록으로 되돌려"), "이유 본문이 실린다");
-    assert.ok(ledgerOf(scene).budgets[`review:${pr}`]?.spent === 1, "예산 review:<pr> 를 쓴다");
-    assert.equal(
-      scene.github.commentsFor(pr).filter((row) => row.login === "colonova-planner").length,
-      0,
-      "이유가 있으면 청구 코멘트를 남기지 않는다",
-    );
-  } finally {
-    await scene.dispose();
-  }
-});
-
-test("L9 반려 — 이유가 없으면 턴 없이 닫힌 PR 에 이유를 청구한다, 한 번만", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    await scene.git(["checkout", "-b", BRANCH]);
-    await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
-    await scene.git(["push", "-u", "origin", BRANCH]);
-    const pr = await openCycle(scene, BRANCH);
-    scene.github.close(pr);
-
-    await scene.supervisor.tick("manual");
-
-    assert.equal(scene.briefs.length, 0, "이유가 없으면 반영 턴을 열지 않는다");
-    const asked = scene.github.commentsFor(pr);
-    assert.equal(asked.length, 1, "닫힌 PR 에 청구 코멘트 하나가 선다");
-    assert.ok(asked[0]?.body.includes("반려 이유를 남겨 주시면"));
-    const ledger = ledgerOf(scene);
-    assert.equal(
-      ledger.reviews[String(pr)]?.rejectionAsked,
-      true,
-      "원장 reviews[pr] 에 한 번만의 표식이 적힌다",
-    );
-    // 청구 표식은 개발자 알림이 아니다 — notices 에 없고, 화면은 "개발자에게
-    // 알렸어요" 를 말하지 않는다 (PLAN L8).
-    assert.ok(!Object.keys(ledger.notices).some((key) => key.startsWith("reject:")));
-    const parts = scene.supervisor.attentionParts();
-    assert.ok(!Object.keys(parts.notices ?? {}).some((key) => key.startsWith("reject:")));
-    assert.notEqual(composeAttention(parts)?.kind, "developer-notified");
-
-    // 두 번째 틱 — 랜딩도 청구도 다시 일어나지 않는다.
-    await scene.supervisor.tick("manual");
-    assert.equal(scene.github.commentsFor(pr).length, 1, "청구 코멘트는 하나뿐이다");
-    assert.equal(scene.briefs.length, 0);
-  } finally {
-    await scene.dispose();
-  }
-});
-
-/** 반려 장면 — 사이클 브랜치의 커밋 하나를 넘기고, 개발자가 이유를 남기고 닫는다. */
-async function rejectWithReason(scene: SupervisedScene, reason: string): Promise<number> {
-  await scene.git(["checkout", "-b", BRANCH]);
-  await commit(scene, { "src/a.ts": "export const a = 1;\n" }, "작업 1");
-  await scene.git(["push", "-u", "origin", BRANCH]);
-  const pr = await openCycle(scene, BRANCH);
-  scene.github.addComment(pr, { kind: "issue", body: reason });
-  scene.github.close(pr);
-  return pr;
-}
-
-test("L9 반려 — 대화를 못 열면 이유가 원장에 남고, 다음 틱이 반영 턴을 보낸다", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    const pr = await rejectWithReason(scene, "이 흐름은 목록으로 되돌려 주세요.");
-
-    scene.refuseThread = true;
-    await scene.supervisor.tick("manual");
-    assert.equal(scene.briefs.length, 0, "대화를 못 열면 턴이 나가지 않는다");
-    const waiting = ledgerOf(scene).reviews[String(pr)]?.pendingRejection;
-    assert.ok(waiting, "보내지 못한 반영 턴이 원장에 남는다");
-    assert.ok(waiting.reasons.some((reason) => reason.body.includes("목록으로 되돌려")));
-
-    // 기록은 디스크에 있다 — 재시작한 감독자의 다음 틱이 이어받는다(I5).
-    const next = scene.respawn();
-    scene.refuseThread = false;
-    await next.tick("timer");
-    assert.equal(scene.briefs.length, 1, "다음 틱이 반영 턴을 보낸다");
-    assert.ok(scene.briefs[0]?.includes("개발자가 이번 요청을 닫았습니다"));
-    assert.ok(scene.briefs[0]?.includes("목록으로 되돌려"), "원장에 적힌 이유가 실린다");
-    const ledger = ledgerOf(scene);
-    assert.equal(
-      ledger.reviews[String(pr)]?.pendingRejection,
-      undefined,
-      "보낸 뒤에 기록을 지운다",
-    );
-    assert.equal(ledger.budgets[`review:${pr}`]?.spent, 2, "못 연 대화도 한 라운드다");
-
-    await next.tick("timer");
-    assert.equal(scene.briefs.length, 1, "보낸 반영 턴은 다시 나가지 않는다");
-  } finally {
-    await scene.dispose();
-  }
-});
-
-test("L9 반려 — 대화를 끝내 못 열면 예산 review:<pr> 가 다한 뒤 개발자 알림 한 번", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    const pr = await rejectWithReason(scene, "이 흐름은 목록으로 되돌려 주세요.");
-
-    scene.refuseThread = true;
-    for (let i = 0; i < 8; i += 1) await scene.supervisor.tick("timer");
-
-    assert.equal(scene.briefs.length, 0);
-    const raised = scene.notices.filter((notice) => notice.key === `review:${pr}:rejection`);
-    assert.equal(raised.length, 1, "예산이 다하면 알림은 한 번");
-    assert.ok(raised[0]?.text.includes("반려 이유"));
-    const ledger = ledgerOf(scene);
-    assert.equal(ledger.budgets[`review:${pr}`]?.spent, 5, "시도는 PR 당 라운드 상한까지");
-    assert.equal(
-      ledger.reviews[String(pr)]?.pendingRejection,
-      undefined,
-      "손을 놓은 뒤에는 기록을 지운다",
-    );
   } finally {
     await scene.dispose();
   }
@@ -1343,33 +1049,6 @@ test("옛 원장의 reject:<pr> 표식 — 읽을 때 reviews 로 옮겨지고 �
       rounds: 1,
       rejectionAsked: true,
     });
-  } finally {
-    await scene.dispose();
-  }
-});
-
-test("L9 자동 답장 — 보관이 없으면 '확인했고' 문장, autoReply 가 꺼져 있면 답장이 없다", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    const pr = 1;
-    const id = 21;
-    const review = { id, kind: "review" as const, author: "dev1", body: "봐 주세요", pr };
-    await scene.supervisor.settleReviewReplies(pr, [review], "답변에 줄이 없습니다.", null);
-    assert.equal(
-      scene.github.commentsFor(pr).at(-1)?.body.split("\n")[0],
-      "확인했고 바꾼 것은 없습니다",
-      "줄도 보관도 없으면 확인 문장이 간다",
-    );
-
-    scene.autoReply = false;
-    const id2 = 22;
-    await scene.supervisor.settleReviewReplies(
-      pr,
-      [{ id: id2, kind: "review", author: "dev1", body: "봐 주세요", pr }],
-      `개발자에게 (#${id2}): 가지 않는 답장.`,
-      null,
-    );
-    assert.equal(scene.github.commentsFor(pr).length, 1, "autoReply false 면 답장이 올라지 않는다");
   } finally {
     await scene.dispose();
   }
@@ -1426,7 +1105,11 @@ test("이월의 병합 커밋 — cherry-pick 이 멈추지 않고 일반 커밋
     assert.ok(head.startsWith("colonova-design/"));
     const log = await scene.git(["log", "--format=%s", "origin/main..HEAD"]);
     assert.deepEqual(log.trim().split("\n"), ["작업 2"], "병합 커밋 없이 일반 커밋만 옮겨야 한다");
-    assert.equal((await remoteHeads(scene, BRANCH)).trim(), "", "옛 원격 브랜치는 지워져야 한다");
+    assert.notEqual(
+      (await remoteHeads(scene, BRANCH)).trim(),
+      "",
+      "다음 제출 전에는 옛 원격 브랜치를 보존한다",
+    );
   } finally {
     await scene.dispose();
   }
@@ -1481,7 +1164,7 @@ test("이월 병합의 옛 원격 브랜치 — 새 브랜치가 올라갈 때�
     scene.setNow(Date.now());
     await scene.supervisor.tick("manual");
     const seeded = ledgerOf(scene).push;
-    assert.ok(seeded !== null, "밀림이 심겨야 한다");
+    assert.equal(seeded, null, "제출 전 자동 push와 재시도는 없다");
 
     await scene.git(["remote", "set-url", "origin", scene.remote.path]);
     await scene.github.merge(pr, "merge");
@@ -1505,7 +1188,7 @@ test("이월 병합의 옛 원격 브랜치 — 새 브랜치가 올라갈 때�
 
     // 푸시가 계속 실패해도 옛 브랜치는 남는다.
     await scene.git(["remote", "set-url", "origin", "http://127.0.0.1:1/nope.git"]);
-    scene.setNow(Date.parse(ledgerOf(scene).push?.nextAttemptAt ?? "") + 1000);
+    scene.setNow(Date.now() + 60_000);
     await scene.supervisor.tick("manual");
     assert.notEqual(
       (await remoteHeads(scene, BRANCH)).trim(),
@@ -1515,8 +1198,9 @@ test("이월 병합의 옛 원격 브랜치 — 새 브랜치가 올라갈 때�
 
     // 푸시가 성공하는 틱에서 옛 브랜치가 지워진다.
     await scene.git(["remote", "set-url", "origin", scene.remote.path]);
-    scene.setNow(Date.parse(ledgerOf(scene).push?.nextAttemptAt ?? "") + 1000);
-    await scene.supervisor.tick("manual");
+    scene.setNow(Date.now() + 60_000);
+    await scene.supervisor.submit("button");
+    await scene.supervisor.settled();
     assert.equal(
       (await remoteHeads(scene, BRANCH)).trim(),
       "",
@@ -1573,164 +1257,6 @@ const BUILD_FAILS = {
   summary: "컴파일 오류 1개",
   annotations: [{ path: "src/a.ts", line: 4, message: "Cannot find name 'nope'" }],
 };
-
-test("CI 반영 — 검사가 실패하면 AI 에게 브리프가 한 번 나가고 head · 라운드가 원장에 적힌다, 같은 head 는 다시 나가지 않는다", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    const { pr, head } = await openPrWithCommit(scene);
-    scene.github.setCheckRuns(head, [
-      BUILD_FAILS,
-      { id: 502, name: "lint", status: "completed", conclusion: "success" },
-    ]);
-
-    await scene.supervisor.tick("manual");
-    assert.equal(scene.ciBriefs.length, 1, "고침 브리프가 한 번 나간다");
-    const sent = scene.ciBriefs[0];
-    assert.equal(sent?.pr, pr);
-    assert.equal(sent?.failing, 1);
-    assert.ok(sent?.brief.startsWith(`<!-- colonova-design:ci {"pr":${pr},"failing":1} -->\n`));
-    assert.ok(sent?.brief.includes("1. build"));
-    assert.ok(sent?.brief.includes("src/a.ts:4 — Cannot find name 'nope'"));
-    assert.ok(sent?.brief.trimEnd().endsWith("검사와 무관한 변경은 하지 마세요."));
-    assert.equal(scene.reviewBriefs.length, 0, "코멘트 반영 턴이 아니다");
-    const ledger = ledgerOf(scene);
-    assert.deepEqual(ledger.ci?.[String(pr)]?.briefed, [head]);
-    assert.equal(ledger.budgets[`ci:${pr}`]?.spent, 1);
-    // 화면의 주의는 `AI 가 고치는 중` 이고 무엇을 고치는지(ci)를 말한다.
-    const parts = scene.supervisor.attentionParts();
-    assert.equal(parts.aiFixingKey, "ci");
-    assert.equal(composeAttention(parts)?.kind, "ai-fixing");
-    assert.equal((composeAttention(parts) as { key?: string } | null)?.key, "ci");
-    // 선로의 handoff 에는 검사 요약이 실린다(종류와 숫자만).
-    assert.deepEqual(scene.core.snapshot().handoff?.ci, { state: "failing", failing: 1 });
-
-    // AI 가 하나도 고치지 못한 채 끝났다 — 같은 head 에는 다시 브리프하지 않는다.
-    await scene.supervisor.tick("manual");
-    await scene.supervisor.tick("manual");
-    assert.equal(scene.ciBriefs.length, 1);
-    assert.equal(ledgerOf(scene).budgets[`ci:${pr}`]?.spent, 1);
-    assert.equal(scene.notices.length, 0, "말미 안에서는 알리지 않는다");
-  } finally {
-    await scene.dispose();
-  }
-});
-
-test("CI 반영 — AI 가 끝났는데 head 가 그대로면 말미 뒤 개발자 알림이 한 번 서고, 통과하면 풀린다", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    const { pr, head } = await openPrWithCommit(scene);
-    scene.github.setCheckRuns(head, [BUILD_FAILS]);
-    const t0 = Date.now();
-    scene.setNow(t0);
-    await scene.supervisor.tick("manual");
-    assert.equal(scene.ciBriefs.length, 1);
-
-    scene.setNow(t0 + 16 * 60_000);
-    await scene.supervisor.tick("manual");
-    await scene.supervisor.tick("manual");
-    const raised = scene.notices.filter((n) => n.key === `ci:${pr}:rounds`);
-    assert.equal(raised.length, 1, "알림은 한 번뿐이다");
-    assert.ok(raised[0]?.text.includes("자동 검사가 계속 통과하지 못했습니다"));
-    assert.ok(raised[0]?.reason?.includes("통과하지 못한 검사: build"), raised[0]?.reason);
-    assert.equal(scene.ciBriefs.length, 1, "알려도 같은 head 를 다시 맡기지 않는다");
-
-    // 개발자가 고쳐 새 head 가 서고 검사가 통과한다 — 서 있던 알림이 풀린다.
-    scene.supervisor.setNotice(`ci:${pr}:rounds`, {
-      via: "pr",
-      ref: 9,
-      raisedAt: new Date(t0).toISOString(),
-      count: 1,
-    });
-    const fixed = "c".repeat(40);
-    scene.github.setHeadSha(pr, fixed);
-    scene.github.setCheckRuns(fixed, [
-      { id: 601, name: "build", status: "completed", conclusion: "success" },
-    ]);
-    await scene.supervisor.tick("manual");
-    assert.equal(
-      scene.supervisor.notices()[`ci:${pr}:rounds`],
-      undefined,
-      "통과하면 알림을 거둔다",
-    );
-    assert.equal(
-      ledgerOf(scene).budgets[`ci:${pr}`],
-      undefined,
-      "같은 PR 의 다음 실패는 새 사건이다",
-    );
-    assert.deepEqual(scene.core.snapshot().handoff?.ci, { state: "passing" });
-  } finally {
-    await scene.dispose();
-  }
-});
-
-test("CI 반영 — 보내기가 거절되면 head 를 되감아 다음 틱이 다시 시도한다(라운드는 돌려주지 않는다)", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    const { pr, head } = await openPrWithCommit(scene);
-    scene.github.setCheckRuns(head, [BUILD_FAILS]);
-    scene.refuseCiSend = true;
-    await scene.supervisor.tick("manual");
-    assert.equal(scene.ciBriefs.length, 0);
-    assert.equal(ledgerOf(scene).ci?.[String(pr)], undefined, "되감겨 다시 대상이 된다");
-    assert.equal(ledgerOf(scene).budgets[`ci:${pr}`]?.spent, 1);
-
-    scene.refuseCiSend = false;
-    await scene.supervisor.tick("manual");
-    assert.equal(scene.ciBriefs.length, 1);
-    assert.deepEqual(ledgerOf(scene).ci?.[String(pr)]?.briefed, [head]);
-    assert.equal(ledgerOf(scene).budgets[`ci:${pr}`]?.spent, 2);
-  } finally {
-    await scene.dispose();
-  }
-});
-
-test("CI 반영 — 사람의 코멘트가 먼저다: 코멘트 반영 턴이 나간 뒤에야 검사 고침이 나간다", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    const { pr, head } = await openPrWithCommit(scene);
-    scene.github.setCheckRuns(head, [BUILD_FAILS]);
-    await scene.supervisor.tick("manual"); // 기준선(첫 관찰) — 이 틱에 CI 브리프가 나간다
-    scene.github.setHeadSha(pr, "d".repeat(40));
-    scene.github.setCheckRuns("d".repeat(40), [BUILD_FAILS]);
-    scene.github.addComment(pr, { kind: "issue", login: "dev1", body: "여기부터 봐 주세요" });
-    const before = scene.ciBriefs.length;
-    await scene.supervisor.tick("manual");
-    assert.equal(scene.reviewBriefs.length, 1, "코멘트 반영 턴이 먼저 나간다");
-    assert.equal(scene.ciBriefs.length, before, "같은 틱에 검사 고침은 나가지 않는다");
-    await scene.supervisor.tick("manual");
-    assert.equal(
-      scene.ciBriefs.length,
-      before + 1,
-      "코멘트를 브리프한 다음 틱에 검사 고침이 나간다",
-    );
-  } finally {
-    await scene.dispose();
-  }
-});
-
-test("CI 반영 — 권한 없음 · 닿지 못함 · 검사 없음에서는 아무 행동도 하지 않는다(거짓 실패로 AI 를 깨우지 않는다)", async () => {
-  const scene = await makeSupervisedScene();
-  try {
-    const { pr, head } = await openPrWithCommit(scene);
-    scene.github.setMergeableState(pr, "unstable");
-    scene.github.setCheckRuns(head, [BUILD_FAILS]);
-    for (const mode of ["forbidden", "error"] as const) {
-      scene.github.setChecksAccess(mode);
-      await scene.supervisor.tick("manual");
-    }
-    scene.github.setChecksAccess("ok");
-    scene.github.setCheckRuns(head, []);
-    await scene.supervisor.tick("manual");
-    assert.equal(scene.ciBriefs.length, 0);
-    assert.equal(scene.notices.length, 0);
-    assert.equal(ledgerOf(scene).ci, undefined);
-    assert.equal(scene.supervisor.attentionParts().aiFixingKey, null);
-    // 검사를 읽지 못한 동안 선로에도 검사 요약은 없다.
-    assert.equal(scene.core.snapshot().handoff?.ci, undefined);
-  } finally {
-    await scene.dispose();
-  }
-});
 
 test("승인 — 본문 있는 승인은 AI 턴이 아니고, 선로의 handoff.approved 로 나간다", async () => {
   const scene = await makeSupervisedScene();

@@ -16,6 +16,11 @@ export interface PreviewLocation {
   url?: string;
   /** 문서가 스스로 단 제목(`<title>`) — 주소창이 화면 이름의 마지막 재료로 읽는다. */
   title?: string;
+  /**
+   * 문서를 통째로 마지막에 연 경로(데스크톱) — 링크 · `router.replace` 같은 앱 안 이동은 바꾸지 않는다. 모르면 null,
+   * 브라우저 경로(iframe)와 옛 데스크톱은 싣지 않는다. 턴 끝의 새로 고침 판정(`refreshOnTurnEnd`)이 읽는다.
+   */
+  loadedPath?: string | null;
   /** repo origin 위면 `preview`, 그 밖이면 `web` — 외부 페이지 모드의 자리. */
   kind: "preview" | "web";
   canGoBack: boolean;

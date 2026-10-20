@@ -48,6 +48,17 @@ test("problemFor: 연결 코드 만료는 초대 파일, AI 로그인은 브라�
   assert.equal(relogin?.action, "login");
 });
 
+test("problemFor: 준비가 연결 코드에서 멈추면 같은 초대 파일 줄이 준비의 말로 선다(2026-10-20)", () => {
+  const stuck = problemFor(
+    null,
+    { ...REPO, phase: "error", previewUrl: null, errorKind: "registry-auth", attention: github },
+    L,
+  );
+  assert.equal(stuck?.kind, "reconnect");
+  assert.equal(stuck?.body, L.problem.reconnectPackages);
+  assert.equal(stuck?.action, "invite");
+});
+
 test("problemLineId: 같은 문제는 같은 신원 — 몸통 객체가 새로 지어져도", () => {
   const a = problemFor({ attention: fixing }, REPO, L);
   const b = problemFor({ attention: { kind: "ai-fixing", since } }, REPO, L);

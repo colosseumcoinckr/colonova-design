@@ -78,7 +78,6 @@ export function PreviewBar({
   zoom,
   onZoom,
   frozenReady,
-  onCompare,
   onFrozen,
   onShowAi,
   showAiBusy,
@@ -120,7 +119,6 @@ export function PreviewBar({
   /** 제출한 때의 화면을 볼 수 있는가 — 개발자에게 가 있는 동안만. */
   frozenReady: boolean;
   onFrozen: () => void;
-  onCompare: () => void;
   onShowAi: () => void;
   showAiBusy: boolean;
   onShortcuts: () => void;
@@ -402,23 +400,6 @@ export function PreviewBar({
               <span className="nx-mt">
                 <b>{L.preview.frozenOpen}</b>
                 <small>{frozenReady ? L.preview.frozenOpenSub : L.preview.frozenLocked}</small>
-              </span>
-            </button>
-            <button
-              type="button"
-              // 잠긴 이유를 말하는 항목은 `제출한 때의 화면 보기` 와 같은 표기로(2026-10-04 ux-review).
-              className={`nx-mi${frozenReady ? "" : " nx-mi--dis"}`}
-              aria-disabled={!frozenReady}
-              onClick={() => {
-                if (!frozenReady) return;
-                setMoreOpen(false);
-                onCompare();
-              }}
-            >
-              <EyeIcon />
-              <span className="nx-mt">
-                <b>{L.compare.submitted}</b>
-                <small>{frozenReady ? L.compare.submittedDesktop : L.preview.frozenLocked}</small>
               </span>
             </button>
             <div className="nx-msep" />

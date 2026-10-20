@@ -18,6 +18,7 @@ import {
   type UpdateCheckResult,
 } from "@colonova-design/protocol";
 import { app, net, shell } from "electron";
+import { runningOutsideInstall } from "./app-location.js";
 import { UPDATE } from "./copy.js";
 import { buildSwapScript as buildMacSwapScript } from "./mac-self-update.js";
 import {
@@ -272,8 +273,9 @@ export class SelfUpdates {
       };
     }
     // mac 한정: DMG 안에서 실행 중이면 교체 대상이 읽기 전용 볼륨이다 — 헛돌고
-    // 롤백으로 끝나기 전에 막고 옮기라고 먼저 말한다.
-    if (process.platform === "darwin" && process.execPath.startsWith("/Volumes/")) {
+    // 롤백으로 끝나기 전에 막고 옮기라고 먼저 말한다. Gatekeeper 가 옮겨 둔 임시 자리
+    // (App Translocation — 내려받은 자리에서 바로 연 앱)도 같다(2026-10-20).
+    if (process.platform === "darwin" && runningOutsideInstall(process.execPath)) {
       return { error: UPDATE.fromDiskImage };
     }
     // 실행 중 세션이 있으면 설치를 연기한다(P0#6) — 돌아가는 턴을 업데이트가

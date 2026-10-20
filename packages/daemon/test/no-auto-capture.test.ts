@@ -8,6 +8,12 @@ test("제출 초안과 직접 넘기기는 브라우저를 열거나 촬영하�
   const router = new RequestRouter({
     fleet: {
       requireActive: () => ({
+        supervisor: {
+          submit: async (...input: unknown[]) => {
+            handoff = input;
+          },
+          settled: async () => {},
+        },
         slug: "project",
         paths: { root: "/project" },
         repo: {

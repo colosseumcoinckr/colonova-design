@@ -45,7 +45,6 @@ interface SubmitPopoverProps {
   note: string;
   onNote: (note: string) => void;
   onPreview: (screen: CycleScreen) => void;
-  onCompare: (screen: CycleScreen) => void;
 }
 
 /**
@@ -106,7 +105,6 @@ function SubmitBody({
   note,
   onNote,
   onPreview,
-  onCompare,
 }: SubmitPopoverProps & { leaving: boolean; summaryId: string }) {
   const close = useModalClose();
   const closeNow = useRef(close);
@@ -251,14 +249,6 @@ function SubmitBody({
           onClick={() => onPreview(screen)}
         >
           {L.requestResult.latest}
-        </button>
-        <button
-          type="button"
-          className="nx-btn nx-btn--ghost nx-btn--sm"
-          disabled={busy}
-          onClick={() => onCompare(screen)}
-        >
-          {L.compare.open}
         </button>
       </div>
     </li>

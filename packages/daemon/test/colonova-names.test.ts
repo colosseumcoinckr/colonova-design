@@ -88,7 +88,7 @@ function walk(dir: string, out: string[] = []): string[] {
     return out;
   }
   for (const entry of entries) {
-    // 숨은 항목(.gitignore · .dev-userData 따위)과 빌드 산물(release ·
+    // 숨은 항목(.gitignore · .test-logs 따위)과 빌드 산물(release ·
     // web-dist · resources — 포터블 런타임 번들)은 검사 밖 — 개발 흔적이지
     // 배포되는 코드가 아니다. 루트의 .github 은 호출자가 직접 건넨다.
     if (
@@ -124,7 +124,6 @@ test("잔여 검사 — 옛 이름은 read-legacy 줄과 주석 안에만 있다
     join(ROOT, "README.md"),
     join(ROOT, "package.json"),
     join(ROOT, "AGENTS.md"),
-    join(ROOT, "CLAUDE.md"),
   ];
   // 날짜가 박힌 기록(§1.4)과 이 시험 자신은 검사 밖이다.
   const excluded = (path: string): boolean =>

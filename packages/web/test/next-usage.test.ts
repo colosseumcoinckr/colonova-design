@@ -61,7 +61,7 @@ test("usageRowName: 창의 이름 — 모델별 창은 이름 · 기간, 기간�
   const names = (value: PlanUsage) => usageRows(value).map((row) => usageRowName(row, L));
   // Claude — 5시간 · 주간 · Fable 주간(2026-09-28 실측의 모양).
   assert.deepEqual(names(plan(44, 11, [fable(11)])), ["지금 시간대", "이번 주", "Fable · 이번 주"]);
-  // Codex 의 모델별 한도는 5시간과 주간이 따로다 — 같은 이름 두 줄로 읽히지 않는다.
+  // 모델별 한도가 5시간과 주간으로 따로 오면 — 같은 이름 두 줄로 읽히지 않는다.
   assert.deepEqual(
     names(
       plan(12, 5, [
@@ -71,7 +71,7 @@ test("usageRowName: 창의 이름 — 모델별 창은 이름 · 기간, 기간�
     ),
     ["지금 시간대", "이번 주", "Spark · 지금 시간대", "Spark · 이번 주"],
   );
-  // Codex 무료 요금제 — 이름 없는 한 달 창 하나.
+  // 이름 없는 한 달 창 하나 — 요금제 자신의 한 달 한도.
   assert.deepEqual(
     names(
       plan(null, null, [

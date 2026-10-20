@@ -13,7 +13,6 @@ const strip = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 const css = strip(readFileSync(join(dir, "preview.css"), "utf8"));
 const drawer = strip(readFileSync(join(dir, "HistoryDrawer.tsx"), "utf8"));
-const compare = strip(readFileSync(join(dir, "ComparisonDialog.tsx"), "utf8"));
 
 /** 선택자 하나짜리 규칙의 몸 — 중첩이 없는 규칙만 읽는다. */
 function body(selector: string): string {
@@ -27,12 +26,6 @@ test("서랍의 스크림은 `.nx-modal-back` 이 아니다 — 그 이름을 �
   assert.match(drawer, /nx-hist-scrim/);
   assert.doesNotMatch(drawer, /className=[^>]*nx-modal-back/);
   assert.doesNotMatch(body(".nx-hist-scrim"), /nx-modal-back/);
-});
-
-test("비교 대화상자는 겹판 뼈대(ModalFrame)를 쓰고 스크림에 비교 배치만 덧붙인다", () => {
-  assert.match(compare, /<ModalFrame[\s\S]*backClassName="nx-compare-back"/);
-  // 닫는 모션 · 초점 가두기 · 층 판정을 다시 복붙하지 않는다.
-  assert.doesNotMatch(compare, /useModalEscape|useModalFocus/);
 });
 
 test("서랍은 막대 높이를 변수로 읽고(48px 를 베끼지 않는다) 닫힌 동안 감춰진다", () => {
@@ -56,7 +49,7 @@ test("서랍은 막대 높이를 변수로 읽고(48px 를 베끼지 않는다) 
 });
 
 test("서랍과 말풍선의 그림자는 테마의 토큰이다 — 어두운 테마에서 안 보이는 고정 색이 아니다", () => {
-  for (const selector of [".nx-hist--open", ".nx-pinbub", ".nx-pin-intro"]) {
+  for (const selector of [".nx-hist--open", ".nx-pinbub"]) {
     const shadow = /box-shadow:\s*([^;]+);/.exec(body(selector))?.[1] ?? "";
     assert.match(shadow, /var\(--/, `${selector}: ${shadow}`);
     assert.doesNotMatch(shadow, /#0001|rgba\(0,\s*0,\s*0/, `${selector}: ${shadow}`);

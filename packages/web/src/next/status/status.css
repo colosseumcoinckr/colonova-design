@@ -10,6 +10,7 @@
   gap: 14px;
   padding: 0 14px 0 20px;
   border-bottom: 1px solid var(--line);
+  background: var(--cmp);
 }
 
 .nx--narrow .nx-statusbar {
@@ -137,7 +138,7 @@
   gap: 2px;
   height: 32px;
   padding: 0 4px;
-  border-radius: var(--r-pill);
+  border-radius: var(--r-md);
   border: 1px solid var(--line);
   background: var(--card);
   font-size: 12.5px;
@@ -554,8 +555,8 @@
   background: color-mix(in srgb, var(--ink) 88%, var(--bg));
 }
 
-/* 잠긴 글자는 한 단 진하게 — `--muted` 는 이 바탕 위에서 github 4.00 · codex 3.97 · github-light 4.28 : 1 이라
-   눌러서 이유를 읽는 단추로서 모자랐다(2026-10-06 측정). `--ink2` 는 여섯 테마 모두 5.1 이상이다. */
+/* 잠긴 글자는 한 단 진하게 — `--muted` 는 이 바탕 위에서 github 4.00 · github-light 4.28 : 1 이라
+   눌러서 이유를 읽는 단추로서 모자랐다(2026-10-06 측정). `--ink2` 는 다섯 테마 모두 5.1 이상이다. */
 .nx .nx-submit--locked,
 .nx .nx-submit--locked:hover {
   background: var(--panel-3);

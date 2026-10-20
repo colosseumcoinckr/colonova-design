@@ -133,21 +133,12 @@ export interface CommentRow {
   state: "done" | "fixing" | "unknown";
 }
 
-/**
- * 개발자 코멘트의 장부 — 최근 것부터. 반영의 판정은 기계적이다: 코멘트 뒤에
- * 도구가 붙인 이름(`코멘트 반영 — …`, `reflectionPrefix`)의 차례가 작업 기록에
- * 있으면 반영됨이다(데몬의 반영 차례 하나가 그때까지 온 코멘트를 함께 받는다).
- * 반영된 사이클은 기록이 사라지므로 모두 반영됨이다. 글이 빈 코멘트(말 없는
- * 승인)는 서지 않는다.
- */
+/** 2026-10-20 MVP: 의견은 도착 순으로 표시하고 기록·병합만으로 반영 여부를 추정하지 않는다. */
 export function commentRows(
   reviews: DeveloperReview[],
-  history: RepoHistoryEntry[] | null,
-  options: { merged: boolean; reflectionPrefix: string },
+  _history: RepoHistoryEntry[] | null,
+  _options: { merged: boolean; reflectionPrefix: string },
 ): CommentRow[] {
-  const reflections = (history ?? [])
-    .filter((entry) => entry.message.startsWith(options.reflectionPrefix))
-    .map((entry) => time(entry.at));
   return reviews
     .filter((review) => review.body.trim() !== "")
     .sort((a, b) => time(b.at) - time(a.at))
@@ -156,13 +147,8 @@ export function commentRows(
       author: review.author,
       text: review.body.replace(/\s+/g, " ").trim(),
       at: review.at,
-      // 작업 기록을 못 읽었으면(null) `고치는 중` 이라고 짐작해 말하지 않는다 — 모르면 모른다.
-      state:
-        options.merged || reflections.some((at) => at > time(review.at))
-          ? ("done" as const)
-          : history === null
-            ? ("unknown" as const)
-            : ("fixing" as const),
+      // 사용자가 요청한 수정과 의견의 대응을 추정하지 않는다.
+      state: "unknown" as const,
     }));
 }
 

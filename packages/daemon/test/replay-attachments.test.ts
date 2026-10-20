@@ -107,7 +107,7 @@ test("그림만 보낸 말 — 글이 섹션뿐이면 말이 비고, 칸으로�
   }
 });
 
-test("Codex 의 재생은 images 가 0 이다 — 그림 섹션의 수가 대신 센다, 벤더가 더 많이 세면 그 수가 이긴다", () => {
+test("재생이 images 를 0 으로 세면 그림 섹션의 수가 대신 센다 — 벤더가 더 많이 세면 그 수가 이긴다", () => {
   const { dir, done } = clone();
   try {
     const text = sent(dir, WORDS, [PNG("a.png"), PNG("b.png")]);

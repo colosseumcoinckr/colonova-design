@@ -49,7 +49,7 @@ export type QueuedSendPayload = {
 /**
  * 한 턴의 토큰 · 비용 — 프로바이더 중립 이름. `input` 은 캐시를 뺀 새 입력, `cacheRead` 는
  * 캐시에서 읽은 입력, `cacheWrite` 는 캐시에 적은 입력(모르는 프로바이더는 null), `output`
- * 은 생각을 포함한 출력. `costUsd` 는 정가 기준 추정(Claude 만, Codex 는 null) — 구독에서는
+ * 은 생각을 포함한 출력. `costUsd` 는 정가 기준 추정(모르는 프로바이더는 null) — 구독에서는
  * 일의 양을 재는 눈금이지 청구서가 아니다.
  */
 export interface TurnUsage {
@@ -428,8 +428,8 @@ export type PlanPeriod = "fiveHour" | "week" | "month";
 /**
  * A budget window that is neither the plan's 5-hour nor its whole-week row —
  * a per-model cap (the Fable/Opus row of the usage dialog), a metered extra
- * with its own 5-hour and weekly pair (Codex's per-model limits), or a
- * provider's own longer window. Only the producing driver knows the period
+ * with its own 5-hour and weekly pair, or a provider's own longer window.
+ * Only the producing driver knows the period
  * the row actually runs on, so it says so twice: as `name` + `period` for
  * the chip to spell in its own words, and as a fully spelled `label` for a
  * reader that predates those two (a cache written by an older build).
@@ -438,8 +438,8 @@ export interface PlanModelWindow extends PlanWindow {
   /** Fully spelled row label, e.g. 'Fable 주간' — the fallback spelling. */
   label: string;
   /**
-   * The bucket's own name as the server spelled it ('Fable',
-   * 'GPT-5.3-Codex-Spark'); null for a window no name scopes — the plan's
+   * The bucket's own name as the server spelled it ('Fable', 'Opus');
+   * null for a window no name scopes — the plan's
    * own monthly budget. Absent on a reading from before this field.
    */
   name?: string | null;
@@ -468,7 +468,7 @@ export interface PlanUsage {
    */
   modelWeekly: PlanModelWindow[];
   /**
-   * Which provider's account this reading belongs to (`claude`, `codex`, …)
+   * Which provider's account this reading belongs to (`claude`, …)
    * — the same 43% means a different budget from a different account, so the
    * usage chip says whose numbers these are. Stamped by the producing
    * driver; a reading without one is a pre-tag cache the tracker stamps at

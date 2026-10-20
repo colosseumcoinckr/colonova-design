@@ -71,11 +71,6 @@ export interface ProjectSummary {
    */
   threads?: ThreadSummary[];
   /**
-   * 이 프로젝트에서 지켜 줄 것(설정 문서 P1#8) — 프로젝트 설정 상자의 현재
-   * 내용. 비어 있으면 키가 없다.
-   */
-  instructions?: string;
-  /**
    * 답을 기다리는 질문 + 권한 요청의 수(스레드 단위, PLAN P3-2) — 비활성
    * 프로젝트도 포함. `threads[].state === "awaiting"` 인 대화의 개수와 같다.
    */
@@ -233,9 +228,7 @@ export interface DaemonStatus {
   protocolVersion: number;
   /**
    * The app-authored instruction block every session's system prompt carries
-   * (커미티 2026-09-14): owned by the app release, read-only for users — the
-   * 지켜 줄 것 dialog shows it so the planner can see what the app always
-   * says. Project instructions ride `ProjectSummary.instructions` beside it.
+   * (커미티 2026-09-14): owned by the app release, read-only for users.
    */
   commonInstructions: string;
   /** node's process.platform, so a bug report says which OS produced it. */
@@ -288,8 +281,8 @@ export interface DaemonStatus {
   registryAuth: "ok" | "unauthenticated" | "unknown";
   /**
    * The plan's rolling limits per provider's account, as the daemon last saw
-   * them. One machine signs into one account per provider — claude's 43% and
-   * codex's are different budgets, so the readings live side by side and the
+   * them. One machine signs into one account per provider — two providers'
+   * 43% are different budgets, so the readings live side by side and the
    * composer reads the row of the provider it is about to spend. Cached
    * daemon-wide so the composer can show them without a session open; a
    * provider missing from the map has not reported yet (and for API-key
@@ -299,7 +292,7 @@ export interface DaemonStatus {
   /**
    * The model rows each provider's CLI offers, cached daemon-wide so the
    * composer can offer a choice before any thread exists. Keyed by provider
-   * id — a Claude alias and a Codex model id are different vocabularies and
+   * id — one provider's model ids are not another's vocabulary, so they
    * must never share a list. Empty until a session reports.
    */
   modelsByProvider: Record<string, SessionModelInfo[]>;
@@ -355,7 +348,7 @@ export interface DaemonStatus {
    */
   agentUpdates?: Partial<
     Record<
-      "claude" | "codex",
+      "claude",
       {
         phase: "pending" | "running" | "done" | "failed";
         at: string;
@@ -392,9 +385,7 @@ export type OnboardingStepId = "claude" | "git" | "runtime" | "github";
 export type OnboardingStatus = "pass" | "warn" | "fail";
 export type OnboardingFixKind =
   | "install-claude"
-  | "install-codex"
   | "login-claude"
-  | "login-codex"
   | "install-git"
   | "install-node"
   | "install-pnpm";
@@ -403,11 +394,7 @@ export type OnboardingFixKind =
  * 데몬이 끝까지 지켜보는 설치 — 진행기와 그 방송이 함께 쓰는 종류. 업데이트
  * (PLAN-UI U12)도 같은 진행기를 탄다.
  */
-export type AgentInstallKind =
-  | "install-claude"
-  | "install-codex"
-  | "update-claude"
-  | "update-codex";
+export type AgentInstallKind = "install-claude" | "update-claude";
 
 export interface OnboardingFix {
   kind: OnboardingFixKind;

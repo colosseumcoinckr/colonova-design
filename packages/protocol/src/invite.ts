@@ -38,8 +38,6 @@ export interface InviteProject {
   baseBranch: string;
   /** E4(초대 v2): 넘긴 요청의 리뷰를 부탁할 개발자들(GitHub 로그인). */
   reviewers?: string[];
-  /** 프로젝트별 지침 — 세션의 시스템 프롬프트에 붙는다. */
-  instructions?: string;
   /** 개발자가 이 레포의 설치 · 미리보기 명령 실행을 미리 허용했는가. */
   approveCommands: boolean;
   /** 초대 v4(PLAN 단계 5): 새 대화의 처음 값 — 사용자의 칩이 이긴다. */
@@ -80,7 +78,6 @@ const LIMITS = {
   baseBranch: 128,
   reviewers: 10,
   reviewerLogin: 80,
-  instructions: 10_000,
   /** 초대 v4 의 notify.slack — escalation.set 의 선로 한도와 같은 값들. */
   slackUrl: 2_000,
   slackToken: 500,
@@ -313,7 +310,6 @@ export function normalizeInvite(value: unknown): NormalizeResult {
       file.v === 1
         ? undefined // v1 은 리뷰어를 실은 적이 없다 — parseInvite 규칙 그대로.
         : stringList(entry.reviewers);
-    const instructions = file.v === 3 || file.v === 4 ? trimmed(entry.instructions) : undefined;
     // 초대 v4(PLAN 단계 5): defaults·lifecycle 은 모르는 값을 버리는 파서가
     // 읽는다 — 깨진 부분만 떨어지고 나머지는 산다.
     const defaults = file.v === 4 ? parseProjectDefaults(entry.defaults) : undefined;
@@ -323,7 +319,6 @@ export function normalizeInvite(value: unknown): NormalizeResult {
       name,
       baseBranch,
       ...(reviewers ? { reviewers } : {}),
-      ...(instructions ? { instructions } : {}),
       ...(defaults ? { defaults } : {}),
       ...(lifecycle ? { lifecycle } : {}),
       approveCommands: entry.approveCommands !== false,
@@ -388,13 +383,6 @@ export function normalizeInvite(value: unknown): NormalizeResult {
         };
       }
     }
-    if (project.instructions && project.instructions.length > LIMITS.instructions) {
-      return {
-        ok: false,
-        reason: "limit",
-        detail: limitDetail(project, `지침이 ${LIMITS.instructions}자를 넘습니다`),
-      };
-    }
   }
 
   return {
@@ -448,7 +436,7 @@ function sameRecord(a: object | undefined, b: object | undefined): boolean {
 
 /**
  * 초대장의 한 프로젝트가 짝의 개발자 몫 값을 바꾸는가 — inviteUpdatePatch 가
- * 보낼 패치를 지금 값에 대 본다. 이름과 지침은 사용자의 몫이라 보지 않는다.
+ * 보낼 패치를 지금 값에 대 본다. 이름은 사용자의 몫이라 보지 않는다.
  * 명령 허용은 패치가 켜기만 하므로 초대장이 켜고 짝이 꺼져 있을 때만 바뀜이다.
  */
 function inviteChanges(project: InviteProject, existing: InviteRowTarget): boolean {
@@ -479,8 +467,8 @@ export function planInviteRows(invite: NormalizedInvite, projects: InviteRowTarg
 }
 
 /**
- * 다시 가져오기의 한 행이 project.update 에 실을 패치(PLAN 단계 5) — 이름과
- * 지침은 사용자의 몫이라 절대 실리지 않고, defaults · lifecycle · 리뷰어는
+ * 다시 가져오기의 한 행이 project.update 에 실을 패치(PLAN 단계 5) —
+ * 이름은 사용자의 몫이라 절대 실리지 않고, defaults · lifecycle · 리뷰어는
  * 개발자의 것이라 초대장에 없으면 지운다(null). 새 프로젝트(add)는 이 패치가
  * 아니라 초대장의 값 그대로 만든다.
  */

@@ -152,8 +152,9 @@ export const UPDATE = {
   nothingToInstall: "설치할 업데이트를 찾지 못했어요 — 지금 확인을 다시 눌러 주세요.",
   nothingPrepared: "준비된 업데이트가 없어요 — 지금 확인을 눌러 주세요.",
   devGuarded: "개발 실행에서는 앱을 바꾸지 않아요",
+  // 2026-10-20: Gatekeeper 가 옮겨 둔 임시 자리(내려받은 자리에서 바로 연 앱)도 같은 말이다(app-location.ts).
   fromDiskImage:
-    "앱이 디스크 이미지(DMG)에서 실행 중이에요 — 응용 프로그램 폴더로 옮긴 뒤 다시 시도해 주세요.",
+    "앱이 설치 디스크(DMG)나 내려받은 자리에서 실행 중이에요 — 응용 프로그램 폴더로 옮긴 뒤 다시 시도해 주세요.",
   // self-update.ts 의 검증 · 계획 오류.
   verifyFailed: (name: string): string =>
     `내려받은 파일을 확인하지 못했어요 (${name}) — 다시 시도해도 안 되면 담당자에게 알려 주세요.`,
@@ -249,7 +250,7 @@ export function quitOptions(): MessageBoxOptions {
 export function resetOptions(busy: boolean): MessageBoxOptions {
   const lines = [
     "프로젝트 파일, 대화와 작업 기록, 앱 설정, 연결 정보를 지워요. 목록에서 삭제했지만 컴퓨터에 남아 있는 프로젝트도 포함돼요. 제출하지 않은 작업은 되돌릴 수 없어요.",
-    "이미 개발자에게 제출한 작업과 Claude·Codex 로그인은 유지돼요. 앱이 다시 열리면 새 초대 파일을 넣어 주세요.",
+    "이미 개발자에게 제출한 작업과 Claude 로그인은 유지돼요. 앱이 다시 열리면 새 초대 파일을 넣어 주세요.",
   ];
   if (busy) lines.push("지금 AI가 일하는 중이에요. 다시 시작하면 그 일도 멈춰요.");
   return safeFirst(
@@ -326,4 +327,78 @@ export function startFailedOptions(reason: string, logsDir: string): MessageBoxO
 /** 시작 중 초기화의 남은 정리가 끝나지 못했을 때 — 시작 실패 상자의 자세한 내용으로 간다. */
 export function resetUnfinished(reason: string): string {
   return `초기화를 마치지 못했어요. 일부 데이터는 이미 지워졌을 수 있어요. 앱을 다시 열면 남은 정리를 이어가요.\n${reason}`;
+}
+
+// ---------------------------------------------------------------------------
+// 설치 자리 · 키체인(2026-10-20 비개발자 mac · Windows 설치 검토) — 첫 화면보다 먼저 서는 상자들.
+// ---------------------------------------------------------------------------
+
+/** 옮기기 상자의 답 — 권하는 일이고 되돌릴 것이 없어 `옮기기` 가 첫 단추 · 기본이다(safeFirst 의 예외). */
+export const MOVE_ANSWER = { move: 0, later: 1 } as const;
+
+/** mac 에서 응용 프로그램 폴더 밖(DMG · 내려받은 자리)에서 켰을 때 — 첫 화면 전에 한 번 묻는다. */
+export function moveToApplicationsOptions(): MessageBoxOptions {
+  return {
+    type: "question",
+    title: "ColoNova Design",
+    message: "응용 프로그램 폴더로 옮길까요?",
+    detail:
+      "지금은 설치 디스크(DMG)나 내려받은 자리에서 실행 중이에요. 옮겨 두어야 업데이트가 되고, 디스크를 꺼내도 앱이 사라지지 않아요. 옮기면 앱이 한 번 다시 켜져요.",
+    buttons: ["응용 프로그램 폴더로 옮기기", "나중에"],
+    defaultId: MOVE_ANSWER.move,
+    cancelId: MOVE_ANSWER.later,
+    checkboxLabel: "다시 묻지 않기",
+    noLink: true,
+  };
+}
+
+/** 옮기지 못했거나 관리자 암호 창을 닫았을 때 — 손으로 옮기는 길을 말한다(홈 폴더의 Applications 도 된다). */
+export function moveFailedOptions(): MessageBoxOptions {
+  return {
+    type: "warning",
+    title: "ColoNova Design",
+    message: "응용 프로그램 폴더로 옮기지 못했어요",
+    detail:
+      "Finder 에서 ColoNova Design 을 응용 프로그램 폴더로 끌어다 놓은 뒤 거기서 다시 열어 주세요. 관리자 암호를 물어 옮길 수 없으면 홈 폴더의 Applications 폴더에 넣어도 돼요.",
+    buttons: ["확인"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
+}
+
+/** 키체인 상자의 답 — mac 은 다시 켜면 키체인이 다시 묻는다. */
+export const KEYCHAIN_ANSWER = { relaunch: 0, later: 1 } as const;
+
+/**
+ * 저장해 둔 연결 정보를 읽지 못했을 때(safe-storage-store 의 `unreadable`). mac 은 키체인 허용을 거부한
+ * 경우가 거의 전부다 — 거부는 기억되지 않아 다시 켜면 다시 묻는다. 그래서 초대 파일을 다시 받을 필요가 없다고
+ * 말한다. Windows(DPAPI)는 묻는 창이 없어 초대 파일을 다시 여는 길뿐이다.
+ */
+export function unreadableCredentialsOptions(platform: string): MessageBoxOptions {
+  const message = "이 컴퓨터에 둔 연결 정보를 읽지 못했어요";
+  if (platform === "darwin") {
+    return {
+      type: "warning",
+      title: "ColoNova Design",
+      message,
+      detail:
+        "맥이 'ColoNova Design Safe Storage' 키체인 사용을 물었을 때 '거부'를 눌렀거나 창이 닫히면 이렇게 돼요. 앱을 다시 켜고, 키체인 창이 뜨면 맥 로그인 암호를 넣은 뒤 '항상 허용'을 눌러 주세요. 초대 파일을 다시 받을 필요는 없어요. 그래도 같은 창이 또 뜨면 개발자에게 받은 초대 파일을 다시 열어 주세요.",
+      buttons: ["다시 켜기", "나중에"],
+      defaultId: KEYCHAIN_ANSWER.relaunch,
+      cancelId: KEYCHAIN_ANSWER.later,
+      noLink: true,
+    };
+  }
+  return {
+    type: "warning",
+    title: "ColoNova Design",
+    message,
+    detail:
+      "Windows 가 이 컴퓨터에 둔 연결 정보를 풀지 못했어요(사용자 계정이 바뀌면 이렇게 돼요). 개발자에게 받은 초대 파일을 다시 열어 주세요.",
+    buttons: ["확인"],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
 }

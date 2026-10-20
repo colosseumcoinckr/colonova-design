@@ -25,6 +25,7 @@ import { planRetry } from "../lib/retry-send";
 import { dedupeScreens } from "../lib/thread";
 import { undoTargetFor } from "../lib/undo-last";
 import { useHeldPhase } from "../lib/use-held-phase";
+import { PinIcon } from "../preview/icons";
 import type { ChatColumnProps } from "../slots";
 import { Composer, type ComposerHandle } from "./Composer";
 import { AskCard } from "./cards";
@@ -514,7 +515,6 @@ export function ChatColumn({
               <SparkIcon />
             </span>
             <h2>{L.transcript.emptyTitle}</h2>
-            {project && <p className="nx-shared-hint">{L.transcript.sharedWork}</p>}
             {project && (
               <p>
                 {preparing
@@ -524,6 +524,20 @@ export function ChatColumn({
                     : L.transcript.emptyBody(project.name)}
               </p>
             )}
+            {project && !preparing && (
+              <button
+                type="button"
+                className="nx-btn nx-empty-pin"
+                onClick={() => {
+                  if (narrow) nav.showTab("preview");
+                  window.dispatchEvent(new CustomEvent("nx:pins:toggle"));
+                }}
+              >
+                <PinIcon />
+                {L.preview.pin}
+              </button>
+            )}
+            {project && <p className="nx-shared-hint">{L.transcript.sharedWork}</p>}
           </div>
         )}
         {!empty && (
@@ -547,9 +561,7 @@ export function ChatColumn({
             onRetry={retry}
             onRetryDropped={retryDropped}
             onLogin={() =>
-              void api
-                .onboardingFix(provider === "codex" ? "login-codex" : "login-claude")
-                .catch(() => nav.toast(L.chat.somethingWrong))
+              void api.onboardingFix("login-claude").catch(() => nav.toast(L.chat.somethingWrong))
             }
             onAdditionalEdit={(screen) => {
               fill(
@@ -562,7 +574,6 @@ export function ChatColumn({
               nav.toast(L.requestResult.draftReady);
             }}
             onOpenScreen={openScreen}
-            loadComparison={api.comparison}
             onOpenHistory={() => window.dispatchEvent(new CustomEvent("nx:history:open"))}
             undoLast={
               lastRequestId !== null && undoTarget?.requestId === lastRequestId

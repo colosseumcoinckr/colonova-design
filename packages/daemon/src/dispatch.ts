@@ -147,7 +147,13 @@ export class RequestRouter {
       }
       const driver = this.deps.agentDrivers.get(provider);
       if (!driver) {
-        throw new Error(`알 수 없는 에이전트입니다: ${provider}`);
+        // 앱에서 뺀 에이전트(2026-10-20 의 codex)로 만든 대화 — 대화록은 그 에이전트의 저장소에만
+        // 있어 다른 드라이버로는 이어 갈 수 없다(없는 대화록을 재개하다 멈춘다). 새 대화로 안내한다.
+        throw new Error(
+          message.resume
+            ? "이 대화를 만든 AI 는 이제 이 앱에서 쓰지 않아 이어 갈 수 없어요 — 새 대화에서 다시 말해 주세요."
+            : `알 수 없는 에이전트입니다: ${provider}`,
+        );
       }
       const availability = await driver.isAvailable();
       if (!availability.ok || !availability.executable) {
@@ -203,8 +209,8 @@ export class RequestRouter {
       if (fastMode) await session.setFastMode(true).catch(() => undefined);
       // The plan reading is owed per provider, and a fresh session is
       // already idle — ask it now rather than waiting for a status
-      // broadcast nothing schedules. A codex thread's first composer
-      // render is exactly when its account's numbers matter.
+      // broadcast nothing schedules. A thread's first composer render is
+      // exactly when its account's numbers matter.
       this.deps.plans.refresh(provider);
       // A session start is the moment the 화면 half goes back to the remote.
       // 감독자의 틱이 최신화·착지를 치르고(PLAN L2 흡수표), 충돌은 원장에
@@ -667,6 +673,11 @@ export class RequestRouter {
    */
   async recoverStartupTurns(recoveries: StartupRecovery[]): Promise<void> {
     for (const recovery of recoveries) {
+      const marker = readTurn(recovery.inflight.text).marker;
+      if (marker?.kind === "review" || marker?.kind === "ci") {
+        this.deps.queueStore.moveHeldToLost(recovery.sessionId, recovery.held);
+        continue;
+      }
       if (this.deps.manager.get(recovery.sessionId)) continue;
       try {
         const located = await this.locateStoredThread(recovery.sessionId);
@@ -793,8 +804,8 @@ export class RequestRouter {
       return remembered;
     }
     // 새 대화는 쓸 수 있는 공급자로 연다 — fleet 의 자동 대화 길(auto-thread.ts,
-    // autoFixThreadFor 와 같은 모양). claude 실행 파일만 보던 옛 길은 Codex 만
-    // 있는 기계에서 문제 해결 대화가 아예 태어나지 않았다(PLAN I1 · I4).
+    // autoFixThreadFor 와 같은 모양). 공급자 고르기는 한 곳(auto-thread.ts)에만
+    // 산다(PLAN I1 · I4).
     const session = await this.deps.fleet.autoFixThreadFor(
       this.requireActive(),
       stage === "save"

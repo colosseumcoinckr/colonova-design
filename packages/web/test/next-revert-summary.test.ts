@@ -74,8 +74,6 @@ test("줄 끝의 되돌리기는 짧게, 화면이 여럿인 차례의 비교 �
     "14:05 · 의견을 반영했어요 · 버튼 문구 · 회원 목록 · 이때 화면으로 되돌리기",
   );
   assert.equal(L.history.revertLabel("", "제목"), "제목 · 이때 화면으로 되돌리기");
-  assert.equal(L.history.compareScreen("결제 내역"), "결제 내역 전·후 보기");
-  assert.equal(L.compare.open, "수정 전·후 보기");
 });
 
 test("안심 문장 — 기록이 남고 다시 되돌릴 수 있다는 말이 코드의 동작과 같다", () => {

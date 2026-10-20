@@ -48,7 +48,7 @@ test("배선: 대화록은 계정류 블록에만 로그인 길을 건네고, �
   assert.ok(fail.indexOf("{retry && (") < fail.indexOf("L.account.switchAccount"));
   assert.ok(fail.indexOf("L.account.switchAccount") < fail.indexOf("L.vocab.retry"));
   const column = read("../src/next/chat/ChatColumn.tsx");
-  assert.match(column, /onboardingFix\(provider === "codex" \? "login-codex" : "login-claude"\)/);
+  assert.match(column, /onboardingFix\("login-claude"\)/);
 });
 
 test("배선: 데몬이 단 갈래는 대화록 블록까지 그대로 온다", () => {

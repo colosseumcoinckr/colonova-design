@@ -46,7 +46,9 @@
 }
 
 .nx-side-nav {
-  padding: 2px 8px 0;
+  padding: 8px 12px 0;
+  display: grid;
+  gap: 4px;
 }
 
 .nx .nx-side-row {
@@ -54,7 +56,8 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 7px 10px;
+  min-height: 36px;
+  padding: 8px 10px;
   border-radius: var(--r);
   color: var(--ink2);
   font-size: 13.5px;
@@ -87,7 +90,10 @@
    밖으로 번져(-1px) 다른 두 줄과 글자 시작이 어긋나지 않는다. */
 .nx .nx-side-row--new {
   color: var(--ink);
-  font-weight: 500;
+  font-weight: 600;
+  border: 1px solid var(--line);
+  background: var(--cmp);
+  margin-bottom: 8px;
 }
 
 .nx-newmark {
@@ -127,7 +133,7 @@
 }
 
 .nx-proj {
-  margin: 12px 8px 2px;
+  margin: 20px 12px 8px;
 }
 
 /* 전환기 — 고르는 상자 하나. 눌러 목록을 연다(프로젝트 카드는 목록의 한 줄이다). */
@@ -258,49 +264,6 @@
   margin-left: auto;
   color: var(--ink3);
   font-size: 12px;
-}
-
-.nx-pi-guide {
-  border-top: 1px solid var(--line);
-  margin-top: 4px;
-  padding: 8px 8px 6px;
-}
-
-.nx-pi-guide > b {
-  display: block;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.nx-pi-help {
-  margin: 3px 0 8px;
-  font-size: 12px;
-  color: var(--ink3);
-  line-height: 1.5;
-}
-
-.nx .nx-pi-box {
-  width: 100%;
-  min-height: 88px;
-  resize: vertical;
-  border: 1px solid var(--line2);
-  border-radius: var(--r);
-  padding: 8px 10px;
-  background: var(--card);
-  font-size: 12.5px;
-  line-height: 1.55;
-}
-
-.nx .nx-pi-box:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-
-.nx-pi-note {
-  margin-top: 6px;
-  font-size: 12px;
-  color: var(--ink3);
-  line-height: 1.5;
 }
 
 .nx-pi-remove {

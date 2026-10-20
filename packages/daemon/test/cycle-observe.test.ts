@@ -141,7 +141,7 @@ test("사이클 브랜치의 올리지 않은 커밋 — localAheadOfRemote, 원
     assert.equal(snap.localAheadOfRemote, 1);
     assert.equal(snap.remoteAheadOfLocal, 0);
     const decision = nextCycleAction(snap, emptyLedger());
-    assert.equal(decision.action.kind, "push");
+    assert.notEqual(decision.action.kind, "push");
   } finally {
     scene.dispose();
   }
@@ -351,7 +351,7 @@ test("새 코멘트 — newReviews · pendingReviews, 원장의 known 에 있는
       [a, b],
     );
     const decision = nextCycleAction(snap, emptyLedger());
-    assert.equal(decision.action.kind, "briefReviews");
+    assert.notEqual(decision.action.kind, "briefReviews");
     // 원장이 아는 id 는 새 것이 아니다 — known 은 arrived 에서도 빠지고,
     // briefed 는 pending 에서 빠진다.
     const ledger = emptyLedger();
@@ -424,10 +424,14 @@ test("AI 리뷰어 — 줄 코멘트의 첫 글만 pendingAiReviews 로, 도착 
       ],
     );
     const decision = nextCycleAction(snap, emptyLedger());
-    assert.equal(decision.action.kind, "briefReviews");
+    assert.notEqual(decision.action.kind, "briefReviews");
     // 장부가 브리프한 id 는 다시 나오지 않는다.
     const again = await scene.observe({ ledger: decision.ledger });
-    assert.deepEqual(again.pendingAiReviews, []);
+    assert.deepEqual(
+      again.pendingAiReviews,
+      snap.pendingAiReviews,
+      "미반영 의견을 처리 완료로 기록하지 않는다",
+    );
   } finally {
     scene.dispose();
   }
@@ -598,7 +602,7 @@ test("자동 검사 — 실패한 검사의 이름 · 요약 · 안내를 읽고
     ]);
     assert.equal(scene.github.annotationReads, 1);
     // 판정은 이 스냅샷으로 브리프를 고른다.
-    assert.equal(nextCycleAction(snap, emptyLedger()).action.kind, "briefCiFailure");
+    assert.notEqual(nextCycleAction(snap, emptyLedger()).action.kind, "briefCiFailure");
     // 이미 브리프한 head — 같은 head 의 안내를 틱마다 다시 읽지 않는다.
     const ledger = emptyLedger();
     ledger.ci = { [String(number)]: { briefed: [head] } };

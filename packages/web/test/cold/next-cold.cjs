@@ -885,12 +885,7 @@ TASK[8] = async () => {
   let server = null;
   if (LATEST_PORT) {
     server = http
-      .createServer((req, res) => {
-        if (req.url.includes("codex")) {
-          res.setHeader("content-type", "application/json");
-          res.end(JSON.stringify({ tag_name: "rust-v0.99.0", assets: [] }));
-          return;
-        }
+      .createServer((_req, res) => {
         res.end("2.2.0\n");
       })
       .listen(LATEST_PORT, "127.0.0.1");

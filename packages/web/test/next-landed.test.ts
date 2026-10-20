@@ -164,12 +164,9 @@ test("waitingNote: 승인이면 `개발자가 확인했어요 — 반영을 기�
 
 test("waitingNote: 자동 검사가 통과하지 못하면 누가 맡았는지를 말한다", () => {
   const failing = handoff({ ci: { state: "failing", failing: 2 } });
-  assert.equal(waitingNote(failing, fixing, L), "자동 검사가 통과하지 못해 AI가 고치고 있어요");
-  assert.equal(
-    waitingNote(failing, notified, L),
-    "자동 검사가 계속 통과하지 못해 개발자에게 알렸어요",
-  );
-  assert.equal(waitingNote(failing, null, L), "자동 검사가 통과하지 못했어요");
+  assert.equal(waitingNote(failing, fixing, L), L.afterSubmit.checkFailing);
+  assert.equal(waitingNote(failing, notified, L), L.afterSubmit.checkFailing);
+  assert.equal(waitingNote(failing, null, L), L.afterSubmit.checkFailing);
 });
 
 test("waitingNote: 통과 · 도는 중 · 모르는 검사 · 열린 요청이 아닌 것은 기본 문장을 바꾸지 않는다", () => {

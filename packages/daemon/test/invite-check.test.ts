@@ -578,7 +578,8 @@ test("락파일 · 미리보기 스크립트가 없으면 경고 — 막지 않�
       [`GET ${REPO}/contents/package.json`]: { status: 200, json: file({ scripts: {} }) },
     }),
   );
-  assert.match(only(mono.items, "preview").text, /모노레포로 보여요.*지켜 줄 것/);
+  assert.match(only(mono.items, "preview").text, /모노레포로 보여요.*루트에.*dev 스크립트/);
+  assert.doesNotMatch(only(mono.items, "preview").text, /지켜 줄 것/);
   for (const name of LOCKFILES) {
     const locked = await repoCheck(
       healthy({

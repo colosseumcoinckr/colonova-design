@@ -1,14 +1,14 @@
 /**
  * 자동 대화 (PLAN I1 · I4) — 도구가 스스로 여는 대화(충돌 정리 · 리뷰 반영 ·
  * 준비 복구 · 반려 반영)의 자리와 공급자. 사람이 대화를 열어 두지 않은
- * 순간에도 문제는 AI 가 받는다 — 그래서 Claude 가 없는 기계(Codex 만)에서도
- * 열려야 한다. 전에는 claude 실행 파일이 있을 때만 열렸고, 없으면 네 흐름이
- * 모두 조용히 멈췄다.
+ * 순간에도 문제는 AI 가 받는다 — 그래서 공급자는 등록된 드라이버 중 쓸 수
+ * 있는 것으로 고른다. 전에는 claude 실행 파일이 있을 때만 열렸고, 없으면 네
+ * 흐름이 모두 조용히 멈췄다.
  *
  * 고르는 순서:
  *   1. 그 클론의 살아 있는 보낼 수 있는 대화 — 가장 최근에 움직인 것.
  *   2. 새 대화의 공급자 — 그 클론의 가장 최근 대화의 공급자 → 프로젝트의
- *      defaults.provider(초대 v4) → 등록 순서(claude → codex —
+ *      defaults.provider(초대 v4) → 등록 순서(지금은 claude 하나 —
  *      registerAgentDrivers). 판정은 드라이버의
  *      isAvailable 이다: 설치되고(ok + executable) 로그인이 확인된 첫 것,
  *      없으면 설치만 된 첫 것. 로그아웃된 CLI 도 브리프를 받을 자리다 — 그
@@ -40,7 +40,7 @@ export interface AutoThreadRequest {
   title: string;
   /** 초대 v4 의 처음 값 — 공급자의 선호이자 모델 · 생각 시간의 씨앗. */
   defaults?: ProjectDefaults;
-  /** 공통 규칙 + 그 프로젝트의 지켜 줄 것 — appendSystemPrompt 로 실린다. */
+  /** 앱 공통 규칙 — appendSystemPrompt 로 실린다. */
   instructions: string;
 }
 

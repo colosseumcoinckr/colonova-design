@@ -25,13 +25,16 @@ function fakeDriver(id: string, diagnostic: FakeDiagnostic) {
 
 const MISSING: FakeDiagnostic = { ok: false };
 const CLAUDE: FakeDiagnostic = { ok: true, executable: "/opt/claude", loggedIn: true };
-const CODEX: FakeDiagnostic = { ok: true, executable: "/opt/codex", loggedIn: true };
+const SECOND: FakeDiagnostic = { ok: true, executable: "/opt/second", loggedIn: true };
 
-/** 등록 순서가 곧 후보 순서 — 서버의 registerAgentDrivers 와 같은 claude → codex. */
-function registryOf(claude: FakeDiagnostic, codex: FakeDiagnostic): DriverRegistry {
+/**
+ * 등록 순서가 곧 후보 순서 — claude 뒤에 가짜 둘째 공급자를 세운다. 제품의 registerAgentDrivers 는
+ * 지금 claude 하나지만(2026-10-20), 고르는 규칙은 공급자 수와 무관하게 지킨다.
+ */
+function registryOf(claude: FakeDiagnostic, second: FakeDiagnostic): DriverRegistry {
   const registry = new DriverRegistry();
   registry.register(fakeDriver("claude", claude) as never);
-  registry.register(fakeDriver("codex", codex) as never);
+  registry.register(fakeDriver("second", second) as never);
   return registry;
 }
 
@@ -81,44 +84,44 @@ function open(
   );
 }
 
-test("Codex 만 쓸 수 있으면 자동 대화가 codex 로 열린다 — 실행 파일 · 지침 · 제목을 싣는다", async () => {
+test("claude 가 없고 둘째 공급자만 쓸 수 있으면 자동 대화가 그것으로 열린다 — 실행 파일 · 지침 · 제목을 싣는다", async () => {
   const { manager, created } = fakeManager();
-  const opened = await open(registryOf(MISSING, CODEX), manager);
+  const opened = await open(registryOf(MISSING, SECOND), manager);
   assert.equal(opened?.created, true);
   assert.equal(created.length, 1);
-  assert.equal(created[0]?.provider, "codex");
+  assert.equal(created[0]?.provider, "second");
   assert.equal(created[0]?.cwd, CWD);
   assert.equal(created[0]?.title, "리뷰 반영");
-  assert.equal(created[0]?.launch.executable, "/opt/codex");
+  assert.equal(created[0]?.launch.executable, "/opt/second");
   assert.equal(created[0]?.launch.appendSystemPrompt, "공통 규칙");
   assert.equal(typeof created[0]?.writePolicy, "function");
 });
 
-test("그 클론의 최근 대화가 codex 였으면 codex — claude 가 먼저 등록돼 있어도", async () => {
+test("그 클론의 최근 대화의 공급자가 먼저 — claude 가 먼저 등록돼 있어도", async () => {
   const { manager, created } = fakeManager({
     stored: [
       { provider: "claude", lastModified: 1 },
-      { provider: "codex", lastModified: 2 },
+      { provider: "second", lastModified: 2 },
     ],
   });
-  await open(registryOf(CLAUDE, CODEX), manager);
-  assert.equal(created[0]?.provider, "codex");
+  await open(registryOf(CLAUDE, SECOND), manager);
+  assert.equal(created[0]?.provider, "second");
 });
 
 test("defaults.provider 가 있으면 그것 — 모델 · 생각 시간은 그 공급자에게만", async () => {
-  const both = registryOf(CLAUDE, CODEX);
+  const both = registryOf(CLAUDE, SECOND);
   const first = fakeManager();
   await open(both, first.manager, {
-    defaults: { provider: "codex", model: "gpt-5.5", effort: "high" },
+    defaults: { provider: "second", model: "second-model", effort: "high" },
   });
-  assert.equal(first.created[0]?.provider, "codex");
-  assert.equal(first.created[0]?.launch.model, "gpt-5.5");
+  assert.equal(first.created[0]?.provider, "second");
+  assert.equal(first.created[0]?.launch.model, "second-model");
   assert.equal(first.created[0]?.launch.effort, "high");
 
   // 그 공급자를 쓸 수 없으면 다음 후보로 — 다른 공급자의 모델은 싣지 않는다.
   const fallback = fakeManager();
   await open(registryOf(CLAUDE, MISSING), fallback.manager, {
-    defaults: { provider: "codex", model: "gpt-5.5" },
+    defaults: { provider: "second", model: "second-model" },
   });
   assert.equal(fallback.created[0]?.provider, "claude");
   assert.equal(fallback.created[0]?.launch.model, undefined);
@@ -131,7 +134,7 @@ test("defaults.provider 가 있으면 그것 — 모델 · 생각 시간은 그 
 });
 
 test("아무것도 쓸 수 없으면 null — 세션을 만들지 않는다", async () => {
-  const { manager, created } = fakeManager({ stored: [{ provider: "codex", lastModified: 1 }] });
+  const { manager, created } = fakeManager({ stored: [{ provider: "second", lastModified: 1 }] });
   assert.equal(await open(registryOf(MISSING, MISSING), manager), null);
   assert.equal(created.length, 0);
 });
@@ -145,7 +148,7 @@ test("그 클론의 살아 있는 보낼 수 있는 대화가 있으면 그것 �
       { id: "crashed", cwd: CWD, sendable: false, lastActivity: 10 },
     ],
   });
-  const opened = await open(registryOf(CLAUDE, CODEX), manager);
+  const opened = await open(registryOf(CLAUDE, SECOND), manager);
   assert.equal((opened?.session as unknown as FakeLive | undefined)?.id, "recent");
   assert.equal(opened?.created, false);
   assert.equal(created.length, 0);
@@ -172,7 +175,7 @@ test("같은 클론에서 동시에 두 번 열면 대화는 하나 — 뒤의 �
   };
   const threads = new AutoThreads({
     manager: manager as never,
-    drivers: registryOf(MISSING, CODEX),
+    drivers: registryOf(MISSING, SECOND),
     queueDiskFor: () => ({}) as never,
   });
   const request = { cwd: CWD, title: "최신 변경 합치기", instructions: "" };
@@ -202,23 +205,23 @@ test("같은 클론에서 동시에 두 번 열면 대화는 하나 — 뒤의 �
 test("공급자 고르기 — 로그인이 확인된 것이 먼저, 없으면 설치만 된 첫 것", async () => {
   const loggedOut = (diagnostic: FakeDiagnostic) => ({ ...diagnostic, loggedIn: false });
   // 최근 대화의 공급자라도 로그아웃이면 로그인된 다른 공급자가 먼저다.
-  assert.deepEqual(await pickAutoThreadProvider(registryOf(CLAUDE, loggedOut(CODEX)), ["codex"]), {
-    provider: "claude",
-    executable: "/opt/claude",
-  });
-  // 모두 로그아웃이면 앞의 후보 — 그 턴은 로그인을 기다렸다가 다시 나간다(L12).
   assert.deepEqual(
-    await pickAutoThreadProvider(registryOf(loggedOut(CLAUDE), loggedOut(CODEX)), ["codex"]),
-    { provider: "codex", executable: "/opt/codex" },
-  );
-  // 등록되지 않은 이름(옛 설정에 남은 공급자)은 건너뛴다.
-  assert.deepEqual(
-    await pickAutoThreadProvider(registryOf(CLAUDE, CODEX), ["retired", undefined]),
+    await pickAutoThreadProvider(registryOf(CLAUDE, loggedOut(SECOND)), ["second"]),
     {
       provider: "claude",
       executable: "/opt/claude",
     },
   );
+  // 모두 로그아웃이면 앞의 후보 — 그 턴은 로그인을 기다렸다가 다시 나간다(L12).
+  assert.deepEqual(
+    await pickAutoThreadProvider(registryOf(loggedOut(CLAUDE), loggedOut(SECOND)), ["second"]),
+    { provider: "second", executable: "/opt/second" },
+  );
+  // 등록되지 않은 이름(옛 설정에 남은 공급자 — 2026-10-20 에 뺀 codex 등)은 건너뛴다.
+  assert.deepEqual(await pickAutoThreadProvider(registryOf(CLAUDE, SECOND), ["codex", undefined]), {
+    provider: "claude",
+    executable: "/opt/claude",
+  });
   // 실행 파일이 없는 판정은 쓸 수 없는 것이다.
   assert.equal(await pickAutoThreadProvider(registryOf({ ok: true }, MISSING), []), null);
 });

@@ -58,7 +58,7 @@ export function ModalFrame({
   describedBy?: string;
   /** 판의 폭 · 높이를 정하는 클래스(`nx-fb`, `nx-sc` …). */
   className?: string;
-  /** 스크림에 덧붙일 클래스(`nx-compare-back` …). */
+  /** 스크림에 덧붙일 클래스(`nx-submit-back` 등). */
   backClassName?: string;
   /** 스크림을 누르면 닫는다 — 닫으면 안 되는 판만 끈다. */
   dismissOnScrim?: boolean;

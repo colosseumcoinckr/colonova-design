@@ -6,7 +6,7 @@ import { test } from "node:test";
  * `viewing`(2026-10-06) — 보낸 순간 미리보기가 보여 주던 경로가 화면 맥락으로 데몬까지 간다. 길이 네
  * 군데(미리보기 칸 → 훅 → 선로 클라이언트 → 데몬)를 지나서, 한 곳만 빠져도 조용히 예전으로 돌아간다 — 받는
  * 쪽이 비어 있던 `onOpenProject` 와 같은 모양의 구멍이라 글의 모양으로 이음매를 못박는다. 데몬 쪽의 판정은
- * daemon/test/screen-comparisons.test.ts 가 돌린다.
+ * daemon/test/viewing-line.test.ts 가 돌린다.
  */
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 

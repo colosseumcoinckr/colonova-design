@@ -6,7 +6,6 @@ import {
   attemptedKey,
   fetchLatestVersion,
   parseClaudeLatest,
-  parseCodexRelease,
   updateStep,
   wantsAutoUpdate,
 } from "../dist/agent-update.js";
@@ -28,13 +27,6 @@ test("Claude latest 몸통: 버전 한 줄만 받고 HTML 오류 페이지는 �
   assert.equal(parseClaudeLatest("2.1.282\n"), "2.1.282");
   assert.equal(parseClaudeLatest("<!doctype html><title>404</title>"), null);
   assert.equal(parseClaudeLatest(""), null);
-});
-
-test("Codex 릴리스: tag_name 먼저, 없으면 name", () => {
-  assert.equal(parseCodexRelease({ tag_name: "rust-v0.46.0", name: "0.45.0" }), "0.46.0");
-  assert.equal(parseCodexRelease({ name: "Codex 0.44.1" }), "0.44.1");
-  assert.equal(parseCodexRelease({ tag_name: "nightly" }), null);
-  assert.equal(parseCodexRelease(null), null);
 });
 
 test("미루기 판정: 도는 작업이 있으면 pending, 없으면 run, 설치 중이면 그대로", () => {
@@ -69,23 +61,15 @@ test("최신 버전 확인: 환경 변수의 주소를 읽는다 — 실패는 �
   const seen: string[] = [];
   const fetchLike = (async (url: string | URL | Request) => {
     seen.push(String(url));
-    if (String(url).includes("claude")) return new Response("2.1.282\n");
     if (String(url).includes("broken")) return new Response("nope", { status: 503 });
-    return Response.json({ tag_name: "rust-v0.46.0" });
+    return new Response("2.1.282\n");
   }) as typeof fetch;
-  const env = {
-    COLONOVA_DESIGN_CLAUDE_LATEST_API: "http://127.0.0.1:1/claude-latest",
-    COLONOVA_DESIGN_CODEX_RELEASE_API: "http://127.0.0.1:1/codex-release",
-  };
+  const env = { COLONOVA_DESIGN_CLAUDE_LATEST_API: "http://127.0.0.1:1/claude-latest" };
   assert.equal(await fetchLatestVersion("claude", { env, fetchLike }), "2.1.282");
-  assert.equal(await fetchLatestVersion("codex", { env, fetchLike }), "0.46.0");
-  assert.deepEqual(seen, [
-    env.COLONOVA_DESIGN_CLAUDE_LATEST_API,
-    env.COLONOVA_DESIGN_CODEX_RELEASE_API,
-  ]);
+  assert.deepEqual(seen, [env.COLONOVA_DESIGN_CLAUDE_LATEST_API]);
   await assert.rejects(
-    fetchLatestVersion("codex", {
-      env: { COLONOVA_DESIGN_CODEX_RELEASE_API: "http://127.0.0.1:1/broken" },
+    fetchLatestVersion("claude", {
+      env: { COLONOVA_DESIGN_CLAUDE_LATEST_API: "http://127.0.0.1:1/broken" },
       fetchLike,
     }),
   );
@@ -114,7 +98,6 @@ function harness(
     adopted: [] as string[],
     current: {
       claude: "2.1.4 (Claude Code)",
-      codex: "codex-cli 0.45.0",
       ...opts.current,
     } as Record<string, string | null>,
   };
@@ -166,31 +149,31 @@ function harness(
 test("미루기: 도는 작업이 있으면 pending — 마지막 턴이 내려앉는 순간 깐다", async () => {
   const { state, updates, finish } = harness();
   state.busy = true;
-  assert.equal(updates.request("codex"), "pending");
+  assert.equal(updates.request("claude"), "pending");
   assert.deepEqual(state.started, []);
-  assert.equal(updates.snapshot()?.codex?.phase, "pending");
-  assert.equal(updates.snapshot()?.codex?.at, "2026-09-25T02:27:00.000Z");
+  assert.equal(updates.snapshot()?.claude?.phase, "pending");
+  assert.equal(updates.snapshot()?.claude?.at, "2026-09-25T02:27:00.000Z");
   // 아직 다른 턴이 돈다 — settle 은 아무것도 하지 않는다.
   updates.settle();
   assert.deepEqual(state.started, []);
   state.busy = false;
   updates.settle();
-  assert.deepEqual(state.started, ["update-codex"]);
-  assert.equal(updates.snapshot()?.codex?.phase, "running");
+  assert.deepEqual(state.started, ["update-claude"]);
+  assert.equal(updates.snapshot()?.claude?.phase, "running");
   // 설치 중의 두 번째 요청은 그대로 running.
-  assert.equal(updates.request("codex"), "running");
-  assert.deepEqual(state.started, ["update-codex"]);
+  assert.equal(updates.request("claude"), "running");
+  assert.deepEqual(state.started, ["update-claude"]);
 
-  await finish("update-codex", true, undefined, "codex-cli 0.46.0");
-  assert.deepEqual(updates.snapshot()?.codex, {
+  await finish("update-claude", true, undefined, "2.2.0 (Claude Code)");
+  assert.deepEqual(updates.snapshot()?.claude, {
     phase: "done",
     at: "2026-09-25T02:27:00.000Z",
-    version: "0.46.0",
+    version: "2.2.0",
   });
-  assert.deepEqual(state.notices, [{ kind: "update-done", agent: "codex", version: "0.46.0" }]);
+  assert.deepEqual(state.notices, [{ kind: "update-done", agent: "claude", version: "2.2.0" }]);
   assert.deepEqual(state.broadcasts.at(-1), {
     type: "onboarding.install.done",
-    kind: "update-codex",
+    kind: "update-claude",
     ok: true,
     detail: "바꿨어요",
   });
@@ -217,11 +200,10 @@ test("Claude 업데이트: 성공 판정의 경로를 방송보다 먼저 심는
 });
 
 test("확인: 새 버전을 기억하고, 자동 설치는 버전마다 한 번만", async () => {
-  const { state, updates, finish } = harness({ latest: { claude: "2.2.0", codex: "0.45.0" } });
+  const { state, updates, finish } = harness({ latest: { claude: "2.2.0" } });
   await updates.check();
   assert.equal(updates.latest("claude"), "2.2.0");
-  assert.equal(updates.latest("codex"), "0.45.0");
-  // Codex 는 이미 최신 — Claude 만 건다, 시도한 버전을 먼저 적고.
+  // 시도한 버전을 먼저 적고 건다.
   assert.deepEqual(state.started, ["update-claude"]);
   assert.equal(state.settings.get(attemptedKey("claude")), "2.2.0");
   await finish("update-claude", false);
@@ -232,27 +214,25 @@ test("확인: 새 버전을 기억하고, 자동 설치는 버전마다 한 번�
 });
 
 test("확인: 자동 설치가 꺼져 있으면 버전만 기억한다 — 켜는 순간 건다", async () => {
-  const { state, updates } = harness({ latest: { claude: "2.2.0", codex: "0.46.0" } });
+  const { state, updates } = harness({ latest: { claude: "2.2.0" } });
   state.settings.set("agentAutoUpdate", "off");
   await updates.check();
   assert.deepEqual(state.started, []);
-  assert.equal(updates.latest("codex"), "0.46.0");
+  assert.equal(updates.latest("claude"), "2.2.0");
   state.settings.delete("agentAutoUpdate");
   state.busy = true;
   assert.equal(await updates.applyAuto(), true);
-  // 도는 작업이 있어 둘 다 미뤄진다.
+  // 도는 작업이 있어 미뤄진다.
   assert.equal(updates.snapshot()?.claude?.phase, "pending");
-  assert.equal(updates.snapshot()?.codex?.phase, "pending");
   state.busy = false;
   updates.settle();
-  assert.deepEqual(state.started.sort(), ["update-claude", "update-codex"]);
+  assert.deepEqual(state.started, ["update-claude"]);
 });
 
 test("확인의 실패는 조용하다 — 던지지 않고, 아는 버전도 지우지 않는다", async () => {
   const { state, updates } = harness({ latest: { claude: null } });
   await updates.check();
   assert.equal(updates.latest("claude"), undefined);
-  assert.equal(updates.latest("codex"), undefined);
   assert.equal(updates.snapshot(), undefined);
   assert.equal(state.announces, 0);
 });
@@ -275,15 +255,16 @@ test("상태 요청의 곁가지: 한 시간 안에는 다시 확인하지 않�
     },
     now: () => now,
   });
+  // 확인 한 번은 에이전트마다 한 번 읽는다 — 에이전트는 Claude Code 하나다.
   updates.maybeCheck();
   await updates.check();
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
   now = 30 * 60_000;
   updates.maybeCheck();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(calls, 2);
+  assert.equal(calls, 1);
   now = 61 * 60_000;
   updates.maybeCheck();
   await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(calls, 4);
+  assert.equal(calls, 2);
 });

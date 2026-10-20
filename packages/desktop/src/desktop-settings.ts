@@ -16,6 +16,8 @@ export interface DesktopSettings {
   port?: unknown;
   /** 앱 배율(⌘= · ⌘- · ⌘0) — 다음 실행이 창과 미리보기 게스트에 다시 건다. */
   zoom?: unknown;
+  /** `응용 프로그램 폴더로 옮길까요?` 에서 `다시 묻지 않기` 를 골랐다(mac, 2026-10-20). */
+  moveDeclined?: unknown;
 }
 
 export function loadDesktopSettings(path: string): DesktopSettings {
@@ -43,6 +45,11 @@ export function saveDesktopSettings(path: string, patch: Partial<DesktopSettings
 /** 창이 없는 순간에도 알림 정책은 살아 있어야 하므로 부팅 때 한 번 읽는다. */
 export function loadNotificationPrefs(path: string): NotificationPrefs {
   return normalizeNotificationPrefs(loadDesktopSettings(path).notifications);
+}
+
+/** 옮기기 질문을 다시 묻지 않기로 했는가 — `true` 만 믿는다. */
+export function loadMoveDeclined(path: string): boolean {
+  return loadDesktopSettings(path).moveDeclined === true;
 }
 
 /** 지난 실행이 저장한 데몬 포트 — 손으로 고친 값도 읽히므로 범위를 본다. */

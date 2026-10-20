@@ -28,6 +28,7 @@ export function HomeStarters({
     <div className={`nx-starters${away ? " nx-starters--away" : ""}`} inert={away}>
       {/* biome-ignore lint/a11y/useSemanticElements: 칩의 한 줄(세그먼트) — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다. */}
       <div className="nx-starters-in" role="group" aria-label={L.home.startersLabel}>
+        <span className="nx-starters-label">{L.home.startersLabel}</span>
         {starters.map((starter) => {
           const Icon = ICONS[starter.key];
           return (

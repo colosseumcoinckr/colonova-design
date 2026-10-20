@@ -59,14 +59,14 @@ const LEGACY_BROWSER_TOOLS = new Set([
   "notify_developer",
 ]);
 function isBrowserToolName(name: string): boolean {
-  const plain = name.replace(/^mcp__colonova-browser__|^colonova-browser\//, "");
+  const plain = name.replace(/^mcp__colonova-browser__/, "");
   return LEGACY_BROWSER_TOOLS.has(plain);
 }
 type BrowserFailKind = "stale-ref" | "timeout" | "refused" | "no-pane" | "other";
 
 /**
  * 핀 적중 비교의 열쇠 — 후보와 도구 경로를 같은 정규화로 견준다(2026-10-19, Windows 호환성).
- * Windows 의 Codex 는 `C:/…` 나 섞인 구분자로 답한다. resolve 가 양쪽의 구분자를 맞춘다.
+ * Windows 의 도구 경로는 `C:/…` 나 섞인 구분자로 올 수 있다. resolve 가 양쪽의 구분자를 맞춘다.
  * Windows 의 경로는 대소문자를 가리지 않아 접는다. macOS · Linux 는 예전 그대로다.
  */
 function pathKey(cwd: string, path: string): string {
@@ -285,7 +285,7 @@ function freshTurn(text: string): InFlight {
 
 /**
  * turn.end 의 usage → 행의 세 칸. 캐시 적중률의 분모는 입력 전체(새 입력 + 캐시 읽기 +
- * 캐시 쓰기)다 — 캐시 쓰기를 모르는 프로바이더(Codex)는 0 으로 세어 비율이 조금 후해진다.
+ * 캐시 쓰기)다 — 캐시 쓰기를 모르는 프로바이더(null)는 0 으로 세어 비율이 조금 후해진다.
  */
 function usageColumns(
   usage: (ChatEvent & { kind: "turn.end" })["usage"],

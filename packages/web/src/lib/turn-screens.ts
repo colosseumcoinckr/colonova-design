@@ -152,6 +152,32 @@ export function lastTurnScreens(blocks: readonly Block[], toPath: ToPath): TurnS
 }
 
 /**
+ * 파일을 고치는 도구 — `daemon/src/tool-names.ts` 의 `CLAUDE_EDIT_TOOLS` 와 같은 이름이다. 명령(Bash)으로만 고친 턴은
+ * 세지 않는다 — 읽기만 하는 명령마다 미리보기를 다시 열지 않게(2026-10-20).
+ */
+const EDIT_TOOLS: ReadonlySet<string> = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+
+/**
+ * 방금 끝난 턴이 파일을 고쳤는가 — 마지막 사람(또는 기계) 턴 뒤에 끝나서 성공한 편집 도구가 하나라도 있으면 그렇다.
+ * 하위 에이전트의 편집도 센다(같은 클론을 고친다). 턴 끝의 새로 고침(`refreshOnTurnEnd`)이 읽는다.
+ */
+export function lastTurnEdited(blocks: readonly Block[]): boolean {
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index];
+    if (block?.type === "user") return false;
+    if (
+      block?.type === "tool" &&
+      block.done &&
+      block.isError !== true &&
+      EDIT_TOOLS.has(block.name)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * 이 대화에 나온 화면 전부 — 가장 최근에 말한 것이 앞에 선다. 같은 화면이
  * 여러 번 나오면 마지막으로 붙은 제목을 입는다(제목 없는 맨 주소는 앞선
  * 제목을 지우지 않는다).

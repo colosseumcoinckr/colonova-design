@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { type FixInput, fixState } from "../src/next/lib/agent-fix.ts";
 
 const base: FixInput = {
-  id: "codex",
+  id: "claude",
   starting: null,
   startError: null,
   install: null,
@@ -19,11 +19,11 @@ test("fixState: 아무 일도 없으면 쉰다", () => {
 });
 
 test("fixState: 설치는 이 카드의 AI 것일 때만 도는 중이다 — 업데이트 진행기나 다른 AI 는 아니다", () => {
-  assert.deepEqual(fixState({ ...base, install: { kind: "install-codex", line: "x" } }), {
+  assert.deepEqual(fixState({ ...base, install: { kind: "install-claude", line: "x" } }), {
     phase: "installing",
   });
-  assert.equal(fixState({ ...base, install: { kind: "install-claude", line: "x" } }).phase, "idle");
-  assert.equal(fixState({ ...base, install: { kind: "update-codex", line: "x" } }).phase, "idle");
+  assert.equal(fixState({ ...base, install: { kind: "install-second", line: "x" } }).phase, "idle");
+  assert.equal(fixState({ ...base, install: { kind: "update-claude", line: "x" } }).phase, "idle");
 });
 
 test("fixState: 요청을 보낸 틈에도 도는 중이다 — 단추가 다시 서서 두 번 눌리지 않게", () => {
@@ -32,7 +32,7 @@ test("fixState: 요청을 보낸 틈에도 도는 중이다 — 단추가 다시
 });
 
 test("fixState: 설치가 실패로 끝나면 실패가 서고, 다시 시작하면 곧바로 물러난다", () => {
-  const failed = { kind: "install-codex", ok: false, detail: "네트워크에 닿지 못했습니다" };
+  const failed = { kind: "install-claude", ok: false, detail: "네트워크에 닿지 못했습니다" };
   assert.deepEqual(fixState({ ...base, installDone: failed }), {
     phase: "failed",
     kind: "install",
@@ -43,14 +43,14 @@ test("fixState: 설치가 실패로 끝나면 실패가 서고, 다시 시작하
     fixState({
       ...base,
       installDone: failed,
-      install: { kind: "install-codex", line: "내려받는 중" },
+      install: { kind: "install-claude", line: "내려받는 중" },
     }).phase,
     "installing",
   );
   assert.equal(fixState({ ...base, installDone: failed, starting: "install" }).phase, "installing");
   // 다른 AI 의 실패 · 성공으로 끝난 설치는 이 카드의 말이 아니다.
   assert.equal(
-    fixState({ ...base, installDone: { ...failed, kind: "install-claude" } }).phase,
+    fixState({ ...base, installDone: { ...failed, kind: "install-second" } }).phase,
     "idle",
   );
   assert.equal(fixState({ ...base, installDone: { ...failed, ok: true } }).phase, "idle");
@@ -58,36 +58,36 @@ test("fixState: 설치가 실패로 끝나면 실패가 서고, 다시 시작하
 
 test("fixState: 로그인 방송은 시작한 AI 의 카드에 서고, 시작한 적이 없으면 모든 카드에 선다", () => {
   const login = { url: "https://example.com/login", wantsCode: true };
-  assert.deepEqual(fixState({ ...base, login, loginFor: "codex" }), {
+  assert.deepEqual(fixState({ ...base, login, loginFor: "claude" }), {
     phase: "login",
     url: "https://example.com/login",
     wantsCode: true,
   });
-  assert.equal(fixState({ ...base, login, loginFor: "claude" }).phase, "idle");
+  assert.equal(fixState({ ...base, login, loginFor: "second" }).phase, "idle");
   assert.equal(fixState({ ...base, login, loginFor: null }).phase, "login");
 });
 
 test("fixState: 로그인 실패는 시작한 AI 의 카드에만 서고, 도는 로그인이 있으면 물러난다", () => {
   const loginDone = { ok: false, detail: "로그인이 끝나지 않았습니다 — expired" };
-  assert.deepEqual(fixState({ ...base, loginDone, loginFor: "codex" }), {
+  assert.deepEqual(fixState({ ...base, loginDone, loginFor: "claude" }), {
     phase: "failed",
     kind: "login",
     detail: "로그인이 끝나지 않았습니다 — expired",
   });
-  assert.equal(fixState({ ...base, loginDone, loginFor: "claude" }).phase, "idle");
+  assert.equal(fixState({ ...base, loginDone, loginFor: "second" }).phase, "idle");
   assert.equal(fixState({ ...base, loginDone, loginFor: null }).phase, "idle");
   assert.equal(
     fixState({
       ...base,
       loginDone,
-      loginFor: "codex",
+      loginFor: "claude",
       login: { url: "https://example.com/login", wantsCode: false },
     }).phase,
     "login",
   );
   // 성공으로 끝난 로그인은 실패가 아니다.
   assert.equal(
-    fixState({ ...base, loginDone: { ok: true, detail: "" }, loginFor: "codex" }).phase,
+    fixState({ ...base, loginDone: { ok: true, detail: "" }, loginFor: "claude" }).phase,
     "idle",
   );
 });

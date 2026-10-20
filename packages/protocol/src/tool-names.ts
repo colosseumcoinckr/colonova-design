@@ -57,33 +57,15 @@ const NAMES: Record<string, string> = {
   submit_for_review: "제출 요청",
   screen_files: "화면 파일 찾기",
   notify_developer: "개발자에게 알리기",
-  // Codex 가 올리는 이름 — daemon/src/tool-names.ts 의 통계 표와 같은 이름이다(시험이 일치를 지킨다).
-  commandExecution: "명령 실행",
-  execCommand: "명령 실행",
-  exec_command: "명령 실행",
-  run_command: "명령 실행",
-  Shell: "명령 실행",
-  shell: "명령 실행",
-  fileChange: "파일 고치기",
-  applyPatch: "파일 고치기",
-  apply_patch: "파일 고치기",
-  edit_file: "파일 고치기",
-  write_file: "파일 만들기",
-  view: "파일 읽기",
-  view_file: "파일 읽기",
-  read_file: "파일 읽기",
-  webSearch: "웹 찾아보기",
 };
 
 /** The Korean action name for a tool, or the raw name when unknown. */
 export function toolLabel(name: string): string {
-  // SDK 가 올린 MCP 도구는 `mcp__<서버>__<이름>` 로, Codex 는 `<서버>/<이름>` 로
-  // 온다: the server prefix is plumbing, so the dictionary keys on the tool's
-  // own name. An unknown tool still passes through with its full name —
-  // nothing here invents a label the dictionary does not have.
-  const bare = name.startsWith("mcp__")
-    ? name.slice(name.lastIndexOf("__") + 2)
-    : name.slice(name.lastIndexOf("/") + 1);
+  // SDK 가 올린 MCP 도구는 `mcp__<서버>__<이름>` 로 온다: the server prefix is
+  // plumbing, so the dictionary keys on the tool's own name. An unknown tool
+  // still passes through with its full name — nothing here invents a label
+  // the dictionary does not have.
+  const bare = name.startsWith("mcp__") ? name.slice(name.lastIndexOf("__") + 2) : name;
   // `Object.hasOwn` — `constructor` · `toString` 같은 이름이 사전의 상속 칸에 걸리지 않게.
   return Object.hasOwn(NAMES, bare) ? (NAMES[bare] as string) : name;
 }

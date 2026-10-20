@@ -8,7 +8,7 @@ TOK=smoke$RANDOM$RANDOM
 node "$R/scripts/fixture-repo.mjs" "$T/fix" >/dev/null
 export HOME="$T/home"; mkdir -p "$HOME/.colonova-design/config" "$T/bin" "$T/gh"
 printf '{"host":"127.0.0.1","port":%s,"token":"%s"}\n' "$PORT" "$TOK" > "$HOME/.colonova-design/config/daemon.json"
-# 스모크에서는 에이전트 자동 업데이트를 끈다 — 켜 두면 데몬이 시작 직후 임시 HOME 에 Claude · Codex 를 실제로 내려받는다.
+# 스모크에서는 에이전트 자동 업데이트를 끈다 — 켜 두면 데몬이 시작 직후 임시 HOME 에 Claude Code 를 실제로 내려받는다.
 echo '{"agentAutoUpdate":"off"}' > "$HOME/.colonova-design/config/machine.json"
 if [ "${SMOKE_EMPTY:-}" = "1" ]; then
   echo '{"active":null,"projects":[]}' > "$T/projects.json"

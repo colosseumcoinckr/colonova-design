@@ -138,7 +138,7 @@ test("final submission lists unique remaining screens and related outside reques
   assert.deepEqual(finalOutgoingChanges(history, screens, []), { screens: [], outside: [] });
 });
 
-test("코멘트 장부 — 뒤에 코멘트 반영 차례가 있으면 반영됨, 없으면 고치는 중", () => {
+test("코멘트 장부 — 기록과 병합만으로 코멘트 반영 여부를 추정하지 않는다", () => {
   const reviews = [
     review(1, "버튼 색을\n  바꿔 주세요", "2026-09-25T03:00:00Z"),
     review(2, "", "2026-09-25T03:05:00Z"),
@@ -155,13 +155,13 @@ test("코멘트 장부 — 뒤에 코멘트 반영 차례가 있으면 반영됨
   assert.deepEqual(
     rows.map((r) => [r.id, r.text, r.state]),
     [
-      [3, "제목 글자가 커요", "fixing"],
-      [1, "버튼 색을 바꿔 주세요", "done"],
+      [3, "제목 글자가 커요", "unknown"],
+      [1, "버튼 색을 바꿔 주세요", "unknown"],
     ],
   );
   assert.equal(commentCount(reviews), 2);
   const merged = commentRows(reviews, null, { merged: true, reflectionPrefix: "x" });
-  assert.ok(merged.every((r) => r.state === "done"));
+  assert.ok(merged.every((r) => r.state === "unknown"));
 });
 
 test("시작일 · 시각 한 칸", () => {
@@ -184,9 +184,9 @@ test("코멘트 장부 — 작업 기록을 못 읽었으면 `고치는 중` 이
   const options = { merged: false, reflectionPrefix: L.work.reflectionPrefix };
   assert.equal(commentRows(reviews, null, options)[0]?.state, "unknown");
   // 기록을 읽었는데 반영 차례가 없으면 그때는 정말 고치는 중이다.
-  assert.equal(commentRows(reviews, [], options)[0]?.state, "fixing");
+  assert.equal(commentRows(reviews, [], options)[0]?.state, "unknown");
   // 반영된 사이클은 기록이 사라져도 모두 반영됨이다.
-  assert.equal(commentRows(reviews, null, { ...options, merged: true })[0]?.state, "done");
+  assert.equal(commentRows(reviews, null, { ...options, merged: true })[0]?.state, "unknown");
 });
 
 test("코멘트 읽기의 상태 — 요청이 없으면 읽을 것이 없고, 읽은 적이 있으면 다시 읽다 실패해도 그 값을 지킨다", () => {

@@ -12,7 +12,7 @@ import { ActivitySummary, groupActivity } from "../../components/transcript/acti
 import { ThinkingBlock, ToolBlock } from "../../components/transcript/blocks";
 import { TodoCard } from "../../components/transcript/todo";
 import type { Block } from "../../lib/daemon-client";
-import { previewPathOf, screenPath } from "../../lib/screen-link";
+import { previewPathOf } from "../../lib/screen-link";
 import { blockOnTape, mergeThinking } from "../../lib/tape-visibility";
 import { turnAnswerText, turnBlockNumbers } from "../../lib/turn-numbering";
 import { type TurnScreen, withoutTrailingScreenLinks } from "../../lib/turn-screens";
@@ -33,7 +33,6 @@ import {
   screenTitle,
   textRoles,
 } from "../lib/thread";
-import { openComparison } from "../preview/ComparisonDialog";
 import {
   BriefCard,
   CiCard,
@@ -44,18 +43,9 @@ import {
   ReviewCard,
   reviewParts,
 } from "./cards";
-import {
-  CheckIcon,
-  ClockIcon,
-  EditIcon,
-  FwdIcon,
-  InfoIcon,
-  ScreenIcon,
-  SparkIcon,
-  UndoIcon,
-} from "./icons";
+import { CheckIcon, ClockIcon, EditIcon, FwdIcon, ScreenIcon, SparkIcon, UndoIcon } from "./icons";
 import { LandedCard } from "./LandedCard";
-import { type LoadComparison, ResultScreen } from "./ResultScreens";
+import { ResultScreen } from "./ResultScreens";
 import { SettleLine } from "./SettleLine";
 
 /** CLI 가 사람의 말이나 답인 척 내려놓는 살림 줄 — 사람의 말이 아니다. */
@@ -119,7 +109,6 @@ export interface ThreadProps {
   onLogin?: () => void;
   onOpenScreen: (screen: TurnScreen) => void;
   onAdditionalEdit: (screen: TurnScreen) => void;
-  loadComparison: LoadComparison;
   onOpenHistory: () => void;
   /**
    * `방금 한 것 되돌리기` — 마지막 결과(그 요청의 보관이 프로젝트 기록의 맨 위일 때)에만 선다. 없으면 단추도 없고
@@ -578,29 +567,15 @@ export function Thread(props: ThreadProps) {
                   {screens.map((screen) => (
                     <ResultScreen
                       key={`${requestByTurn.get(block.id) ?? block.id}:${screen.path}`}
-                      route={screenPath(screen.path)}
-                      requestId={requestByTurn.get(block.id)}
-                      loadComparison={props.loadComparison}
-                      onToast={props.onToast}
                       title={screenTitle(screen, props.cycleScreens, {
                         homeScreen: L.preview.homeScreen,
                         unknownScreen: L.transcript.unknownScreen,
                       })}
                       onEdit={() => props.onAdditionalEdit(screen)}
                       onOpen={() => props.onOpenScreen(screen)}
-                      onCompare={() =>
-                        openComparison({
-                          route: screen.path,
-                          title: screen.title ?? L.transcript.unknownScreen,
-                          ...(requestByTurn.get(block.id)
-                            ? { requestId: requestByTurn.get(block.id) }
-                            : {}),
-                        })
-                      }
                     />
                   ))}
                 </div>
-                {/* 사진이 어느 때의 모습인지는 카드마다 되풀이하지 않고 한 번만 말한다. */}
                 {/* 턴 끝의 자동 확인이 문제 없이 지나갔을 때만 — 무엇을 열어 봤는지 실제로 본 것만 말한다. */}
                 {result?.checked && (
                   <p className="nx-results-checked">
@@ -610,10 +585,6 @@ export function Thread(props: ThreadProps) {
                     </span>
                   </p>
                 )}
-                <p className="nx-results-note">
-                  <InfoIcon />
-                  <span>{L.requestResult.historical}</span>
-                </p>
                 {props.undoLast != null &&
                   props.undoLast.requestId === requestByTurn.get(block.id) &&
                   !live && (

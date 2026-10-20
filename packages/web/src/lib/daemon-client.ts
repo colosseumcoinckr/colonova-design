@@ -757,8 +757,6 @@ interface DaemonApi {
     approveCommands?: boolean;
     /** E4(초대 v2): 넘긴 요청의 리뷰를 부탁할 개발자들. */
     reviewers?: string[];
-    /** 프로젝트별 지침 — 세션의 시스템 프롬프트에 붙는다. */
-    instructions?: string;
     /** false 면 등록만 한다 — 초대장이 여러 프로젝트를 한 번에 등록할 때 화면이 튀지 않게. */
     activate?: boolean;
   }) => Promise<ProjectSummary>;
@@ -770,8 +768,6 @@ interface DaemonApi {
       repoUrl?: string | null;
       baseBranch?: string;
       approveCommands?: boolean;
-      /** 프로젝트별 지침; null 이나 빈 문자열이면 지운다. */
-      instructions?: string | null;
       /** E4(초대 v2): 리뷰를 부탁할 개발자들; null 이면 지운다. */
       reviewers?: string[] | null;
     },
@@ -820,12 +816,6 @@ interface DaemonApi {
     expectedPreview?: string,
     sent?: SubmitSent,
   ) => Promise<DiffStatus>;
-  comparison: (input: {
-    route: string;
-    requestId?: string;
-    sha?: string;
-    submitted?: boolean;
-  }) => Promise<import("@colonova-design/protocol").ScreenComparison | null>;
   /**
    * 서비스의 첫 화면 사진 한 장(2026-10-07 베타 준비 분석 · 첫 5분) — 데스크톱의 숨은 창이 찍는다. 못 찍으면(드라이버가
    * 없는 개발 경로 · 비어 보이는 화면 · 시간 초과) `image: null` 이고 부른 쪽은 사진 없이 그린다.
@@ -945,7 +935,7 @@ interface DaemonApi {
   ) => Promise<{ ok: true }>;
   /** 설정의 업데이트 줄(PLAN-UI U12) — `check` 면 새 버전만 확인해 돌려준다. */
   agentUpdate: (
-    kind: "claude" | "codex",
+    kind: "claude",
     check?: boolean,
   ) => Promise<{ ok: true; latestVersion?: string | null; phase?: string }>;
   /** 넘긴 요청에 적을 작성자 이름 — null 이면 지운다(P1-3). */
@@ -1898,7 +1888,6 @@ export function useDaemon(url: string | null): Daemon {
         baseBranch?: string;
         approveCommands?: boolean;
         reviewers?: string[];
-        instructions?: string;
         /** 초대 v4(PLAN 단계 5): 개발자가 실어 보낸 새 대화의 처음 값. */
         defaults?: ProjectDefaults;
         /** 초대 v4: 사이클의 수명 규칙. */
@@ -1915,7 +1904,6 @@ export function useDaemon(url: string | null): Daemon {
             // is "nobody has vouched for these commands yet".
             ...(input.approveCommands ? { approveCommands: true } : {}),
             ...(input.reviewers ? { reviewers: input.reviewers } : {}),
-            ...(input.instructions ? { instructions: input.instructions } : {}),
             ...(input.defaults ? { defaults: input.defaults } : {}),
             ...(input.lifecycle ? { lifecycle: input.lifecycle } : {}),
             ...(input.activate !== undefined ? { activate: input.activate } : {}),
@@ -1933,7 +1921,6 @@ export function useDaemon(url: string | null): Daemon {
           repoUrl?: string | null;
           baseBranch?: string;
           approveCommands?: boolean;
-          instructions?: string | null;
           reviewers?: string[] | null;
           /** 초대 v4(PLAN 단계 5): 개발자의 값이라 덮는다 — null 이면 지운다. */
           defaults?: ProjectDefaults | null;
@@ -1950,7 +1937,6 @@ export function useDaemon(url: string | null): Daemon {
             ...(changes.approveCommands !== undefined
               ? { approveCommands: changes.approveCommands }
               : {}),
-            ...(changes.instructions !== undefined ? { instructions: changes.instructions } : {}),
             ...(changes.reviewers !== undefined ? { reviewers: changes.reviewers } : {}),
             ...(changes.defaults !== undefined ? { defaults: changes.defaults } : {}),
             ...(changes.lifecycle !== undefined ? { lifecycle: changes.lifecycle } : {}),
@@ -2005,7 +1991,6 @@ export function useDaemon(url: string | null): Daemon {
         ),
       // 제출 (PLAN L6): 의도를 적는 것으로 끝나고, 데몬은 그 틱을 최대 60초
       // 기다렸다 지금 상태를 돌려준다 — 창은 그 대기에 여유를 곁들인 값.
-      comparison: (input) => call({ type: "repo.comparison", ...input }, 30_000),
       firstLook: () => call({ type: "repo.firstLook" }, 30_000),
       submit: (
         sessionId?: string | null,
@@ -2169,8 +2154,8 @@ export function useDaemon(url: string | null): Daemon {
 
   // 설치의 끝(1단계): 성공이면 게이트가 다시 채색해야 한다 — 로그인 끝과
   // 같은 길이다. status 도 다시 읽는다(3단계): 프로바이더 목록의 available
-  // 이 바뀌어야 마법사의 Codex 선택 행과 설정의 미설치 목록이 스스로 물러
-  // 간다. 실패는 installDone.detail 로 마법사 카드가 말한다.
+  // 이 바뀌어야 설정의 미설치 목록이 스스로 물러간다. 실패는
+  // installDone.detail 로 마법사 카드가 말한다.
   useEffect(() => {
     if (installDone?.ok) {
       void api.onboardingCheck(onboardingProvider ?? undefined);

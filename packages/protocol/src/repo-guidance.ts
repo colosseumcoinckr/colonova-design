@@ -77,9 +77,12 @@ export interface Guidance {
   /** A command the planner can paste into a terminal, if one would fix this. */
   command?: string;
   /**
-   * 카드의 첫 동작 — 이 실패를 AI 의 과제로 넘긴다. 없는 종류는
-   * `commands` 하나다: 첫 실행의 동의는 사람의 것이라 AI 의 몫이 될 수 없고,
-   * `준비 시작` 버튼이 그 자리를 지킨다. (P3-3 전까지는 `preview` 도 비어
+   * 카드의 첫 동작 — 이 실패를 AI 의 과제로 넘긴다. 없는 종류는 셋이다:
+   * `commands`(첫 실행의 동의는 사람의 것 — `준비 시작` 버튼이 지킨다),
+   * `auth`(연결 코드는 사람이 초대 파일을 열어야 생긴다 — 문제 줄의 `초대 파일
+   * 열기`), `pnpm`(이 기계의 도구 — 데몬이 corepack 으로 한 번 준비한다).
+   * AI 는 셋 다 고칠 수 없어, 넘기면 시간만 쓰고 "해결 여부를 확인하지
+   * 못했어요" 로 끝났다(2026-10-20 사용자 보고). (P3-3 전까지는 `preview` 도 비어
    * 있었다 — 미리보기 자리의 멈춤 카드가 자기 버튼을 그린다는 이유였지만,
    * 그 카드가 서지 않는 길에서는 누를 것이 하나도 없었다.)
    */
@@ -106,12 +109,6 @@ export function guidanceFor(kind: ErrorKind, detail: string | null): Guidance {
       title: "GitHub 패키지 인증이 필요합니다",
       body: "연결 레포의 의존성을 사내 GitHub 패키지에서 받아옵니다. 설정의 연결 코드(패키지 읽기 권한)를 확인한 뒤 다시 시도해 주세요.",
       command: "pnpm config set //npm.pkg.github.com/:_authToken <PAT>",
-      agent: ask(
-        "의존성 설치",
-        "패키지 인증 해결",
-        "설치가 GitHub 패키지 인증에서 멈췄습니다. 이 머신의 npm 인증 설정(~/.npmrc 등)을 점검해 고칠 수 있으면 고치고, read:packages 권한의 토큰이 없는 것처럼 기획자가 해야 할 일이면 무엇이 필요한지 한국어로 알려 주세요.",
-        detail,
-      ),
     };
   }
   if (kind === "pnpm") {
@@ -119,12 +116,6 @@ export function guidanceFor(kind: ErrorKind, detail: string | null): Guidance {
       title: "pnpm이 설치되어 있지 않습니다",
       body: "연결 레포의 설치·미리보기에 pnpm이 필요합니다. 터미널에 아래 명령을 실행한 뒤 다시 시도해 주세요.",
       command: "corepack enable",
-      agent: ask(
-        "의존성 설치",
-        "pnpm 준비",
-        "준비에 필요한 pnpm이 이 머신에 없습니다 — corepack enable(또는 npm i -g pnpm)으로 pnpm을 준비해 주세요.",
-        detail,
-      ),
     };
   }
   if (kind === "conflict") {

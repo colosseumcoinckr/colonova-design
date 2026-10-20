@@ -3,7 +3,6 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { collectPrompts, replayRollout } from "../dist/agent/drivers/codex/store.js";
 import { DriverRegistry } from "../dist/agent/registry.js";
 import { SessionManager } from "../dist/session-manager.js";
 
@@ -14,8 +13,8 @@ test("one public conversation owns its vendor transcript across close and proces
   const lookedUp: string[] = [];
   const registry = new DriverRegistry();
   registry.register({
-    id: "codex",
-    describe: () => ({ id: "codex", label: "Codex", capabilities: {} }),
+    id: "second",
+    describe: () => ({ id: "second", label: "Second", capabilities: {} }),
     createSession: (launch: any, hooks: any) => {
       launched.push(launch);
       queueMicrotask(() =>
@@ -38,8 +37,8 @@ test("one public conversation owns its vendor transcript across close and proces
     },
     store: {
       list: async () => [
-        { id: "vendor", provider: "codex", title: "same title", lastModified: 1 },
-        { id: "unrelated", provider: "codex", title: "same title", lastModified: 2 },
+        { id: "vendor", provider: "second", title: "same title", lastModified: 1 },
+        { id: "unrelated", provider: "second", title: "same title", lastModified: 2 },
       ],
       has: async (id: string) => id === "vendor" || id === "unrelated",
       import: async (id: string) => {
@@ -53,7 +52,7 @@ test("one public conversation owns its vendor transcript across close and proces
     const first = make();
     const session = first.create({
       cwd,
-      provider: "codex",
+      provider: "second",
       sessionId: "public",
       launch: { model: "luna", effort: "low" },
     } as never);
@@ -74,7 +73,7 @@ test("one public conversation owns its vendor transcript across close and proces
     ]);
     const beforeView = launched.length;
     assert.deepEqual(await restarted.selectors("public", cwd), {
-      provider: "codex",
+      provider: "second",
       model: "sol",
       effort: "high",
       selectionKnown: true,
@@ -100,7 +99,7 @@ test("one public conversation owns its vendor transcript across close and proces
     assert.equal((await restarted.selectors("unrelated", cwd)).selectionKnown, false);
     const resumed = restarted.create({
       cwd,
-      provider: "codex",
+      provider: "second",
       launch: { resume: "public" },
     } as never);
     assert.equal(resumed.id, "public");
@@ -113,49 +112,6 @@ test("one public conversation owns its vendor transcript across close and proces
   } finally {
     rmSync(cwd, { recursive: true, force: true });
   }
-});
-
-test("Codex replay preserves marked pin C and its following gate after ordinary A/B", async () => {
-  const pin = '<!-- colonova-design:comments {"items":[],"request":"C"} -->\nC pin question';
-  const gate = '<!-- colonova-design:gate {"step":"screen"} -->\ncheck';
-  const lines = ["A", "B", pin, gate].flatMap((text, n) => [
-    {
-      type: "response_item",
-      payload: { type: "message", role: "user", content: [{ type: "input_text", text }] },
-    },
-    { type: "turn_context", payload: { turn_id: `turn-${n}` } },
-    {
-      type: "response_item",
-      payload: {
-        type: "message",
-        role: "assistant",
-        content: [{ type: "output_text", text: `answer-${n}` }],
-      },
-    },
-  ]);
-  lines.unshift({
-    type: "response_item",
-    payload: {
-      type: "message",
-      role: "user",
-      content: [
-        {
-          type: "input_text",
-          text: "<permissions instructions>injected</permissions instructions>",
-        },
-      ],
-    },
-  } as never);
-  assert.deepEqual(
-    (await collectPrompts(lines)).map((row) => row.text),
-    ["A", "B", pin, gate],
-  );
-  assert.deepEqual(
-    (await replayRollout(lines))
-      .filter((event) => event.kind === "user.echo")
-      .map((event) => event.text),
-    ["A", "B", pin, gate],
-  );
 });
 
 test("same-ID providers retain accepted model/effort and explicit default resets", async () => {
@@ -229,8 +185,8 @@ test("public identity lookup stays in its project, and alias deletion propagates
   const deletes: string[] = [];
   const registry = new DriverRegistry();
   registry.register({
-    id: "codex",
-    describe: () => ({ id: "codex", label: "Codex", capabilities: {} }),
+    id: "second",
+    describe: () => ({ id: "second", label: "Second", capabilities: {} }),
     createSession: (_: any, hooks: any) => {
       queueMicrotask(() =>
         hooks.onEvent({
@@ -247,7 +203,7 @@ test("public identity lookup stays in its project, and alias deletion propagates
     store: {
       list: async (cwd: string) =>
         cwd === a && stored
-          ? [{ id: "vendor", provider: "codex", title: "same", lastModified: 1 }]
+          ? [{ id: "vendor", provider: "second", title: "same", lastModified: 1 }]
           : [],
       has: async (id: string, cwd: string) => cwd === a && id === "vendor" && stored,
       delete: async (id: string) => {
@@ -260,17 +216,17 @@ test("public identity lookup stays in its project, and alias deletion propagates
   const make = () => new SessionManager({ onEvent: () => {}, onState: () => {} }, registry);
   try {
     const manager = make();
-    manager.create({ cwd: a, provider: "codex", sessionId: "public" } as never);
+    manager.create({ cwd: a, provider: "second", sessionId: "public" } as never);
     await new Promise((resolve) => setImmediate(resolve));
     await manager.list(a);
     await manager.close("public");
     assert.equal(await manager.findStoredProvider("public", b), undefined);
-    assert.equal(await manager.findStoredProvider("public", a), "codex");
+    assert.equal(await manager.findStoredProvider("public", a), "second");
     await assert.rejects(manager.remove("public", a), /storage refused deletion/);
     rejectDelete = false;
     const live = manager.create({
       cwd: a,
-      provider: "codex",
+      provider: "second",
       launch: { resume: "public" },
     } as never);
     await new Promise((resolve) => setImmediate(resolve));
@@ -291,7 +247,7 @@ test("identity journal tolerates unavailable storage and follows a worktree gitd
   const row = {
     publicId: "public",
     vendorId: "vendor",
-    provider: "codex",
+    provider: "second",
     model: "luna",
     effort: "low" as const,
   };

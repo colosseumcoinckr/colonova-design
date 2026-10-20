@@ -260,7 +260,7 @@ export interface RepoStatus {
      */
     checked?: GateChecked;
     /**
-     * 이 작업(보관)을 끝낸 세션의 AI 공급자 id(`claude` · `codex`) — 데몬이 보관 때 화면 지도에 적는다(2026-10-07 베타 준비
+     * 이 작업(보관)을 끝낸 세션의 AI 공급자 id(`claude`) — 데몬이 보관 때 화면 지도에 적는다(2026-10-07 베타 준비
      * 분석). 요청 본문의 「코드는 AI 가 썼어요」 줄이 종류를 말할 때만 읽는다. 옛 행에는 없다.
      */
     provider?: string;
@@ -536,15 +536,4 @@ export interface RepoHistory {
 export interface FirstLook {
   route: string;
   image: { at: string; mediaType: string; data: string } | null;
-}
-
-export interface ScreenComparison {
-  requestId: string;
-  sessionId: string;
-  sha: string;
-  route: string;
-  title: string;
-  viewport: "desktop";
-  before: { at: string; mediaType: string; data: string } | null;
-  after: { at: string; mediaType: string; data: string } | null;
 }

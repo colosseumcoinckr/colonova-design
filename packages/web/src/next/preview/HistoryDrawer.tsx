@@ -26,11 +26,9 @@ import {
 } from "../lib/revert-summary";
 import { useFreshKeys } from "../lib/use-fresh-keys";
 import { InlineConfirm } from "../ui/InlineConfirm";
-import { openComparison } from "./ComparisonDialog";
 import {
   CloseIcon,
   CommentNodeIcon,
-  CompareIcon,
   HistoryEmptyIcon,
   HistoryIcon,
   MergeNodeIcon,
@@ -447,7 +445,7 @@ export function HistoryDrawer({
         ) ?? -1);
   const loading = entries === null && !readFailed;
 
-  // ↑ ↓ Home End — 줄에서 줄로. Tab 은 줄마다 한 번씩만 서고(줄 단추 · 비교 단추), 화살표가 건너뛴다.
+  // ↑ ↓ Home End — 줄에서 줄로. Tab 은 줄 단추에 한 번씩만 서고, 화살표가 건너뛴다.
   // 안의 줄 단추에서 올라온 키를 목록 칸 하나가 듣는다(줄마다 달지 않는다).
   useEffect(() => {
     const list = scroller.current;
@@ -596,8 +594,6 @@ export function HistoryDrawer({
                         : "";
                     const current = row.index === 0;
                     const screens = entryScreens(entry, repo?.cycleScreens);
-                    const comparableScreens =
-                      repo?.cycleScreens?.filter((screen) => screen.sha === entry.sha) ?? [];
                     const confirming = confirm === entry.sha;
                     const clock = clockOf(entry.at);
                     const locked = restoring !== null || working;
@@ -668,38 +664,6 @@ export function HistoryDrawer({
                           >
                             {body}
                           </button>
-                        )}
-                        {comparableScreens.length > 0 && (
-                          <div className="nx-hacts">
-                            {comparableScreens.map((screen) => {
-                              // 화면이 여럿이면 눈에 보이는 말이 곧 이름이다(`결제 내역 전·후 보기`) — 이름이 보이는 말을 품어야 한다.
-                              const several = comparableScreens.length > 1;
-                              const label = several
-                                ? L.history.compareScreen(screen.title)
-                                : L.compare.open;
-                              return (
-                                <button
-                                  key={screen.route}
-                                  type="button"
-                                  className="nx-btn nx-btn--sm nx-btn--ghost nx-hcmp"
-                                  title={several ? label : undefined}
-                                  aria-label={several ? undefined : `${screen.title} · ${label}`}
-                                  onClick={() =>
-                                    openComparison({
-                                      route: screen.route,
-                                      title: screen.title,
-                                      sha: entry.sha,
-                                    })
-                                  }
-                                >
-                                  <span className="nx-hcmp-ic">
-                                    <CompareIcon />
-                                  </span>
-                                  <span className="nx-hcmp-t">{label}</span>
-                                </button>
-                              );
-                            })}
-                          </div>
                         )}
                         {confirming && (
                           <RevertCard

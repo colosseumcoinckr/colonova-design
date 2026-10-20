@@ -8,6 +8,7 @@ import {
   elapsedParts,
   prepProgress,
   prepStep,
+  refreshOnTurnEnd,
   zoomButtons,
 } from "../src/next/lib/preview-geometry.ts";
 
@@ -210,6 +211,24 @@ test("도착 판정 — 답이 끝났을 때 한 번, 옮겨 감과 이미 거�
     arriveOnTurnEnd({ ended: true, external: false, screens, hereKey: "member/detail" }),
     { path: "/member/list", already: true },
   );
+});
+
+test("턴 끝의 새로 고침 — 고친 턴에, 앱 안 이동으로 온 화면만 그 자리에서 다시 연다 (2026-10-20)", () => {
+  // `/` 를 통째로 열고 앱 안에서 `/signin` 으로 옮겨 온 화면 — 개발 서버의 바로 반영이 닿지 않는다(/tmp 재현).
+  const soft = { kind: "preview", pathKey: "/signin", loadedKey: "/" } as const;
+  const base = { edited: true, moving: false, native: true, ready: true, here: soft };
+  assert.equal(refreshOnTurnEnd(base), true);
+  // 파일을 고치지 않은 턴 · 도착이 다른 화면으로 옮김(통째로 연다) · 브라우저 경로 · 서버가 서지 않음이면 두지 않는다.
+  assert.equal(refreshOnTurnEnd({ ...base, edited: false }), false);
+  assert.equal(refreshOnTurnEnd({ ...base, moving: true }), false);
+  assert.equal(refreshOnTurnEnd({ ...base, native: false }), false);
+  assert.equal(refreshOnTurnEnd({ ...base, ready: false }), false);
+  // 통째로 연 화면은 그대로 — 바로 반영되고 입력하던 상태도 남는다.
+  assert.equal(refreshOnTurnEnd({ ...base, here: { ...soft, loadedKey: "/signin" } }), false);
+  // 모르면 다시 열지 않는다 — 위치가 없음 · 첫 문서 전 · 옛 데스크톱(null), 링크 너머의 외부 페이지.
+  assert.equal(refreshOnTurnEnd({ ...base, here: null }), false);
+  assert.equal(refreshOnTurnEnd({ ...base, here: { ...soft, loadedKey: null } }), false);
+  assert.equal(refreshOnTurnEnd({ ...base, here: { ...soft, kind: "web" } }), false);
 });
 
 test("준비의 걸음 — 내려받기 · 설치하기 · 미리보기 켜기", () => {

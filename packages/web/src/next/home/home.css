@@ -3,94 +3,120 @@
 .nx-home {
   flex: 1;
   overflow: auto;
-  /* 인사와 입력창 뒤에 번지는 포인트 색 기운 — 바닥 위에 한 겹 깊이를 더한다. 배경은 스크롤 상자 자신의
-     것이라 굴러도 위에 머문다. 팔레트의 포인트 색을 섞으므로 어느 테마에서나 그 테마의 빛이다. */
-  background: radial-gradient(
-      ellipse 70% 440px at 50% 0,
-      color-mix(in srgb, var(--accent) 6%, transparent) 0%,
-      color-mix(in srgb, var(--accent) 3.5%, transparent) 38%,
-      color-mix(in srgb, var(--accent) 1%, transparent) 70%,
-      transparent 100%
-    )
-    no-repeat;
-}
-
-/* Codex 팔레트의 포인트 색은 거의 검정이라 번지면 빛이 아니라 회색 얼룩이다 — 이 팔레트는 기운을 걷는다. */
-html[data-theme="codex"] .nx-home {
-  background: none;
+  background: var(--bg);
 }
 
 .nx-home-inner {
-  max-width: 700px;
+  max-width: 800px;
   margin: 0 auto;
-  padding: 10vh 24px 56px;
+  padding: clamp(28px, 6vh, 64px) 36px 48px;
 }
 
 .nx--narrow .nx-home-inner {
-  padding-top: 7vh;
+  padding: 24px 24px 40px;
 }
 
-/* 홈이 앞에 설 때 — 인사 · 입력창(과 시작점) · 받은 편지함이 위에서 아래로 한 박자씩 뜬다.
-   홈은 들어올 때마다 새로 그려지므로(nx-work 가 뜨는 것과 짝) 돌아올 때마다 한 번 선다.
-   채움은 backwards 만 — 끝난 뒤에도 남는 transform 애니메이션은 쌓임 맥락을 만들어 입력창의
-   팝이 아래 받은 편지함에 깔린다. 뒤의 두 자식은 지연 동안 첫 모양(흐림)으로 기다린다. */
-.nx-home-inner > * {
-  animation: nx-home-in 0.36s var(--drift) backwards;
+.nx-home-project {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 36px;
 }
 
-.nx-home-inner > :nth-child(2) {
-  animation-delay: 60ms;
+.nx-home-project-name {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
 }
 
-.nx-home-inner > :nth-child(3) {
-  animation-delay: 140ms;
+.nx-home-project-name > span {
+  font-size: 12px;
+  color: var(--ink3);
 }
 
-@keyframes nx-home-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
+.nx-home-project-name > b {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
-/* 인사 곁의 반짝이 — 처음 설 때 한 번 튀어 오른다. */
-@keyframes nx-greet-spark {
-  from {
-    opacity: 0;
-    transform: scale(0.4) rotate(-40deg);
-  }
+.nx .nx-home-open {
+  flex: none;
+  min-height: 34px;
+  background: var(--cmp);
+}
 
-  60% {
-    transform: scale(1.15) rotate(8deg);
-  }
+.nx-home-intro {
+  margin-bottom: 22px;
 }
 
 .nx-greet {
-  /* 반짝이의 크기 — 좁은 창에서는 인사와 함께 줄어든다. */
-  --nx-spark: 20px;
-  font-family: var(--serif);
-  font-weight: 400;
-  font-size: 34px;
-  letter-spacing: -0.01em;
-  text-align: center;
-  margin: 0 0 26px;
+  font-family: var(--font);
+  font-weight: 650;
+  font-size: clamp(24px, 2.2vw, 30px);
+  line-height: 1.4;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  margin: 0;
+}
+
+.nx-home-sub {
+  margin: 10px 0 0;
+  color: var(--ink2);
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: keep-all;
+}
+
+.nx-home-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+  list-style: none;
+  margin: 32px 0 0;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.nx-home-guide li {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
 }
 
-.nx--narrow .nx-greet {
-  --nx-spark: 17px;
-  font-size: 27px;
-}
-
-.nx-greet .nx-i {
-  flex: none;
-  width: var(--nx-spark);
-  height: var(--nx-spark);
+.nx-home-guide li > span {
+  font-size: 12px;
   color: var(--accent);
-  animation: nx-greet-spark 0.7s var(--spring) 0.2s backwards;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.nx-home-guide b {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.nx-home-guide p {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 5px 0 0;
+  color: var(--ink3);
+  word-break: keep-all;
+}
+
+@media (max-width: 640px) {
+  .nx-home-guide {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+
+  .nx-home-project {
+    margin-bottom: 24px;
+  }
 }
 
 /* ---------- 입력창 · 안내 · 시작점 ---------- */
@@ -104,7 +130,7 @@ html[data-theme="codex"] .nx-home {
    `.nx` 를 앞에 세워 이긴다. 손을 올리면 테두리가 짙어지고, 초점이 오면 포인트 색 고리가 번진다. */
 .nx .nx-composer--home {
   padding: 16px 14px 12px 18px;
-  border-radius: 22px;
+  border-radius: 14px;
   /* 고정 — 입력창의 그림자는 테마를 따르지 않는 따뜻한 검은 빛이다. */
   box-shadow:
     0 1px 2px rgba(40, 30, 20, 0.05),
@@ -142,7 +168,7 @@ html[data-theme="codex"] .nx-home {
   justify-content: center;
   gap: 10px;
   border: 2px dashed var(--accent);
-  border-radius: 22px;
+  border-radius: 14px;
   background: color-mix(in srgb, var(--cmp) 88%, transparent);
   color: var(--accent);
   font-size: 14px;
@@ -154,8 +180,9 @@ html[data-theme="codex"] .nx-home {
 .nx-home-hint {
   font-size: 12.5px;
   color: var(--ink3);
-  text-align: center;
-  margin: 12px 0 0;
+  text-align: left;
+  line-height: 1.6;
+  margin: 10px 2px 0;
 }
 
 /* 시작점 칩 — 입력창에 말이 생기면 접혀 물러난다(grid 행을 0 으로: 높이를 재지 않고도 접힌다).
@@ -183,7 +210,7 @@ html[data-theme="codex"] .nx-home {
   overflow: hidden;
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 8px;
   padding: 4px 4px 14px;
   margin: -4px -4px -14px;
@@ -193,15 +220,23 @@ html[data-theme="codex"] .nx-home {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 32px;
-  padding: 0 14px 0 11px;
-  border-radius: var(--r-pill);
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--r);
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--cmp) 70%, transparent);
   color: var(--ink2);
   font-size: 13px;
   font-weight: 500;
   white-space: nowrap;
+}
+
+.nx-starters-label {
+  flex-basis: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink3);
+  margin-bottom: 2px;
 }
 
 .nx .nx-starter-i {
@@ -216,14 +251,10 @@ html[data-theme="codex"] .nx-home {
   background: var(--cmp);
   border-color: var(--line2);
   color: var(--ink);
-  transform: translateY(-1px);
-  /* 고정 — 칩이 들릴 때의 그림자. */
-  box-shadow: 0 6px 14px -8px rgba(40, 30, 20, 0.3);
 }
 
 .nx .nx-starter:hover .nx-starter-i {
   color: var(--accent);
-  transform: scale(1.12);
 }
 
 /* ---------- 받은 편지함 ---------- */
@@ -621,8 +652,6 @@ html[data-theme="codex"] .nx-home {
     transition: none;
   }
 
-  /* 지연이 남으면 첫 모양(흐림)으로 기다리게 된다 — 움직임을 줄인 창은 곧바로 선다. */
-  .nx-home-inner > *,
   .nx-ready-shot {
     animation: none;
   }

@@ -168,7 +168,9 @@ test("로그인 요청은 주소를 방송하고 성공한 경우에만 기다�
   let done: (ok: boolean, detail: string) => void = () => assert.fail("로그인을 시작하지 않았다");
   let resumed = 0;
   const router = new RequestRouter({
-    agentDrivers: { get: () => ({ loginCommand: () => ({ command: "codex", args: ["login"] }) }) },
+    agentDrivers: {
+      get: () => ({ loginCommand: () => ({ command: "claude", args: ["auth", "login"] }) }),
+    },
     agentLogin: {
       start: (
         command: string,
@@ -178,8 +180,8 @@ test("로그인 요청은 주소를 방송하고 성공한 경우에만 기다�
           onDone(ok: boolean, detail: string): void;
         },
       ) => {
-        assert.equal(command, "codex");
-        assert.deepEqual(args, ["login"]);
+        assert.equal(command, "claude");
+        assert.deepEqual(args, ["auth", "login"]);
         callbacks.onUrl("https://example.test/login", false);
         done = callbacks.onDone;
         return { started: true };
@@ -189,7 +191,7 @@ test("로그인 요청은 주소를 방송하고 성공한 경우에만 기다�
     afterAgentLogin: () => resumed++,
   } as never);
   assert.deepEqual(
-    await router.dispatch({ id: "login", type: "onboarding.fix", kind: "login-codex" }),
+    await router.dispatch({ id: "login", type: "onboarding.fix", kind: "login-claude" }),
     { started: true },
   );
   done(false, "failed");

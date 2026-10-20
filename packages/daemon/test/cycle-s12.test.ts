@@ -16,7 +16,8 @@ const DAY = 24 * 60 * 60 * 1000;
 async function cycle(scene: SupervisedScene, i: number, now: number): Promise<void> {
   // AI 가 화면 파일을 고친 모양 — 제출의 틱에서 5행이 보관하고 12행이 올린 뒤 13행이 PR 을 연다.
   writeFileSync(join(scene.clone.path, `screen-${i}.tsx`), `export const n = ${i};\n`);
-  scene.supervisor.submit("button");
+  await scene.workspace.save({ message: `화면 ${i}` });
+  await scene.supervisor.submit("button");
   await scene.supervisor.settled();
   const pr = scene.core.openHandoff?.number;
   assert.ok(pr !== undefined, `${i}번째 제출이 PR 을 열어야 한다`);

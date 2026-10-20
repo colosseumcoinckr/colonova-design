@@ -299,10 +299,7 @@ export function buildScopeSection(numstat: string, maxPaths = SCOPE_PATHS_MAX): 
 }
 
 /** 도구가 이름을 아는 AI — 공급자 id → 개발자가 읽는 이름. 여기 없는 공급자는 이름 없이 AI 로만 말한다. */
-const AI_NAMES: ReadonlyMap<string, string> = new Map([
-  ["claude", "Claude Code"],
-  ["codex", "Codex"],
-]);
+const AI_NAMES: ReadonlyMap<string, string> = new Map([["claude", "Claude Code"]]);
 
 /**
  * 이번 제출에 담긴 화면 작업(보관)을 쓴 AI 의 종류(2026-10-07 베타 준비 분석) — 지도 행이 보관 때 적은 공급자다. 작업 하나라도
@@ -542,8 +539,8 @@ export function formatHandoffTitle(title: string, authorName?: string | null): s
 export const PLAIN_TITLE_MAX_CHARS = 80;
 
 /**
- * `formatHandoffTitle` 이 존중하는(벗기는) 종류 접두 — `change-plan.ts` 의 COMMIT_KINDS(2026-10-13 조직 commitlint 에
- * 맞춰 일곱)에 옛 제목이 쓰던 perf · build · ci 를 더한 읽기용 목록이다. 읽는 쪽은 너그럽다.
+ * `formatHandoffTitle` 이 존중하는(벗기는) 종류 접두 — 조직 commitlint 의 일곱 종류(2026-10-13)에
+ * 옛 제목이 쓰던 perf · build · ci 를 더한 읽기용 목록이다. 읽는 쪽은 너그럽다.
  */
 const TITLE_KIND_PREFIX =
   /^(feat|fix|perf|refactor|style|docs|test|build|ci|chore)(\([^()\r\n]+\))?!?:\s*/;

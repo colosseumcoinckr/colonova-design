@@ -186,6 +186,14 @@ async function gitWorks(candidate: string): Promise<boolean> {
 let gitResolution: { key: string; path: string | null } | null = null;
 
 /**
+ * 못 찾았다는 기억만 지운다(2026-10-20 온보딩 다시 확인) — 첫 화면의 `다시 확인` 이 앱 밖에서 막
+ * 설치한 git 을 보게 한다. 찾아 둔 경로는 그대로 둔다: git 호출마다 다시 찾지 않는다는 약속은 지킨다.
+ */
+export function forgetMissingGit(): void {
+  if (gitResolution?.path === null) gitResolution = null;
+}
+
+/**
  * The git this daemon drives — and the one every git child spawns, so the
  * gate's verdict and the clone it clears share one binary. A pinned
  * `COLONOVA_DESIGN_GIT_BIN` replaces discovery outright: the suites point it at a

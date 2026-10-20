@@ -17,7 +17,6 @@ import {
 import { type WebSocket, WebSocketServer } from "ws";
 import type { Diagnostic } from "./agent/driver.js";
 import { ClaudeDriver } from "./agent/drivers/claude/driver.js";
-import { CodexDriver } from "./agent/drivers/codex/driver.js";
 import { DriverRegistry } from "./agent/registry.js";
 import { AgentInstall } from "./agent-install.js";
 import { AgentUpdates } from "./agent-update.js";
@@ -102,7 +101,7 @@ export interface DaemonConfig {
   claudeExecutable?: string;
   /**
    * 개발 실행인가 — 개발 전용 면(`DaemonStatus.dev`)을 연다. 프로바이더 목록은
-   * 이 값과 무관하게 Claude Code · Codex 둘뿐이다. 데스크톱은 `!app.isPackaged`,
+   * 이 값과 무관하게 Claude Code 하나다. 데스크톱은 `!app.isPackaged`,
    * CLI 는 `COLONOVA_DESIGN_DEV_AGENTS=1`. 패키징된 앱은 절대 켜지 않는다.
    */
   devAgents?: boolean;
@@ -141,15 +140,16 @@ export interface DaemonConfig {
 
 /**
  * The provider registry's contents — registration order is the picker order
- * (registry.ts). Claude · Codex 둘뿐이다. 함수로 떼어 둔 이유는 하나다: 어느 실행이
- * 어떤 프로바이더 목록을 받는지를 데몬을 띄우지 않고 잠그기 위해서다.
+ * (registry.ts). Claude Code 하나다 — Codex 는 뺐다(2026-10-20 사용자 요청). 레지스트리는
+ * 그대로 둔다: 세션 · 목록 · 계정 읽기가 공급자 이름으로 갈라지는 길이 이 자리를 지난다.
+ * 함수로 떼어 둔 이유는 하나다: 어느 실행이 어떤 프로바이더 목록을 받는지를 데몬을
+ * 띄우지 않고 잠그기 위해서다.
  */
 export function registerAgentDrivers(
   registry: DriverRegistry,
   options: { claudeExecutable: () => string | null },
 ): void {
   registry.register(new ClaudeDriver(options.claudeExecutable));
-  registry.register(new CodexDriver());
 }
 
 /** Desktop reset runs before a daemon starts. Only conversations for this clone are erased. */
@@ -219,7 +219,7 @@ export class DaemonServer {
   );
   /** 터미널 없는 에이전트 로그인(P1-1) — 데몬이 파이프로 몰고 방송한다. */
   private readonly agentLogin = new AgentLogin();
-  /** 에이전트 설치 진행기(1단계) — Claude Code · Codex 를 끝까지 지켜본다. */
+  /** 에이전트 설치 진행기(1단계) — Claude Code 의 설치를 끝까지 지켜본다. */
   private readonly agentInstall = new AgentInstall();
   /**
    * 에이전트 업데이트(PLAN-UI U12) — 새 버전 확인과, 도는 작업이 없을 때의
@@ -339,6 +339,10 @@ export class DaemonServer {
           workspaces.repo.setPat(pat);
           // PLAN-UI U13: 인증으로 막혔던 제출은 새 코드로 곧바로 다시 간다.
           if (pat) workspaces.supervisor.retrySubmitNow();
+          // 연결 코드에서 멈춘 준비도 새 코드로 곧바로 다시 돈다(2026-10-20).
+          if (pat && workspaces.bringUpAuth !== null) {
+            void workspaces.repo.sync().catch(() => undefined);
+          }
         }
       },
       // 데몬이 본 GitHub 401(또는 그 뒤의 회복) — 판정이 바뀔 때만 status 를
@@ -751,7 +755,6 @@ export class DaemonServer {
     await this.escalation.load();
     lap("loadMs");
     this.router = new RequestRouter({
-      comparisonReady: (slug) => this.comparisonSaves.get(slug),
       manager: this.manager,
       fleet: this.fleet,
       previewDrivers: this.drivers,
@@ -1255,7 +1258,6 @@ export class DaemonServer {
     if (state === "idle") this.runAutoSave(sessionId);
   }
 
-  private readonly comparisonSaves = new Map<string, Promise<void>>();
   /** 다음 턴은 직전 보관의 커밋까지 기다린다. */
   private readonly autoSaveLands = new Map<string, Promise<void>>();
 
@@ -1299,7 +1301,7 @@ export class DaemonServer {
     // 먼저 풀리고, 이 then 의 동기 구간(대화록의 user.echo 를 changedScreens 와 함께 다시
     // 적는 자리)이 다음 턴의 beforeDeliver 가 이어지기 전에 지나간다 — 대화록에서 지난
     // 턴의 줄이 새 턴의 user.echo 뒤에 서지 않는다. 그 구간에 await 를 넣지 않는다.
-    const saving = autoSave
+    void autoSave
       .then(async (saved) => {
         if (!workspaces || !saved?.requestId) return;
         const prompt = readTape(workspaces.paths.root, sessionId).find(
@@ -1326,11 +1328,8 @@ export class DaemonServer {
       .catch(() => this.logger.info("Turn save record unavailable"))
       .finally(() => {
         // 턴이 idle 이 되어 자동 보관이 끝난 뒤 — 감독자가 사이클을 한 번 본다.
-        if (workspaces && this.comparisonSaves.get(workspaces.slug) === saving)
-          this.comparisonSaves.delete(workspaces.slug);
         void workspaces?.supervisor.tick("turn-idle");
       });
-    if (workspaces) this.comparisonSaves.set(workspaces.slug, saving);
   }
 
   private async status() {

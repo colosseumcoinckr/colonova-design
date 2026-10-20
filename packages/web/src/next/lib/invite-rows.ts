@@ -41,7 +41,7 @@ function sameRecord(a: object | undefined, b: object | undefined): boolean {
 
 /**
  * 바뀜 행의 "무엇이 바뀌었는가" — 초대장의 값과 짝의 지금 값을 비교해 만든
- * 문장의 목록. 초대장이 정하는 값만 본다(이름 · 지켜 줄 것은 사용자의 몫).
+ * 문장의 목록. 초대장이 정하는 값만 본다(이름은 사용자의 몫).
  */
 export function inviteUpdateChanges(
   row: Extract<InviteRow, { action: "update" }>,

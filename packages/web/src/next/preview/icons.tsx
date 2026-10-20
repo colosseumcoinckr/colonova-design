@@ -1,5 +1,4 @@
 import {
-  ArrowLeftRight,
   ArrowRight,
   Camera,
   Check,
@@ -54,7 +53,6 @@ export const HistoryEmptyIcon = make(History, 20, 1.7);
 export const MergeNodeIcon = make(RefreshCw, 11, 2.1);
 export const RestoreNodeIcon = make(Undo2, 11, 2.1);
 export const CommentNodeIcon = make(MessageSquareText, 11, 2.1);
-export const CompareIcon = make(ArrowLeftRight, 13, 2);
 export const MoreIcon = make(Ellipsis, 16);
 export const EyeIcon = make(Eye, 14);
 export const CameraIcon = make(Camera, 14);

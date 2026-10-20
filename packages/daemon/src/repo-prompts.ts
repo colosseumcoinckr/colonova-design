@@ -63,9 +63,8 @@ function renderSummaryFile(file: DiffFile): string {
 /**
  * The save-time memo's whole instruction (비개발자 저장): one Korean line
  * that can stand alone as a commit subject — no file-name lists, no
- * quoting, nothing but the line. 계획(describe_changes)의 커밋과 같은
- * `type: 변경` 꼴이다(2026-10-13 실사용자 피드백) — 폴백 커밋 하나가 기록에서
- * 다른 말투로 서지 않게. The diff is the only thing this turn may read, so
+ * quoting, nothing but the line. 조직 commitlint 의 `type: 변경` 꼴이다
+ * (2026-10-13 실사용자 피드백). The diff is the only thing this turn may read, so
  * it rides in the prompt, exactly like the summary's.
  */
 export function memoPrompt(files: DiffFile[]): string {

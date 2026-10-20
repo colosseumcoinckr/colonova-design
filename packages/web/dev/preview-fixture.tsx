@@ -341,7 +341,6 @@ function Row({ spec }: { spec: Case }) {
             }
             frozenReady
             onFrozen={() => {}}
-            onCompare={() => {}}
             onShowAi={() => {}}
             showAiBusy={false}
             onShortcuts={() => {}}
@@ -495,7 +494,6 @@ function LiveRow({ spec }: { spec: Case }) {
             onZoom={() => {}}
             frozenReady
             onFrozen={() => {}}
-            onCompare={() => {}}
             onShowAi={() => {}}
             showAiBusy={false}
             onShortcuts={() => {}}

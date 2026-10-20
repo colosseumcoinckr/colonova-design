@@ -10,6 +10,7 @@ import {
   eraseProjectConversations,
 } from "@colonova-design/daemon/server";
 import { app, BrowserWindow, dialog, Menu, safeStorage, session, shell } from "electron";
+import { shouldOfferMove } from "./app-location.js";
 import { PlannerNotices } from "./app-notify.js";
 import { assertResetPaths, finishPendingAppReset, requestAppReset } from "./app-reset.js";
 import { SelfUpdates } from "./app-updates.js";
@@ -18,14 +19,24 @@ import { benchEndpointBody, benchEndpointPath, benchEndpointPid } from "./bench-
 import { registerDesktopBridge } from "./bridge.js";
 import {
   ANSWER,
+  KEYCHAIN_ANSWER,
+  MOVE_ANSWER,
+  moveFailedOptions,
+  moveToApplicationsOptions,
   quitOptions,
   resetOptions,
   resetUnfinished,
   START_ANSWER,
   startFailedOptions,
+  unreadableCredentialsOptions,
 } from "./copy.js";
 import { startDaemonServer } from "./daemon-start.js";
-import { loadNotificationPrefs, loadStoredPort, saveDesktopSettings } from "./desktop-settings.js";
+import {
+  loadMoveDeclined,
+  loadNotificationPrefs,
+  loadStoredPort,
+  saveDesktopSettings,
+} from "./desktop-settings.js";
 import { APP_BUNDLE_ID } from "./identity.js";
 import { InviteOpenQueue, inviteArgvPaths } from "./invite-open.js";
 import { GUIDE_URL } from "./links.js";
@@ -248,7 +259,59 @@ function removeBenchEndpoint(): void {
   }
 }
 
+/**
+ * 응용 프로그램 폴더 밖(DMG · 내려받은 자리)에서 켠 mac 앱에 옮기기를 권한다(2026-10-20 비개발자 mac 설치 검토) —
+ * 데몬을 띄우기 전에 묻는다. 옮기면 Electron 이 앱을 끝내고 새 자리에서 다시 켠다 — 그때 true 를 돌려 부팅을
+ * 멈춘다. 관리자 암호 창을 닫으면 false, 복사가 실패하면 던진다 — 둘 다 손으로 옮기는 길을 말하고 이어 간다.
+ * 기록은 종류만 남긴다.
+ */
+async function offerMoveToApplications(): Promise<boolean> {
+  if (process.platform !== "darwin") return false;
+  const settingsPath = desktopSettingsPath();
+  const offer = shouldOfferMove({
+    platform: process.platform,
+    packaged: app.isPackaged,
+    underTest,
+    inApplications: app.isInApplicationsFolder(),
+    declined: loadMoveDeclined(settingsPath),
+    pendingInvite: inviteOpen.size > 0,
+  });
+  if (!offer) return false;
+  const { response, checkboxChecked } = await dialog.showMessageBox(moveToApplicationsOptions());
+  if (response !== MOVE_ANSWER.move) {
+    if (checkboxChecked) saveDesktopSettings(settingsPath, { moveDeclined: true });
+    return false;
+  }
+  let moved = false;
+  try {
+    moved = app.moveToApplicationsFolder();
+  } catch {
+    moved = false;
+  }
+  if (moved) return true;
+  await dialog.showMessageBox(moveFailedOptions()).catch(() => undefined);
+  return false;
+}
+
+/**
+ * 저장해 둔 연결 정보를 읽지 못했을 때(2026-10-20 비개발자 mac 설치 검토) — 업데이트 뒤 키체인 허용을 거부하면
+ * 연결 코드가 조용히 사라진 것처럼 보였다. 데몬이 시작하며 읽었으므로(github.load) 창이 선 뒤에 한 번 알린다.
+ * mac 은 다시 켜면 키체인이 다시 묻는다. 기록은 종류와 숫자만이다.
+ */
+async function offerCredentialRecovery(window: BrowserWindow, count: number): Promise<void> {
+  daemonServer?.hostLog("credentials-unreadable", { count });
+  const { response } = await dialog.showMessageBox(
+    window,
+    unreadableCredentialsOptions(process.platform),
+  );
+  if (process.platform === "darwin" && response === KEYCHAIN_ANSWER.relaunch) {
+    app.relaunch();
+    app.quit();
+  }
+}
+
 async function bootApp(): Promise<void> {
+  if (await offerMoveToApplications()) return;
   const resetPaths = {
     dataDir: COLONOVA_DESIGN_DATA_DIR,
     userData: app.getPath("userData"),
@@ -480,6 +543,9 @@ async function bootApp(): Promise<void> {
     plannerPreview.unmount();
   };
   registerCloseGuard(window);
+  if (credentials.unreadable > 0 && !underTest) {
+    void offerCredentialRecovery(window, credentials.unreadable).catch(() => undefined);
+  }
 
   void updates.reportSwapResult();
   updates.schedule();

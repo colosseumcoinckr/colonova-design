@@ -258,8 +258,7 @@ interface SessionLaunch {
   /** Reasoning effort the query starts on; omitted = the provider's default. */
   effort?: EffortLevel;
   /**
-   * 프로젝트별 지침(설정 문서 P1#8) — 기본 시스템 프롬프트 끝에 붙는 몇 줄.
-   * 사용자가 이 프로젝트에서 지켜 줄 것을 적는 상자다.
+   * 앱 공통 지침 — 기본 시스템 프롬프트 끝에 붙는다.
    */
   appendSystemPrompt?: string;
 }
@@ -1499,8 +1498,8 @@ export class Session {
     // 다음 턴에 보내기: 턴이 도는 중에 온 말은 여기서 기다린다(`held`) — 아직
     // 아무 일도 일어나지 않은 채로. CLI 로 곧장 가는 건 도는 턴이 없을 때뿐이다.
     // 바로 실어 보내기(steer)는 그 사이의 길이다 — 드라이버가 도는 턴에 실을
-    // 와이어를 내주면 그 턴에 그대로 실리고(codex turn/steer), 그런 길이 없는
-    // 에이전트는 '지금 보내기'와 같은 기계로 '바로'를 이행한다: 도는 턴을
+    // 와이어를 내주면 그 턴에 그대로 실리고, 그런 길이 없는 에이전트(지금의
+    // Claude)는 '지금 보내기'와 같은 기계로 '바로'를 이행한다: 도는 턴을
     // 끊고 이 말을 첫 번째 새 턴으로 세운다.
     // 준비 중(PLAN-UI U8)에는 도는 턴이 없어도 기다린다 — 바로 실어 보낼 턴도 없다.
     if (this.preparing && this.turnStartedAt === null) {
@@ -1603,8 +1602,7 @@ export class Session {
       if (this.closed || this.interrupting || this.lastDelivered !== item) return;
       this.events.onDelivered?.(this.id);
       void this.agent?.send({ text: agentText, attachments }).catch((error: unknown) => {
-        // 전송이 살아 있어도 보내기가 거절될 수 있다(codex 의 turn/start 거절,
-        // 방금 닫힌 SDK 입력 큐). 삼키면 turnStartedAt 만 남고 turn.end 는
+        // 전송이 살아 있어도 보내기가 거절될 수 있다(방금 닫힌 SDK 입력 큐). 삼키면 turnStartedAt 만 남고 turn.end 는
         // 영원히 오지 않는다 — 시계가 도는 죽은 턴. 여기서 스스로 턴을 닫는다:
         // 에러 턴 끝은 handleDriverEvent 의 endTurn 을 타고 대기 줄까지 정산한다.
         const detail = error instanceof Error ? error.message : String(error);

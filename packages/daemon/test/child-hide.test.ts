@@ -305,7 +305,6 @@ test("스캐너는 진짜 소스를 읽고 있다 — 알려진 호출 자리를
     "daemon/src/preview-claim.ts",
     "daemon/src/onboarding.ts",
     "daemon/src/handoff-preview.ts",
-    "daemon/src/agent/jsonrpc.ts",
     "daemon/src/type-check.ts",
     "desktop/src/app-updates.ts",
   ]) {

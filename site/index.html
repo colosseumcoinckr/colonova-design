@@ -37,7 +37,7 @@
     <link rel="stylesheet" href="style.css?v=15">
     <script type="module" src="invite.js?v=11"></script>
     <script type="module" src="demo.js?v=12"></script>
-    <script type="module" src="bento.js?v=1"></script>
+    <script type="module" src="bento.js?v=2"></script>
     <script type="module" src="page.js?v=2"></script>
     <script type="module" src="motion.js?v=2"></script>
     <script type="module" src="flair.js?v=2"></script>
@@ -314,8 +314,8 @@
               <span class="flow__no">03</span>
               <strong>제출</strong>
               <span
-                >다 됐으면 버튼 하나. 확인 한 장을 거쳐 개발자에게 바로 가고, 개발자의 코멘트는 AI
-                가 바로 반영해 다시 제출해요.</span
+                >다 됐으면 버튼 하나. 확인 한 장을 거쳐 개발자에게 바로 가고, 개발자의 코멘트는
+                앱에 도착해 확인한 뒤 다시 제출해요.</span
               >
             </button>
           </li>
@@ -636,8 +636,8 @@
           <div class="bento__cell" id="bento-submit">
             <p class="bento__name">제출은 버튼 하나</p>
             <p class="bento__desc">
-              확인 한 장에 <b>개발자에게 한마디</b>를 얹어 보내요. 개발자의 코멘트는 AI 가 바로
-              반영해 다시 싣고, 반영된 내용은 도구가 스스로 받아 와요.
+              확인 한 장에 <b>개발자에게 한마디</b>를 얹어 보내요. 개발자의 코멘트와 자동 검사 결과는
+              대화에서 확인하고, 수정을 요청한 뒤 다시 제출해요. 반영된 내용은 도구가 받아 와요.
             </p>
             <div class="bs-card" id="bs-card" data-state="ask">
               <div class="bs-ask">
@@ -707,12 +707,13 @@
             <p class="bento__foot" id="bh-foot">기록은 지워지지 않아요</p>
           </div>
 
-          <!-- 오류는 사람 몫이 아니에요 — 도구가 먼저 열어 보고, AI 가 고친다 -->
+          <!-- 오류는 사람 몫이 아니에요 — 깨진 미리보기를 앱이 확인하고 AI 가 먼저 고친다(2026-10-20 자동 확인 축소) -->
           <div class="bento__cell bento__cell--wide" id="bento-safety">
             <p class="bento__name">오류는 AI가 먼저 살펴요</p>
             <p class="bento__desc">
-              화면을 만진 답이 끝나면 도구가 그 화면을 다시 열어 봐요. 빈 화면이나 오류를 찾으면 AI
-              가 그림을 보고 고치고, 꺼진 미리보기는 도구가 먼저 다시 켜요.
+              미리보기가 안 뜨거나 깨져 보이면 앱이 화면을 확인하고, 정말 깨져 있으면 AI가 먼저
+              고쳐요. 꺼진 미리보기는 도구가 먼저 다시 켜요. 만진 답마다 다시 열어 확인하지는
+              않아요 — 확인은 프로젝트의 규칙대로 AI가 해요.
             </p>
             <div class="bg-stage" id="bg-stage" data-step="4">
               <div class="bg-screen" aria-hidden="true">
@@ -726,10 +727,10 @@
                 <span class="bg-screen__blank">빈 화면</span>
               </div>
               <ol class="bg-log" id="bg-log" aria-live="polite">
-                <li data-at="1">화면을 다시 열어 봤어요</li>
-                <li data-at="2" class="bad">빈 화면이에요 — <b>AI가 고치는 중이에요</b></li>
-                <li data-at="3">휴대폰 크기로도 열어 봤어요 — 옆으로 밀리지 않아요</li>
-                <li data-at="4" class="good">예시 화면을 고쳤어요 · 다시 확인해 보세요</li>
+                <li data-at="1">미리보기가 깨져 보여요 — 앱이 화면을 확인해요</li>
+                <li data-at="2" class="bad">빈 화면이에요 — <b>AI가 막힌 곳을 고치고 있어요</b></li>
+                <li data-at="3">미리보기가 고친 화면으로 옮겨 가요</li>
+                <li data-at="4" class="good">다시 떴어요 · 이상한 곳은 말로 알려 주세요</li>
               </ol>
             </div>
             <div class="bg-foot">
@@ -778,7 +779,7 @@
                   <button
                     type="button"
                     class="bj-row"
-                    data-note="개발자 코멘트 2개 — AI가 반영하는 중"
+                    data-note="개발자 코멘트 2개 — 대화에서 확인해 보세요"
                   >
                     <i class="bj-dot bj-dot--comment"></i>이벤트 페이지<b>코멘트 2</b>
                   </button>
@@ -828,13 +829,6 @@
                     ><i class="tc__btn"></i></span
                   >
                   <span class="tc__name">Claude</span>
-                </button>
-                <button type="button" class="tc" data-site-theme="codex" aria-pressed="false">
-                  <span class="tc__win" data-theme="codex"
-                    ><i class="tc__side"></i><i class="tc__l1"></i><i class="tc__l2"></i
-                    ><i class="tc__btn"></i></span
-                  >
-                  <span class="tc__name">Codex</span>
                 </button>
                 <button type="button" class="tc" data-site-theme="light" aria-pressed="false">
                   <span class="tc__win" data-theme="light"
@@ -906,7 +900,7 @@
         <h2>이렇게 말해 <em>보세요</em></h2>
         <p class="section__lead">
           문장을 누르면 복사돼요. 앱 입력창에 그대로 붙여 넣어 보세요. “개발자에게 보내 줘”라고
-          명시하면 AI가 확인창 없이 제출을 요청해요.
+          하면 AI가 화면의 제출 버튼을 안내해요.
         </p>
         <ul class="say" id="say-list" data-stagger>
           <li>
@@ -968,7 +962,7 @@
             <button type="button" class="say__row" data-copy="개발자에게 보내 줘">
               <span class="say__bubble">개발자에게 보내 줘</span>
               <span class="say__arrow" aria-hidden="true">→</span>
-              <span class="say__result">확인 없이 AI 가 제출해 줘요</span>
+              <span class="say__result">AI가 화면의 제출 버튼을 안내해요</span>
               <span class="say__copy" aria-hidden="true">복사</span>
             </button>
           </li>
@@ -1103,19 +1097,27 @@
                 SmartScreen 창에서 <b>추가 정보 → 실행</b>, mac 은 시스템 설정 → 개인정보 보호 및
                 보안 → <b>그래도 열기</b>(macOS 14 이하는 앱을 우클릭 → <b>열기</b>). 앱을
                 <b>응용 프로그램</b> 폴더로 옮길 때 관리자 암호를 물으면, 사용자 폴더의
-                <code>Applications</code> 에 넣어도 돼요.
+                <code>Applications</code> 에 넣어도 돼요. mac 은 DMG 에서 바로 켜지 말고 응용
+                프로그램 폴더로 옮겨 켜요 — 그대로 켜면 앱이 옮기기를 권해요.
               </p>
               <p class="steps__note">
                 Windows 에서 <b>스마트 앱 컨트롤</b>이 켜져 있으면 서명이 없는 설치 파일을 막을 수
                 있어요 — Windows 보안 → 앱 및 브라우저 컨트롤 → <b>스마트 앱 컨트롤</b>을 확인하고,
                 켜져 있으면 개발자에게 알려 주세요.
               </p>
+              <p class="steps__note">
+                Edge 가 <b>일반적으로 다운로드되지 않습니다</b>를 띄우면 다운로드 목록의
+                <b>…</b> → <b>유지</b> → <b>자세히 표시</b> → <b>그래도 유지</b>로 받아요. 처음
+                미리보기를 켤 때 Windows 방화벽 창이 뜨면 <b>취소</b>를 눌러도 돼요(이 컴퓨터 안에서만
+                써요). mac 은 업데이트 뒤 <code>ColoNova Design Safe Storage</code> 키체인 사용을 물으면
+                맥 로그인 암호를 넣고 <b>항상 허용</b>을 눌러요.
+              </p>
             </li>
             <li>
               <strong>AI 연결하기</strong>
               첫 화면은 체크리스트 한 장이에요. 화면을 만드는 AI 프로그램(Claude Code)을
-              <b>설치 버튼 하나</b>로 준비하고, 브라우저에서 내 Claude 계정으로 로그인하면 저절로
-              돌아와요. Codex 는 선택이라 건너뛰어도 돼요.
+              <b>설치 버튼 하나</b>로 준비하고, 브라우저에서 내 Claude 계정으로 로그인하고 연결을
+              허용하면 저절로 넘어가요.
               <p class="steps__note">
                 AI 계정은 <b>유료 요금제</b>여야 해요 — Claude Code 는 Claude Pro · Max · Team ·
                 Enterprise 계정으로 쓸 수 있어요(무료 요금제로는 쓸 수 없어요).
@@ -1191,9 +1193,7 @@
             <p>
               작업은 이 컴퓨터에 있는 서비스의 복사본에서 일어나요. 서비스의 원본은 개발자가
               제출을 받아 합치기 전까지 그대로예요. 복사본 밖의 파일은 AI 가 고치지 못하게 도구가
-              막아요 — 다만 Codex 로 일할 때는 이 잠금이 아직 없어서, 복사본 안에서만 일하도록 AI
-              에게 일러 두는 데까지만 해요. 마음에 안 들면 <b>작업 기록</b>에서 언제든 되돌리면
-              돼요.
+              막아요. 마음에 안 들면 <b>작업 기록</b>에서 언제든 되돌리면 돼요.
             </p>
           </details>
           <details class="faq__item">
@@ -1207,7 +1207,7 @@
           <details class="faq__item">
             <summary>오류 화면이 뜨면 어떻게 하나요?</summary>
             <p>
-              도구가 화면을 다시 열어 확인하고, 깨져 있으면 AI가 먼저 고쳐요. 해결하지 못하면
+              앱이 화면을 확인하고, 깨져 있으면 AI가 먼저 고쳐요. 해결하지 못하면
               개발자에게 알려요. <b>다시 연결이 필요해요</b>가 나오면 새 초대 파일을 놓거나
               브라우저에서 다시 로그인해 주세요.
             </p>
@@ -1279,7 +1279,7 @@
               ><span
                 ><code>colonova-design/&lt;작성자&gt;/&lt;YYYYMMDD&gt;-&lt;번호&gt;-&lt;작업ID&gt;</code>
                 브랜치에서, 본문에 작성자 이름 · 코드는 AI 가 썼다는 줄 · 범위(의존성 · 설정 · CI 를
-                건드렸는가) · 바뀐 파일 · 사용자가 찍은 핀 · 자동 확인 결과 · 화면 사진을 적어서.
+                건드렸는가) · 바뀐 파일 · 사용자가 찍은 핀을 적어서.
                 베이스 브랜치에는 쓰지 않아요.</span
               >
             </li>
@@ -1288,16 +1288,16 @@
               ><span
                 >브랜치 이름에 슬래시가 둘이라 <code>colonova-design/*</code> 는 맞지 않아요 —
                 <code>colonova-design/**/*</code> 로 거세요(GitHub 는 <code>*</code> 가 슬래시를
-                넘지 않아요). 캡처가 올라가는 <code>colonova-design-assets</code> 브랜치는 다른
-                이름이에요 — 모든 브랜치에 거는 규칙이면 이 브랜치의 푸시를 허용해 주세요.</span
+                넘지 않아요). 캡처가 올라가던 <code>colonova-design-assets</code> 브랜치는 다른
+                이름이에요 — 남아 있는 캡처 링크를 위해 모든 브랜치에 거는 규칙이면 이 브랜치의 푸시도 허용해 주세요.</span
               >
             </li>
             <li>
               <b>리뷰는 평소처럼</b
               ><span
-                >풀 리퀘스트에 코멘트를 남기면 AI 가 반영해 같은 요청에 다시 올려요. 요청은 승인에
-                섞지 말고 코멘트나 변경 요청으로 남겨 주세요 — 승인에 달린 글은 AI 가 읽지
-                않아요.</span
+                >풀 리퀘스트에 코멘트를 남기면 앱에 도착해 사용자가 확인하고 다시 제출해요. 요청은
+                승인에 섞지 말고 코멘트나 변경 요청으로 남겨 주세요 — 승인에 달린 글은 코멘트로
+                전달되지 않아요.</span
               >
             </li>
             <li>
@@ -1375,8 +1375,8 @@
                   <th scope="row">Checks</th>
                   <td>Read <em>권장</em></td>
                   <td>
-                    앱이 자동 검사 결과를 읽어 AI 가 고치게 하려면 필요해요(같은 릴리스에서
-                    들어와요). 없어도 앱은 돌아가요 — 제출 뒤 <code>자동 검사</code> 문장만 약해져요
+                    앱이 제출 뒤의 자동 검사 결과를 읽어 보여 주려면 필요해요. 없어도 앱은 돌아가요 —
+                    제출 뒤 <code>자동 검사</code> 줄이 서지 않아요
                   </td>
                 </tr>
               </tbody>

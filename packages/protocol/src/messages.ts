@@ -127,8 +127,8 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     viewing: z.object({ path: z.string().min(1).max(2000) }).optional(),
     /**
      * 도는 턴에 온 말의 길. `queue`(기본)는 대기 줄에 세워 다음 턴에
-     * 보내고, `steer`는 도는 턴에 그대로 실어 보낸다 — 드라이버가 그 길을
-     * 내주지 않으면(codex 외) 데몬이 대기 줄로 물러난다.
+     * 보내고, `steer`는 바로 보낸다 — 드라이버가 도는 턴에 실을 길을 내주지
+     * 않으면(지금의 Claude) 데몬이 도는 턴을 끊고 이 말을 첫 새 턴으로 보낸다.
      */
     mode: z.enum(["queue", "steer"]).optional(),
   }),
@@ -365,8 +365,6 @@ const clientMessageSchema = z.discriminatedUnion("type", [
      * 하나도 없으면 무시하고 연다.
      */
     activate: z.boolean().optional(),
-    /** 프로젝트별 지침(설정 문서 P1#8) — project.update 의 것과 같은 한도·뜻. */
-    instructions: z.string().max(10_000).optional(),
     /**
      * 초대 v4(PLAN 단계 5): 개발자가 실어 보낸 새 대화의 처음 값 — 칩이나
      * 선로가 말하지 않았을 때만 쓰인다.
@@ -409,8 +407,6 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     reviewers: z.array(z.string().min(1).max(80)).max(10).nullable().optional(),
     /** Approves this repo's commands post-hoc — the error card's button. */
     approveCommands: z.boolean().optional(),
-    /** 프로젝트별 지침(설정 문서 P1#8) — 세션의 시스템 프롬프트에 붙는다. */
-    instructions: z.string().max(10_000).nullable().optional(),
     /** 초대 v4(PLAN 단계 5): 개발자의 값이라 덮는다 — null 이면 지운다. */
     defaults: z
       .object({
@@ -479,15 +475,7 @@ const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     ...withId,
     type: z.literal("onboarding.fix"),
-    kind: z.enum([
-      "install-claude",
-      "install-codex",
-      "login-claude",
-      "login-codex",
-      "install-git",
-      "install-node",
-      "install-pnpm",
-    ]),
+    kind: z.enum(["install-claude", "login-claude", "install-git", "install-node", "install-pnpm"]),
     /**
      * 로그인 고침이 어느 에이전트의 것인지(P1-1) — 각 드라이버가 자기 로그인
      * 명령을 선언한다(loginCommand). 없으면 claude 게이트의 역사적 기본.
@@ -612,17 +600,6 @@ const clientMessageSchema = z.discriminatedUnion("type", [
    */
   z.object({ ...withId, type: z.literal("repo.history") }),
   z.object({ ...withId, type: z.literal("repo.submitPreview") }),
-  z.object({
-    ...withId,
-    type: z.literal("repo.comparison"),
-    submitted: z.boolean().optional(),
-    route: z.string().min(1).max(2000),
-    requestId: z.string().min(1).max(200).optional(),
-    sha: z
-      .string()
-      .regex(/^[a-f0-9]{40,64}$/)
-      .optional(),
-  }),
   /**
    * 서비스의 첫 화면 사진 한 장 (2026-10-07 베타 준비 분석 · 첫 5분) — 홈의 `서비스가 떴어요` 줄이 부른다. 데몬이 준비가
    * 끝나며 읽은 첫 주소(`RepoStatus.firstScreen`, 모르면 `/`)를 숨은 창으로 열어 한 장 찍는다. 실패는 `image: null`.
@@ -702,7 +679,7 @@ const clientMessageSchema = z.discriminatedUnion("type", [
   z.object({
     ...withId,
     type: z.literal("agent.update"),
-    kind: z.enum(["claude", "codex"]),
+    kind: z.enum(["claude"]),
     /** 참이면 설치하지 않고 새 버전만 지금 확인해 상태를 다시 보낸다(`지금 확인`). */
     check: z.boolean().optional(),
   }),
@@ -912,7 +889,7 @@ export type ServerMessage =
   /**
    * 에이전트 로그인의 진행 (P1-1): 데몬이 파이프로 띄운 로그인 CLI 가 내놓은
    * 주소 — 앱은 브라우저로 열어 주고, `wantsCode` 일 때만 코드 붙여넣기 칸을
-   * 보인다(claude 는 코드를 stdin 으로 받고, codex 는 콜백만 기다린다).
+   * 보인다(claude 는 코드를 stdin 으로 받는다).
    * 주소보다 코드 프롬프트가 늦게 오면 같은 판이 다시 방송된다.
    */
   | { type: "agent.login.url"; url: string; wantsCode: boolean }

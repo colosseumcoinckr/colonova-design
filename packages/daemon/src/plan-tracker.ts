@@ -32,16 +32,16 @@ function refilled<T extends PlanWindow>(window: T, now: number): T {
 export interface PlanTrackerDeps {
   /**
    * The most recently active idle session of one provider — a live reading
-   * rides it. A codex rate-limit hit must not be answered by reading claude:
-   * the limits are the account's, and one machine signs into one account per
+   * rides it. One provider's rate-limit hit must not be answered by reading
+   * another's: the limits are the account's, and one machine signs into one account per
    * provider, so every ask names its provider and only that provider's
    * session answers.
    */
   idleSession: (provider: string) => Pick<Session, "usage"> | null;
   /**
    * Session-less plan readings, per provider — a driver whose CLI can read
-   * its account without a thread (Claude's probe query, Codex's bare
-   * app-server) is asked here when none of its sessions is idle. A null
+   * its account without a thread (Claude's probe query) is asked here when
+   * none of its sessions is idle. A null
    * answer is no reading; the probe decides for itself whether there is
    * anything to start (no CLI, no plan login).
    */
@@ -57,7 +57,7 @@ export interface PlanTrackerDeps {
   onChanged: () => void;
   /**
    * Session-less model catalogs a driver can answer without a thread —
-   * Claude's probe, Codex's `model/list`. A failed or empty read is asked
+   * Claude's probe. A failed or empty read is asked
    * again after the gate's retry window, not on every status broadcast.
    */
   catalogSources: Array<{ provider: string; read: () => Promise<SessionModelInfo[]> }>;
@@ -106,8 +106,8 @@ export class CatalogGate {
  * Each provider account's plan limits, and the CLI's model catalog — both
  * belong to the account, not to one thread. One machine signs into one
  * account per provider, so the readings live in a map keyed by provider and
- * the composer reads the row of the provider it is about to spend: a planner
- * working in codex must see codex's budget, not claude's.
+ * the composer reads the row of the provider it is about to spend — never
+ * another provider's budget.
  */
 export class PlanTracker {
   /** Minimum spacing between re-reads of one provider's limits. */
@@ -216,9 +216,9 @@ export class PlanTracker {
    * exactly when the number matters again, and the next turn is not the only
    * moment one can land.
    *
-   * A provider with no reading yet owes one — the first codex session to go
-   * idle is asked even before its first turn, which is the whole point: the
-   * planner who just opened codex is exactly the one who needs its numbers
+   * A provider with no reading yet owes one — its first session to go idle
+   * is asked even before its first turn, which is the whole point: the
+   * planner who just opened it is exactly the one who needs its numbers
    * now. A provider that cannot answer yet — no idle session, and a probe
    * with nothing to start (no CLI, no plan login) — pays for that with one
    * resolved null per backoff window, no subprocess, until its first reading
@@ -330,8 +330,8 @@ export class PlanTracker {
    * The model picker's rows come from the provider's CLI through a live
    * session, but the choice itself belongs to the planner before any thread
    * exists — so each provider's list is cached under its own id and kept
-   * across restarts. A Claude alias and a Codex model id are different
-   * vocabularies; one shared list would offer a model the session cannot run.
+   * across restarts. One provider's model ids are not another's vocabulary;
+   * one shared list would offer a model the session cannot run.
    */
   rememberModels(provider: string, models: SessionModelInfo[]): void {
     if (models.length === 0) return;

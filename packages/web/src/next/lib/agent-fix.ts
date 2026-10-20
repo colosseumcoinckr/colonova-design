@@ -11,7 +11,7 @@
 export type FixKind = "install" | "login";
 
 export interface FixInput {
-  /** 이 카드의 AI(`claude` · `codex`). */
+  /** 이 카드의 AI(`claude`). */
   id: string;
   /** 요청을 보냈고 방송이 닿기 전의 틈 — 그 사이에 단추가 다시 서면 두 번 눌린다. */
   starting: FixKind | null;

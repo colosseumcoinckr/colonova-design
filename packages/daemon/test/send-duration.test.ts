@@ -8,7 +8,7 @@ test("완료 시간은 공급자의 5초 대신 보내기부터 준비와 응답
   t.mock.timers.enable({ apis: ["Date"], now: 100_000 });
   const events: ChatEvent[] = [];
   const session = new Session(
-    { cwd: tmpdir(), provider: "codex" },
+    { cwd: tmpdir(), provider: "claude" },
     {
       onEvent: (_id, event) => events.push(event),
       onState: () => {},

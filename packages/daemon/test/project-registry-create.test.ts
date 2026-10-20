@@ -22,36 +22,41 @@ function registry(): { registry: ProjectRegistry; file: string; dir: string } {
   };
 }
 
-test("create 는 지침을 trim 해 저장한다", () => {
+test("기존 호출자의 프로젝트별 지침은 생성·갱신해도 저장하지 않는다", () => {
   const { registry: reg, file, dir } = registry();
   try {
-    const project = reg.create({
+    const input = {
       name: "회원 관리",
       repoUrl: "https://github.com/org/repo.git",
-      instructions: "  목 데이터는 mock 파일에만 둔다  ",
-    });
-    assert.equal(project.instructions, "목 데이터는 mock 파일에만 둔다");
-    // 저장 파일에도 그대로 — create 는 즉시 남는다.
-    const saved = JSON.parse(readFileSync(file, "utf8")) as {
-      projects: Array<{ instructions?: string }>;
+      instructions: "이전 앱에서 보낸 지침",
     };
-    assert.equal(saved.projects[0]?.instructions, "목 데이터는 mock 파일에만 둔다");
+    const project = reg.create(input);
+    assert.equal("instructions" in project, false);
+    const changes = { name: "회원 목록", instructions: "다시 보낸 지침" };
+    reg.update(project.slug, changes);
+    assert.equal(reg.get(project.slug)?.name, "회원 목록");
+    assert.equal(readFileSync(file, "utf8").includes("instructions"), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
-test("빈 지침은 저장되지 않는다 — update 와 같은 규칙", () => {
+test("기존 설정의 지침은 다시 읽지 않고 다른 프로젝트 설정은 유지한다", () => {
   const { registry: reg, file, dir } = registry();
   try {
-    const project = reg.create({
-      name: "회원 관리",
-      repoUrl: "https://github.com/org/repo.git",
-      instructions: "   ",
+    const project = reg.create({ name: "회원 관리", repoUrl: "https://github.com/org/repo.git" });
+    const saved = JSON.parse(readFileSync(file, "utf8"));
+    saved.projects[0].instructions = "기존에 저장된 지침";
+    writeFileSync(file, JSON.stringify(saved));
+    const reloaded = ProjectRegistry.load({
+      COLONOVA_DESIGN_PROJECTS_SETTINGS: file,
+      COLONOVA_DESIGN_PROJECTS_DIR: join(dir, "projects"),
     });
-    assert.equal(project.instructions, undefined);
-    const raw = readFileSync(file, "utf8");
-    assert.equal(raw.includes("instructions"), false);
+    const restored = reloaded.get(project.slug);
+    assert.ok(restored);
+    assert.equal("instructions" in restored, false);
+    assert.equal(restored.repo.url, project.repo.url);
+    assert.equal(reloaded.activeSlug(), project.slug);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

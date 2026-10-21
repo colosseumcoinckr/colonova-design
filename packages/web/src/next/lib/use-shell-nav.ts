@@ -209,6 +209,8 @@ export function useShellNav({
     goHome: () => dispatch({ type: "home" }),
     showThread: () => dispatch({ type: "thread" }),
     showScreen: () => dispatch({ type: "screen" }),
+    openPlans: () => dispatch({ type: "plans" }),
+    showPane: (pane) => dispatch({ type: "pane", pane }),
     openProjectScreen: (slug) => {
       dropReady(slug);
       if (slug === daemon.activeSlug) dispatch({ type: "screen" });

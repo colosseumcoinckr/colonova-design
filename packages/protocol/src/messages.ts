@@ -704,6 +704,61 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     repo: z.string().min(1),
   }),
   /**
+   * 기획서(Confluence) 연결(2026-10-18 기획서 동기화 1단계) — 사이트 · 이메일 · 토큰(한 번만
+   * 입력하고 응답 어디에도 다시 나오지 않는다)으로 데몬이 `/user/current` 로 검증하고 자격은
+   * 저장소에, 연결 미러는 machine.json 의 프로젝트별 키에 둔다. `rootPageId` 는 나중에
+   * suggestRoots 로 고르므로 선택 — 이미 저장된 자격으로 뿌리만 고를 때(또는 만료 뒤 다시
+   * 연결할 때)는 이메일 · 토큰을 비우고 보낸다(저장된 자격을 다시 검증한다). 활성 프로젝트에
+   * 묶인다 — 다른 프로젝트의 연결을 덮어쓰지 않는다.
+   */
+  z
+    .object({
+      ...withId,
+      type: z.literal("confluence.connect"),
+      /** 예: colosseum.atlassian.net — 프로토콜과 끝의 /wiki 는 데몬이 정규화한다. */
+      site: z.string().min(1).max(200),
+      /** 일회성 입력 — 빈 값은 거절이다. 뿌리만 고르는 재연결은 아예 비운다. */
+      email: z.string().min(1).max(200).optional(),
+      token: z.string().min(1).max(400).optional(),
+      rootPageId: z.string().min(1).max(64).optional(),
+    })
+    // 이메일과 토큰은 짝이다 — 하나만 온 메시지는 선로에서 걸린다.
+    .refine((input) => (input.email === undefined) === (input.token === undefined), {
+      message: "이메일과 토큰은 짝입니다 — 둘 다 넣거나 둘 다 비우세요.",
+    }),
+  /**
+   * 연결이 없으면 한국어 거절로 답한다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("confluence.suggestRoots"),
+    query: z.string().min(1).max(200),
+  }),
+  /**
+   * 기획서 가져오기(뷰어 · 설정의 새로 가져오기 단추) — 같은 종류가 이미 줄에 있으면
+   * 그 약속에 합류한다(취소는 없다). 연결이 없으면 한국어 거절로 답한다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("confluence.importNow"),
+  }),
+  /**
+   * 기획서 목록 — 원장의 트리와 판 단계. 아직 가져온 것이 없으면 docs 가 null 이다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("doc.list"),
+  }),
+  /**
+   * 기획서 한 문서 읽기 — 파생 마크다운과 절(매크로 표식), 코멘트는 그 자리에서 읽어
+   * 실는다(안 풀린 것만 · 읽기 실패면 null — 원장의 수가 대신한다).
+   */
+  z.object({
+    ...withId,
+    type: z.literal("doc.read"),
+    pageId: z.string().min(1).max(64),
+  }),
+  /**
    * 코멘트 기록 (PLAN D57): the pins the planner sent from the preview land
    * in the project's own `comments.json` — every row is born resolved. The
    * record's clock is ACCEPTANCE, not delivery (커미티 판정 3, 2026-09-14):

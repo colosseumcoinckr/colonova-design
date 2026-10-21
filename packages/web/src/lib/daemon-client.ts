@@ -944,6 +944,33 @@ interface DaemonApi {
   machineAuthorSet: (name: string | null) => Promise<{ ok: true }>;
   /** Judge one repo before any clone. */
   githubRepoInspect: (owner: string, repo: string) => Promise<GitHubRepoInspection>;
+  /** 기획서(Confluence) 연결 — 자격은 응답에 다시 나오지 않는다. */
+  confluenceConnect: (input: {
+    site: string;
+    email?: string;
+    token?: string;
+    rootPageId?: string;
+  }) => Promise<{ site: string; rootTitle: string | null }>;
+  /** 기획서 가져오기 — 같은 종류가 도는 중이면 그 바퀴에 합류한다(취소는 없다). */
+  confluenceImportNow: () => Promise<{ imported: number; skipped: number; capped: boolean }>;
+  /** 기획서 목록 — 원장의 트리와 판. 아직 가져온 것이 없으면 docs 가 null 이다. */
+  docList: () => Promise<{
+    docs: Array<{ pageId: string; title: string; version: number; path: string }> | null;
+  }>;
+  /** 기획서 한 문서 — 파생 마크다운과 절, 코멘트는 안 풀린 것만(읽기 실패면 null). */
+  docRead: (pageId: string) => Promise<{
+    markdown: string;
+    sections: Array<{ heading: string; macro: boolean }>;
+    comments: Array<{
+      author: string;
+      body: string;
+      createdAt: string | null;
+      anchorText: string | null;
+    }> | null;
+  }>;
+  confluenceSuggestRoots: (
+    query: string,
+  ) => Promise<{ roots: Array<{ id: string; title: string }> }>;
   /** Run a fix; resolves with whatever the fix returns (status/guidance). */
   onboardingFix: (
     kind: OnboardingFixKind,
@@ -2048,6 +2075,48 @@ export function useDaemon(url: string | null): Daemon {
         call<{ ok: true }>({ type: "machine.author.set", name }, 15_000),
       githubRepoInspect: (owner: string, repo: string) =>
         call<GitHubRepoInspection>({ type: "github.repo.inspect", owner, repo }, 60_000),
+      // 기획서(Confluence) 연결 — 검증이 이겨야 저장되고, 자격은 응답에 다시 나오지 않는다.
+      confluenceConnect: (input: {
+        site: string;
+        email?: string;
+        token?: string;
+        rootPageId?: string;
+      }) =>
+        call<{ site: string; rootTitle: string | null }>(
+          {
+            type: "confluence.connect",
+            site: input.site,
+            ...(input.email !== undefined ? { email: input.email } : {}),
+            ...(input.token !== undefined ? { token: input.token } : {}),
+            ...(input.rootPageId !== undefined ? { rootPageId: input.rootPageId } : {}),
+          },
+          60_000,
+        ),
+      confluenceSuggestRoots: (query: string) =>
+        call<{ roots: Array<{ id: string; title: string }> }>(
+          { type: "confluence.suggestRoots", query },
+          60_000,
+        ),
+      confluenceImportNow: () =>
+        call<{ imported: number; skipped: number; capped: boolean }>(
+          { type: "confluence.importNow" },
+          120_000,
+        ),
+      docList: () =>
+        call<{
+          docs: Array<{ pageId: string; title: string; version: number; path: string }> | null;
+        }>({ type: "doc.list" }, 60_000),
+      docRead: (pageId: string) =>
+        call<{
+          markdown: string;
+          sections: Array<{ heading: string; macro: boolean }>;
+          comments: Array<{
+            author: string;
+            body: string;
+            createdAt: string | null;
+            anchorText: string | null;
+          }> | null;
+        }>({ type: "doc.read", pageId }, 60_000),
       // One read of one pull request — no gate, no push. The window a remote
       // read gets, not the one a transfer does.
       handoffStatus: () =>

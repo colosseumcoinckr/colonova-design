@@ -2,6 +2,8 @@ import type { ClientMessage, ServerMessage } from "@colonova-design/protocol";
 import type { DriverRegistry } from "../agent/registry.js";
 import type { AgentInstall } from "../agent-install.js";
 import type { AgentUpdates } from "../agent-update.js";
+import type { ConfluenceSync } from "../confluence-sync.js";
+import type { CredentialStore } from "../credentials.js";
 import type { DeveloperNotice } from "../developer-notice.js";
 import type { Escalation } from "../escalation.js";
 import type { GitHubBridge } from "../github-bridge.js";
@@ -40,6 +42,10 @@ export interface RouterDeps {
   escalation: Escalation;
   /** 기계 잔일의 설정(machine.json) — machine.set · machine.author.set 이 쓰고 상태가 읽는다. */
   machineSetting: { get(key: string): string | null; set(key: string, value: string | null): void };
+  /** 자격 저장소(키체인 · DPAPI · memory) — confluence.connect 이 이메일·토큰 짝을 둔다. */
+  credentials: CredentialStore;
+  /** 기획서 가져오기의 몸 — importNow 의 합류와 만료 판정은 이 모듈의 것이다. */
+  confluence: ConfluenceSync;
   /** 담당의 캐시 — 설정이 바뀌면 지운다(invalidate). */
   machineTurns: { invalidate(): void };
   notice(notice: DaemonNotice): void;

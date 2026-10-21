@@ -159,6 +159,9 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 | `COLONOVA_DESIGN_READY_TIMEOUT_MS` | `120000` | 미리보기가 준비될 때까지 기다리는 벽시계 상한 |
 | `COLONOVA_DESIGN_LOG_DIR` | `~/.colonova-design/logs` | 하루 로그와 턴 통계가 적히는 폴더 |
 | `COLONOVA_DESIGN_PIN_EFFORT` | unset(끔) | 핀으로 시작하는 턴의 첫 노력 자세 — 턴 통계가 재는 실험줄. 없으면 아무 일도 일어나지 않는다 |
+| `COLONOVA_DESIGN_CONFLUENCE_EMAIL` · `…_TOKEN` | unset | 기획서(Confluence) 연결 자격의 환경 재정의 — 저장소 값보다 앞선다(2026-10-18). 시험이 쓴다 |
+| `COLONOVA_DESIGN_CONFLUENCE_API` | `https://<사이트>` | 기획서 동기화 REST 주소 재지정 — 기록된 fixture 전송을 쓰는 시험의 몫 |
+| `COLONOVA_DESIGN_CONFLUENCE_FIXTURE` | unset | 기록된 전송 기록(fixtures.json)의 폴더 — Confluence 시험 전반이 이 전송으로 돈다 |
 | `COLONOVA_DESIGN_REPO_SETTINGS` · `…_NPMRC` · `…_RUN_DIR` · `…_UNDO_LOG` · `…_PERMISSION_LOG` · `…_PLAN_USAGE` | 기본 자리 | 각 저장 파일(repo.json · 사용자 `.npmrc` · run · undo · 권한 반복 · 계획 사용량)의 자리 — 테스트가 일회용 파일로 가리킨다 |
 
 ## 상세 동작
@@ -1522,6 +1525,75 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   화면의 `준비 시작` 버튼이 그 자리를 지킨다. 승인은 프로젝트 레지스트리에 남아 다시
   묻지 않는다. 승인 카드는 돌릴 명령을 문장으로 보여 준다.
 
+## 기획서 동기화 — Confluence(2026-10-18 1단계)
+
+기획 문서를 Confluence 에서 읽기 전용으로 클론 안 `docs/plans/` 에 내려놓는다. 정본은 저장
+포맷 XML(`*.storage.xml` — 원문 그대로), 마크다운은 파생물, 원장(`docs/plans/confluence.json`)
+은 한 벌이다. 커밋은 없다 — 폴더는 클론의 `.git/info/exclude` 로 빠지고 `saveable-paths`
+거름이 제출(풀 리퀘스트)에서도 막는다(D1).
+
+- **부품** — `confluence-client.ts`(REST — fetch 전송 주입, Basic 인증 한 곳, 401/403/409/429
+  분류와 429 재시기 사다리), `confluence-markdown.ts`(저장 포맷 → 파생 마크다운 + 절 목록 —
+  매크로 든 절은 `macro:true`), `confluence-ledger.ts`(원장 — parse 는 절대 안 던진다 · 원자
+  쓰기), `confluence-path.ts`(트리 → 폴더 경로 — 위험 문자 걷기 · 이름 충돌은 id 접미),
+  `confluence-sync.ts`(가져오기 루프 + 연결 국소 규칙), `dispatch.ts` 의
+  `confluence.connect · suggestRoots · importNow · doc.list · doc.read`.
+- **트리거** — 데몬 시작 · 10분 타이머 · `confluence.importNow`(뷰어 · 설정). 중복 부르기는
+  합류한다(차선 규칙 + 도는 바퀴의 in-flight 합류 — 취소는 없다). 타이머는 연결(사이트 · 뿌리)이 있고 클론이 선
+  프로젝트만 돈다 — 나머지는 경고 없이 건너뛴다. 클론 전(`.git` 없음)에는 `importNow` 도 쓰지 않고 거절한다 — 클론
+  전의 폴더에 파일을 두면 준비가 그 폴더를 잔해로 보고 통째로 지운다(`repo-bringup`). 쓰기는 각 프로젝트의
+  차선(`"confluence"`)에 선다.
+- **걷기와 증분(2026-10-19 고침)** — 폴더 경로는 트리 걷기(`planPaths`) 한 곳에서만 계산한다. 걷기는 첫 가져오기 ·
+  데몬 시작 뒤 첫 바퀴(`start()` — 꺼져 있던 사이의 이동은 판도 lastModified 도 안 올려 증분이 못 본다, 2026-10-18
+  실측) · 빠짐없이 끝나지 못한 걷기의 다음 바퀴 · 증분이 처음 보는 문서나 제목이 바뀐 문서를 만난 바퀴에 돈다.
+  빠짐없이 끝나지 못한 걷기의 다시 걷기는 잇달아 `MAX_INCOMPLETE_REWALKS`(2)번까지다 — 늘 못 읽히는 문서 하나가
+  10분마다 트리 전체를 다시 읽게 두지 않고, 그 뒤는 다음 데몬 시작까지 증분으로 돈다.
+  걷기는 판이 그대로여도 자리가 바뀐 문서를 새 자리에 다시 쓰고, 빠짐없이 끝난 걷기는 트리에 없는 문서(지워졌거나
+  뿌리 밖으로 옮겨 간 것)를 원장과 폴더에서 거둔다. 옛 자리의 파일은 모든 쓰기가 끝난 뒤에 지우고(두 문서가 자리를
+  맞바꾼 바퀴), 비어 버린 폴더도 거둔다. 그 사이의 바퀴는 CQL `type=page AND (id = 뿌리 OR ancestor = 뿌리) AND
+  lastModified > "마지막 동기 − 12시간 1분"` 증분이다(코멘트가 섞여 오므로 `type=page` 를 묶는다 — 실측). 뿌리 아래로
+  좁히는 절이 없을 때는 사이트 어디서 바뀐 문서마다 읽기가 돌고 결과 상한(100 × 10쪽)에 걸릴 수 있었다. 겹침은 CQL 의
+  시각 글자가 계정의 시간대로 읽혀도(가장 서쪽 UTC−12) 빠지는 변경이 없게 하는 몫이고, 다시 걸린 문서는 검색이
+  싣는 판(`expand=content.version`)으로 걸러 본문을 읽지 않는다. 검색이나 뿌리를 못 읽은 바퀴는 원장의 시각을
+  앞서지 않고 종류만 경고로 남긴다(`stage` · `reason`) — 앞서면 그 사이의 변경을 영영 놓친다.
+- **연결** — 프로젝트별이다. machine.json 의 슬러그 키 미러(`confluenceSite:<slug>`,
+  `confluenceRootId:<slug>`, `confluenceRootTitle:<slug>`), 자격은 OS 저장소의
+  `confluence-pat` 한 항목(`email\ntoken` 두 줄 — 이메일·토큰은 응답 · 로그 · 상태 방송에
+  다시 나오지 않는다). 가져오기 중 401 이면 만료 상태로 적고 다시 connect 전까지 건너뛴다.
+  한 기계 한 Atlassian 계정 — 사이트가 갈리면 2단계에서 `confluence-pat:<slug>` 스코프화.
+- **상한** — 문서 수 상한 500(`MAX_IMPORT_PAGES`; 정책서 87쪽 + 기능설계서 73쪽 규모면
+  충분). 상한에 닿은 바퀴는 lastSyncAt 을 앞서지 않아 다음 바퀴가 이어받는다.
+- **토큰/이메일이 가는 곳** — 데몬만 안다. 화면 쪽 코드 · AI 세션 환경에 싣지 않는다. 로그의
+  값 걷기(log-sanitize + protocol `maskSecretShapes`)가 Atlassian `ATATT…` 모양도 눌러 닫는다.
+- **시험** — 전부 순수다: `confluence-client.test.ts`(판을 싣는 검색 포함) · `confluence-wire.test.ts`(선로 해석)
+  · `confluence-connect.test.ts`(연결 처리기 — 슬러그 분리 · 자격 미반환 부포함) ·
+  `confluence-markdown/ledger/path.test.ts`(순수 셋) · `confluence-sync.test.ts`(루프 — 첫 트리 · CQL 증분 · 429
+  사다리 · 401 만료 · 상한 · 합류 · 클론 없음 · 깊은 자리의 새 문서 · 제목 변경의 이동 · 시작 걷기의 이동과 거둠 ·
+  검색 실패의 시각 지킴 · 클론 전 거절 · 타이머의 걸러냄 · 다시 걷기의 상한) · `project-fleet-confluence.test.ts` ·
+  `saveable-paths.test.ts`(D1 거름), 웹은 `next-confluence-connect.test.ts` · `next-plans.test.ts`. 모두 CI 순수
+  시험 목록에 있다(2026-10-19). 기획서 폴더의 쓰기 가드는 `write-guard.test.ts` 가 센다. `pnpm test` 가 빌드를
+  먼저 도니 src 만 고치고 바로 돌리지 않는다.
+- **눈으로 보는 확인(로컬)** — ① 사전 검증 1: 실사이트 Basic 인증과 CQL · readPage
+  (`COLONOVA_DESIGN_CONFLUENCE_EMAIL/TOKEN` 을 env 로). ② 실제 루트 첫 가져오기 → 웹 뷰어에서
+  표 · 목록 · 매크로 절 표시를 본다. ③ 인라인 코멘트의 닻 문장(`이 부분: …`)이 실제 문서에서
+  서는지 본다. ④ 2026-10-19 에 더한 질의 모양 — `(id = 뿌리 OR ancestor = 뿌리)` 절과
+  `expand=content.version` — 은 아직 실사이트 실측 전이다. 거절되면 증분이 바퀴마다 `기획서 가져오기 실패`
+  (`stage: "search"`) 경고를 남기고 원장의 시각이 멈춘다 — 그 경고가 곧 실측의 실패 신호다.
+- **웹 뷰어(개선 패스 — 같은 날)** — 구조는 `packages/web/src/next/README.md` 의 「오른쪽 칸은 두 얼굴이다」.
+  지킬 것: ① 기획서 칸은 미리보기를 **내리지 않는다**(둘 다 마운트, 한쪽만 `.nx-offstage`) — 내리면 미리보기
+  게스트의 스크롤 · 폼 · 핀이 사라진다. ② `doc.read` 는 Confluence 를 그 자리에서 읽어(문서 + 코멘트 + 작성자
+  이름 조회) 몇 초 걸린다 — 칸이 목록의 제목 · 판으로 머리를 먼저 세우고, **늦게 온 답은 번호로 버린다**
+  (문서 A 를 읽는 중 B 를 열면 A 의 답이 B 의 자리를 덮지 않게). ③ 파생 마크다운의 맨 위 머리말(`---` ·
+  `confluence:` …)은 `splitFrontmatter` 가 떼서 쓴다 — 그대로 `Markdown` 에 주면 가로줄 + 큰 제목 하나로
+  깨진 채 모든 문서가 열린다. ④ 자리 표시 `[Confluence 매크로: …]` · `[첨부: …]` 는 labels 의
+  `L.plans.macroMarker` · `attachMarker` 와 글자가 같아야 한다(`next-plans.test.ts` 가 이 파일의 소스와 대조).
+  ⑤ 뷰어의 목록 호출은 `daemon` 이 아니라 `daemon.api` 의 ref 를 쥔다 — `daemon` 은 렌더마다 새 겉모습이라
+  `useCallback([daemon])` 로 효과를 걸면 AI 가 답하는 동안(앱이 초당 여러 번 다시 그려진다) 목록 요청이 쏟아진다.
+  ⑥ 눈으로 보는 견본: `dev/plans-fixture.html?case=…`(목록 · 문서 · 비었을 때 · 읽는 중 · 실패 · 만료),
+  `dev/overlay-fixture.html?case=settings&state=conf-connected|conf-rooted|conf-imported|conf-expired|conf-roots|conf-fail`.
+  데몬 없이 안 보이는 것 — 미리보기가 정말 살아 있는지 · 좁은 창의 탭 이름 — 은 격리 데몬(`test/cold/smoke-daemon.sh`)에서
+  `기획서` 를 눌러 `.nx-preview` 가 마운트된 채 `nx-offstage` 인지 본다.
+
 ## 전체 구조
 
 ```mermaid
@@ -1603,6 +1675,12 @@ git 쓰기 하나뿐이었다. 지금의 강제는 아래가 전부다.
   그대로), 클론 안과 임시 폴더 · `..` 로 나갔다 들어온 경로 · heredoc 본문 · 따옴표 안의 `>` 는 지난다.
 - **판정은 한 함수다.** 훅과 코어의 `decidePermission`(기본 쓰기 정책 · `repoWritePolicy` · Bash 판정)이 같은
   `write-guard.ts` 를 읽는다. `repoWritePolicy` 는 클론 밖에 더는 `ask` 가 아니라 `deny` 를 돌려준다.
+- **클론 안의 예외 하나 — 기획서 폴더(2026-10-19).** 파일 쓰기 도구가 클론의 `docs/plans/`(앱이 Confluence 에서
+  가져온 읽기 전용 사본 — 「기획서 동기화」 절)를 겨누면 `PLANS_WRITE_REFUSAL` 로 거절한다. 판정은
+  `plansFolderTarget` 하나를 훅(`fileWriteVerdict`)과 코어의 편집 판정이 같이 읽는다. 셸 도구의 쓰기는 이 폴더를
+  보지 않는다 — 공통 규칙의 문서 파일 불릿 끝 구절(「Confluence 에서 가져온 기획서도 읽기만 한다」)이 그 몫이고,
+  Codex 도 그 구절뿐이다. 막는 이유: 폴더는 보관 · 제출에서 빠지므로 AI 가 고친 글은 아무 데도 가지 않고, 다음
+  세션의 AI 가 그것을 Confluence 의 글로 읽는다.
 - **예외 하나 — Claude 의 자동 메모 폴더.** 훅 입력의 `transcript_path` 옆 `memory/`(그 프로젝트의 것만)는 쓰게
   둔다. 자동 메모는 CLI 가 기본으로 켜 둔 기능이고(개발 PC 의 앱 프로젝트에 빈 폴더가 만들어져 있다) 막으면
   이유 없이 도구 줄이 `실패` 로 뜬다. 끄려면 세션 환경에 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` — 제품 결정이라

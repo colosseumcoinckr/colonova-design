@@ -63,3 +63,18 @@ test("섞인 변경 — 진짜 편집은 남고 부산물만 빠진다", () => {
     ["src/MemberList.tsx", "src/MemberList.mock.ts", "packages/lib/yarn.lock"],
   );
 });
+
+test("기획서 폴더(docs/plans)의 변경은 빠진다 — 제출 PR 에 안 탄다(D1 · 2026-10-18)", () => {
+  const files = [
+    added("docs/plans/COLO/8.8-ColoNova/정책서.md"),
+    added("docs/plans/COLO/8.8-ColoNova/정책서.storage.xml"),
+    modified("docs/plans/confluence.json"),
+    added("docs/plans"),
+    modified("docs/GUIDE.md"),
+    added("src/Screen.tsx"),
+  ];
+  assert.deepEqual(
+    saveablePaths(files, new Set()).map((file) => file.path),
+    ["docs/GUIDE.md", "src/Screen.tsx"],
+  );
+});

@@ -88,15 +88,24 @@
 NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onboarding/FirstRun · NoProjects(창 전체)
 │           초대 파일 가져오기의 컨트롤러 하나 + onboarding/InviteConfirm(확인판)
 └ Workspace ─ useSessions · usePins · useShellNav 를 한 번만 부른다
-  ├ sidebar/Sidebar     새 대화 · 홈 · 찾기 / 전환기 / 다른 프로젝트 줄 / 대화 목록 · 도구가 한 일 / 설정
+  ├ sidebar/Sidebar     새 대화 · 홈 · 기획서 · 찾기 / 전환기 / 다른 프로젝트 줄 / 대화 목록 · 도구가 한 일 / 설정
   ├ home/HomeView       인사 · 큰 입력창(HomeComposer) + 시작점 칩(HomeStarters) · 서비스가 떴어요 줄(HomeReady) · 받은 편지함(HomeInbox) — 파일은 홈 어디에 놓아도 첨부
   └ 작업 보기(홈에서도 마운트된 채 `nx-offstage` 로 숨는다 — 미리보기 게스트가 살게)
     ├ status/StatusLine  제목 · 만드는 중 · 여정 세 점 · 제출(SubmitPopover) · 이번 작업(WorkPopover)
     ├ status/ProblemLine 문제 문장 셋 · 초대 파일 휴지통에 넣기 줄 — 대화와 미리보기에 걸친 한 줄
-    ├ (좁은 창) 대화 | 화면 · <이름> 탭
+    ├ (좁은 창) 대화 | 화면 · <이름> 탭 — 기획서가 서 있으면 둘째 탭이 `기획서`
     ├ chat/ChatColumn     대화록(Thread) · 카드 · 진행 줄(RunLine) · 입력창(Composer · ModelChip — 칩의 주인 subject: next · session · ComposerSuggest — `/` · `@` 목록)
-    └ preview/PreviewColumn 막대 · 무대(PreviewHost) · 라이브 층(LiveLayer) · 말풍선 · 준비 화면 · 작업 기록 서랍
+    ├ preview/PreviewColumn 막대 · 무대(PreviewHost) · 라이브 층(LiveLayer) · 말풍선 · 준비 화면 · 작업 기록 서랍
+    └ plans/PlansColumn   기획서 — 이어 보기 막대(미리보기 › 기획서 › 문서) · 가져오기 줄 · 목록(`PlansList` — 찾기 · 폴더 접기) · 문서 한 장(`PlanDocView` — 본문 · 코멘트)
 ```
+
+**오른쪽 칸은 두 얼굴이다**(2026-10-18 기획서 동기화 · 개선 패스) — `nav.pane` 이 `preview` 면 미리보기, `plans` 면 기획서가 선다.
+둘 다 마운트된 채 한쪽만 선다(`offstage` → `.nx-offstage`, 홈이 앞에 설 때와 같은 규칙): 기획서를 열었다고 미리보기 게스트
+(스크롤 · 입력 중인 폼 · 핀)를 내리면 안 된다. 기획서 칸은 처음 열 때 마운트하고 그 뒤로 숨기만 한다 — 열린 문서 · 찾는 말 ·
+접은 폴더가 미리보기로 갔다 와도 그대로고, 기획서를 안 쓰는 프로젝트는 앱을 켤 때 목록을 읽지 않는다. 격자(`.nx-body`)의
+직계가 숨을 때는 `.nx-body > .nx-offstage`(shell.css)가 이긴다 — 칸 자신의 규칙(`.nx-preview` 의 `position: relative`)이
+뒤에서 읽혀 숨은 칸이 격자 칸을 차지하지 않게. 칸 안의 색은 `.nx` 의 토큰(`--ink2` · `--ink3` · `--nx-hover` …)만 읽는다
+(앱에 없는 이름은 var() 의 대체 색으로 조용히 떨어져 어두운 테마에서 글자가 흐려진다).
 
 첫 가져오기(프로젝트 0개)의 행이 모두 `새로` 면 확인판 없이 곧바로 적용하고, 첫
 프로젝트의 문제 문장 자리에 `초대 파일을 가져왔어요 — 휴지통에 넣기 · 나중에` 가 선다.
@@ -107,7 +116,7 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 `Step`(카드) · `Fold`(상태별 몸통의 접힘) · `InviteDrop`(놓는 자리와 `파일이 아직 없나요?` 의
 요청 문장 — `NoProjects` 와 함께 쓴다)이 맡는다. 눈으로 보는 견본은 `dev/onboarding-fixture.html`.
 
-이동 상태(홈 ↔ 대화 · 좁은 창의 탭 · 서랍 · 접힘)는 `lib/nav.ts` 의 줄임 함수,
+이동 상태(홈 ↔ 대화 · 좁은 창의 탭 · 오른쪽 칸의 얼굴 · 서랍 · 접힘)는 `lib/nav.ts` 의 줄임 함수,
 그 손은 `lib/use-shell-nav.ts` 가 만든다. 주소에 싣지 않는다. 열린 대화의 주인은
 `sessions.activeId` 하나다. 같은 훅이 첫 준비가 끝난 순간(`lib/ready-watch.ts` — 데몬의
 `ProjectSummary.firstPrep` 표식과 보고 있는 화면으로 판정)을 알아 토스트와 홈의 `서비스가 떴어요` 줄
@@ -126,6 +135,7 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 | `openProjectScreen(slug)` · `dismissReady(slug)` | 서비스가 떴다는 소식(토스트 · 홈 줄 · OS 알림)의 단추 — 활성이 아니면 옮긴 뒤 그 작업 화면 · 홈 줄 닫기 |
 | `switchProject(slug, { quiet? })` | 옮기기 + 토스트 — 옮겼는지(`Promise<boolean>`)를 돌려 줘 부르는 줄이 도는 표시를 세운다. 옮겨 앉으면 셸은 홈부터 |
 | `showTab("chat" \| "preview")` | 좁은 창의 탭 |
+| `openPlans()` · `showPane("preview" \| "plans")` | 오른쪽 칸을 기획서로(사이드바의 `기획서` — 이미 열려 있으면 다시 누르는 것이 닫는 길) · 오른쪽 칸의 얼굴을 바꾼다(기획서 칸의 `미리보기` 이음) |
 | `openSettings()` · `toast(text, action?)` | 설정 대화상자(서랍이 열려 있으면 먼저 닫는다) · 잠깐 뜨는 한 줄 — `action`(`{ label, run }`)이 있으면 단추가 달리고 8초 머문다 |
 
 **`SlotProps`** — `ChatColumn`(단계 2)과 `PreviewColumn`(단계 3)이 함께 받는다:
@@ -169,6 +179,13 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
   실패와 보내기 실패를 가른다(보내기가 실패해도 목록은 남고 `다시 제출` 이 선다).
 - `use-copied.ts` — 복사 뒤 1.5초만 `복사했어요` 로 바뀌는 단추의 손(`useCopied`). 낭독은 부르는 쪽이 실린다.
 - `use-closing.ts` — 겹판이 닫히는 동안의 모션 타이머 한 곳(`useClosing`).
+- `plans/plans-list.ts` — 기획서 칸의 순수 조립(2026-10-18): `planRows`(경로의 **걸음** 순서 — 글자 통째로 견주면 `정책서 v2` 가
+  폴더와 그 아래 문서 사이로 끼어든다 · 숫자는 숫자로 · `hasChildren` · `folder`) · `visiblePlanRows`(접은 폴더 아래 가리기) ·
+  `filterPlanRows`(제목 + 바로 위 폴더, 조각이 모두 맞아야) · `splitFrontmatter`(파생 마크다운 맨 위의 `---` 머리말을 뗀다 — 그대로
+  그리면 가로줄 + 큰 제목 하나로 깨진다) · `planBodyBlocks`(데몬의 자리 표시 `[Confluence 매크로: …]` · `[첨부: …]` 를 상자 · 알약으로 —
+  마커는 `L.plans.macroMarker` · `attachMarker` 와 데몬 소스가 글자까지 같아야 하고 시험이 대조한다) · `syncLine` · `importLine` · `docUrl`.
+  호출 손은 `plans/use-plans.ts`(`daemon` 은 렌더마다 새 겉모습이라 `daemon.api` 를 ref 로 쥔다 · 늦게 온 답은 번호로 버린다).
+  견본은 `dev/plans-fixture.html?case=list|none|empty|list-loading|list-failed|doc-slow|doc-failed|import-slow|import-failed|expired`.
 - `handoff-preview.ts` · `use-handoff-draft.ts` — 제출 확인의 `개발자에게는 이렇게 보여요`: `handoffPreviewOf(draft, firstSubject)` 가 데몬의 요청 초안
   (`repo.handoffDraft`)에서 사용자가 읽는 제목(종류 접두어 · 작성자 꼬리를 뗌) · 설명 첫 대목 · 사진 수 · 자동 확인 결과(`extras.checks`)를 뽑고, `useHandoffDraft` 가 제출을 붙잡지 않고 따로 읽는다.
   첫 제출에만 읽는다 — 더하는 제출은 개발자의 글이 그대로라 지금 제목만 보인다. 정규식 안의 한글 · 역따옴표는 `\u` 로 적는다(한글 리터럴 린트가 정규식을 읽지 못한다).

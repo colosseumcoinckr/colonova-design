@@ -101,6 +101,21 @@ export interface ProjectSummary {
    * 문장을 읽는다. 없으면 키가 없다.
    */
   attention?: Attention | null;
+  /**
+   * 기획서(Confluence) 연결의 프로젝트 스코프 상태 — 설정 · 뷰어는 활성 프로젝트의
+   * 이 칸만 말한다(2026-10-18 기획서 동기화 · 두 프로젝트가 각각 다른 루트를 고른다).
+   * 미연결 프로젝트는 키가 없다. 자격(이메일 · 토큰)은 여기에 절대 실리지 않는다 —
+   * 데몬의 자격 저장소만 안다.
+   */
+  confluence?: {
+    site: string;
+    connected: boolean;
+    /** 가져오기 중 401 로 연결이 끊겼을 때 — 다시 connect 하면 내려앉는다. */
+    expired: boolean;
+    rootTitle: string | null;
+    lastImportAt: string | null;
+    pages: number;
+  };
 }
 
 export interface ProjectList {

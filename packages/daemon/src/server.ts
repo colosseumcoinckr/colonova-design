@@ -21,6 +21,7 @@ import { DriverRegistry } from "./agent/registry.js";
 import { AgentInstall } from "./agent-install.js";
 import { AgentUpdates } from "./agent-update.js";
 import { CommandDedupe } from "./command-dedupe.js";
+import { ConfluenceSync } from "./confluence-sync.js";
 import {
   type CredentialStore,
   createCredentialStore,
@@ -185,6 +186,8 @@ export class DaemonServer {
   private fleet!: ProjectFleet;
   /** The wire's request table (dispatch.ts) — built in `start()` beside the fleet. */
   private router!: RequestRouter;
+  /** 기획서(Confluence) 가져오기의 몸 — start() 가 만들고 stop() 이 내려놓는다. */
+  private confluence!: ConfluenceSync;
   /** 커미티 B1 (2026-09-15): 열린 넘김 폴링 타이머 — stop() 이 끊는다. */
   private handoffTimer: NodeJS.Timeout | null = null;
   /**
@@ -744,6 +747,10 @@ export class DaemonServer {
       gitHubClient: () => this.github.client(),
       githubAuthExpired: () => this.github.authExpired,
       queueDiskFor: this.queueDiskFor,
+      // 기획서(Confluence) 상태 배선(수용 항목 13) — 미러와 만료 판정은 지연 클로저다:
+      // ConfluenceSync 는 이 아래 start() 에서 만들어진다.
+      machineSetting: this.machineSetting,
+      confluenceExpired: (slug) => this.confluence?.expiredState(slug) ?? false,
     });
     await migrateProjectPats(
       this.credentials,
@@ -754,6 +761,21 @@ export class DaemonServer {
     // 슬라이스 5: 저장된 웹훅을 읽는다 — 상태 방송은 그 뒤에 일어난다.
     await this.escalation.load();
     lap("loadMs");
+    this.confluence = new ConfluenceSync({
+      machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      workspaceOf: (slug) => {
+        const workspaces = this.fleet?.workspaces.get(slug);
+        if (workspaces === undefined) return null;
+        return {
+          root: workspaces.repo.root,
+          laneRun: (kind, job, opts) => workspaces.repo.laneRun(kind, job, opts),
+        };
+      },
+      slugs: () => this.registry?.list().map((project) => project.slug) ?? [],
+      logger: this.logger,
+    });
+    this.confluence.start();
     this.router = new RequestRouter({
       manager: this.manager,
       fleet: this.fleet,
@@ -774,6 +796,8 @@ export class DaemonServer {
       setClaudeExecutable: (path) => this.adoptClaudeExecutable(path),
       refreshClaudeExecutable: () => this.refreshClaudeExecutable(),
       machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      confluence: this.confluence,
       machineTurns: this.machineTurns,
       agentLogin: this.agentLogin,
       agentInstall: this.agentInstall,
@@ -1028,6 +1052,7 @@ export class DaemonServer {
     // 도는 증분 타입 검사의 자식도 이 데몬의 것 — 내려갈 때 함께 끊는다.
     clearInterval(this.handoffTimer ?? undefined);
     this.handoffTimer = null;
+    this.confluence?.stop();
     this.logger.info("데몬 종료");
     await this.manager.closeAll();
     // Every project the daemon touched this run, not just the active one: an

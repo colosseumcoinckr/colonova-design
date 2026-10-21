@@ -527,8 +527,8 @@ export class RepoWorkspace {
    * 차선에 세우는 공개된 길 (PLAN L1) — `worktree add/remove/prune` 이 클론의
    * refs 와 메타데이터를 쓰므로 저장·최신화와 한 줄에 서야 한다.
    */
-  laneRun<T>(kind: LaneKind, job: () => Promise<T>): Promise<T> {
-    return this.core.lane.run(kind, job);
+  laneRun<T>(kind: LaneKind, job: () => Promise<T>, opts?: { join?: boolean }): Promise<T> {
+    return this.core.lane.run(kind, job, opts);
   }
 
   // -------------------------------------------------------------------------

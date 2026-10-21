@@ -6,6 +6,7 @@ import type { ConnectionCopy } from "../lib/connection-copy";
 import { resetScope } from "../lib/reset-scope";
 import { nameEscape } from "../lib/settings-shell";
 import { CheckIcon, Spin } from "../ui/icons";
+import { ConfluenceConnect } from "./ConfluenceConnect";
 import { BandAlertIcon } from "./icons";
 import { SBand, SGroup, SPage, SRow, useAnnounce } from "./parts";
 import type { AuthorModel } from "./use-author";
@@ -133,6 +134,7 @@ export function ConnectionPage({
           </button>
         </SRow>
       </SGroup>
+      <ConfluenceConnect daemon={daemon} locked={locked} />
       {reset.available && (
         <SGroup danger>
           <SRow title={L.settings.resetTitle} sub={L.settings.resetSub}>

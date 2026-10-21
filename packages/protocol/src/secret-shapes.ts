@@ -24,6 +24,7 @@ const SECRET_SHAPES = new RegExp(
     "AKIA[0-9A-Z]{16}",
     "AIza[0-9A-Za-z_-]{10,}",
     "xox[bp]-[A-Za-z0-9-]+",
+    "ATATT[A-Za-z0-9_-]{20,}", // Atlassian(Confluence · Jira) API 토큰 — 2026-10-18 기획서 동기화
     "hooks\\.slack\\.com\\/services\\/[A-Za-z0-9/]+",
     "Bearer\\s+[A-Za-z0-9._~+/=-]+",
   ].join("|"),

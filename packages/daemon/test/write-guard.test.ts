@@ -16,7 +16,9 @@ import {
   fileWriteVerdict,
   OUTSIDE_COMMAND_REFUSAL,
   OUTSIDE_WRITE_REFUSAL,
+  PLANS_WRITE_REFUSAL,
   pathWritable,
+  plansFolderTarget,
   SHELL_MATCHER,
   sessionGuardHookDecision,
   type WriteScope,
@@ -123,7 +125,49 @@ test("클론 밖은 거절한다 — 설정 · 홈 · 바깥 폴더 · 부모 ·
   }
 });
 
-test("심볼릭 링크로 클론을 빠져나가는 길은 막는다 — 있는 파일 · 없는 파일 · 없는 폴더 아래", (t) => {
+test("기획서 폴더(docs/plans)는 클론 안이어도 고치지 않는다 — 원장 · 정본 · 파생 마크다운, 닮은 이웃은 지난다(2026-10-19)", () => {
+  const s = scene();
+  try {
+    for (const path of [
+      "docs/plans/COLO/8.8 ColoNova/정책서.md",
+      "./docs/plans/COLO/정책서.storage.xml",
+      "src/../docs/plans/confluence.json",
+      join(s.clone, "docs", "plans", "confluence.json"),
+      "docs/plans",
+    ]) {
+      assert.deepEqual(
+        fileWriteVerdict("Edit", { file_path: path }, s.scope),
+        { allow: false, reason: PLANS_WRITE_REFUSAL },
+        `${path} 는 기획서 폴더`,
+      );
+      assert.equal(plansFolderTarget(path, s.scope), true, `${path} — 코어도 같은 판정`);
+    }
+    // 글자만 닮은 이웃과 다른 문서 폴더는 그대로 고친다 — 과잉 차단은 정상 작업을 실패로 보이게 한다.
+    for (const path of [
+      "docs/plans-old/a.md",
+      "docs/plan/a.md",
+      "docs/GUIDE.md",
+      "src/plans/a.ts",
+    ]) {
+      assert.equal(writes(s.scope, path), true, `${path} 는 지난다`);
+      assert.equal(plansFolderTarget(path, s.scope), false, path);
+    }
+    // 훅도 같은 이유로 거절한다.
+    assert.deepEqual(sessionGuardHookDecision("Write", { file_path: "docs/plans/a.md" }, s.scope), {
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: PLANS_WRITE_REFUSAL,
+      },
+    });
+    // 셸 도구의 쓰기는 이 폴더를 보지 않는다 — 공통 규칙의 한 구절이 맡는다(알고 둔 틈).
+    assert.equal(bashCommandVerdict("echo x > docs/plans/a.md", s.scope).allow, true);
+  } finally {
+    s.dispose();
+  }
+});
+
+test("심볼릭 링크로 클론을 빠져나가는 길은 막는다 — 있는 파일 · 없는 파일 · 없는 폴더 아래", () => {
   const s = scene();
   try {
     for (const path of [
@@ -604,6 +648,10 @@ test("거절 문장은 AI 가 답변에 옮겨도 사용자 어휘다 — 개발
     );
   }
   assert.ok(OUTSIDE_COMMAND_REFUSAL.includes("관리자 권한"), "sudo 이유가 들어 있다");
+  // 기획서 폴더의 거절은 무엇을 하라는지(Confluence 에서 고친다)를 말한다.
+  assert.ok(!/(?<![패리])턴|경로|git|커밋|브랜치|\bPR\b|데몬/i.test(PLANS_WRITE_REFUSAL));
+  assert.ok(PLANS_WRITE_REFUSAL.includes("기획서"));
+  assert.ok(PLANS_WRITE_REFUSAL.endsWith("Confluence 에서 고쳐 주세요."));
 });
 
 // ---------------------------------------------------------------------------
@@ -671,6 +719,13 @@ test("코어의 decidePermission 이 같은 판정을 낸다(행동) — 클론 
     behavior: "deny",
     message: OUTSIDE_WRITE_REFUSAL,
   });
+  // 기획서 폴더는 클론 안이지만 거절한다 — 클론 밖과는 다른 문장이다(2026-10-19).
+  for (const target of ["docs/plans/a.md", join(cwd, "docs", "plans", "confluence.json")]) {
+    assert.deepEqual(await decide(edit(target)).verdict, {
+      behavior: "deny",
+      message: PLANS_WRITE_REFUSAL,
+    });
+  }
   for (const command of ["sudo ls", "rm -rf ~/x", "echo x > ~/.zshrc"]) {
     assert.deepEqual(await decide(exec(command)).verdict, {
       behavior: "deny",
@@ -726,6 +781,8 @@ test("코어의 쓰기 정책도 같은 함수를 읽는다 — 기본 정책 ·
   assert.match(core, /bashCommandVerdict\(command, \{ cwd: this\.cwd \}\)/);
   assert.match(core, /message: OUTSIDE_WRITE_REFUSAL/);
   assert.match(core, /message: OUTSIDE_COMMAND_REFUSAL/);
+  assert.match(core, /plansFolderTarget\(value, \{ cwd: this\.cwd \}\)/);
+  assert.match(core, /message: PLANS_WRITE_REFUSAL/);
   assert.doesNotMatch(
     core,
     /containsPath/,

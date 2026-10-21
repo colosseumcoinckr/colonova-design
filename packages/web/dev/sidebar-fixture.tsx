@@ -307,6 +307,8 @@ const CASES: Case[] = [
 function Frame({ spec }: { spec: Case }) {
   const [activeId, setActiveId] = useState<string | null>(ACTIVE ?? spec.activeId ?? null);
   const [view, setView] = useState<"home" | "thread">(spec.view ?? "thread");
+  // 기획서 줄(2026-10-18) — 오른쪽 칸이 기획서인가. 누르면 열고 한 번 더 누르면 닫으며, 홈으로 가면 닫힌다.
+  const [plansOn, setPlansOn] = useState(false);
   const [slug, setSlug] = useState(spec.activeSlug);
   const [log, setLog] = useState("—");
   // 너비 조절(h) — 저장은 이 견본의 상태가 맡는다(앱에서는 설정의 layout.sidebarWidth).
@@ -378,7 +380,17 @@ function Frame({ spec }: { spec: Case }) {
     },
     goHome: () => {
       setView("home");
+      setPlansOn(false);
       setLog("홈");
+    },
+    openPlans: () => {
+      setView("thread");
+      setPlansOn(true);
+      setLog("기획서 열기");
+    },
+    showPane: (pane: string) => {
+      setPlansOn(pane === "plans");
+      setLog(`오른쪽 칸 → ${pane}`);
     },
     openThread: (_slug: string, id: string) => {
       setActiveId(id);
@@ -419,6 +431,7 @@ function Frame({ spec }: { spec: Case }) {
       sessions={{ fresh: () => setActiveId(null) } as unknown as Sessions}
       activeSessionId={activeId}
       view={view}
+      plansOn={view === "thread" && plansOn}
       titleFor={(thread) => titles.get(thread.id) ?? thread.title}
       nav={nav}
       onPalette={() => setLog("찾기")}

@@ -33,7 +33,9 @@ import {
   bashCommandVerdict,
   OUTSIDE_COMMAND_REFUSAL,
   OUTSIDE_WRITE_REFUSAL,
+  PLANS_WRITE_REFUSAL,
   pathWritable,
+  plansFolderTarget,
 } from "./write-guard.js";
 
 /**
@@ -1182,6 +1184,10 @@ export class Session {
     }
     if (tool.kind === "edit") {
       const paths = tool.paths ?? [];
+      // 기획서 폴더는 클론 안이지만 고치지 않는다 — 훅의 판정(fileWriteVerdict)과 같은 함수다(2026-10-19).
+      if (paths.some((value) => plansFolderTarget(value, { cwd: this.cwd }))) {
+        return Promise.resolve({ behavior: "deny", message: PLANS_WRITE_REFUSAL });
+      }
       if (paths.length > 0) {
         // Relative names resolve against cwd and symlinks resolve through,
         // so a policy compares prefixes without being talked past.

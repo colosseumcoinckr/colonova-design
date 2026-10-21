@@ -92,6 +92,19 @@
   pointer-events: none;
 }
 
+/* 오른쪽 칸의 두 얼굴(미리보기 · 기획서) 중 숨은 쪽 — 둘 다 마운트된 채 한쪽만 선다. `.nx-preview` 는 뒤에서 읽히는
+   `position: relative` 가 위 한 줄 규칙을 이겨 자리 0 짜리 칸이 격자 칸을 차지하고, 뒤에 선 칸이 밀려난다.
+   그래서 격자의 직계 자식일 때는 특이도를 한 칸 올려 어느 파일의 순서에도 기대지 않는다. */
+.nx-body > .nx-offstage {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 /* 홈에서 대화로 넘어올 때의 한 번 — 자리를 드러내며 nx-chat-rise 로 뜬다.
    offstage 가 다시 입혀지면 걸음이 풀려, 다음 넘어옴에 한 번 더 산다. */
 .nx-work:not(.nx-offstage) {

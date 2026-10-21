@@ -162,6 +162,15 @@ jobs:
           packages/daemon/test/secret-shapes.test.ts
           packages/daemon/test/write-guard-links.test.ts
           packages/daemon/test/write-guard-shell.test.ts
+          packages/daemon/test/confluence-client.test.ts
+          packages/daemon/test/confluence-connect.test.ts
+          packages/daemon/test/confluence-ledger.test.ts
+          packages/daemon/test/confluence-markdown.test.ts
+          packages/daemon/test/confluence-path.test.ts
+          packages/daemon/test/confluence-sync.test.ts
+          packages/daemon/test/confluence-wire.test.ts
+          packages/daemon/test/project-fleet-confluence.test.ts
+          packages/daemon/test/saveable-paths.test.ts
           packages/web/test/chat-options.test.ts
           packages/web/test/error-words.test.ts
           packages/web/test/invite-file-name.test.ts
@@ -229,6 +238,8 @@ jobs:
           packages/web/test/next-photo-ui.test.ts
           packages/web/test/next-ready-watch.test.ts
           packages/web/test/next-secret-scrub.test.ts
+          packages/web/test/next-confluence-connect.test.ts
+          packages/web/test/next-plans.test.ts
           packages/desktop/test/app-reset.test.ts
           packages/desktop/test/notices.test.ts
           packages/desktop/test/pin-envelope.test.ts

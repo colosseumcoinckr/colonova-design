@@ -13,6 +13,7 @@ import {
   HomeIcon,
   LightbulbIcon,
   PanelIcon,
+  PlansDocIcon,
   PlusIcon,
   SearchIcon,
 } from "../ui/icons";
@@ -31,6 +32,7 @@ export function Sidebar({
   sessions,
   activeSessionId,
   view,
+  plansOn = false,
   titleFor,
   nav,
   onPalette,
@@ -46,6 +48,8 @@ export function Sidebar({
   sessions: Sessions;
   activeSessionId: string | null;
   view: "home" | "thread";
+  /** 오른쪽 칸이 기획서 보기인가 — 항목의 뜬 자리 표시가 읽는다(2026-10-18 · M4). */
+  plansOn?: boolean;
   titleFor: (thread: ThreadSummary) => string;
   nav: ShellNav;
   /** ⌘K 팔레트를 연다. */
@@ -116,6 +120,18 @@ export function Sidebar({
           <HomeIcon />
           {L.sidebar.home}
           {waiting > 0 && <Count n={waiting} className="nx-r" />}
+        </button>
+        {/* 기획서(2026-10-18 동기화 1단계) — 읽기만 하는 칸으로, 누르면 오른쪽 칸이 기획서 보기로 바뀐다.
+            이미 열려 있으면 다시 누르는 것이 닫는 길이다(미리보기로 돌아간다). */}
+        <button
+          type="button"
+          className={`nx-side-row${plansOn ? " nx-side-row--on" : ""}`}
+          aria-current={plansOn ? "page" : undefined}
+          title={plansOn ? L.plans.backToScreen : L.plans.open}
+          onClick={plansOn ? () => nav.showPane("preview") : nav.openPlans}
+        >
+          <PlansDocIcon />
+          {L.plans.sidebar}
         </button>
         <button type="button" className="nx-side-row" onClick={onPalette}>
           <SearchIcon />

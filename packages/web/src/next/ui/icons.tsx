@@ -1,6 +1,7 @@
 import {
   AlignVerticalSpaceAround,
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   Check,
   ChevronDown,
@@ -9,6 +10,8 @@ import {
   CircleCheck,
   CornerDownLeft,
   Download,
+  ExternalLink,
+  FileText,
   House,
   Info,
   Keyboard,
@@ -19,6 +22,7 @@ import {
   PanelLeft,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   Smartphone,
@@ -61,6 +65,14 @@ export const SendIcon = make(ArrowUp, 16, 2.2);
 export const SparkIcon = make(Sparkle, 14);
 /** 사이드바 바닥의 기능 제안 · 프로젝트 목록의 정보 줄(2026-10-06). */
 export const LightbulbIcon = make(Lightbulb, 15);
+/** 기획서(Confluence 동기화) 항목의 그림 — 사이드바의 다른 줄 그림(16px)과 같은 크기의 문서 한 장. */
+export const PlansDocIcon = make(FileText, 16);
+/** 기획서 칸이 비었을 때 가운데 서는 큰 그림. */
+export const PlansEmptyIcon = make(FileText, 22, 1.6);
+/** 기획서 칸 위 막대 — 미리보기로 돌아가는 화살표 · 새로 가져오기 · Confluence 에서 열기. */
+export const ArrowLeftIcon = make(ArrowLeft, 14, 2);
+export const RefreshIcon = make(RefreshCw, 14, 2);
+export const ExternalIcon = make(ExternalLink, 12, 2);
 export const InfoIcon = make(Info, 15);
 
 /** 홈 입력창 아래의 시작점 칩 — 요청의 종류마다 하나(2026-10-06 홈 개선). */

@@ -35,7 +35,11 @@
   차선(`git-lane`)만 지나고, AI 의 git 쓰기는 가드(PreToolUse + `core.hooksPath`)가 막는다.
 - **로그 · 턴 통계에 사용자의 말 · 파일 경로를 남기지 않는다** — 종류와 숫자만.
 - **모든 세션은 bypassPermissions** — 확인 카드 없이 돈다. 안전은 가드와 공통 규칙의 몫이다. Claude 의 가드는
-  PreToolUse 훅(git 쓰기 · 클론 밖 파일 쓰기 · 뻔한 파괴 Bash — `write-guard.ts`)이다.
+  PreToolUse 훅(git 쓰기 · 클론 밖 파일 쓰기 · 기획서 폴더 쓰기 · 뻔한 파괴 Bash — `write-guard.ts`)이다.
+- **기획서 폴더는 읽기 전용 자료다** — `docs/plans/` 는 앱이 Confluence 에서 가져온 것뿐이다
+  (원장 `confluence.json` · 저장 포맷 정본 · 파생 마크다운). 보관 · 제출에서 빠지고 AI 는
+  고치지 않는다 — 고치는 곳은 Confluence 다(2026-10-18 동기화 1단계). Claude 의 파일 쓰기 도구는 가드가 막고,
+  셸 쓰기는 공통 규칙의 한 구절이 맡는다(2026-10-19 · Codex 은퇴 2026-10-20).
 - **데이터 폴더는 `~/.colonova-design/` 하나** — 옛 `~/.colo-design/` 는 읽지 않는다(0.4.0 단절).
 - **문서 · 주석은 한국어 단문** — 결정에는 날짜와 출처(PLAN-… · 베타 테스트 번호 · 글)를 적는다.
 

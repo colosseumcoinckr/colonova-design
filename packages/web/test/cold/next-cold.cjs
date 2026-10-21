@@ -37,7 +37,7 @@ const INVITE = opt("invite", "/tmp/colonova-smoke/invite.colonova-invite");
 const INVITE2 = opt("invite2", "/tmp/colonova-smoke/invite2.colonova-invite");
 const LATEST_PORT = Number(opt("latest-port", "0"));
 const SHOTS = opt("shots", process.env.SHOT_DIR || "/tmp/colonova-smoke/shots");
-const TASKS = opt("tasks", "1,2,3,4,5,6,7,8,9,10")
+const TASKS = opt("tasks", "1,2,3,4,5,6,7,8,9,10,11")
   .split(",")
   .map((s) => Number(s.trim()))
   .filter(Boolean);
@@ -972,6 +972,7 @@ TASK[8] = async () => {
   if (server) server.close();
 };
 
+
 // 9 — 좁은 창(U16)
 TASK[9] = async () => {
   const page = await openPage(URL0, { width: 860, height: 900 });
@@ -1006,6 +1007,7 @@ TASK[9] = async () => {
 };
 
 // 10 — AI 답 실패 카드 · 도구가 한 일 · 문제 문장
+
 TASK[10] = async () => {
   const page = await openPage(URL0);
   page.__task = 10;
@@ -1048,6 +1050,52 @@ TASK[10] = async () => {
   await step(10, "개발자 확인 · 코멘트 · 반영됨 상태", () =>
     skip("열린 요청이 있어야 선다 — GitHub 픽스처에 요청 짝이 없다"),
   );
+  await page.context().close();
+};
+
+// 11 — 기획서 칸(2026-10-18 동기화 1단계 · M4, 같은 날 개선 패스): 사이드바 항목 → 오른쪽 칸 전환 → 안내 문장 →
+// 미리보기가 **마운트된 채 숨는지** → 돌아오는 두 길(위 막대의 `미리보기` · 사이드바 항목을 한 번 더).
+TASK[11] = async () => {
+  const page = await openPage(URL0);
+  page.__task = 11;
+  await workReady(page);
+  const plansRow = page.locator(".nx-side-nav .nx-side-row", { hasText: "기획서" });
+  await step(11, "기획서 항목 → 오른쪽 칸이 기획서로, 미리보기는 숨어 산다", async () => {
+    check((await plansRow.count()) > 0, "사이드바에 기획서 항목 없음");
+    await plansRow.first().click();
+    await sleep(900);
+    check((await page.locator(".nx-plans:not(.nx-offstage)").count()) > 0, "기획서 칸이 서지 않음");
+    // 미리보기 게스트가 내려가면 스크롤 · 입력 중인 폼 · 핀이 사라진다 — 마운트된 채 숨어야 한다.
+    const hidden = await page.locator(".nx-preview.nx-offstage").count();
+    check(hidden === 1, "미리보기가 마운트된 채 숨지 않음(내려갔거나 그대로 서 있다)");
+    await shot(page, 11, "plans-pane");
+    const text = await bodyText(page);
+    // 연결이 없는 창이라면 안내 한 장이, 연결된 창이라면 목록이나 빈 목록 안내가 선다.
+    const said =
+      text.includes("기획서를 이 앱에서 읽어요") ||
+      text.includes("아직 가져온 기획서가 없어요") ||
+      (await page.locator(".nx-pl-row").count()) > 0;
+    check(said, "기획서 칸의 문장이 없음");
+    return "기획서 칸이 서고 미리보기는 숨어 있다";
+  });
+  await step(11, "돌아오는 길 — 위 막대의 `미리보기`", async () => {
+    await page.locator(".nx-plans .nx-pl-crumb--btn", { hasText: "미리보기" }).first().click();
+    await sleep(600);
+    const back = (await page.locator(".nx-preview:not(.nx-offstage)").count()) === 1;
+    await shot(page, 11, "plans-back");
+    check(back, "미리보기로 돌아오지 않음");
+    check((await page.locator(".nx-plans.nx-offstage").count()) === 1, "기획서 칸이 숨지 않음");
+    return "오른쪽 칸이 미리보기로 돌아옴(기획서 칸은 숨어 남는다)";
+  });
+  await step(11, "사이드바 항목을 다시 누르면 열고 닫는다", async () => {
+    await plansRow.first().click();
+    await sleep(500);
+    check((await page.locator(".nx-plans:not(.nx-offstage)").count()) === 1, "다시 열리지 않음");
+    await plansRow.first().click();
+    await sleep(500);
+    check((await page.locator(".nx-preview:not(.nx-offstage)").count()) === 1, "다시 눌러도 안 닫힘");
+    return "토글로 닫힌다";
+  });
   await page.context().close();
 };
 

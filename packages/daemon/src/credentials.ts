@@ -20,6 +20,8 @@ import { CONFIG_DIR } from "./environment.js";
 export const CREDENTIAL_SERVICE = "ColoNova Design";
 /** The credential-store item holding the machine-wide GitHub token. */
 export const REPO_PAT_ITEM = "pat";
+/** The credential-store item holding the machine-wide Confluence 자격(이메일+토큰 짝). */
+export const CONFLUENCE_PAT_ITEM = "confluence-pat";
 
 /** The per-project item an installation before the machine-wide token filed its PAT under. */
 export function repoPatItem(slug: string): string {
@@ -165,6 +167,29 @@ export async function loadRepoPat(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<string | null> {
   return env.COLONOVA_DESIGN_REPO_PAT ?? (await safeLoad(store, REPO_PAT_ITEM));
+}
+
+/**
+ * The machine-wide Confluence 자격 — 이메일과 토큰이 한 몸이다(`email\ntoken` 두 줄,
+ * 이메일도 개인 식별자라 비밀 취급). COLONOVA_DESIGN_CONFLUENCE_EMAIL+TOKEN 오버라이드가
+ * 저장소보다 이긴다(loadRepoPat 과 같은 순서). 둘째 줄 없는 값(옛 값 · 반쯤 쓴 값)은
+ * 버린다 — 반쪽 자격으로 실사이트를 두드리지 않는다.
+ */
+export async function loadConfluenceCredentials(
+  store: CredentialStore,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<{ email: string; token: string } | null> {
+  const email = env.COLONOVA_DESIGN_CONFLUENCE_EMAIL;
+  const token = env.COLONOVA_DESIGN_CONFLUENCE_TOKEN;
+  if (email && token) return { email, token };
+  const stored = await safeLoad(store, CONFLUENCE_PAT_ITEM);
+  if (stored === null) return null;
+  const separator = stored.indexOf("\n");
+  if (separator <= 0) return null;
+  const storedEmail = stored.slice(0, separator);
+  const storedToken = stored.slice(separator + 1);
+  if (storedEmail === "" || storedToken === "") return null;
+  return { email: storedEmail, token: storedToken };
 }
 
 /**

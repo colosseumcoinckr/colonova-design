@@ -21,6 +21,7 @@ import { useToday } from "./lib/use-today";
 import { daysSince } from "./lib/waiting";
 import { commentCount, outsideChanges } from "./lib/work-ledger";
 import type { NextShellProps } from "./NextShell";
+import { PlansColumn } from "./plans/PlansColumn";
 import { PreviewColumn } from "./preview/PreviewColumn";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -178,6 +179,10 @@ export function Workspace({
 
   // 팔레트와 단축키(⌘K · ⌘T · ⌘,) — 조합키가 붙어 입력창의 타이핑과 만나지 않는다.
   const [palette, setPalette] = useState(false);
+  // 기획서 칸 — 처음 열 때 마운트하고 그 뒤로는 마운트된 채 숨는다(열린 문서 · 찾는 말이 미리보기로 갔다 와도 그대로).
+  // 열기 전에는 짓지 않는다: 지으면 기획서를 쓰지 않는 프로젝트도 앱을 켤 때마다 목록을 읽는다.
+  const [plansMounted, setPlansMounted] = useState(false);
+  if (state.pane === "plans" && !plansMounted) setPlansMounted(true);
   // ⌘/ 단축키 시트(2026-10-04 ux-plan PR 2) — 팔레트 · 설정과 같은 창 문이다.
   const [sheetOpen, setSheetOpen] = useState(false);
   const keys = useRef({
@@ -348,6 +353,7 @@ export function Workspace({
           sessions={sessions}
           activeSessionId={activeId}
           view={state.view}
+          plansOn={state.view === "thread" && state.pane === "plans"}
           titleFor={titleForThread}
           nav={nav}
           onPalette={() => setPalette(true)}
@@ -463,9 +469,11 @@ export function Workspace({
                   {/* 2026-10-04 ux-review(2차): 긴 화면 이름은 말줄임으로 — 익명 플렉스
                       항목은 CSS 만 줄일 수 없어 이름만 감싼다. */}
                   <span className="nx-tab-label">
-                    {L.narrow.screenTab(screenName ?? project?.name ?? "")}
+                    {state.pane === "plans"
+                      ? L.plans.listHeading
+                      : L.narrow.screenTab(screenName ?? project?.name ?? "")}
                   </span>
-                  {pinCount > 0 && <Count n={pinCount} />}
+                  {pinCount > 0 && state.pane !== "plans" && <Count n={pinCount} />}
                 </button>
               </div>
             )}
@@ -513,12 +521,23 @@ export function Workspace({
                   onReset={() => setChatWidth(CHAT_DEFAULT)}
                 />
               )}
-              {/* 홈이 떠 있거나 좁은 창이 대화 탭에 있으면 이 칸은 숨는다 — 열린 작업 기록 서랍은 숨는 순간 접힌다. */}
+              {/* 홈이 떠 있거나 좁은 창이 대화 탭에 있으면 이 칸은 숨는다 — 열린 작업 기록 서랍은 숨는 순간 접힌다.
+                  오른쪽 칸의 얼굴은 pane 이 갈라 놓는다: 미리보기 아니면 기획서(2026-10-18 동기화 1단계 · M4).
+                  둘 다 마운트된 채 한쪽만 선다 — 기획서를 열었다고 미리보기 게스트(스크롤 · 입력 중인 폼 · 핀)가
+                  내려가면 안 된다(홈이 앞에 설 때와 같은 규칙). */}
               <PreviewColumn
                 {...slot}
                 onScreenName={setScreenName}
-                offstage={home || (narrow && state.tab === "chat")}
+                offstage={home || (narrow && state.tab === "chat") || state.pane === "plans"}
               />
+              {plansMounted && (
+                <PlansColumn
+                  daemon={daemon}
+                  project={project}
+                  nav={nav}
+                  offstage={home || (narrow && state.tab === "chat") || state.pane !== "plans"}
+                />
+              )}
             </div>
           </div>
         </main>

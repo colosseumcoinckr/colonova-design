@@ -21,7 +21,9 @@ export type LaneKind =
   | "diff"
   | "preview"
   | "hygiene"
-  | "supervise";
+  | "supervise"
+  /** 기획서(Confluence) 가져오기의 쓰기 — 폴더가 생기기 전부터 같은 줄에 선다(2026-10-18 · D1 보험). */
+  | "confluence";
 
 /** 작업 문맥의 표식 — 차선의 "지금 도는 작업" 목록과 겹쳐야 holding 이다. */
 interface LaneContext {

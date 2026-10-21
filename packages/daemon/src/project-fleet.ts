@@ -29,6 +29,12 @@ import {
   commentReflectionSubject,
   turnSubjectOf,
 } from "./common-instructions.js";
+import { emptyConfluenceLedger, readConfluenceLedger } from "./confluence-ledger.js";
+import {
+  confluenceLedgerFile,
+  confluenceRootTitleKey,
+  confluenceSiteKey,
+} from "./confluence-sync.js";
 import { mergeNpmrc, npmrcPath } from "./credentials.js";
 import { DEFAULT_KEEP_REJECTED_DAYS } from "./cycle-hygiene.js";
 import { cycleLedgerFile } from "./cycle-ledger.js";
@@ -123,6 +129,10 @@ export interface FleetDeps {
   queueDiskFor(sessionId: string): QueueDisk;
   /** 서비스의 첫 화면 읽기 — 시험이 갈아 끼운다. 비우면 미리보기 서버를 직접 읽는다(first-screen.ts). */
   readFirstScreen?: (previewUrl: string) => Promise<FirstScreen | null>;
+  /** 기계 잔일 — 기획서 연결의 프로젝트별 미러. 없으면 기획서 칸은 아예 실리지 않는다(2026-10-18). */
+  machineSetting?: { get(key: string): string | null };
+  /** 기획서 동기화의 만료 판정 — 401 뒤 다시 connect 하기까지의 상태. */
+  confluenceExpired?: (slug: string) => boolean;
 }
 
 /**
@@ -471,6 +481,32 @@ export class ProjectFleet {
    * somebody else's screen. Inactive projects still run to completion; they
    * just do it quietly.
    */
+  /**
+   * 기획서(Confluence) 연결의 한 끳이 — 미러(machine.json 슬러그 키)와 원장
+   * (docs/plans/confluence.json)에서 읽는다. 미연결은 undefined — 키가 없는 것이다.
+   * 자격(이메일 · 토큰)은 여기에 절대 실리지 않는다.
+   */
+  private confluenceSummary(slug: string): ProjectSummary["confluence"] {
+    const site = this.deps.machineSetting?.get(confluenceSiteKey(slug)) ?? null;
+    if (site === null) return undefined;
+    // 원장은 클론의 디스크에서 읽는다 — 재시작 뒤 손대지 않은 클론(workspaces 밖)도
+    // 이미 가져온 기획서를 알려야 한다(이 시험의 몫: project-fleet-confluence.test.ts).
+    let ledger = emptyConfluenceLedger(site);
+    try {
+      ledger = readConfluenceLedger(confluenceLedgerFile(this.deps.registry.paths(slug).repoRoot));
+    } catch {
+      // 등록부가 아직 이 프로젝트의 자리를 모른다 — 빈 원장으로 답한다.
+    }
+    return {
+      site,
+      connected: true,
+      expired: this.deps.confluenceExpired?.(slug) ?? false,
+      rootTitle: this.deps.machineSetting?.get(confluenceRootTitleKey(slug)) ?? null,
+      lastImportAt: ledger.lastSyncAt,
+      pages: Object.keys(ledger.pages).length,
+    };
+  }
+
   private broadcastFor(slug: string, message: ServerMessage): void {
     if (slug === this.deps.registry.activeSlug()) this.deps.broadcast(message);
   }
@@ -531,6 +567,8 @@ export class ProjectFleet {
 
   projectSummaries(): ProjectSummary[] {
     return (this.deps.registry?.list() ?? []).map((project) => {
+      // 기획서(Confluence) 연결의 상태 — 미연결은 undefined 로, 키 자체가 없다.
+      const confluenceSummary = this.confluenceSummary(project.slug);
       const workspaces = this.workspaces.get(project.slug);
       const repo = workspaces?.repo;
       // The tree's children come from the per-clone cache (PLAN D59); a clone
@@ -570,6 +608,8 @@ export class ProjectFleet {
         ...(project.lifecycle ? { lifecycle: project.lifecycle } : {}),
         // 다시 받은 초대장의 keep 판정(PLAN-UI U11)이 대 보는 개발자 몫 값.
         ...(project.reviewers?.length ? { reviewers: project.reviewers } : {}),
+        // 기획서(Confluence) 연결의 프로젝트 스코프 상태 — 미연결은 키가 없다(2026-10-18).
+        ...(confluenceSummary !== undefined ? { confluence: confluenceSummary } : {}),
         commandsApproved: project.commandsApproved !== false,
         // 홈 크로스 프로젝트 인박스(PLAN P3-2): 질문+권한 모두 스레드를
         // "awaiting" 으로 세우므로, 비활성 프로젝트라도 이 카운트만으로

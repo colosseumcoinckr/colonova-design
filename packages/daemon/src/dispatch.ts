@@ -5,11 +5,13 @@ import {
   markTurn,
   readTurn,
 } from "@colonova-design/protocol";
+
 import { describeProblem } from "./developer-notice.js";
 import { realpathBestEffort } from "./paths.js";
 import type { ProjectWorkspaces } from "./project-fleet.js";
 import type { StartupRecovery } from "./queue-store.js";
 import type { RepoWorkspace } from "./repo.js";
+import { confluenceHandlers } from "./requests/confluence.js";
 import { projectHandlers } from "./requests/projects.js";
 import { repositoryHandlers } from "./requests/repository.js";
 import { systemHandlers } from "./requests/system.js";
@@ -40,6 +42,7 @@ export class RequestRouter {
   constructor(private readonly deps: RouterDeps) {
     this.handlers = {
       ...this.sessionHandlers,
+      ...confluenceHandlers(deps),
       ...projectHandlers(deps),
       ...repositoryHandlers(deps, (sessionId, stage) => this.briefTo(sessionId, stage)),
       ...systemHandlers(deps),
@@ -426,6 +429,7 @@ export class RequestRouter {
       );
       return { ok: true };
     },
+
     // 답하기 (PLAN D88): the planner's words to one developer comment —
     // the daemon picks the endpoint by the id's kind.
     "session.branch": async (message) => {

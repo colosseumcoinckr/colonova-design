@@ -106,6 +106,8 @@ test("셸 이동 — 대화를 열면 서랍이 닫히고, 프로젝트가 바�
   assert.deepEqual(s, {
     view: "home",
     tab: "chat",
+    // 기획서 칸도 전환과 함께 닫힌다(2026-10-18 동기화 1단계 · M4).
+    pane: "preview",
     drawer: false,
     collapsed: false,
     discardableInvitePath: null,

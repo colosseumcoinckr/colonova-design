@@ -136,6 +136,71 @@ export class FixtureTransport implements RestTransport {
   }
 }
 
+/**
+ * The one fetch plumbing both REST clients share — a base url in the
+ * constructor, "one request in, one structured response out". Response
+ * headers are lower-cased and ride along because consumers read them
+ * (GitHub reports a classic token's scopes in x-oauth-scopes, Confluence's
+ * v1 search pages through the Link header).
+ */
+export class FetchRestTransport implements RestTransport {
+  constructor(private readonly apiUrl: string) {}
+
+  async request(input: {
+    method: "GET" | "POST" | "PUT" | "PATCH";
+    url: string;
+    headers: Record<string, string>;
+    body?: Uint8Array;
+  }): Promise<{
+    status: number;
+    body: Uint8Array;
+    headers: Record<string, string>;
+  }> {
+    const response = await fetch(`${this.apiUrl}${input.url}`, {
+      method: input.method,
+      headers: input.headers,
+      body: input.body ? Buffer.from(input.body) : undefined,
+    });
+    // Headers is only iterable with lib.dom.iterable; forEach is what every
+    // runtime and this tsconfig agree on.
+    const headers: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      headers[key.toLowerCase()] = value;
+    });
+    return {
+      status: response.status,
+      body: new Uint8Array(await response.arrayBuffer()),
+      headers,
+    };
+  }
+}
+
+/**
+ * The `rel="next"` target of a REST `Link` header — a path+query the
+ * transport can fetch as-is — or null at the last page. Shared plumbing:
+ * the GitHub client and the Confluence CQL search both page this way.
+ */
+export function nextLink(header: string | undefined): string | null {
+  if (!header) return null;
+  const match = header.match(/<([^>]+)>\s*;\s*rel="next"/);
+  const target = match?.[1];
+  if (!target) return null;
+  // GitHub 은 절대 주소를 돌려준다 — transport 가 여기에 api base 를 또 붙이면
+  // `https://api.github.comhttps://…` 가 되어 100개 넘는 레포의 목록이 깨진다.
+  if (!/^https?:\/\//i.test(target)) return target;
+  try {
+    const url = new URL(target);
+    return `${url.pathname}${url.search}`;
+  } catch {
+    return target;
+  }
+}
+
+/** The first line of a transport error; fetch writes whole sentences per line. */
+export function firstLine(text: string): string {
+  return (text.split("\n").find((line) => line.trim() !== "") ?? text).slice(0, 160);
+}
+
 function bodyMismatch(parsed: unknown, raw: string, pair: FixturePair): string {
   const actual = parsed !== undefined ? JSON.stringify(parsed) : raw;
   const expected = pair.request.bodyJson !== undefined ? JSON.stringify(pair.request.bodyJson) : "";

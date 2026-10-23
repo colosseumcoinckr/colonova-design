@@ -1,4 +1,5 @@
-/* 홈(U6) — 큰 입력창과 받은 편지함. 목업 「홈」 칸. */
+/* 홈 — 현관(2026-10-23 화면 전면 재설계 §3.6). 인사 · 기다리는 일 · 두 시작 카드 · 받은 편지함.
+   크기는 ui/tokens.css 의 토큰을 쓴다 — 사람이 읽는 글은 12px 아래로 내리지 않고 반 픽셀은 두지 않는다. */
 
 .nx-home {
   flex: 1;
@@ -6,120 +7,170 @@
   background: var(--bg);
 }
 
+/* 홈 본문 폭(--w-home 1040) — 두 시작 카드가 나란히 서려면 카드 줄이 1000px 는 되어야 한다(§3.6).
+   칸 폭을 재는 컨테이너도 이 줄이다: 안쪽 여백을 16px 로 줄여 카드 줄이 1008px 까지 펴진다. */
 .nx-home-inner {
-  max-width: 800px;
+  container-type: inline-size;
+  max-width: var(--w-home);
   margin: 0 auto;
-  padding: clamp(28px, 6vh, 64px) 36px 48px;
+  padding: clamp(28px, 6vh, 64px) 16px 48px;
 }
 
 .nx--narrow .nx-home-inner {
-  padding: 24px 24px 40px;
+  padding: 24px 16px 40px;
 }
 
-.nx-home-project {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 36px;
-}
-
-.nx-home-project-name {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-  flex: 1;
-}
-
-.nx-home-project-name > span {
-  font-size: 12px;
-  color: var(--ink3);
-}
-
-.nx-home-project-name > b {
-  font-size: 14px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
-.nx .nx-home-open {
-  flex: none;
-  min-height: 34px;
-  background: var(--cmp);
-}
+/* ---------- 인사 ---------- */
 
 .nx-home-intro {
-  margin-bottom: 22px;
+  margin-bottom: 24px;
 }
 
 .nx-greet {
   font-family: var(--font);
-  font-weight: 650;
-  font-size: clamp(24px, 2.2vw, 30px);
-  line-height: 1.4;
-  letter-spacing: -0.035em;
+  font-weight: var(--fw-semi);
+  font-size: var(--fs-h1);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.03em;
   text-wrap: balance;
   margin: 0;
 }
 
-.nx-home-sub {
-  margin: 10px 0 0;
-  color: var(--ink2);
-  font-size: 14px;
-  line-height: 1.6;
+/* 프로젝트 한 줄(2026-10-23 §3.6) — 머리의 `현재 프로젝트 · 화면 열기` 줄을 걷고 그 말을 흐리게 줄인다. */
+.nx-home-where {
+  margin: 6px 0 0;
+  color: var(--ink3);
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
   word-break: keep-all;
 }
 
-.nx-home-guide {
+/* ---------- 두 시작 카드(§3.6) — 기획서 왼쪽 · 화면 오른쪽. 본문 폭 1000px 이상에서 나란히, 좁으면 위아래. */
+.nx-start {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
+  gap: var(--sp-4);
+  align-items: stretch;
+  margin-top: 24px;
+}
+
+@container (min-width: 1000px) {
+  .nx-start {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  /* 기획서를 연결하지 않은 프로젝트 — `화면` 카드가 폭을 다 쓴다(§3.6). */
+  .nx-start > .nx-hcard:only-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 두 카드의 같은 옷 — 같은 테두리 · 같은 머리 모양(아이콘 · 이름 · 오른쪽 단추). 나란히 설 때 같은 높이로 선다. */
+.nx-hcard {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px 14px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--cmp);
+  box-shadow: var(--elev-1);
+}
+
+.nx-hcard-hd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.nx-hcard-ic {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--h-md);
+  height: var(--h-md);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.nx-hcard-t {
+  flex: 1 1 160px;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.nx-hcard-name {
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-semi);
+}
+
+.nx-hcard-sub {
+  font-size: var(--fs-sm);
+  color: var(--ink3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 연결이 끊긴 카드 머리 — 다음 할 일을 끝까지 읽게 줄을 접는다. */
+.nx-hcard-sub--warn {
+  color: var(--amber);
+  white-space: normal;
+}
+
+.nx-hcard-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-inline-start: auto;
+}
+
+.nx-hcard-bd {
+  flex: 1;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+/* ---------- 세 걸음 — 처음인 프로젝트에서만 두 카드 아래 한 줄로(§4 B). ---------- */
+
+.nx-home-guide {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
   list-style: none;
-  margin: 32px 0 0;
-  padding: 24px 0 0;
-  border-top: 1px solid var(--line);
+  margin: 16px 0 0;
+  padding: 0;
 }
 
 .nx-home-guide li {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 
-.nx-home-guide li > span {
-  font-size: 12px;
+.nx-home-guide-n {
+  font-size: var(--fs-cap);
   color: var(--accent);
-  font-weight: 650;
+  font-weight: var(--fw-semi);
   font-variant-numeric: tabular-nums;
 }
 
 .nx-home-guide b {
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--ink2);
+  white-space: nowrap;
 }
 
-.nx-home-guide p {
-  font-size: 12px;
-  line-height: 1.6;
-  margin: 5px 0 0;
+.nx-home-guide li > .nx-i {
   color: var(--ink3);
-  word-break: keep-all;
 }
 
-@media (max-width: 640px) {
-  .nx-home-guide {
-    grid-template-columns: 1fr;
-    gap: 14px;
-  }
-
-  .nx-home-project {
-    margin-bottom: 24px;
-  }
-}
-
-/* ---------- 입력창 · 안내 · 시작점 ---------- */
+/* ---------- 화면 카드의 몸통 — 큰 입력창 · 안내 · 시작점 칩 ---------- */
 
 .nx-hc {
   position: relative;
@@ -177,11 +228,12 @@
   animation: nx-fade var(--nx-t-touch) var(--drift);
 }
 
+/* 입력창 아래 안내 — 한 줄(2026-10-23 §4 B: 12px 두 줄 → 13px 한 줄). */
 .nx-home-hint {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink3);
   text-align: left;
-  line-height: 1.6;
+  line-height: var(--lh-ui);
   margin: 10px 2px 0;
 }
 
@@ -216,24 +268,25 @@
   margin: -4px -4px -14px;
 }
 
+/* 칩은 32px · 13px · 그림 16px(2026-10-23 §4 B) — 단추 셋의 가운데 크기다. */
 .nx .nx-starter {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  height: 34px;
+  height: var(--h-md);
   padding: 0 12px;
   border-radius: var(--r);
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--cmp) 70%, transparent);
   color: var(--ink2);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
 }
 
 .nx-starters-label {
   flex-basis: 100%;
-  font-size: 12px;
+  font-size: var(--fs-cap);
   line-height: 1.5;
   color: var(--ink3);
   margin-bottom: 2px;
@@ -247,6 +300,12 @@
     transform var(--nx-t-move) var(--spring);
 }
 
+/* 칩의 그림은 ui/icons.tsx 의 14px 짜리를 16px 로 키워 쓴다 — 아이콘 파일은 이 칸의 것이 아니다. */
+.nx .nx-starter-i .nx-i {
+  width: 16px;
+  height: 16px;
+}
+
 .nx .nx-starter:hover {
   background: var(--cmp);
   border-color: var(--line2);
@@ -257,96 +316,20 @@
   color: var(--accent);
 }
 
-/* ---------- 받은 편지함 ---------- */
-
-.nx-inbox {
-  margin-top: 40px;
-}
-
-/* ---------- 기획서 묶음(2026-10-23 기획자 화면 손질 D4) — 기획서를 연결한 프로젝트의 홈에만 선다 ----------
-   입력창(화면 작업)과 같은 무게의 두 번째 입구다. 줄은 받은 편지함의 줄(`nx-irow`)을 그대로 쓴다. */
-.nx-hplans {
-  margin-top: 28px;
-  padding: 14px 14px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--cmp);
-}
-
-.nx-hplans-hd {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 12px;
-}
-
-.nx-hplans-ic {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--r-md);
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.nx-hplans-t {
-  flex: 1 1 180px;
-  min-width: 0;
-  display: grid;
-  gap: 2px;
-}
-
-.nx-hplans-name {
-  font-size: 14px;
-  font-weight: 600;
-}
-
-.nx-hplans-scope {
-  font-size: 12px;
-  color: var(--ink3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 연결이 끊긴 머리 줄 — 다음 할 일을 끝까지 읽게 줄을 접는다. */
-.nx-hplans-scope--warn {
-  color: var(--amber);
-  white-space: normal;
-}
-
-/* 손이 필요한 초안의 한 줄 — 줄의 흐린 글(`.nx-isub`)보다 뒤에 읽혀야 호박색이 선다. */
-.nx-isub.nx-hplans-warn {
-  color: var(--amber);
-}
-
-.nx-hplans-acts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-inline-start: auto;
-}
-
-.nx-hplans-body {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line-soft);
-}
+/* ---------- 기획서 카드의 몸통 — 작성 중인 초안(2026-10-23 기획자 화면 손질 D4) ---------- */
 
 .nx-hplans-sub {
   margin: 0 0 4px;
   padding-inline-start: 10px;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
   color: var(--ink3);
 }
 
 .nx-hplans-none {
   margin: 0;
   padding: 6px 10px 6px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.6;
   color: var(--ink3);
   word-break: keep-all;
@@ -361,14 +344,19 @@
   border: 0;
   background: transparent;
   color: var(--accent);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
   cursor: pointer;
 }
 
 .nx .nx-hplans-more:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+/* 손이 필요한 초안의 한 줄 — 줄의 흐린 글(`.nx-isub`)보다 뒤에 읽혀야 호박색이 선다. */
+.nx-isub.nx-hplans-warn {
+  color: var(--amber);
 }
 
 /* 칩을 감싼 닻도 줄어들어야 칩의 말줄임이 선다 — 닻이 내용의 폭을 고집하면 긴 이름이 모델 칩과 보내기
@@ -383,17 +371,18 @@
   flex: none;
 }
 
+/* 프로젝트 칩 — 입력창의 칩은 28px · 13px(2026-10-23 §4 E 와 같은 결). */
 .nx .nx-pchip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 30px;
+  height: var(--h-sm);
   /* 좁은 창에서 도구 줄이 모자라면 이름이 줄을 바꾸는 대신 말줄임으로 줄어든다. */
   min-width: 0;
   padding: 0 8px 0 5px;
   border-radius: var(--r);
   border: 1px solid var(--line);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
   white-space: nowrap;
   max-width: 100%;
@@ -413,12 +402,23 @@
   border-color: var(--line2);
 }
 
+/* ---------- 받은 편지함 — 맨 위 `답을 기다려요` 묶음과 나머지 묶음이 같은 옷을 입는다 ---------- */
+
+.nx-inbox {
+  margin-top: 32px;
+}
+
+/* 맨 위 묶음(`part="waiting"`) — 인사 바로 아래라 칸 여백을 내지 않는다. 비어 있으면 HomeInbox 가 그리지도 않는다. */
+.nx-inbox--waiting {
+  margin-top: 0;
+}
+
 .nx-ih {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
   margin: 0 0 10px;
   color: var(--ink2);
 }
@@ -428,7 +428,7 @@
 .nx-dcard {
   background: var(--cmp);
   border: 1px solid var(--accent-line);
-  border-radius: 16px;
+  border-radius: var(--r-xl);
   padding: 14px 16px 14px 18px;
   margin-bottom: 10px;
   box-shadow:
@@ -441,7 +441,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-cap);
   color: var(--ink3);
 }
 
@@ -462,8 +462,8 @@
   display: flex;
   gap: 8px;
   margin: 10px 0 14px;
-  line-height: 1.5;
-  font-size: 14.5px;
+  line-height: var(--lh-ui);
+  font-size: var(--fs-ui);
 }
 
 .nx-dq .nx-i {
@@ -485,7 +485,7 @@
   align-items: center;
   gap: 8px;
   color: var(--ink3);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   padding: 6px 2px 16px;
 }
 
@@ -513,8 +513,8 @@
   align-items: center;
   gap: 8px;
   padding: 2px 2px 4px;
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
   color: var(--ink3);
 }
 
@@ -535,14 +535,16 @@
   transform: rotate(90deg);
 }
 
-/* 한 줄 — 앞 그림 · 제목(+ 아래 한 줄) · 오른쪽 말. */
+/* 한 줄 — `nx-li` 꼴의 해부(2026-10-23 §4 B): 앞 그림 · 제목 14 · 부제 13 · 오른쪽 말 12. 홈의 줄은 눌러
+   열리는 단추라 여기에 움직임(호버 · 눌림 · 새 줄 내려앉기)을 얹는다. */
 .nx .nx-irow {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
+  min-height: var(--h-row);
   width: 100%;
-  padding: 8px 10px;
-  border-radius: var(--r-md);
+  padding: var(--sp-1_5) var(--sp-2);
+  border-radius: var(--r);
   margin-top: 2px;
 }
 
@@ -555,7 +557,6 @@
   display: grid;
   place-items: center;
   width: 20px;
-  color: var(--ink3);
 }
 
 /* 앞 그림의 색 — 기본은 연한 잉크, 줄의 뜻이 있으면 그 색을 입는다(AI 의 답 · 끝난 일). */
@@ -585,12 +586,12 @@
 }
 
 .nx-it {
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   line-height: 1.4;
 }
 
 .nx-isub {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   color: var(--ink3);
 }
@@ -600,7 +601,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--fs-cap);
   color: var(--ink3);
   white-space: nowrap;
   /* 도는 시계가 매초 폭을 흔들지 않게. */
@@ -635,7 +636,7 @@
 /* 전하지 못한 카드의 한 줄 — 다시 눌러 보라는 말이 카드 안에 선다. */
 .nx-dfail {
   margin-top: 10px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 /* 누를 수 없는 줄(업데이트 소식 같은 div)은 손끝의 반응을 내지 않는다 —
@@ -646,7 +647,7 @@
 
 /* ---------- 서비스가 떴어요(2026-10-07 베타 준비 분석 · 첫 5분) ---------- */
 
-/* 입력창과 받은 편지함 사이 — 첫 준비가 끝난 프로젝트의 줄. 기다린 일이 끝났다는 소식이라 답을 기다리는 카드
+/* 두 시작 카드와 나머지 묶음 사이 — 첫 준비가 끝난 프로젝트의 줄. 기다린 일이 끝났다는 소식이라 답을 기다리는 카드
    (`.nx-dcard`, 포인트 색 띠)와 갈리게 초록 기운으로 선다. */
 .nx-ready-list {
   display: grid;
@@ -661,7 +662,7 @@
 .nx-ready {
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--green) 34%, var(--line));
-  border-radius: 16px;
+  border-radius: var(--r-xl);
   background: color-mix(in srgb, var(--green) 7%, var(--cmp));
   box-shadow: var(--shadow-card);
 }
@@ -718,14 +719,14 @@
 
 /* 이 줄의 말이 핵심이라 말줄임 대신 줄바꿈 — 긴 프로젝트 이름도 끝까지 읽힌다. */
 .nx-ready-t {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-semi);
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
 
 .nx-ready-s {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   color: var(--ink3);
 }
@@ -739,9 +740,9 @@
   flex: none;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
+  width: var(--h-sm);
+  height: var(--h-sm);
+  border-radius: var(--r);
   color: var(--ink3);
 }
 

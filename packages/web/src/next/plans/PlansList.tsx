@@ -8,34 +8,18 @@ import {
   useRef,
 } from "react";
 import { L } from "../labels";
-import { ChevronRightIcon, CloseIcon, PlansEmptyIcon, SearchIcon, Spin } from "../ui/icons";
+import { ChevronRightIcon, CloseIcon, SearchIcon, Spin } from "../ui/icons";
+import { draftsInProgress } from "./home-drafts";
+import { PlansEmpty as Empty } from "./PlansEmpty";
 import { filterPlanRows, type PlanListRow, visiblePlanRows } from "./plans-list";
 import type { PlanPhase } from "./use-plans";
 
-/**
- * 기획서 목록(2026-10-18 기획서 동기화 1단계 · M4 개선 패스) — 찾기 칸 · 접을 수 있는 폴더 목록 · 비었을
- * 때의 안내. 문서 · 초안 편집기가 서 있는 동안에도 마운트된 채 `hidden` 으로 숨는다 — 찾는 말 · 접은
- * 폴더 · 스크롤 자리가 편집기를 닫고 돌아왔을 때 그대로다. 초안이 있는 문서 줄에는 `초안` 칩이 서고,
- * 아직 Confluence 에 없는 새 문서 초안은 목록 맨 위의 묶음으로 선다(2026-10-23 · 최종 구현 계획 F2).
- */
+/** 찾기 · 작성 중인 초안 · 문서 트리. 자리를 옮겨도 접힘과 스크롤을 지킨다(2026-10-23 화면 전면 재설계 §3.2). */
 
 /** 줄에 붙일 초안 칩의 글 — 결과를 모르면 `결과 확인 필요` 로, 바뀜이 있으면 수를 더한다. */
 function draftChipText(draft: DraftSummary): string {
   if (draft.state === "result-unknown") return L.drafts.resultUnknownTitle;
   return draft.changedBlocks > 0 ? L.drafts.chipCount(draft.changedBlocks) : L.drafts.chip;
-}
-
-function Empty({ title, body, children }: { title: string; body: string; children?: ReactNode }) {
-  return (
-    <div className="nx-pl-empty">
-      <span className="nx-pl-empty-ic" aria-hidden="true">
-        <PlansEmptyIcon />
-      </span>
-      <h3 className="nx-pl-empty-t">{title}</h3>
-      <p className="nx-pl-empty-b">{body}</p>
-      {children && <div className="nx-pl-empty-act">{children}</div>}
-    </div>
-  );
 }
 
 export function PlansList({
@@ -59,6 +43,8 @@ export function PlansList({
   hidden,
   focusId,
   onFocused,
+  compact = false,
+  activeDraftKey,
 }: {
   rows: PlanListRow[];
   /** 초안 요약 — 문서 줄의 칩과 목록 맨 위의 새 문서 초안 묶음이 읽는다. */
@@ -82,11 +68,13 @@ export function PlansList({
   onRetry: () => void;
   onImport: () => void;
   onSettings: () => void;
-  /** 문서가 열려 있어 목록이 숨는 중이다. */
+  /** 다른 자리로 가서 목록이 숨는 중이다. */
   hidden: boolean;
-  /** 문서를 닫고 돌아올 때 초점을 받을 줄. */
+  /** 문서 보기에서 Esc 를 누르면 초점을 받을 줄. */
   focusId: string | null;
   onFocused: () => void;
+  compact?: boolean;
+  activeDraftKey?: string | null;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   const tree = useRef<HTMLUListElement>(null);
@@ -97,10 +85,9 @@ export function PlansList({
   const docTotal = rows.reduce((count, row) => (row.kind === "doc" ? count + 1 : count), 0);
   // 초안 요약 — 문서 줄의 칩은 pageId 로 걷고, 아직 Confluence 에 없는 초안은 맨 위 묶음으로 선다.
   const draftByPage = new Map<string, DraftSummary>();
-  const freshDrafts: DraftSummary[] = [];
+  const freshDrafts = draftsInProgress(drafts).slice(0, 5);
   for (const draft of drafts) {
-    if (draft.pageId === null) freshDrafts.push(draft);
-    else draftByPage.set(draft.pageId, draft);
+    if (draft.pageId !== null) draftByPage.set(draft.pageId, draft);
   }
 
   // 숨은 목록은 스크롤 자리를 잃는다 — 눈에 보이는 동안 기억했다가 다시 나타날 때 되돌린다.
@@ -108,7 +95,7 @@ export function PlansList({
     if (!hidden && scroller.current) scroller.current.scrollTop = savedTop.current;
   }, [hidden]);
 
-  // 문서를 닫으면 방금 보던 줄로 초점이 돌아온다 — 키보드로 연 사람이 목록의 맨 위로 떨어지지 않게.
+  // Esc 는 열린 문서를 지키고 트리의 같은 줄로 초점을 돌린다.
   useEffect(() => {
     if (hidden || focusId === null) return;
     const node = tree.current?.querySelector<HTMLElement>(
@@ -147,10 +134,58 @@ export function PlansList({
     buttons[to]?.focus();
   };
 
+  const draftGroup = freshDrafts.length > 0 && (
+    <details className="nx-pl-fresh" open>
+      <summary className="nx-pl-fresh-t">
+        <ChevronRightIcon />
+        {L.plans.draftsInProgress}
+      </summary>
+      <ul className="nx-pl-fresh-list">
+        {freshDrafts.map((draft) => {
+          const current = activeDraftKey === draft.docKey;
+          const inTree = rows.some((row) => row.kind === "doc" && row.pageId === draft.pageId);
+          return (
+            <li key={draft.docKey}>
+              <button
+                type="button"
+                className={`nx-pl-row${current ? (inTree ? " nx-pl-row--current" : " nx-pl-row--on") : ""}`}
+                aria-current={current && !inTree ? "true" : undefined}
+                aria-label={
+                  draft.pageId === null ? `${draft.title} · ${L.drafts.newDraftGroup}` : undefined
+                }
+                title={draft.title}
+                onClick={() => onOpenDraft(draft.docKey)}
+              >
+                <span className="nx-pl-title">{draft.title}</span>
+                <span
+                  className={`nx-pill ${draft.state === "result-unknown" ? "nx-pill--amber" : "nx-pill--accent"}`}
+                >
+                  {draftChipText(draft)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    </details>
+  );
   let body: ReactNode;
   // 안내 한 장(연결 전 · 비었을 때 · 읽지 못했을 때)은 칸의 세로 한가운데에 선다 — 목록은 위에서부터 선다.
   let centered = true;
-  if (!connected) {
+  if (compact && rows.length === 0) {
+    centered = false;
+    body = (
+      <p className="nx-pl-note" role="status">
+        {!connected
+          ? L.plans.statusNotConnected
+          : phase === "loading" || phase === "idle"
+            ? L.plans.listLoading
+            : phase === "failed"
+              ? L.plans.listFailed
+              : L.plans.docCount(0)}
+      </p>
+    );
+  } else if (!connected) {
     body = (
       <Empty title={L.plans.emptyNoneTitle} body={L.plans.emptyNoneBody}>
         <button type="button" className="nx-btn nx-btn--pri" onClick={onSettings}>
@@ -214,7 +249,7 @@ export function PlansList({
         <div className="nx-pl-find">
           <SearchIcon />
           <input
-            className="nx-pl-find-in"
+            className="nx-input nx-pl-find-in"
             type="search"
             value={query}
             placeholder={L.plans.filterPlaceholder}
@@ -248,6 +283,7 @@ export function PlansList({
         <p className="nx-pl-count" role="status">
           {filtering ? L.plans.filterResult(shown.length) : L.plans.docCount(docTotal)}
         </p>
+        {draftGroup}
         {shown.length === 0 ? (
           <p className="nx-pl-note">{L.plans.filterNone}</p>
         ) : (
@@ -272,7 +308,7 @@ export function PlansList({
                   {folding ? (
                     <button
                       type="button"
-                      className={`nx-pl-fold${isClosed ? "" : " nx-pl-fold--open"}`}
+                      className={`nx-ibtn nx-ibtn--xs nx-pl-fold${isClosed ? "" : " nx-pl-fold--open"}`}
                       aria-expanded={!isClosed}
                       aria-label={
                         isClosed ? L.plans.foldOpen(row.title) : L.plans.foldClose(row.title)
@@ -284,12 +320,18 @@ export function PlansList({
                   ) : (
                     // 찾기 결과는 들여쓰기도 접는 단추도 없는 납작한 줄이다 — 빈 자리도 남기지 않는다.
                     !filtering && (
-                      <span className="nx-pl-fold nx-pl-fold--none" aria-hidden="true" />
+                      <span
+                        className="nx-ibtn nx-ibtn--xs nx-pl-fold nx-pl-fold--none"
+                        aria-hidden="true"
+                      />
                     )
                   )}
                   {row.kind === "unsupported" ? (
                     // Confluence 전용 항목 — 여기서는 열지 못하니 단추 대신 읽기 전용 줄로 선다.
-                    <span className="nx-pl-row nx-pl-row--off">
+                    <span
+                      className="nx-pl-row nx-pl-row--off"
+                      title={`${row.title} · ${L.plans.unsupportedKind(row.type ?? "")}`}
+                    >
                       <span className="nx-pl-title">{row.title}</span>
                       <span className="nx-pl-kind">{L.plans.unsupportedKind(row.type ?? "")}</span>
                     </span>
@@ -302,7 +344,7 @@ export function PlansList({
                       data-page-id={row.pageId}
                       data-fold={folding ? (isClosed ? "closed" : "open") : undefined}
                       aria-current={lastViewed === row.pageId ? "true" : undefined}
-                      title={lastViewed === row.pageId ? L.plans.lastViewed : undefined}
+                      title={row.title}
                       onClick={() =>
                         row.kind === "folder" ? onToggle(row.pageId) : onOpen(row.pageId)
                       }
@@ -313,14 +355,10 @@ export function PlansList({
                       )}
                       {draft !== null && (
                         <span
-                          className="nx-pl-draft"
-                          data-tone={draft.state === "result-unknown" ? "warn" : undefined}
+                          className={`nx-pill ${draft.state === "result-unknown" ? "nx-pill--amber" : "nx-pill--accent"}`}
                         >
                           {draftChipText(draft)}
                         </span>
-                      )}
-                      {row.kind === "doc" && (
-                        <span className="nx-pl-ver">{L.plans.docVersions(row.version)}</span>
                       )}
                     </button>
                   )}
@@ -342,30 +380,7 @@ export function PlansList({
         if (!hidden) savedTop.current = event.currentTarget.scrollTop;
       }}
     >
-      {freshDrafts.length > 0 && (
-        <section className="nx-pl-fresh" aria-label={L.drafts.newDraftGroup}>
-          <h3 className="nx-pl-fresh-t">{L.drafts.newDraftGroup}</h3>
-          <ul className="nx-pl-fresh-list">
-            {freshDrafts.map((draft) => (
-              <li key={draft.docKey}>
-                <button
-                  type="button"
-                  className="nx-pl-row nx-pl-fresh-row"
-                  onClick={() => onOpenDraft(draft.docKey)}
-                >
-                  <span className="nx-pl-title">{draft.title}</span>
-                  <span
-                    className="nx-pl-draft"
-                    data-tone={draft.state === "result-unknown" ? "warn" : undefined}
-                  >
-                    {draftChipText(draft)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {rows.length === 0 && draftGroup}
       {body}
     </div>
   );

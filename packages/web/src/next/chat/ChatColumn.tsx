@@ -56,7 +56,6 @@ export function ChatColumn({
   nav,
   narrow,
   offstage = false,
-  pane = "preview",
 }: ChatColumnProps) {
   const { api, pending, resolvePending } = daemon;
   const { active, activeId } = sessions;
@@ -458,6 +457,10 @@ export function ChatColumn({
     const timer = window.setTimeout(() => setEmptyFade(false), 240);
     return () => window.clearTimeout(timer);
   }, [empty]);
+  // 빈 화면의 `수정할 곳 선택` 이 서 있는가 — 서 있는 동안 좁은 창 입력창의 같은 칩은 감춘다. 좁은 창의 대화 탭에는 이 단추가 하나만 서야 한다
+  // (2026-10-24 QA 15: 둘이 80px 간격으로 같이 섰다. 빈 화면의 안내가 `수정할 곳 선택` 을 말하는 GUIDE §2 쪽을 남긴다 — 첫 말이 올라와
+  // 빈 화면이 빠지면 입력창의 칩이 그 자리를 잇는다).
+  const emptyPinShown = (empty || emptyFade) && project !== null && !preparing;
   // 대화가 갈리면 대화록은 새로 마운트되지만, 첫 말로 대화가 태어나는 순간(대화
   // 없음 → 첫 대화)은 그대로 이어 받는다 — 다시 마운트되면 모든 줄의 등장
   // 애니메이션이 한 번 더 돈다.
@@ -525,25 +528,22 @@ export function ChatColumn({
               <SparkIcon />
             </span>
             <h2>{L.transcript.emptyTitle}</h2>
+            {/* 화면 작업실의 빈 화면은 화면 작업만 말한다 — 대화 칸이 기획서 곁에 서는 일은
+                없다(2026-10-23 화면 전면 재설계 §3.5). */}
             {project && (
               <p>
                 {preparing
                   ? L.transcript.emptyPreparing(project.name)
-                  : pane === "plans"
-                    ? // 오른쪽이 기획서일 때는 그렇게 말한다 — 「실제 화면이에요」 는 틀린 말이 된다(2026-10-23 기획자 화면 손질 D7).
-                      L.transcript.emptyBodyPlans(project.name)
-                    : narrow
-                      ? L.transcript.emptyBodyNarrow(project.name)
-                      : L.transcript.emptyBody(project.name)}
+                  : narrow
+                    ? L.transcript.emptyBodyNarrow(project.name)
+                    : L.transcript.emptyBody(project.name)}
               </p>
             )}
-            {project && !preparing && (
+            {emptyPinShown && (
               <button
                 type="button"
                 className="nx-btn nx-empty-pin"
                 onClick={() => {
-                  // 찍기는 미리보기 위의 일이다 — 기획서가 서 있으면 미리보기를 먼저 앞에 세운다.
-                  if (pane === "plans") nav.showPane("preview");
                   if (narrow) nav.showTab("preview");
                   window.dispatchEvent(new CustomEvent("nx:pins:toggle"));
                 }}
@@ -552,7 +552,6 @@ export function ChatColumn({
                 {L.preview.pin}
               </button>
             )}
-            {project && <p className="nx-shared-hint">{L.transcript.sharedWork}</p>}
           </div>
         )}
         {!empty && (
@@ -701,10 +700,14 @@ export function ChatColumn({
           onPinRemove={pins.remove}
           onPinFocus={(id) => void window.colonovaDesignDesktop?.preview?.pinFlash?.(id)}
           narrow={narrow}
-          onPinMode={() => {
-            nav.showTab("preview");
-            window.dispatchEvent(new CustomEvent("nx:pins:toggle"));
-          }}
+          onPinMode={
+            emptyPinShown
+              ? undefined
+              : () => {
+                  nav.showTab("preview");
+                  window.dispatchEvent(new CustomEvent("nx:pins:toggle"));
+                }
+          }
           disabledProviders={chat.disabledProviders}
           lockReason={lockReason}
           running={sessions.running}

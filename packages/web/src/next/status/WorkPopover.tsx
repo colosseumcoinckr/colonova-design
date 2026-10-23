@@ -443,17 +443,19 @@ export function WorkPopover({
               </div>
             </div>
           ) : ledger.status === "failed" ? (
-            <div role="alert" className="nx-st-note nx-st-note--red">
+            <div role="alert" className="nx-banner nx-banner--red nx-st-bn">
               <FailIcon />
-              <span className="nx-st-note-t">{L.work.readFailed}</span>
-              <button type="button" className="nx-btn nx-btn--sm" onClick={ledger.retry}>
-                {L.vocab.retry}
-              </button>
+              <div className="nx-banner-body">{L.work.readFailed}</div>
+              <div className="nx-banner-act">
+                <button type="button" className="nx-btn nx-btn--sm" onClick={ledger.retry}>
+                  {L.vocab.retry}
+                </button>
+              </div>
             </div>
           ) : comments.length > 0 ? (
             comments.map((comment) => (
               <div key={comment.id} className="nx-wp-cm">
-                <span className="nx-avt" aria-hidden="true">
+                <span className="nx-wp-avt" aria-hidden="true">
                   {comment.author.trim().slice(0, 1) || "?"}
                 </span>
                 <div className="nx-wp-cb">
@@ -461,7 +463,9 @@ export function WorkPopover({
                     <b>{comment.author.trim() || L.work.commentAuthor}</b>
                     <time dateTime={comment.at}>{whenText(comment.at)}</time>
                     {comment.state !== "unknown" && (
-                      <span className={`nx-wp-r nx-wp-state nx-wp-state--${comment.state}`}>
+                      <span
+                        className={`nx-pill nx-pill--${comment.state === "done" ? "green" : "amber"} nx-wp-state nx-wp-state--${comment.state}`}
+                      >
                         {comment.state === "done" ? <SentIcon /> : <FixingIcon />}
                         {comment.state === "done" ? L.work.commentDone : L.work.commentFixing}
                       </span>

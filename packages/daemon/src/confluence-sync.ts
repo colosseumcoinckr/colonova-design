@@ -1,16 +1,19 @@
 /**
  * 기획서 가져오기(2026-10-18 기획서 동기화 1단계 · 계획 A1) — 연결이 쓰는 국소 규칙과
  * 가져오기 루프가 여기 산다. 트리거는 넷이다: 데몬 시작 · 10분 타이머 ·
- * `confluence.importNow`(뷰어 · 설정의 새로 가져오기 단추 — 중복 눌림은 차선의 합류로
- * 한 번만 돈다, 취소는 없다) · 문서 관리 뒤의 `walkNow`(2026-10-23 · 최종 구현 계획 F2 ·
+ * `confluence.importNow`(뷰어 · 설정의 새로 가져오기 단추 — 중복 눌림은 슬러그별 inFlight
+ * 합류로 한 번만 돈다, 취소는 없다) · 문서 관리 뒤의 `walkNow`(2026-10-23 · 최종 구현 계획 F2 ·
  * 작업 B5 — 휴지통 · 이동 · 복구 · 복제는 증분이 못 본다). 저장 포맷은 원문 그대로,
  * 마크다운은 파생물, 원장은 한 벌이다.
- * 커밋은 없다(D1) — 쓰기는 각 프로젝트의 차선("confluence")에 서서 stash · checkout 경합을 피한다.
+ * 커밋은 없다(D1) — 사본은 클론 밖 `<프로젝트 폴더>/confluence` 에 살고 차선에 서지 않는다
+ * (2026-10-23 · 기획서 사본 이동 계획 §5). 바퀴의 줄 세움은 슬러그별 inFlight 약속 하나가 맡는다 —
+ * 서로 다른 프로젝트의 바퀴는 병렬이어도 된다.
  * 가져오기 중 401 을 만나면 만료 상태로 적고 다시 connect 전까지 조용히 건너뛴다.
  *
  * 걷기와 증분(2026-10-19 고침) — 폴더 경로는 트리 걷기(planPaths) 한 곳에서만 계산한다. 걷기는
  * 첫 가져오기 · 데몬 시작 뒤 첫 바퀴 · 빠짐없이 끝나지 못한 걷기의 다음 바퀴 · 증분이 처음 보는
- * 문서나 제목이 바뀐 문서를 만난 바퀴 · 문서 관리 뒤의 walkNow(2026-10-23 · 작업 B5)에 돈다.
+ * 문서나 제목이 바뀐 문서를 만난 바퀴 · 문서 관리 뒤의 walkNow(2026-10-23 · 작업 B5) · 사본 파일이
+ * 하나라도 없는 바퀴(자가 복구 · 2026-10-23 · 기획서 사본 이동 계획 §6 · 오케스트레이터 검토)에 돈다.
  * 이동은 판도 lastModified 도 올리지 않아(2026-10-18 실측) 증분이 못 보므로 시작 걷기가 잡는다.
  * 그 사이의 바퀴는 뿌리 아래로 좁힌 CQL 증분이다. 걷기는 경로가 바뀐 문서를
  * 새 자리로 옮기고, 빠짐없이 끝난 걷기는 트리에 없는 문서(지워졌거나 뿌리 밖으로 옮겨 간 것)를 거둔다.
@@ -20,8 +23,9 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
-  readFileSync,
+  renameSync,
   rmdirSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -41,46 +45,27 @@ import {
   writeConfluenceLedger,
 } from "./confluence-ledger.js";
 import { deriveMarkdown } from "./confluence-markdown.js";
+import { confluenceMirrorLedger, confluenceMirrorRoot } from "./confluence-mirror.js";
 import { type PlanNode, planName, planPaths } from "./confluence-path.js";
 import { type CredentialStore, loadConfluenceCredentials } from "./credentials.js";
-import type { LaneKind } from "./git-lane.js";
 import type { DaemonLogger } from "./log.js";
 import type { RestTransport } from "./rest-transport.js";
 
-/** 기획서 폴더 — 클론 안에서 문서가 내려앉는 자리(제출에 안 탄다 — D1). */
-export const PLANS_DIR = "docs/plans/";
-
-/**
- * 클론의 `.git/info/exclude` 에 기획서 폴더를 한 줄로 박는다(F7 · 연결 직후, 첫 쓰기보다
- * 앞선다 — `stash push --include-untracked` 가 미추적 파일을 치우기 전에 규칙이 먼저
- * 있어야 한다). 멱등하다 — 이미 있는 줄은 다시 쓰지 않는다. 클론 국소 파일이므로 커밋은
- * 없다. `.git` 이 없으면(클론이 아직 없다) 조용히 넘어간다 — 연결은 클론을 요구하지 않는다.
- */
-export function ensurePlansExclude(repoRoot: string): boolean {
-  const gitDir = join(repoRoot, ".git");
-  if (!existsSync(gitDir)) return false;
-  const excludeFile = join(gitDir, "info", "exclude");
-  const existing = existsSync(excludeFile) ? readFileSync(excludeFile, "utf8") : "";
-  const line = PLANS_DIR;
-  if (existing.split(/\r?\n/).some((entry: string) => entry.trim() === line)) return false;
-  mkdirSync(join(gitDir, "info"), { recursive: true });
-  const separator = existing === "" || existing.endsWith("\n") ? "" : "\n";
-  writeFileSync(excludeFile, `${existing}${separator}${line}\n`);
-  return true;
-}
-
 /**
  * 뿌리가 바뀐 연결 — 원장을 비운다: 다음 가져오기가 새 뿌리 전체를 걷게 하고, 옛 뿌리의
- * 문서는 목록에 남지 않는다(파일은 클론의 몫이 아니라 앱의 몫이지만 지우지는 않는다 —
- * 경로가 같으면 덮어쓴다). 같은 뿌리면 아무 일도 없다.
+ * 문서는 목록에 남지 않는다(파일은 앱의 몫이지만 지우지는 않는다 — 경로가 같으면 덮어쓴다).
+ * 같은 뿌리면, 그리고 원장 파일이 아직 없으면(비울 것이 없다) 아무 일도 없다
+ * (2026-10-23 · 기획서 사본 이동 계획 §5 — 연결은 사본 폴더를 만들지 않는다).
  */
 export function resetLedgerOnRootChange(
-  repoRoot: string,
+  projectRoot: string,
   previousRootId: string | null,
   nextRootId: string,
 ): boolean {
   if (previousRootId === null || previousRootId === nextRootId) return false;
-  writeConfluenceLedger(confluenceLedgerFile(repoRoot), emptyConfluenceLedger());
+  const ledgerFile = confluenceMirrorLedger(projectRoot);
+  if (!existsSync(ledgerFile)) return false;
+  writeConfluenceLedger(ledgerFile, emptyConfluenceLedger());
   return true;
 }
 
@@ -95,11 +80,6 @@ export function confluenceRootIdKey(slug: string): string {
 
 export function confluenceRootTitleKey(slug: string): string {
   return `confluenceRootTitle:${slug}`;
-}
-
-/** 원장 파일 — 클론 안 기획서 폴더의 한 벌. */
-export function confluenceLedgerFile(repoRoot: string): string {
-  return join(repoRoot, PLANS_DIR, "confluence.json");
 }
 
 /** 가져오기의 간격 — 레포 최신화와 같은 감각의 10분(계획 A1). */
@@ -128,17 +108,11 @@ export const CQL_OVERLAP_MS = 12 * 60 * 60_000 + 60_000;
  */
 export const MAX_INCOMPLETE_REWALKS = 2;
 
-/** 클론의 모습 — 뿌리와 그 프로젝트의 차선. */
-export interface ConfluenceWorkspaceView {
-  root: string;
-  laneRun: <T>(kind: LaneKind, job: () => Promise<T>, opts?: { join?: boolean }) => Promise<T>;
-}
-
 export interface ConfluenceSyncDeps {
   machineSetting: { get(key: string): string | null };
   credentials: CredentialStore;
-  /** 프로젝트의 클론 모습 — 클론이 없는 프로젝트는 null(가져올 자리가 없다). */
-  workspaceOf(slug: string): ConfluenceWorkspaceView | null;
+  /** 프로젝트 폴더(`registry.paths(slug).root`) — 등록부에 없는 프로젝트는 null. */
+  projectRoot(slug: string): string | null;
   /** 연결될 수 있는 프로젝트의 목록 — registry 가 기억하는 slug 전부. */
   slugs(): string[];
   logger: DaemonLogger;
@@ -185,11 +159,6 @@ type TargetsOutcome =
   | { kind: "unauthorized" }
   /** 뿌리나 검색을 못 읽었다 — 원장을 앞서지 않는다(시각을 앞서면 그 사이의 변경을 영영 놓친다). */
   | { kind: "failed"; stage: "root" | "search"; reason: ConfluenceReadFailure };
-
-/** 클론이 섰는가 — repo-core 의 isCloned 와 같은 판정(`.git` 이 있다). */
-function cloned(root: string): boolean {
-  return existsSync(join(root, ".git"));
-}
 
 export class ConfluenceSync {
   /** 만료(가져오기 중 401)의 원장 밖 상태 — 다시 connect 하면 내려앉는다. */
@@ -250,28 +219,18 @@ export class ConfluenceSync {
   private readonly inFlight = new Map<string, Promise<ConfluenceImportResult>>();
 
   /**
-   * 설정 · 뷰어의 새로 가져오기 — 같은 프로젝트의 도는 가져오기에 합류한다. 차선의 join 이
-   * 잡는 것은 줄에 선 작업까지라, 이미 도는 바퀴는 여기서 한 번 더 잡는다(취소는 없다 —
-   * 부르는 손이 몇 개든 같은 결과를 받는다).
+   * 설정 · 뷰어의 새로 가져오기 — 같은 프로젝트의 도는 가져오기에 합류한다(취소는 없다 —
+   * 부르는 손이 몇 개든 같은 결과를 받는다). 등록부에 없는 프로젝트는 거절한다.
    */
   importNow(slug: string): Promise<ConfluenceImportResult> {
     const running = this.inFlight.get(slug);
     if (running !== undefined) return running;
-    const workspace = this.deps.workspaceOf(slug);
-    // 클론이 서기 전에는 쓰지 않는다 — 클론 전의 폴더에 파일을 두면 준비가 그 폴더를 잔해로 보고
-    // 통째로 지운다(repo-bringup 의 clearBringUpDebris · 2026-10-19 고침).
-    if (workspace === null || !cloned(workspace.root)) {
-      return Promise.reject(
-        new Error(
-          "기획서를 가져올 클론이 아직 없어요 — 프로젝트 준비가 끝난 뒤 다시 가져와 주세요.",
-        ),
-      );
+    if (this.deps.projectRoot(slug) === null) {
+      return Promise.reject(new Error("프로젝트를 찾지 못했어요 — 프로젝트를 다시 골라 주세요."));
     }
-    const promise = workspace
-      .laneRun("confluence", () => this.importOnce(slug), { join: true })
-      .finally(() => {
-        this.inFlight.delete(slug);
-      });
+    const promise = this.importOnce(slug).finally(() => {
+      this.inFlight.delete(slug);
+    });
     this.inFlight.set(slug, promise);
     return promise;
   }
@@ -284,22 +243,14 @@ export class ConfluenceSync {
    * 이동은 판도 lastModified 도 올리지 않고 휴지통으로 간 문서는 검색에서 빠질 뿐이라 증분이 못 본다.
    * 먼저 walkDue 에 넣는다 — 이 뒤에 걷기 판정을 하는 바퀴는 모두 걷는다(증분 바퀴는 표를 지우지 않고,
    * 빠짐없이 끝난 걷기만 지운다). 이미 도는 바퀴는 판정을 마쳤을 수 있으니 끝나길 기다린 뒤 한 바퀴를 더
-   * 돈다(importNow — 줄에 선 바퀴에 합류해도 그 바퀴는 아직 판정 전이라 걷는다).
-   * 기다림은 차선 밖에서 한다 — 차선 작업 안에서 다른 바퀴를 기다리면, 합류(join)가 종류만 보고 줄에 선
-   * 작업에 붙는 탓에 자기 자신을 기다려 차선(보관 · 제출과 같은 줄)이 멈춘다(2026-10-23 오케스트레이터 검토).
-   * 클론이 서기 전의 거절은 importNow 와 같다.
+   * 돈다(importNow — 합류해도 그 바퀴는 아직 판정 전이라 걷는다).
+   * 등록부에 없는 프로젝트는 importNow 와 같은 문장으로 거절한다.
    */
   walkNow(slug: string): Promise<ConfluenceImportResult> {
     const walking = this.walkInFlight.get(slug);
     if (walking !== undefined) return walking;
-    const workspace = this.deps.workspaceOf(slug);
-    // 클론이 서기 전에는 쓰지 않는다 — importNow 의 거절과 같은 문장이다(2026-10-23 · 작업 B5).
-    if (workspace === null || !cloned(workspace.root)) {
-      return Promise.reject(
-        new Error(
-          "기획서를 가져올 클론이 아직 없어요 — 프로젝트 준비가 끝난 뒤 다시 가져와 주세요.",
-        ),
-      );
+    if (this.deps.projectRoot(slug) === null) {
+      return Promise.reject(new Error("프로젝트를 찾지 못했어요 — 프로젝트를 다시 골라 주세요."));
     }
     this.walkDue.add(slug);
     const running = this.inFlight.get(slug);
@@ -318,15 +269,15 @@ export class ConfluenceSync {
   }
 
   /**
-   * 타이머의 한 바퀴 — 연결되고 클론이 선 프로젝트만 조용히 돈다. 만료 · 도는 바퀴 · 연결 안 된 프로젝트 ·
-   * 클론 전의 프로젝트는 건너뛴다(열 번째 분마다 같은 경고를 쌓지 않는다 · 2026-10-19 고침).
+   * 타이머의 한 바퀴 — 연결되고 등록부에 있는 프로젝트만 조용히 돈다. 만료 · 도는 바퀴 ·
+   * 연결 안 된 프로젝트 · 등록부에 없는 프로젝트는 건너뛴다(열 번째 분마다 같은 경고를 쌓지
+   * 않는다 · 2026-10-19 고침).
    */
   private tickAll(): void {
     for (const slug of this.deps.slugs()) {
       if (this.expiredBySlug.has(slug) || this.inFlight.has(slug)) continue;
       if (!this.connected(slug)) continue;
-      const workspace = this.deps.workspaceOf(slug);
-      if (workspace === null || !cloned(workspace.root)) continue;
+      if (this.deps.projectRoot(slug) === null) continue;
       // importNow 의 한 길로든다 — 도는 바퀴에의 합류 등록까지 같은 규칙을 받는다.
       this.importNow(slug).catch((error: unknown) => {
         // 로그는 종류와 수만 — 사용자의 말 · 경로 · 자격은 남기지 않는다.
@@ -350,17 +301,30 @@ export class ConfluenceSync {
     const none: ConfluenceImportResult = { imported: 0, skipped: 0, capped: false };
     const link = await this.link(slug);
     if (link === null || this.expiredBySlug.has(slug)) return none;
-    const workspace = this.deps.workspaceOf(slug);
-    // 줄에 서 있는 사이 클론이 사라졌을 수 있다 — 차선 안에서 한 번 더 본다.
-    if (workspace === null || !cloned(workspace.root)) return none;
-    // 쓰기보다 규칙이 먼저다(F7) — 재클론 뒤에도 exclude 가 살아 있게 매 바퀴 확인한다.
-    ensurePlansExclude(workspace.root);
+    const projectRoot = this.deps.projectRoot(slug);
+    if (projectRoot === null) return none;
+    const mirrorRoot = confluenceMirrorRoot(projectRoot);
 
     const startedAt = (this.deps.now?.() ?? new Date()).toISOString();
-    const ledger = readConfluenceLedger(confluenceLedgerFile(workspace.root));
+    let ledger = readConfluenceLedger(confluenceMirrorLedger(projectRoot));
+    // 바퀴 한가운데에 뿌리를 바꾼 연결이 비운 원장을 이 바퀴의 마지막 쓰기가 되살린다 — 원장의
+    // 뿌리가 이 바퀴의 뿌리가 아니면 옛 뿌리의 원장이니 빈 원장에서 시작해 처음 가져오기처럼
+    // 걷는다(옛 뿌리의 파일은 거둔다). connect 가 도는 바퀴를 기다리게 하지 않는다 — 교착 위험
+    // (2026-10-23 · 기획서 사본 이동 계획 §6 · 오케스트레이터 검토 R2).
+    const staleSeeds = new Set<string>();
+    if (ledger.roots.length > 0 && !ledger.roots.includes(link.rootId)) {
+      for (const page of Object.values(ledger.pages)) staleSeeds.add(page.path);
+      ledger = emptyConfluenceLedger();
+    }
     const first = ledger.roots.length === 0 || ledger.lastSyncAt === null;
+    // 화면 AI 가 사본 폴더를 함께 열어 한 문서의 파일이 셸의 rm 으로 사라질 수 있다 — 하나라도
+    // 없으면 이번 바퀴는 걷기로 돈다. 증분은 바뀐 문서만 겨누므로 사라진 파일을 스스로 고치지
+    // 못한다(2026-10-23 · 기획서 사본 이동 계획 §6 · 오케스트레이터 검토).
+    const holey = Object.values(ledger.pages).some(
+      (page) => !docFilesPresent(mirrorRoot, page.path),
+    );
     let outcome =
-      first || this.walkDue.has(slug)
+      first || holey || this.walkDue.has(slug)
         ? await this.walkTargets(link, new Map())
         : await this.incrementalTargets(link, ledger);
     if (outcome.kind === "walk") outcome = await this.walkTargets(link, outcome.reads);
@@ -378,12 +342,15 @@ export class ConfluenceSync {
     }
     if (outcome.kind !== "ok") return none;
     const targets = outcome.targets;
-
+    // 첫 쓰기 전에 사본 폴더를 만든다 — 연결만으로는 생기지 않고 첫 가져오기가 만든다
+    // (2026-10-23 · 기획서 사본 이동 계획 §5).
+    mkdirSync(mirrorRoot, { recursive: true });
     let imported = 0;
     let skipped = targets.skipped;
     let capped = false;
-    /** 옛 자리 — 모든 쓰기가 끝난 뒤에 지운다. 두 문서가 자리를 맞바꾼 바퀴에서 새로 쓴 파일을 지우지 않게. */
-    const stale = new Set<string>();
+    /** 옛 자리 — 모든 쓰기가 끝난 뒤에 지운다. 두 문서가 자리를 맞바꾼 바퀴에서 새로 쓴 파일을
+     * 지우지 않게 한다. 옛 뿌리 원장의 파일도 여기 씌워 거둔다. */
+    const stale = new Set<string>(staleSeeds);
     for (const target of targets.pages) {
       if (imported >= MAX_IMPORT_PAGES) {
         capped = true;
@@ -406,8 +373,10 @@ export class ConfluenceSync {
       const known = ledger.pages[target.id];
       const fresh = known === undefined || known.version < read.value.version;
       const moved = known !== undefined && known.path !== target.path;
-      // 원장이 같거나 더 새 판을 알고 자리도 그대로면 흘려 보낸다(CQL 의 너른 답 · 겹침).
-      if (!fresh && !moved) {
+      // 원장이 같거나 더 새 판을 알리고 자리도 그대로며 두 파일이 있으면 흘려 보낸다(CQL 의 너른 답 · 겹침).
+      // 판도 자리도 같은데 파일 가운데 하나가 없으면 다시 쓴다 — 사라진 사본 파일의 자가 복구
+      // (셈은 skipped 쪽 · 2026-10-23 · 기획서 사본 이동 계획 §6 · 오케스트레이터 검토).
+      if (!fresh && !moved && docFilesPresent(mirrorRoot, target.path)) {
         skipped += 1;
         continue;
       }
@@ -421,8 +390,8 @@ export class ConfluenceSync {
         version: read.value.version,
         updatedAt: read.value.updatedAt,
       });
-      // 정본은 원문 그대로 — 저장 포맷을 한 글자도 바꾸지 않는다. 자리만 옮긴 문서도 새 자리에 다시 쓴다.
-      writeDoc(workspace.root, target.path, read.value.storage, derived.markdown);
+      // 정본은 원문 그대로 — 저장 포맷을 한 글자도 바꾸지 않는다. 자리만 옮긴 문서도, 파일이 사라진 문서도 다시 쓴다.
+      writeDoc(mirrorRoot, target.path, read.value.storage, derived.markdown);
       if (moved && known !== undefined) stale.add(known.path);
       ledger.pages[target.id] = {
         path: target.path,
@@ -468,7 +437,7 @@ export class ConfluenceSync {
     }
     const live = new Set(Object.values(ledger.pages).map((page) => page.path));
     for (const path of stale) {
-      if (!live.has(path)) removeDoc(workspace.root, path);
+      if (!live.has(path)) removeDoc(mirrorRoot, path);
     }
 
     if (!capped) {
@@ -476,8 +445,7 @@ export class ConfluenceSync {
       ledger.site = `https://${normalizeSite(link.site)}`;
       if (ledger.roots.length === 0) ledger.roots = [link.rootId];
     }
-    mkdirSync(join(workspace.root, PLANS_DIR), { recursive: true });
-    writeConfluenceLedger(confluenceLedgerFile(workspace.root), ledger);
+    writeConfluenceLedger(confluenceMirrorLedger(projectRoot), ledger);
     if (targets.walked) {
       // 한 갈래라도 못 읽은 걷기는 다음 바퀴가 다시 걷는다 — 빠진 문서가 증분에 영영 안 걸리지 않게. 다만
       // 잇달아 MAX_INCOMPLETE_REWALKS 번을 넘으면 멈춘다(다음 데몬 시작이 다시 걷는다).
@@ -737,26 +705,45 @@ export class ConfluenceSync {
   }
 }
 
-/** 한 문서의 두 파일 — 정본(저장 포맷)과 파생 마크다운을 그 자리에 쓴다. */
-function writeDoc(repoRoot: string, path: string, storage: string, markdown: string): void {
-  const absolute = join(repoRoot, PLANS_DIR, path);
-  mkdirSync(dirname(absolute), { recursive: true });
-  writeFileSync(`${absolute}.storage.xml`, storage, "utf8");
-  writeFileSync(`${absolute}.md`, markdown, "utf8");
+/** 한 문서의 두 파일 — 정본(저장 포맷)과 파생 마크다운. 원장의 원자 쓰기와 같은 꼴로 같은 폴더의
+ * 임시 파일을 바꿔치기 한다 — `.md` 를 덮어쓰는 순간에 읽는 이가 잘린 본문을 받지 않게
+ * (2026-10-23 · 기획서 사본 이동 계획 · 오케스트레이터 검토 R2). */
+function writeDoc(mirrorRoot: string, path: string, storage: string, markdown: string): void {
+  const base = join(mirrorRoot, path);
+  mkdirSync(dirname(base), { recursive: true });
+  swapFile(`${base}.storage.xml`, storage);
+  swapFile(`${base}.md`, markdown);
+}
+
+/** 같은 폴더의 임시 파일 → 바꿔치기 — 실패하면 임시 파일을 지운다(writeConfluenceLedger 와 같은 규칙). */
+function swapFile(file: string, text: string): void {
+  const temporary = `${file}.colonova-design-${process.pid}`;
+  writeFileSync(temporary, text, "utf8");
+  try {
+    renameSync(temporary, file);
+  } catch (error) {
+    rmSync(temporary, { force: true });
+    throw error;
+  }
+}
+
+/** 한 문서의 두 파일이 모두 있는가 — 없으면 사본이 뚫렸으니 이번 바퀴가 다시 채운다. */
+function docFilesPresent(mirrorRoot: string, path: string): boolean {
+  const base = join(mirrorRoot, path);
+  return existsSync(`${base}.storage.xml`) && existsSync(`${base}.md`);
 }
 
 /**
- * 한 문서의 옛 자리를 거둔다 — 두 파일을 지우고, 비어 버린 폴더는 기획서 폴더까지 거슬러 거둔다
+ * 한 문서의 옛 자리를 거둔다 — 두 파일을 지우고, 비어 버린 폴더는 사본 뿌리까지 거슬러 거둔다
  * (옛 자리의 빈 폴더가 남아 AI 가 읽는 폴더를 어지럽히지 않게). 아이가 남은 폴더는 그대로 둔다.
  */
-function removeDoc(repoRoot: string, path: string): void {
-  const plansRoot = join(repoRoot, "docs", "plans");
-  const base = join(plansRoot, path);
+function removeDoc(mirrorRoot: string, path: string): void {
+  const base = join(mirrorRoot, path);
   for (const file of [`${base}.storage.xml`, `${base}.md`]) {
     if (existsSync(file)) unlinkSync(file);
   }
   let dir = dirname(base);
-  while (dir.startsWith(`${plansRoot}${sep}`)) {
+  while (dir.startsWith(`${mirrorRoot}${sep}`)) {
     try {
       if (readdirSync(dir).length > 0) break;
       rmdirSync(dir);

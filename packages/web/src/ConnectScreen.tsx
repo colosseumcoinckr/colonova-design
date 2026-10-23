@@ -6,7 +6,8 @@ import { PlugIcon, WarnIcon } from "./components/icons";
  * 브라우저 개발 경로의 연결 화면 — 데몬이 인쇄한 client url 을 한 번 붙여넣는다.
  * 데스크톱은 데몬이 페이지를 직접 주므로 이 화면을 보지 않는다(연결이 끊긴
  * 경우만 예외). 개발자의 화면이라 개발자의 말(데몬)을 쓴다 — 어휘 검사
- * (test/vocab-sweep.test.ts)가 이 파일을 건너뛴다.
+ * (test/vocab-sweep.test.ts)가 이 파일을 건너뛴다. 입력 · 단추는 공통 부품(nx-input ·
+ * nx-btn)을 쓴다(2026-10-23 화면 전면 재설계 §4 I).
  */
 export function ConnectScreen({
   onConnect,
@@ -18,7 +19,7 @@ export function ConnectScreen({
   const [value, setValue] = useState("");
 
   return (
-    <div className="connect">
+    <div className="connect nx">
       <h1>
         <span className="brand-name">ColoNova Design</span>
       </h1>
@@ -38,6 +39,7 @@ export function ConnectScreen({
         <span className="connect__stepnum">2</span>
         <div className="connect__inputrow">
           <input
+            className="nx-input"
             autoFocus
             value={value}
             placeholder="ws://127.0.0.1:7823?token=…"
@@ -46,7 +48,7 @@ export function ConnectScreen({
           />
           <button
             type="button"
-            className="primary"
+            className="nx-btn nx-btn--pri"
             disabled={!value.trim()}
             onClick={() => onConnect(value.trim())}
           >

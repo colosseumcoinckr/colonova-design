@@ -1,6 +1,6 @@
 /**
- * 홈 견본 — 데몬 없이 `HomeView`(인사 · 큰 입력창 · 시작점 · 받은 편지함)를 여러 상태로 눈으로
- * 보는 페이지. 앱과 같은 CSS(테마 · styles.css · next.css→home.css)를 올린다. `vite build` 의
+ * 홈 견본 — 데몬 없이 `HomeView`(현관 — 인사 · 기다리는 일 · 두 시작 카드 · 받은 편지함)를 여러 상태로
+ * 눈으로 보는 페이지. 앱과 같은 CSS(테마 · styles.css · next.css→home.css)를 올린다. `vite build` 의
  * 입력은 index.html 뿐이라 제품에 실리지 않고, tsconfig 가 dev/ 를 보지 않는다.
  *
  *   ./node_modules/.bin/vite --port 29181 --strictPort --host 127.0.0.1   (packages/web 에서)
@@ -163,6 +163,8 @@ interface Case {
   label: string;
   projects: ProjectSummary[];
   activeSlug: string;
+  /** 이 상태만의 틀 폭 — 두 시작 카드가 나란히 · 위아래로 서는 둘을 한 페이지에서 본다(2026-10-23 §3.6). */
+  w?: number;
   author?: string | null;
   connection?: "open" | "connecting" | "closed";
   pending?: unknown[];
@@ -627,7 +629,7 @@ const CASES: Case[] = [
   {
     id: "plans-empty",
     label:
-      "plans-empty · 기획서를 연결한 새 프로젝트 — 기획의 안내 문장 · 세 걸음(기획서 쓰기 → 화면 만들기 → 발행 · 제출하기), 작성 중인 초안이 없다는 한 줄(2026-10-23 U4)",
+      "plans-empty · 기획서를 연결한 새 프로젝트 — 세 걸음 한 줄(기획서 쓰기 → 화면 만들기 → 발행 · 제출하기)과 작성 중인 초안이 없다는 한 줄(2026-10-23 U4 · 화면 전면 재설계 §3.6)",
     projects: [
       project("colonova-cdp", "colonova-cdp", [], {
         confluence: CONFLUENCE,
@@ -635,6 +637,71 @@ const CASES: Case[] = [
     ],
     activeSlug: "colonova-cdp",
     drafts: [],
+  },
+  {
+    id: "side",
+    label:
+      "side · 현관(2026-10-23 §3.6) — 기다리는 일이 맨 위, 두 시작 카드가 나란히(기획서 왼쪽 · 화면 오른쪽 · 같은 높이)",
+    w: 1440,
+    projects: [
+      project(
+        "colonova-cdp",
+        "스모크 서비스",
+        rowsOf([
+          {
+            id: "q1",
+            title: "회원 목록에 이름으로 찾는 검색창을 넣어 줘",
+            at: ago(3),
+            state: "awaiting",
+          },
+          {
+            id: "d1",
+            title: "설정 화면의 알림 토글 간격이 좁아 보여요",
+            at: ago(25),
+            state: "finished",
+          },
+        ]),
+        { confluence: CONFLUENCE },
+      ),
+    ],
+    activeSlug: "colonova-cdp",
+    drafts: [
+      draftOf("p-3001", "3001", "[기능설계서] 주문 목록 · 검색", 6, "result-unknown", 30),
+      draftOf("n-1", null, "[정책서] 반품 · 교환 접수", 0, "editing", 60 * 3),
+    ],
+    pending: [
+      {
+        kind: "question",
+        requestId: "rq1",
+        sessionId: "q1",
+        questions: [
+          {
+            question: "검색은 이름만 찾을까요, 전화번호도 함께 찾을까요?",
+            header: "검색 범위",
+            multiSelect: false,
+            options: [
+              { label: "이름만", description: "" },
+              { label: "이름과 전화번호", description: "" },
+            ],
+          },
+        ],
+        requestedAt: agoMs(3),
+      },
+    ],
+    views: { q1: view({ blocks: [{ type: "human", id: "h1", reviews: [] }] }) },
+  },
+  {
+    id: "stack",
+    label:
+      "stack · 좁은 현관 — 같은 상태에서 두 시작 카드가 위아래로 선다(본문 폭 1000px 미만). 기다리는 일이 없으면 `기다리는 일이 없어요` 한 줄이 나머지 묶음 자리에",
+    w: 860,
+    projects: [
+      project("colonova-cdp", "스모크 서비스", rowsOf(HISTORY.slice(0, 2)), {
+        confluence: CONFLUENCE,
+      }),
+    ],
+    activeSlug: "colonova-cdp",
+    drafts: [draftOf("p-2001", "2001", "[정책서] 주문 접수", 4, "editing", 60 * 26)],
   },
 ];
 
@@ -747,9 +814,10 @@ function Frame({ spec }: { spec: Case }) {
     toast: (text: string) => setLog(`토스트: ${text}`),
   } as unknown as ShellNav;
 
-  const narrow = FRAME_W <= 900;
+  const frameW = spec.w ?? FRAME_W;
+  const narrow = frameW <= 900;
   return (
-    <div id={`fixture-${spec.id}`} style={{ width: FRAME_W }}>
+    <div id={`fixture-${spec.id}`} style={{ width: frameW }}>
       <div
         style={{ font: "11.5px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}
       >
@@ -761,7 +829,7 @@ function Frame({ spec }: { spec: Case }) {
         style={{
           gridTemplateColumns: "minmax(0, 1fr)",
           height: FRAME_H,
-          width: FRAME_W,
+          width: frameW,
           overflow: "hidden",
           border: "1px dashed #8884",
         }}

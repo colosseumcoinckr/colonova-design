@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { writeConfluenceLedger } from "../dist/confluence-ledger.js";
+import { confluenceMirrorLedger } from "../dist/confluence-mirror.js";
 import { confluenceRootTitleKey, confluenceSiteKey } from "../dist/confluence-sync.js";
 import { ProjectFleet } from "../dist/project-fleet.js";
 
@@ -23,6 +24,8 @@ function rig(opts: {
   site?: string;
   expired?: boolean;
   ledger?: boolean;
+  /** 옛 자리(클론 docs/plans)에만 원장을 둔다 — 읽히지 않는지 본다(2026-10-23 · 기획서 사본 이동). */
+  legacyLedger?: boolean;
   /** 발행 게이트 — 없으면 조립이 손을 넘기지 않는다(쓸 수 없다고 말해야 한다). */
   writable?: boolean;
 }): Rig {
@@ -33,6 +36,27 @@ function rig(opts: {
   if (opts.site !== undefined) machine.set(confluenceSiteKey("demo"), opts.site);
   if (opts.site !== undefined) machine.set(confluenceRootTitleKey("demo"), "8.8 ColoNova");
   if (opts.ledger === true) {
+    // 기획서 사본 — 프로젝트 폴더 아래 confluence/ 다(2026-10-23 · 기획서 사본 이동 계획 §1 D1).
+    mkdirSync(join(home, "demo", "confluence"), { recursive: true });
+    writeConfluenceLedger(confluenceMirrorLedger(join(home, "demo")), {
+      site: `https://${opts.site ?? "colosseum.atlassian.net"}`,
+      roots: ["933068815"],
+      lastSyncAt: "2026-10-18T01:00:00Z",
+      pages: {
+        "1818591273": {
+          path: "COLO/8.8 ColoNova/정책서",
+          title: "정책서",
+          version: 3,
+          sections: [],
+          comments: { unresolved: 2 },
+        },
+      },
+      folders: {},
+      unsupported: {},
+    });
+  }
+  if (opts.legacyLedger === true) {
+    // 옛 자리 — 클론의 docs/plans 다. 이 원장은 이제 읽히지 않는다.
     mkdirSync(join(cloneRoot, "docs", "plans"), { recursive: true });
     writeConfluenceLedger(join(cloneRoot, "docs", "plans", "confluence.json"), {
       site: `https://${opts.site ?? "colosseum.atlassian.net"}`,
@@ -66,7 +90,11 @@ function rig(opts: {
         },
       ],
       activeSlug: () => "demo",
-      paths: () => ({ repoRoot: join(home, "clone"), work: join(home, "work") }),
+      paths: () => ({
+        root: join(home, "demo"),
+        repoRoot: join(home, "clone"),
+        work: join(home, "work"),
+      }),
     },
     manager: { get: () => undefined, all: () => [] },
     broadcast: () => {},
@@ -83,6 +111,20 @@ function rig(opts: {
     },
   };
 }
+
+test("원장은 프로젝트 폴더의 사본에서 읽는다 — 옛 클론 자리의 원장은 읽지 않는다(2026-10-23 · 기획서 사본 이동)", () => {
+  const rig1 = rig({ site: "colosseum.atlassian.net", legacyLedger: true });
+  try {
+    const summary = rig1.fleet.projectSummaries().find((row) => row.slug === "demo");
+    assert.ok(summary !== undefined);
+    assert.ok(summary.confluence !== undefined);
+    // 옛 자리의 원장은 pages 로 나오지 않는다 — 사본이 비어 있으면 없는 것이다.
+    assert.equal(summary.confluence.pages, 0);
+    assert.equal(summary.confluence.lastImportAt, null);
+  } finally {
+    rig1.cleanup();
+  }
+});
 
 test("연결된 프로젝트의 상태 방송 — 미러와 원장에서 채워진다(수용 항목 13)", () => {
   const rig1 = rig({ site: "colosseum.atlassian.net", ledger: true });

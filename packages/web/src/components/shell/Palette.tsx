@@ -21,6 +21,7 @@ import {
   KeyDownIcon,
   KeyEnterIcon,
   KeyUpIcon,
+  PlansDocIcon,
   PlusIcon,
   SearchIcon,
   Spin,
@@ -40,10 +41,11 @@ interface Excerpt {
 }
 
 /**
- * 목록 본문의 한 줄: 어느 프로젝트의 대화든, 옮겨 갈 프로젝트든. 대화를 먼저 그리고 프로젝트가
- * 뒤따르며, 종류가 바뀌는 자리에 머리가 선다 — 말은 `L`(labels.ts)에서 오고 사이드바와 같다.
+ * 목록 본문의 한 줄: 현재 프로젝트의 문서, 모든 프로젝트의 대화, 옮겨 갈 프로젝트.
+ * 종류마다 머리와 아이콘을 붙인다(2026-10-23 화면 전면 재설계 §3.7).
  */
 type Row =
+  | { kind: "document"; key: string; pageId: string; label: string; folder: string }
   | {
       kind: "session";
       key: string;
@@ -135,6 +137,12 @@ export function Palette({
   onActivateProject,
   onOpenSettings,
   onClose,
+  documents = [],
+  documentsLoading = false,
+  documentsFailed = false,
+  onRetryDocuments,
+  onOpenDocument,
+  onOpenPlans,
 }: {
   /** 대화가 쓰는 이름: 사용자가 바꾼 이름, 없으면 데몬의 제목. */
   titleForThread: (thread: ThreadSummary) => string;
@@ -158,6 +166,12 @@ export function Palette({
   onActivateProject: (slug: string) => Promise<boolean>;
   onOpenSettings: () => void;
   onClose: () => void;
+  documents?: Array<{ pageId: string; title: string; folder: string }>;
+  documentsLoading?: boolean;
+  documentsFailed?: boolean;
+  onRetryDocuments?: () => void;
+  onOpenDocument?: (pageId: string) => void;
+  onOpenPlans?: () => void;
 }) {
   // 한 프로젝트로 좁힌 걸음은 그 이름을 머리에서 한 번만 말한다 — 줄마다 되풀이하지 않는다.
   const scopedName = projectSlug
@@ -299,15 +313,33 @@ export function Palette({
         },
       });
     }
-    // 대화가 앞서고 프로젝트가 뒤따른다. 한 종류 안에서는 더 잘 맞는 것이 앞서고, 같은 순위는
-    // 시간선을 지킨다 — 정렬은 안정이라 시각 열쇠는 순위가 같을 때만 갈린다(질의 없는 걸음이 그렇다).
-    const order = { session: 0, project: 1 } as const;
+    // 문서 · 대화 · 프로젝트 순이다. 같은 종류 안에서는 맞는 정도와 시각을 읽는다.
+    if (onOpenDocument) {
+      for (const doc of documents) {
+        const at = rank(query, doc.title);
+        if (at < 0) continue;
+        out.push({
+          rank: at,
+          recency: 0,
+          row: {
+            kind: "document",
+            key: `doc:${doc.pageId}`,
+            pageId: doc.pageId,
+            label: doc.title,
+            folder: doc.folder,
+          },
+        });
+      }
+    }
+    const order = { document: 0, session: 1, project: 2 } as const;
     return out
       .sort(
         (a, b) => order[a.row.kind] - order[b.row.kind] || a.rank - b.rank || a.recency - b.recency,
       )
       .map((entry) => entry.row);
   }, [
+    documents,
+    onOpenDocument,
     projects,
     hiddenThreads,
     transcripts,
@@ -349,8 +381,17 @@ export function Palette({
         run: onOpenSettings,
       },
     ];
+    if (onOpenPlans)
+      all.splice(2, 0, {
+        key: "plans",
+        label: L.plans.listHeading,
+        hint: L.palette.plansHint,
+        keys: null,
+        Icon: PlansDocIcon,
+        run: onOpenPlans,
+      });
     return all;
-  }, [onCreateSession, onOpenHome, onOpenSettings]);
+  }, [onCreateSession, onOpenHome, onOpenSettings, onOpenPlans]);
   const matchedCommands = useMemo(
     () => allCommands.filter((command) => rank(query, command.label) >= 0),
     [allCommands, query],
@@ -386,13 +427,15 @@ export function Palette({
       out.push({
         kind: row.kind,
         header:
-          row.kind === "project"
-            ? L.sidebar.projects
-            : scopedName
-              ? L.palette.projectConvs(scopedName)
-              : hasWord
-                ? L.sidebar.convs
-                : L.palette.recentConvs,
+          row.kind === "document"
+            ? L.plans.listHeading
+            : row.kind === "project"
+              ? L.sidebar.projects
+              : scopedName
+                ? L.palette.projectConvs(scopedName)
+                : hasWord
+                  ? L.sidebar.convs
+                  : L.palette.recentConvs,
         items: [{ row, at }],
       });
     });
@@ -453,6 +496,10 @@ export function Palette({
     setError(null);
     if (row.kind === "session") {
       leave(() => onOpenThread(row.slug, row.thread), true);
+      return;
+    }
+    if (row.kind === "document") {
+      leave(() => onOpenDocument?.(row.pageId));
       return;
     }
     const slug = row.project.slug;
@@ -517,7 +564,9 @@ export function Palette({
   };
 
   const lead = (row: Row) =>
-    row.kind === "project" ? (
+    row.kind === "document" ? (
+      <PlansDocIcon />
+    ) : row.kind === "project" ? (
       <ProjectMark slug={row.project.slug} name={row.label} />
     ) : (
       <ChatLineIcon />
@@ -575,6 +624,20 @@ export function Palette({
         <p className="nx-sr" role="status">
           {announced}
         </p>
+        {documentsLoading && (
+          <p className="nx-pal-doc-status" role="status">
+            <Spin />
+            {L.plans.listLoading}
+          </p>
+        )}
+        {documentsFailed && (
+          <div className="nx-pal-doc-status" role="status">
+            {L.plans.listFailed}
+            <button type="button" className="nx-btn nx-btn--sm" onClick={onRetryDocuments}>
+              {L.plans.retry}
+            </button>
+          </div>
+        )}
         <div
           className="nx-pal-box"
           id="nx-pal-list"
@@ -634,6 +697,7 @@ export function Palette({
                           data-index={at}
                           // biome-ignore lint/a11y/noNoninteractiveElementToInteractiveRole: 같은 listbox — 옵션은 줄이다.
                           role="option"
+                          title={row.label}
                           aria-selected={lit}
                           aria-busy={busy || undefined}
                           className={`nx-pal-row${lit ? " nx-pal-row--on" : ""}${row.kind === "session" && row.now ? " nx-pal-row--now" : ""}`}
@@ -670,6 +734,10 @@ export function Palette({
                                 }
                               />
                               {row.note.text}
+                            </span>
+                          ) : row.kind === "document" ? (
+                            <span className="nx-pal-meta nx-pal-folder" title={row.folder}>
+                              {row.folder}
                             </span>
                           ) : row.now ? (
                             <span className="nx-pal-meta">{L.palette.nowOpen}</span>

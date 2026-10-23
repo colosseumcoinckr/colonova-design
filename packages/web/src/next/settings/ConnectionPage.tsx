@@ -68,7 +68,7 @@ export function ConnectionPage({
             <input
               id="nx-author"
               ref={input}
-              className="nx-sinput"
+              className="nx-input"
               type="text"
               value={author.draft}
               maxLength={AUTHOR_MAX}
@@ -109,18 +109,8 @@ export function ConnectionPage({
             <i className={`nx-dot nx-dot--${connection.dot}`} />
             {connection.text}
           </span>
-          {/* 곧 끝나거나 끝난 연결은 해결의 손이 같은 줄에 선다 — 초대 파일을 새로 여는 것이 그 길이다. */}
-          {connection.dot !== "green" && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm"
-              disabled={locked}
-              aria-describedby={lockDesc}
-              onClick={onOpenInvite}
-            >
-              {L.settings.openInvite}
-            </button>
-          )}
+          {/* 같은 일을 하는 `초대 파일 열기` 는 아래 `초대 파일` 줄에 하나만 선다(2026-10-24 QA 19) —
+              연결이 쉬어도 다시 이을 손은 그 줄이 그대로 준다. */}
         </SRow>
         <SRow title={L.settings.inviteRow} sub={L.settings.inviteRowSub}>
           <button

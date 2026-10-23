@@ -1,5 +1,6 @@
 import type { ThreadSummary } from "@colonova-design/protocol";
-import { type Ref, useState } from "react";
+import { Monitor } from "lucide-react";
+import { type ReactNode, type Ref, useState } from "react";
 import type { Sessions } from "../../hooks/useSessions";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
@@ -16,17 +17,13 @@ import {
   PlansDocIcon,
   PlusIcon,
   SearchIcon,
+  Spin,
 } from "../ui/icons";
 import { ConversationList } from "./ConversationList";
 import { OtherProjects } from "./OtherProjects";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 
-/**
- * 사이드바(U1 · U7) — 위에서부터 `새 대화 · 홈 · 찾기`, 프로젝트 전환기, 다른
- * 프로젝트 줄, 날짜 머리 아래의 대화 목록, 접힌 `도구가 한 일`, 바닥에 기능 제안과
- * 작성자 · 설정. 넓은 창은 열(접힘 · 너비 조절 가능), 좁은 창은 `≡` 뒤의 서랍이다 — 모양은
- * 셸의 CSS 가 정하고 이 컴포넌트는 같은 내용을 그린다.
- */
+/** 프로젝트 · 자리 셋 · 자리별 목록 · 설정을 놓는다. 좁은 창에서는 같은 내용이 서랍에 선다(2026-10-23 화면 전면 재설계 §3.2). */
 export function Sidebar({
   daemon,
   sessions,
@@ -34,6 +31,8 @@ export function Sidebar({
   view,
   plansOn = false,
   planDrafts = 0,
+  running = false,
+  plansContent,
   titleFor,
   nav,
   onPalette,
@@ -49,10 +48,12 @@ export function Sidebar({
   sessions: Sessions;
   activeSessionId: string | null;
   view: "home" | "thread";
-  /** 오른쪽 칸이 기획서 보기인가 — 항목의 뜬 자리 표시가 읽는다(2026-10-18 · M4). */
+  /** 기획서 자리인가. 자리 표시와 목록 선택에 쓴다. */
   plansOn?: boolean;
   /** 지금 프로젝트의 작성 중인 초안 수 — `기획서` 줄 끝에 흐리게 선다(2026-10-23 기획자 화면 손질 D5). */
   planDrafts?: number;
+  running?: boolean;
+  plansContent?: ReactNode;
   titleFor: (thread: ThreadSummary) => string;
   nav: ShellNav;
   /** ⌘K 팔레트를 연다. */
@@ -101,19 +102,15 @@ export function Sidebar({
           {drawer ? <CloseIcon /> : <PanelIcon />}
         </button>
       </div>
+      <ProjectSwitcher
+        daemon={daemon}
+        projects={projects}
+        active={active}
+        onSwitch={nav.switchProject}
+        onToast={nav.toast}
+        openSignal={openSwitcher}
+      />
       <nav className="nx-side-nav" aria-label={L.sidebar.nav}>
-        <button
-          type="button"
-          className="nx-side-row nx-side-row--new"
-          onClick={() => nav.newThread()}
-        >
-          {/* 사이드바의 으뜸 행동 — 브랜드 색이 든 알약 하나로 다른 두 줄과 가른다(2026-10-06). */}
-          <span className="nx-newmark">
-            <PlusIcon />
-          </span>
-          {L.sidebar.newConv}
-          <kbd>{keyHint("⌘T")}</kbd>
-        </button>
         <button
           type="button"
           className={`nx-side-row${view === "home" ? " nx-side-row--on" : ""}`}
@@ -124,16 +121,14 @@ export function Sidebar({
           {L.sidebar.home}
           {waiting > 0 && <Count n={waiting} className="nx-r" />}
         </button>
-        {/* 기획서(2026-10-18 동기화 1단계 · 2026-10-23 초안) — 누르면 오른쪽 칸이 기획서로 바뀐다. 이미 열려 있으면 다시
-            누르는 것이 닫는 길이다(미리보기로 돌아간다). 작성 중인 초안이 있으면 줄 끝에 그 수가 흐리게 선다 — 이어 쓸
-            일이 있다는 말이다(2026-10-23 기획자 화면 손질 D5). */}
+        {/* 자리는 다시 눌러도 닫히지 않는다(2026-10-23 화면 전면 재설계 §3.1). */}
         <button
           type="button"
           className={`nx-side-row${plansOn ? " nx-side-row--on" : ""}`}
           aria-current={plansOn ? "page" : undefined}
           aria-label={planDrafts > 0 ? L.sidebar.plansDraftsAria(planDrafts) : undefined}
-          title={plansOn ? L.plans.backToScreen : L.plans.open}
-          onClick={plansOn ? () => nav.showPane("preview") : nav.openPlans}
+          title={L.plans.open}
+          onClick={nav.openPlans}
         >
           <PlansDocIcon />
           {L.plans.sidebar}
@@ -143,37 +138,59 @@ export function Sidebar({
             </span>
           )}
         </button>
+        <button
+          type="button"
+          className={`nx-side-row${view === "thread" && !plansOn ? " nx-side-row--on" : ""}`}
+          aria-current={view === "thread" && !plansOn ? "page" : undefined}
+          aria-label={running ? L.sidebar.screenRunning : undefined}
+          onClick={nav.openScreen ?? nav.showScreen}
+        >
+          <Monitor className="nx-i" size={16} aria-hidden="true" />
+          {L.sidebar.screen}
+          {running && (
+            <span className="nx-side-note" title={L.sidebar.screenRunning}>
+              <Spin />
+            </span>
+          )}
+        </button>
         <button type="button" className="nx-side-row" onClick={onPalette}>
           <SearchIcon />
           {L.sidebar.find}
           <kbd>{keyHint("⌘K")}</kbd>
         </button>
       </nav>
-      <ProjectSwitcher
-        daemon={daemon}
-        projects={projects}
-        active={active}
-        onSwitch={nav.switchProject}
-        onToast={nav.toast}
-        openSignal={openSwitcher}
-      />
-      <OtherProjects
-        projects={projects}
-        activeSlug={daemon.activeSlug}
-        onSwitch={nav.switchProject}
-        onMore={() => setOpenSwitcher((count) => count + 1)}
-      />
-      <ConversationList
-        daemon={daemon}
-        project={active}
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        threadView={view === "thread"}
-        titleFor={titleFor}
-        onOpen={(thread) => active && nav.openThread(active.slug, thread.id)}
-        onRenameSession={onRenameSession}
-        onToast={nav.toast}
-      />
+      {plansContent}
+      <div className="nx-side-conversations" hidden={plansOn}>
+        <div className="nx-side-list-head">
+          <h2>{L.sidebar.convs}</h2>
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm nx-btn--ghost"
+            onClick={() => nav.newThread()}
+            title={keyHint(`${L.sidebar.newConv} · ⌘T`)}
+          >
+            <PlusIcon />
+            {L.sidebar.newConv}
+          </button>
+        </div>
+        <OtherProjects
+          projects={projects}
+          activeSlug={daemon.activeSlug}
+          onSwitch={nav.switchProject}
+          onMore={() => setOpenSwitcher((count) => count + 1)}
+        />
+        <ConversationList
+          daemon={daemon}
+          project={active}
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          threadView={view === "thread"}
+          titleFor={titleFor}
+          onOpen={(thread) => active && nav.openThread(active.slug, thread.id)}
+          onRenameSession={onRenameSession}
+          onToast={nav.toast}
+        />
+      </div>
       <div className="nx-side-bottom">
         <button type="button" className="nx-side-row nx-fb-row" onClick={onFeedback}>
           <LightbulbIcon />

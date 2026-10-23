@@ -446,7 +446,7 @@ export function FeedbackDialog({
               <textarea
                 id="nx-fb-request"
                 ref={requestRef}
-                className={`nx-fb-field${requestMessage !== null ? " nx-fb-field--err" : ""}`}
+                className={`nx-input nx-input--area nx-fb-field${requestMessage !== null ? " nx-fb-field--err" : ""}`}
                 rows={5}
                 value={request}
                 placeholder={L.feedback.requestPlaceholder}
@@ -469,7 +469,7 @@ export function FeedbackDialog({
               </label>
               <textarea
                 id="nx-fb-context"
-                className={`nx-fb-field${contextMessage !== null ? " nx-fb-field--err" : ""}`}
+                className={`nx-input nx-input--area nx-fb-field${contextMessage !== null ? " nx-fb-field--err" : ""}`}
                 rows={3}
                 value={context}
                 placeholder={L.feedback.contextPlaceholder}

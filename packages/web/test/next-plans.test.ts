@@ -9,6 +9,7 @@ import {
   docUrl,
   filterPlanRows,
   importLine,
+  initialPlanPage,
   macroHeadings,
   type PlanDoc,
   type PlanFolder,
@@ -16,6 +17,7 @@ import {
   planBodyBlocks,
   planCommentRows,
   planRows,
+  selectedPlanPage,
   splitFrontmatter,
   syncLine,
   visiblePlanRows,
@@ -448,18 +450,18 @@ test("문서 주소 — 사이트가 호스트로 읽힐 때만, 페이지 번�
   assert.equal(docUrl("colosseum.atlassian.net", ""), null);
 });
 
-test("오른쪽 칸 전환 — 홈으로 가면 기획서 읽기는 끝나고, 대화를 여는 것은 칸을 건드리지 않는다", () => {
+test("세 자리 — 문서를 읽다가 대화를 열면 화면 자리로 간다", () => {
   let s = navReducer(initialNav(false), { type: "plans" });
-  // 기획서를 읽다가 다른 대화를 여는 것은 읽기를 끊지 않는다.
+  // 대화는 화면 자리에 선다. 문서 상태의 보존은 공유 칸이 맡는다.
   s = navReducer(s, { type: "thread" });
-  assert.equal(s.pane, "plans");
+  assert.equal(s.pane, "preview");
   // 홈으로 가면 끝난다 — 홈에서 새 요청을 시작해 넘어올 때 AI 가 고치는 미리보기가 앞에 선다.
   s = navReducer(s, { type: "home" });
   assert.equal(s.view, "home");
   assert.equal(s.pane, "preview");
 });
 
-test("오른쪽 칸 전환 — 초안을 고치는 중(집중 배치)에 대화를 열면 화면 쪽으로 돌아온다(2026-10-23 기획자 화면 손질 D2)", () => {
+test("세 자리 — 초안 여부와 무관하게 대화를 열면 화면으로 가고 초안 표식은 남는다", () => {
   let s = navReducer(initialNav(false), { type: "plans" });
   s = navReducer(s, { type: "plan-draft", open: true });
   assert.equal(s.planDraft, true);
@@ -473,10 +475,10 @@ test("오른쪽 칸 전환 — 초안을 고치는 중(집중 배치)에 대화�
   // 기획서로 돌아가면 다시 집중 배치다(초안이 열린 채다).
   s = navReducer(s, { type: "plans" });
   assert.equal(s.pane, "plans");
-  // 초안을 닫고 문서를 읽는 중이면 대화를 열어도 문서가 남는다(위의 시험과 같은 약속).
+  // 읽는 중에도 대화는 화면 자리로 간다(2026-10-23 화면 전면 재설계 §3.1).
   s = navReducer(s, { type: "plan-draft", open: false });
   s = navReducer(s, { type: "thread" });
-  assert.equal(s.pane, "plans");
+  assert.equal(s.pane, "preview");
   // 프로젝트가 바뀌면 처음으로.
   s = navReducer(navReducer(s, { type: "plan-draft", open: true }), { type: "project-changed" });
   assert.equal(s.planDraft, false);
@@ -495,4 +497,62 @@ test("오른쪽 칸 전환 — 기획서 항목은 대화 틀 위에 서고, 프
   s = navReducer(s, { type: "project-changed" });
   assert.equal(s.pane, "preview");
   assert.equal(s.view, "home");
+});
+
+test("세 자리 — 기획서를 거듭 열어도 자리는 기획서이고 화면 이동은 별개다", () => {
+  const plans = navReducer(initialNav(false), { type: "plans" });
+  const again = navReducer(plans, { type: "plans" });
+  assert.equal(again.pane, "plans");
+  assert.equal(again.view, "thread");
+  const screen = navReducer(again, { type: "screen" });
+  assert.equal(screen.pane, "preview");
+  assert.equal(screen.tab, "preview");
+});
+
+test("기획서 찾기 — 초성과 조합 중인 제목도 찾는다", () => {
+  const rows = planRows([
+    { pageId: "one", title: "주문 취소 정책", path: "COLO/주문 취소 정책", version: 1 },
+  ]);
+  assert.equal(filterPlanRows(rows, "ㅈㅁ")[0]?.pageId, "one");
+  assert.equal(filterPlanRows(rows, "취ㅅ")[0]?.pageId, "one");
+});
+
+test("근거 담기 — 문서에서 기존 화면 대화로 옮기면 좁은 창도 입력창 탭이다", () => {
+  const plans = navReducer(initialNav(true), { type: "plans" });
+  const chat = navReducer(plans, { type: "tab", tab: "chat" });
+  const screen = navReducer(chat, { type: "pane", pane: "preview" });
+  assert.equal(screen.view, "thread");
+  assert.equal(screen.pane, "preview");
+  assert.equal(screen.tab, "chat");
+  assert.equal(screen.collapsed, true);
+});
+
+test("선택 줄 — 목록·홈·근거로 연 기존 초안은 마지막 읽기 문서를 대신한다", () => {
+  const drafts = [{ docKey: "p-2001", pageId: "2001" }];
+  assert.equal(selectedPlanPage("1000", null, null, drafts), "1000");
+  assert.equal(selectedPlanPage("1000", "p-2001", null, drafts), "2001");
+  // 초안을 처음 만드는 동안과 요약이 늦게 도착하는 동안에도 옛 문서를 칠하지 않는다.
+  assert.equal(selectedPlanPage("1000", "p-2001", "2001", []), "2001");
+  assert.equal(selectedPlanPage("1000", "p-2001", null, []), "2001");
+});
+
+test("선택 줄 — 새 문서 초안은 문서 트리를 비우고 요약의 pageId가 열쇠보다 앞선다", () => {
+  assert.equal(selectedPlanPage("1000", "n-new", null, []), null);
+  assert.equal(selectedPlanPage("1000", "n-new", null, [{ docKey: "n-new", pageId: null }]), null);
+  assert.equal(
+    selectedPlanPage("1000", "n-new", null, [{ docKey: "n-new", pageId: "2001" }]),
+    "2001",
+  );
+});
+
+test("첫 문서 — 기억·원장 roots·목록 순서로 고르고 사라진 기준 페이지는 건너뛴다", () => {
+  const rows = planRows([doc("가/첫 문서", "first", 1), doc("나/기준 페이지", "root", 1)]);
+  assert.equal(initialPlanPage(rows, ["root"], null), "root");
+  assert.equal(initialPlanPage(rows, ["root"], "first"), "first");
+  assert.equal(initialPlanPage(rows, ["missing", "root"], "gone"), "root");
+  assert.equal(initialPlanPage(rows, ["missing"], null), "first");
+  assert.equal(initialPlanPage(rows, [], null), "first");
+  assert.equal(initialPlanPage(rows, ["root"], "root", "root"), "first");
+  assert.equal(initialPlanPage([], ["root"], null), null);
+  assert.equal(initialPlanPage(planRows([], [folder("가", "root")]), ["root"], null), null);
 });

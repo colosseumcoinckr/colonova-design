@@ -64,17 +64,14 @@ test("섞인 변경 — 진짜 편집은 남고 부산물만 빠진다", () => {
   );
 });
 
-test("기획서 폴더(docs/plans)의 변경은 빠진다 — 제출 PR 에 안 탄다(D1 · 2026-10-18)", () => {
+test("연결 레포의 자기 docs/plans 문서는 보통 레포 파일이다 — 보관에 담긴다(2026-10-23 · 기획서 사본 이동 계획 §5)", () => {
   const files = [
-    added("docs/plans/COLO/8.8-ColoNova/정책서.md"),
-    added("docs/plans/COLO/8.8-ColoNova/정책서.storage.xml"),
-    modified("docs/plans/confluence.json"),
+    modified("docs/plans/회의-메모.md"),
+    added("docs/plans/새-문서.md"),
     added("docs/plans"),
-    modified("docs/GUIDE.md"),
-    added("src/Screen.tsx"),
   ];
   assert.deepEqual(
-    saveablePaths(files, new Set()).map((file) => file.path),
-    ["docs/GUIDE.md", "src/Screen.tsx"],
+    saveablePaths(files, new Set(["docs/plans/회의-메모.md"])).map((file) => file.path),
+    ["docs/plans/회의-메모.md", "docs/plans/새-문서.md", "docs/plans"],
   );
 });

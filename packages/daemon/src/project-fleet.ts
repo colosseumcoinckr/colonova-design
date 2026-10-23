@@ -30,11 +30,8 @@ import {
   turnSubjectOf,
 } from "./common-instructions.js";
 import { emptyConfluenceLedger, readConfluenceLedger } from "./confluence-ledger.js";
-import {
-  confluenceLedgerFile,
-  confluenceRootTitleKey,
-  confluenceSiteKey,
-} from "./confluence-sync.js";
+import { confluenceMirrorLedger } from "./confluence-mirror.js";
+import { confluenceRootTitleKey, confluenceSiteKey } from "./confluence-sync.js";
 import { mergeNpmrc, npmrcPath } from "./credentials.js";
 import { DEFAULT_KEEP_REJECTED_DAYS } from "./cycle-hygiene.js";
 import { cycleLedgerFile } from "./cycle-ledger.js";
@@ -55,6 +52,7 @@ import { nextReadyWatch } from "./ready-notice.js";
 import { assertClonableRepoUrl, RepoWorkspace } from "./repo.js";
 import { scopeOf } from "./repo-config.js";
 import { appendScreenMap } from "./screen-map.js";
+import { screenSessionDirs } from "./session-dirs.js";
 import type { SessionManager } from "./session-manager.js";
 import { appendTape } from "./session-tape.js";
 
@@ -488,17 +486,17 @@ export class ProjectFleet {
    */
   /**
    * 기획서(Confluence) 연결의 한 끳이 — 미러(machine.json 슬러그 키)와 원장
-   * (docs/plans/confluence.json)에서 읽는다. 미연결은 undefined — 키가 없는 것이다.
-   * 자격(이메일 · 토큰)은 여기에 절대 실리지 않는다.
+   * (프로젝트 폴더 사본의 `confluence/confluence.json`)에서 읽는다. 미연결은 undefined — 키가
+   * 없는 것이다. 자격(이메일 · 토큰)은 여기에 절대 실리지 않는다.
    */
   private confluenceSummary(slug: string): ProjectSummary["confluence"] {
     const site = this.deps.machineSetting?.get(confluenceSiteKey(slug)) ?? null;
     if (site === null) return undefined;
-    // 원장은 클론의 디스크에서 읽는다 — 재시작 뒤 손대지 않은 클론(workspaces 밖)도
-    // 이미 가져온 기획서를 알려야 한다(이 시험의 몫: project-fleet-confluence.test.ts).
+    // 원장은 프로젝트 폴더의 사본에서 읽는다(2026-10-23 · 기획서 사본 이동 계획 §1 D1) — 클론이
+    // 서 있는지와 상관없이 이미 가져온 기획서를 알려야 한다(이 시험의 몫: project-fleet-confluence.test.ts).
     let ledger = emptyConfluenceLedger(site);
     try {
-      ledger = readConfluenceLedger(confluenceLedgerFile(this.deps.registry.paths(slug).repoRoot));
+      ledger = readConfluenceLedger(confluenceMirrorLedger(this.deps.registry.paths(slug).root));
     } catch {
       // 등록부가 아직 이 프로젝트의 자리를 모른다 — 빈 원장으로 답한다.
     }
@@ -666,6 +664,8 @@ export class ProjectFleet {
         title,
         instructions: this.projectInstructions(cwd),
         defaults: this.deps.registry.get(workspaces.slug)?.defaults,
+        // 사본 폴더를 화면 세션과 함께 연다 — 없으면 빈 배열이라 auto-thread 가 뺀다(2026-10-23 · 기획서 사본 이동 계획 §6).
+        additionalDirectories: screenSessionDirs(workspaces.paths.root),
       })
       .catch((error: unknown) => {
         this.deps.logger.warn("[cycle] 자동 대화를 열지 못했습니다", {

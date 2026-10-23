@@ -20,8 +20,12 @@ export interface WidthBounds {
  * PREVIEW_MIN`)를 뺀 만큼까지. 창이 아주 좁아도 아래 한도는 지킨다(그 폭 밑은 서랍이 맡는다).
  * 한도는 인자로 받는다 — 이 파일이 형제 모듈을 부르지 않아야 단위 시험이 src 에서 곧장 읽는다.
  */
-export function sidebarBounds(windowWidth: number, limits: WidthBounds): WidthBounds {
-  const room = windowWidth - CHAT_MIN - PREVIEW_MIN;
+export function sidebarBounds(
+  windowWidth: number,
+  limits: WidthBounds,
+  plans = false,
+): WidthBounds {
+  const room = windowWidth - (plans ? PREVIEW_MIN : CHAT_MIN + PREVIEW_MIN);
   return { min: limits.min, max: Math.max(limits.min, Math.min(limits.max, room)) };
 }
 

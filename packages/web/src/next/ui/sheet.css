@@ -26,7 +26,7 @@
 
 .nx-sc-group h3 {
   margin: 0 0 4px;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--ink3);
@@ -53,7 +53,7 @@
 
 .nx-sc-label {
   min-width: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   line-height: 1.4;
 }
 
@@ -81,14 +81,14 @@
 
 /* 키가 아니라 뜻을 말하는 낱말 — 캡 없이 글자로(`클릭` · `끌면 영역` · `··· 메뉴`). */
 .nx-kw {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
 .nx-modal--frame .nx-mfoot--frame.nx-sc-foot {
   justify-content: center;
   gap: 8px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink3);
 }
 

@@ -31,8 +31,6 @@ export function saveablePaths(files: DiffFile[], tracked: ReadonlySet<string>): 
   return files.filter((file) => {
     const segments = file.path.split("/");
     if (segments.includes("node_modules")) return false;
-    // 기획서(Confluence) 폴더는 보관이 담지 않는다 — 제출 PR 에도 안 탄다(D1 · 2026-10-18).
-    if (file.path === "docs/plans" || file.path.startsWith("docs/plans/")) return false;
     const base = segments[segments.length - 1] ?? "";
     if (LOCKFILE_BASENAMES[base] === true && !tracked.has(file.path)) return false;
     return true;

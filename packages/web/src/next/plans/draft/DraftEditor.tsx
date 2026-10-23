@@ -4,7 +4,7 @@ import type {
   DraftEdit,
   DraftTableRow,
 } from "@colonova-design/protocol";
-import { ArrowDown, ArrowUp, type LucideIcon } from "lucide-react";
+import { ArrowDown, ArrowUp, Ellipsis, type LucideIcon } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -22,6 +22,7 @@ import { InlineConfirm } from "../../ui/InlineConfirm";
 import {
   CloseIcon,
   ExternalIcon,
+  InfoIcon,
   PencilIcon,
   PlusIcon,
   RefreshIcon,
@@ -29,6 +30,7 @@ import {
   Spin,
   TrashIcon,
 } from "../../ui/icons";
+import { Popover } from "../../ui/Popover";
 import { headingSections } from "../doc-actions/doc-actions-model";
 import { SendToScreen } from "../doc-actions/SendToScreen";
 import { docUrl } from "../plans-list";
@@ -65,6 +67,7 @@ function glyph(Glyph: LucideIcon) {
 
 const UpIcon = glyph(ArrowUp);
 const DownIcon = glyph(ArrowDown);
+const MoreIcon = glyph(Ellipsis);
 
 /** 더하기가 고르는 새 블록의 종류 — preserved 는 여기서 만들지 않는다. */
 type NewKind = "heading" | "paragraph" | "list" | "table";
@@ -143,7 +146,7 @@ function TitleField({
   };
   return (
     <input
-      className="nx-dr-title-in"
+      className="nx-input nx-dr-title-in"
       aria-label={L.drafts.titleField}
       value={value}
       disabled={busy}
@@ -211,7 +214,11 @@ function TableEdit({
               <textarea
                 // biome-ignore lint/suspicious/noArrayIndexKey: 표의 칸도 자리가 곧 정체다
                 key={c}
-                className={cell.header ? "nx-dr-cell nx-dr-cell--head" : "nx-dr-cell"}
+                className={
+                  cell.header
+                    ? "nx-input nx-input--area nx-dr-cell nx-dr-cell--head"
+                    : "nx-input nx-input--area nx-dr-cell"
+                }
                 aria-label={L.drafts.cellLabel(r + 1, c + 1)}
                 rows={2}
                 value={cell.text}
@@ -307,7 +314,7 @@ function BlockEdit({
       {draft.kind === "heading" && (
         <div className="nx-dr-pane-row">
           <select
-            className="nx-dr-level"
+            className="nx-input nx-dr-level"
             aria-label={L.drafts.levelLabel}
             value={draft.level}
             disabled={busy}
@@ -324,7 +331,7 @@ function BlockEdit({
             ))}
           </select>
           <input
-            className="nx-dr-line"
+            className="nx-input nx-dr-line"
             aria-label={L.drafts.headingField}
             value={draft.text}
             disabled={busy}
@@ -334,7 +341,7 @@ function BlockEdit({
       )}
       {draft.kind === "paragraph" && (
         <textarea
-          className="nx-dr-area"
+          className="nx-input nx-input--area nx-dr-area"
           aria-label={L.drafts.bodyField}
           rows={4}
           value={draft.text}
@@ -354,7 +361,7 @@ function BlockEdit({
             {L.drafts.orderedLabel}
           </label>
           <textarea
-            className="nx-dr-area"
+            className="nx-input nx-input--area nx-dr-area"
             aria-label={L.drafts.listField}
             rows={4}
             value={listToText(draft.items)}
@@ -456,13 +463,16 @@ function BlockCard({
         </div>
       )}
       {theirs === null && block.status !== "same" && (
-        <span className="nx-dr-badge" data-status={block.status}>
+        <span
+          className={`nx-pill nx-dr-badge nx-pill--${block.status === "changed" ? "blue" : block.status === "new" ? "accent" : "red"}`}
+          data-status={block.status}
+        >
           {blockStatusLabel(block.status)}
         </span>
       )}
       {theirs !== null && (
         <div className="nx-dr-conflict-act">
-          <span className="nx-dr-badge" data-status="conflict">
+          <span className="nx-pill nx-pill--red nx-dr-badge" data-status="conflict">
             {blockStatusLabel("conflict")}
           </span>
           <button
@@ -483,56 +493,72 @@ function BlockCard({
           </button>
         </div>
       )}
-      <div className="nx-dr-acts">
+      <div className="nx-dr-acts" data-open={adding || editing || undefined}>
         {preserved === null && theirs === null && (
-          <button type="button" className="nx-dr-act" disabled={locked || busy} onClick={onEdit}>
+          <button
+            type="button"
+            className="nx-ibtn nx-ibtn--sm"
+            title={L.drafts.blockEdit}
+            aria-label={L.drafts.blockEdit}
+            disabled={locked || busy}
+            onClick={onEdit}
+          >
             <PencilIcon />
-            {L.drafts.blockEdit}
           </button>
         )}
         {theirs === null && (
           <button
             type="button"
-            className="nx-dr-act"
+            className="nx-ibtn nx-ibtn--sm"
+            title={L.drafts.addBelow}
+            aria-label={L.drafts.addBelow}
             aria-expanded={adding}
             disabled={locked || busy}
             onClick={onAddToggle}
           >
             <PlusIcon />
-            {L.drafts.addBelow}
           </button>
         )}
         <button
           type="button"
-          className="nx-dr-act"
+          className="nx-ibtn nx-ibtn--sm"
+          title={L.drafts.moveUp}
+          aria-label={L.drafts.moveUp}
           disabled={locked || busy || at === 0}
           onClick={onMoveUp}
         >
           <UpIcon />
-          {L.drafts.moveUp}
         </button>
         <button
           type="button"
-          className="nx-dr-act"
+          className="nx-ibtn nx-ibtn--sm"
+          title={L.drafts.moveDown}
+          aria-label={L.drafts.moveDown}
           disabled={locked || busy || at === count - 1}
           onClick={onMoveDown}
         >
           <DownIcon />
-          {L.drafts.moveDown}
         </button>
         <button
           type="button"
-          className="nx-dr-act"
+          className="nx-ibtn nx-ibtn--sm"
+          title={L.drafts.remove}
+          aria-label={L.drafts.remove}
           disabled={locked || busy}
           onClick={() => (preserved !== null ? setConfirmRemove(true) : onDelete())}
         >
           <TrashIcon />
-          {L.drafts.remove}
         </button>
         {block.status === "changed" && (
-          <button type="button" className="nx-dr-act" disabled={locked || busy} onClick={onRevert}>
+          <button
+            type="button"
+            className="nx-ibtn nx-ibtn--sm"
+            title={L.drafts.revert}
+            aria-label={L.drafts.revert}
+            disabled={locked || busy}
+            onClick={onRevert}
+          >
             <RefreshIcon />
-            {L.drafts.revert}
           </button>
         )}
       </div>
@@ -618,6 +644,8 @@ export function DraftEditorSurface({
   const [closeConfirm, setCloseConfirm] = useState(false);
   // 근거 보내기 판(2026-10-23 · 최종 구현 계획 F3) — 머리의 단추가 연다.
   const [sendOpen, setSendOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const actionsAnchor = useRef<HTMLButtonElement>(null);
   // 다른 창 · 대화에서 초안이 바뀌어 다시 읽은 판 — 고치는 칸이 열려 있으면 한 줄로 알린다. 칸의 글은
   // 지우지 않는다(2026-10-23 화면 확인 · R2 검토 의심 완화). 제 손으로 바꾼 개정은 알림을 세우지 않는다.
   const editingRef = useRef(false);
@@ -723,7 +751,7 @@ export function DraftEditorSurface({
             <i />
           </div>
         )}
-        <p className="nx-dr-fail" role={failed ? "alert" : "status"}>
+        <p className="nx-banner nx-banner--red nx-dr-fail" role={failed ? "alert" : "status"}>
           {failed ? (
             (draft.error ?? L.drafts.loadFailed)
           ) : (
@@ -774,9 +802,9 @@ export function DraftEditorSurface({
         <div className="nx-dr-hd-row">
           <div className="nx-dr-meta" title={L.drafts.meta(view.revision, view.baseVersion)}>
             <span>{L.drafts.metaLine(view.baseVersion, changed, inserted)}</span>
-            {unpublished && <span className="nx-dr-unpub">{L.drafts.unpublished}</span>}
+            {unpublished && <span className="nx-pill">{L.drafts.unpublished}</span>}
             {view.stage.notation !== null && (
-              <span className="nx-dr-stage" title={L.drafts.stageClosed}>
+              <span className="nx-pill nx-pill--accent" title={L.drafts.stageClosed}>
                 v{view.stage.notation}
                 {view.stage.closed && (
                   <span className="nx-dr-stage-note">{L.drafts.stageClosed}</span>
@@ -785,43 +813,77 @@ export function DraftEditorSurface({
             )}
           </div>
           <div className="nx-dr-acts-hd">
-            <button type="button" className="nx-btn nx-btn--sm" onClick={() => setSendOpen(true)}>
+            <button type="button" className="nx-btn" onClick={() => setSendOpen(true)}>
               {L.drafts.sendToScreen}
             </button>
             {/* 발행이 꺼져 있으면(게이트) 누르기 전에 말한다 — 으뜸 단추의 옷을 벗고 `꺼짐` 이 붙는다. 눌러서 반영할
                 내용은 그대로 미리 본다(확인 창이 막는 이유를 말한다 · 2026-10-23 기획자 화면 손질 U2). */}
             <button
               type="button"
-              className={`nx-btn nx-btn--sm${writable === false ? "" : " nx-btn--pri"}`}
+              className={`nx-btn${writable === false ? "" : " nx-btn--pri"}`}
               disabled={locked || applying}
               title={writable === false ? L.drafts.publishOffHint : undefined}
               onClick={() => setPublishOpen(true)}
             >
               {L.drafts.publish}
-              {writable === false && <span className="nx-dr-off">{L.drafts.publishOff}</span>}
-            </button>
-            <button type="button" className="nx-btn nx-btn--sm" onClick={onClose}>
-              <CloseIcon />
-              {L.drafts.close}
+              {writable === false && <span className="nx-pill">{L.drafts.publishOff}</span>}
             </button>
             <button
               type="button"
-              className="nx-btn nx-btn--sm nx-btn--ghost"
-              // 결과 확인 필요 중에 버리면 남은 발행 의도를 화면에서 정리할 길이 없어진다 — 다른
-              // 손잡이와 같은 잠금이다(2026-10-23 화면 확인 · R2 검토 4).
-              disabled={locked}
-              title={locked ? L.drafts.locked : undefined}
-              onClick={() => setConfirmDiscard(true)}
+              className="nx-ibtn"
+              ref={actionsAnchor}
+              title={L.docOps.menu}
+              aria-label={L.docOps.menu}
+              aria-haspopup="menu"
+              aria-expanded={actionsOpen}
+              onClick={() => setActionsOpen((before) => !before)}
             >
-              <TrashIcon />
-              {L.drafts.discard}
+              <MoreIcon />
             </button>
+            {actionsOpen && (
+              <Popover
+                anchor={actionsAnchor}
+                role="menu"
+                label={L.docOps.menu}
+                align="end"
+                float
+                onClose={() => setActionsOpen(false)}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="nx-mi"
+                  onClick={() => {
+                    setActionsOpen(false);
+                    onClose();
+                  }}
+                >
+                  <CloseIcon />
+                  {L.drafts.close}
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="nx-mi nx-mi--dng"
+                  disabled={locked}
+                  title={locked ? L.drafts.locked : undefined}
+                  onClick={() => {
+                    setActionsOpen(false);
+                    setConfirmDiscard(true);
+                  }}
+                >
+                  <TrashIcon />
+                  {L.drafts.discard}
+                </button>
+              </Popover>
+            )}
           </div>
         </div>
       </header>
       {/* 잠금의 한 줄 — 결과 확인 필요 띠가 서면 그 띠가 함께 말한다(띠 둘이 겹쳐 서지 않게 · 2026-10-23 기획자 화면 손질). */}
       {locked && !(view.state === "result-unknown" && view.pendingCommandId !== null) && (
-        <p className="nx-dr-lock" role="status">
+        <p className="nx-banner nx-banner--amber nx-dr-lock" role="status">
+          <InfoIcon />
           {L.drafts.locked}
         </p>
       )}
@@ -829,11 +891,14 @@ export function DraftEditorSurface({
         <div className="nx-dr-bandwrap">
           {/* 띠(role="status")는 상태 문장만 읽힌다 — 단추와 확인판은 띠 밖 같은 자리 아래에 선다
               (2026-10-23 화면 확인 · R2 검토 9). */}
-          <p className="nx-dr-band nx-dr-band--warn nx-dr-band--stack" role="status">
-            <b>{L.drafts.resultUnknownTitle}</b>
-            <span className="nx-dr-band-s">{L.drafts.resultUnknownBody}</span>
-            <span className="nx-dr-band-s">{L.drafts.locked}</span>
-          </p>
+          <div className="nx-banner nx-banner--amber nx-dr-band--warn" role="status">
+            <InfoIcon />
+            <div className="nx-banner-body">
+              <b>{L.drafts.resultUnknownTitle}</b>
+              <span className="nx-dr-band-s">{L.drafts.resultUnknownBody}</span>
+              <span className="nx-dr-band-s">{L.drafts.locked}</span>
+            </div>
+          </div>
           <div className="nx-dr-band-act">
             <button
               type="button"
@@ -879,23 +944,25 @@ export function DraftEditorSurface({
         </div>
       )}
       {view.state === "published" && (
-        <p className="nx-dr-band nx-dr-band--ok" role="status">
+        <p className="nx-banner nx-banner--green" role="status">
           {L.drafts.publishedNote}
         </p>
       )}
       {view.state === "conflict" && (
-        <p className="nx-dr-band nx-dr-band--conflict" role="status">
+        <p className="nx-banner nx-banner--red" role="status">
+          <InfoIcon />
           {L.drafts.conflictNote}
         </p>
       )}
       {draft.error !== null && (
-        <p className="nx-dr-fail" role="alert">
+        <p className="nx-banner nx-banner--red nx-dr-fail" role="alert">
           {draft.error}
         </p>
       )}
       {confirmDiscard && (
         <InlineConfirm
           className="nx-dr-confirm"
+          returnRef={actionsAnchor}
           title={L.drafts.discardTitle}
           body={L.drafts.discardBody}
           confirmLabel={L.drafts.discardConfirm}

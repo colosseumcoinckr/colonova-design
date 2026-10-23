@@ -1005,6 +1005,7 @@ interface DaemonApi {
   docTrashed: () => Promise<{ entries: DocTrashEntry[] }>;
   /** 기획서 목록 — 원장의 트리와 판. 아직 가져온 것이 없으면 docs 가 null 이다. */
   docList: () => Promise<{
+    roots?: string[];
     docs: Array<{ pageId: string; title: string; version: number; path: string }> | null;
     /** Confluence 폴더 — 문서와 같은 나눔 경로로 폴더 줄을 세운다. */
     folders?: Array<{ folderId: string; title: string; path: string }>;
@@ -2281,6 +2282,7 @@ export function useDaemon(url: string | null): Daemon {
       docTrashed: () => call<{ entries: DocTrashEntry[] }>({ type: "doc.trashed" }, 30_000),
       docList: () =>
         call<{
+          roots?: string[];
           docs: Array<{ pageId: string; title: string; version: number; path: string }> | null;
           folders?: Array<{ folderId: string; title: string; path: string }>;
           unsupported?: Array<{ contentId: string; title: string; path: string; type: string }>;

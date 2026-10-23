@@ -186,48 +186,63 @@ function SubmitBody({
     wasBusy.current = busy;
   }, [busy, sendFailed, changed]);
 
+  // 알림 줄은 앱 공통의 띠다(2026-10-23 화면 전면 재설계 §4 G): 아이콘 · 한 줄 · 단추, 톤은 빨강(실패) · 호박(바뀜) · 없음(사실).
   const noticeRow = (kind: SubmitNotice) => {
     switch (kind) {
       case "send":
         return (
-          <div key={kind} role="alert" className="nx-st-note nx-st-note--red">
+          <div key={kind} role="alert" className="nx-banner nx-banner--red nx-st-bn">
             <FailIcon />
-            <span className="nx-st-note-t">{L.submitConfirm.sendFailed}</span>
+            <div className="nx-banner-body">{L.submitConfirm.sendFailed}</div>
           </div>
         );
       case "read":
         return (
-          <div key={kind} role="alert" className="nx-st-note nx-st-note--red">
+          <div key={kind} role="alert" className="nx-banner nx-banner--red nx-st-bn">
             <FailIcon />
-            <span className="nx-st-note-t">{L.submitConfirm.readFailed}</span>
-            <button type="button" className="nx-btn nx-btn--sm" onClick={onRefresh} disabled={busy}>
-              {L.submitConfirm.refresh}
-            </button>
+            <div className="nx-banner-body">{L.submitConfirm.readFailed}</div>
+            <div className="nx-banner-act">
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                onClick={onRefresh}
+                disabled={busy}
+              >
+                {L.submitConfirm.refresh}
+              </button>
+            </div>
           </div>
         );
       case "changed":
         return (
-          <div key={kind} role="status" className="nx-st-note nx-st-note--amber">
+          <div key={kind} role="status" className="nx-banner nx-banner--amber nx-st-bn">
             <FailIcon />
-            <span className="nx-st-note-t">{L.submitConfirm.changed}</span>
-            <button type="button" className="nx-btn nx-btn--sm" onClick={onRefresh} disabled={busy}>
-              {L.submitConfirm.refresh}
-            </button>
+            <div className="nx-banner-body">{L.submitConfirm.changed}</div>
+            <div className="nx-banner-act">
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                onClick={onRefresh}
+                disabled={busy}
+              >
+                {L.submitConfirm.refresh}
+              </button>
+            </div>
           </div>
         );
       case "empty":
         return (
-          <div key={kind} role="status" className="nx-st-note">
-            <span className="nx-st-note-t">{L.submitConfirm.empty}</span>
+          <div key={kind} role="status" className="nx-banner nx-st-bn">
+            <div className="nx-banner-body">{L.submitConfirm.empty}</div>
           </div>
         );
       case "lock":
         // 2026-10-04 ux-review(2차): 잠금은 사실의 안내다 — 경고색 줄이 아니라 상태 줄로. 풀리는 길은
         // 다시 확인이 아니라 잠금의 이유에 있다.
         return (
-          <div key={kind} role="status" className="nx-st-note">
+          <div key={kind} role="status" className="nx-banner nx-st-bn">
             <LockIcon />
-            <span className="nx-st-note-t">{lockReason}</span>
+            <div className="nx-banner-body">{lockReason}</div>
           </div>
         );
     }
@@ -354,7 +369,7 @@ function SubmitBody({
         </div>
         <input
           id={noteId}
-          className="nx-note-input"
+          className="nx-input"
           value={note}
           maxLength={500}
           readOnly={busy || leaving}

@@ -22,7 +22,11 @@ import { daysSince } from "./lib/waiting";
 import { commentCount, outsideChanges } from "./lib/work-ledger";
 import type { NextShellProps } from "./NextShell";
 import { draftsInProgress } from "./plans/home-drafts";
+import { openPlanTarget } from "./plans/open-plan";
 import { PlansColumn } from "./plans/PlansColumn";
+import { PlansHeader } from "./plans/PlansHeader";
+import { PlansSidebar } from "./plans/PlansSidebar";
+import { PlansContext, usePlansWorkspace } from "./plans/PlansWorkspace";
 import { useDraftSummaries } from "./plans/use-draft-summaries";
 import { PreviewColumn } from "./preview/PreviewColumn";
 import { SettingsDialog } from "./settings/SettingsDialog";
@@ -127,9 +131,12 @@ export function Workspace({
     onOpenSettings: openSettings,
   });
   const project = daemon.projects.find((entry) => entry.slug === daemon.activeSlug) ?? null;
-  // 사이드바의 폭 — 경계를 끌어 바꾸고 설정(layout.sidebarWidth)에 남긴다.
-  const sidebarWidth = useSidebarWidth(settings.layout.sidebarWidth, (width) =>
-    onLayoutChange({ sidebarWidth: width }),
+  const plansOn = state.view === "thread" && state.pane === "plans";
+  // 자리마다 폭을 기억한다(2026-10-23 화면 전면 재설계 §3.2).
+  const sidebarWidth = useSidebarWidth(
+    plansOn ? (settings.layout.plansSidebarWidth ?? null) : settings.layout.sidebarWidth,
+    (width) => onLayoutChange(plansOn ? { plansSidebarWidth: width } : { sidebarWidth: width }),
+    plansOn,
   );
 
   const titleForThread = useCallback(
@@ -181,6 +188,7 @@ export function Workspace({
 
   // 팔레트와 단축키(⌘K · ⌘T · ⌘,) — 조합키가 붙어 입력창의 타이핑과 만나지 않는다.
   const [palette, setPalette] = useState(false);
+  const plans = usePlansWorkspace({ daemon, project, active: plansOn, paletteOpen: palette });
   // 기획서 칸 — 처음 열 때 마운트하고 그 뒤로는 마운트된 채 숨는다(열린 문서 · 찾는 말이 미리보기로 갔다 와도 그대로).
   // 열기 전에는 짓지 않는다: 지으면 기획서를 쓰지 않는 프로젝트도 앱을 켤 때마다 목록을 읽는다.
   const [plansMounted, setPlansMounted] = useState(false);
@@ -306,11 +314,7 @@ export function Workspace({
     .join(" ");
   const home = state.view === "home";
   const pinCount = pins.list.length;
-  // 기획서 집중 배치(2026-10-23 기획자 화면 손질 D2) — 넓은 창에서 초안을 고치는 동안 화면 대화 칸이 비켜서고(마운트한 채
-  // 숨는다) 오른쪽 칸이 본문 폭을 다 쓴다. 문서와 기획 대화가 나란히 서고, AI 입력창은 기획 대화의 것 하나만 보인다.
-  // 기획 대화는 기획서 칸 안에 그대로 있다(정본 §12 의 2026-10-23 결정). 좁은 창은 두 탭이 같은 일을 한다.
-  const planFocus = !narrow && !home && state.pane === "plans" && state.planDraft;
-
+  const chatHidden = home || plansOn || (narrow && state.tab === "preview");
   // 넓은 창으로 다녀오면 서랍은 닫는다 — 열어 둔 채 넓혔다 다시 좁히면 서랍이 저절로 열려 있던 것을
   // 막는다(2026-10-06 겹판 조사).
   useEffect(() => {
@@ -322,9 +326,11 @@ export function Workspace({
   const sidebarRef = useRef<HTMLElement>(null);
   useEffect(() => {
     if (!(narrow && state.drawer)) return;
-    sidebarRef.current?.querySelector<HTMLElement>(".nx-side-nav .nx-side-row")?.focus();
+    if (!sidebarRef.current?.contains(document.activeElement)) {
+      sidebarRef.current?.querySelector<HTMLElement>(".nx-side-nav .nx-side-row")?.focus();
+    }
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       if (overlayOpen()) return;
       setDrawer(false);
     };
@@ -345,19 +351,20 @@ export function Workspace({
       }
       return;
     }
-    if (!sidebarRef.current?.contains(document.activeElement)) return;
-    const bar = home ? ".nx-homebar" : ".nx-statusbar";
+    const focused = document.activeElement;
+    if (!sidebarRef.current?.contains(focused) && !focused?.matches(".nx-scrim")) return;
+    const bar = home ? ".nx-homebar" : plansOn ? ".nx-pl-bar" : ".nx-statusbar";
     document.querySelector<HTMLElement>(`${bar} .nx-ibtn`)?.focus();
-  }, [sidebarHidden, home]);
+  }, [sidebarHidden, home, plansOn]);
 
   // 대화 화면이 홈 뒤에서 나올 때 — 대화 화면은 홈이 떠 있는 동안에도 마운트돼 있어(미리보기가
   // 살아 있게) 입력창의 열쇠가 안 바뀐다. 입력창이 초점을 받도록 알린다.
   useEffect(() => {
-    if (!home) window.dispatchEvent(new Event("nx:composer:focus"));
-  }, [home]);
+    if (!home && !plansOn) window.dispatchEvent(new Event("nx:composer:focus"));
+  }, [home, plansOn]);
 
   return (
-    <>
+    <PlansContext.Provider value={plans}>
       <div
         className={classes}
         data-testid="next-shell"
@@ -368,7 +375,30 @@ export function Workspace({
           sessions={sessions}
           activeSessionId={activeId}
           view={state.view}
-          plansOn={state.view === "thread" && state.pane === "plans"}
+          plansOn={plansOn}
+          running={running}
+          plansContent={
+            plansMounted ? (
+              <PlansSidebar
+                nav={nav}
+                hidden={!plansOn}
+                sidebarHidden={sidebarHidden}
+                onMenuHidden={() => {
+                  if (sidebarHidden) {
+                    const bar = home ? ".nx-homebar" : plansOn ? ".nx-pl-bar" : ".nx-statusbar";
+                    document.querySelector<HTMLElement>(`${bar} .nx-ibtn`)?.focus();
+                  } else if (!plansOn) {
+                    sidebarRef.current
+                      ?.querySelector<HTMLElement>('.nx-side-nav [aria-current="page"]')
+                      ?.focus();
+                  }
+                }}
+                onOpen={() => {
+                  if (narrow) setDrawer(false);
+                }}
+              />
+            ) : undefined
+          }
           planDrafts={draftsInWork}
           titleFor={titleForThread}
           nav={nav}
@@ -441,37 +471,41 @@ export function Workspace({
             </div>
           )}
           <div className={`nx-view nx-work${home ? " nx-offstage" : ""}`} aria-hidden={home}>
-            <StatusLine
-              daemon={daemon}
-              sessions={sessions}
-              project={project}
-              // 집중 배치에서는 화면 대화가 비켜서 있다 — 숨은 대화의 이름 대신 지금 칸의 이름을 읽기만 한다.
-              // 문서 상태와 화면 제출의 상태를 한 줄에 합치지 않는다(정본 §11) — 그동안 화면 작업 묶음은 접힌다(아래 docFocus).
-              title={planFocus ? L.plans.listHeading : title}
-              onRename={
-                !planFocus && activeId ? (name) => onRenameSession(activeId, name) : undefined
-              }
-              // 집중 배치 동안은 여정 · 받아오기 · 제출을 접는다(2026-10-23 기획자 화면 손질 U5 — 사용자 위임 · 권고 채택).
-              docFocus={planFocus}
-              journey={journey}
-              turnStartedAt={turnStartedAt}
-              makingPhase={phase}
-              firstTurn={firstSend}
-              narrow={narrow}
-              nav={nav}
-              onSubmit={() => undefined}
-              ledger={ledger}
-              submitCopy={copy}
-              sidebarHidden={sidebarHidden}
-              onOpenSidebar={openSidebar}
-            />
+            {plansOn ? (
+              <PlansHeader
+                daemon={daemon}
+                nav={nav}
+                sidebarHidden={sidebarHidden}
+                narrow={narrow}
+                onOpenSidebar={openSidebar}
+              />
+            ) : (
+              <StatusLine
+                daemon={daemon}
+                sessions={sessions}
+                project={project}
+                title={title}
+                onRename={activeId ? (name) => onRenameSession(activeId, name) : undefined}
+                journey={journey}
+                turnStartedAt={turnStartedAt}
+                makingPhase={phase}
+                firstTurn={firstSend}
+                narrow={narrow}
+                nav={nav}
+                onSubmit={() => undefined}
+                ledger={ledger}
+                submitCopy={copy}
+                sidebarHidden={sidebarHidden}
+                onOpenSidebar={openSidebar}
+              />
+            )}
             <ProblemLine
               daemon={daemon}
               invitePath={state.discardableInvitePath}
               onClearInvite={() => nav.setDiscardableInvitePath(null)}
               onToast={nav.toast}
             />
-            {narrow && (
+            {narrow && !plansOn && (
               <div className="nx-tabs" role="tablist">
                 <button
                   type="button"
@@ -492,30 +526,34 @@ export function Workspace({
                   {/* 2026-10-04 ux-review(2차): 긴 화면 이름은 말줄임으로 — 익명 플렉스
                       항목은 CSS 만 줄일 수 없어 이름만 감싼다. */}
                   <span className="nx-tab-label">
-                    {state.pane === "plans"
-                      ? L.plans.listHeading
-                      : L.narrow.screenTab(screenName ?? project?.name ?? "")}
+                    {L.narrow.screenTab(screenName ?? project?.name ?? "")}
                   </span>
-                  {pinCount > 0 && state.pane !== "plans" && <Count n={pinCount} />}
+                  {pinCount > 0 && <Count n={pinCount} />}
                 </button>
               </div>
             )}
             <div
               ref={bodyRef}
               className={`nx-body${drag ? " planner__body--resizing" : ""}`}
-              data-tab={narrow ? state.tab : undefined}
+              data-tab={narrow && !plansOn ? state.tab : undefined}
               style={
-                narrow
+                narrow && !plansOn
                   ? undefined
                   : {
-                      gridTemplateColumns: planFocus
+                      gridTemplateColumns: plansOn
                         ? "minmax(0, 1fr)"
                         : `${shownChatWidth}px minmax(0, 1fr)`,
                     }
               }
             >
-              <ChatColumn {...slot} offstage={planFocus} pane={state.pane} />
-              {!narrow && !planFocus && (
+              <div
+                className={`nx-chat-slot${chatHidden ? " nx-offstage" : ""}`}
+                aria-hidden={chatHidden}
+                inert={chatHidden}
+              >
+                <ChatColumn {...slot} offstage={plansOn} pane="preview" />
+              </div>
+              {!narrow && !plansOn && (
                 <Splitter
                   side="left"
                   width={shownChatWidth}
@@ -564,7 +602,9 @@ export function Workspace({
                   daemon={daemon}
                   project={project}
                   nav={nav}
-                  offstage={home || (narrow && state.tab === "chat") || state.pane !== "plans"}
+                  offstage={!plansOn}
+                  header={false}
+                  onFocusTree={openSidebar}
                   onDraftOpen={setPlanDraft}
                 />
               )}
@@ -598,6 +638,15 @@ export function Workspace({
       {palette && (
         <Palette
           titleForThread={titleForThread}
+          documents={plans.connected ? plans.rows.filter((row) => row.kind === "doc") : []}
+          documentsLoading={
+            plans.connected &&
+            (plans.state.listPhase === "idle" || plans.state.listPhase === "loading")
+          }
+          documentsFailed={plans.connected && plans.state.listPhase === "failed"}
+          onRetryDocuments={plans.refreshList}
+          onOpenDocument={(pageId) => openPlanTarget({ pageId }, nav)}
+          onOpenPlans={nav.openPlans}
           activeSessionId={activeId}
           projects={daemon.projects}
           hiddenThreads={daemon.hiddenThreads}
@@ -612,6 +661,6 @@ export function Workspace({
           onClose={() => setPalette(false)}
         />
       )}
-    </>
+    </PlansContext.Provider>
   );
 }

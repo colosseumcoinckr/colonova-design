@@ -110,6 +110,11 @@ function brokenCliWorld(opts: { lost?: number } = {}) {
       projectSummaries: () => [],
       workspaceOfSession: () => ({ slug: "proj" }),
     },
+    // 되살리기가 세션에 함께 여는 폴더(기획서 사본)를 찾는 등록부 — 프로젝트가 없으니 비어 있다(2026-10-23 · 기획서 사본 이동).
+    registry: {
+      list: () => [],
+      paths: () => ({ root: join(tmpdir(), "no-such-project"), repoRoot: tmpdir() }),
+    },
     queueStore: queue,
     developerNotice: {
       raise: async (problem: { key: string; slug: string | null }) => {

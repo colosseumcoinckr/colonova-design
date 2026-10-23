@@ -178,6 +178,11 @@ export interface LaunchConfig {
   resumeSessionAt?: string;
   /** D95: with `resumeSessionAt` — the discarded turn's prompt id. */
   resumeDropsTurn?: string;
+  /**
+   * 세션이 작업 폴더 밖에서 함께 읽는 폴더(기획서 사본) · 절대 경로
+   * (2026-10-23 · 기획서 사본 이동 계획 §6).
+   */
+  additionalDirectories?: string[];
   /** Provider-specific extras (Claude: executable/…). */
   [key: string]: unknown;
 }

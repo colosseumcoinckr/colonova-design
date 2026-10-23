@@ -174,6 +174,8 @@ export const L = {
      */
     plansDrafts: (n: number) => `초안 ${n}`,
     plansDraftsAria: (n: number) => `기획서 · 작성 중인 초안 ${n}개`,
+    screen: "화면",
+    screenRunning: "화면 · 만드는 중",
   },
   /** 사이클 상태의 한 단어 — 사이드바 · 전환기 · 팔레트가 함께 쓴다. */
   cycle: {
@@ -182,27 +184,14 @@ export const L = {
     merged: "개발자 반영 완료",
   },
   home: {
-    workspace: "현재 프로젝트",
     openScreen: "화면 열기",
-    intro: "원하는 변경을 말하고, 실제 화면에서 확인하세요.",
-    /**
-     * 기획서를 연결한 프로젝트의 홈(2026-10-23 기획자 화면 손질 U4 · 사용자 위임 · 권고 채택) — 화면 작업과 함께 기획서를
-     * 부른다. 세 걸음도 기획의 한 바퀴(정본 §1)다. 연결하지 않은 프로젝트는 위의 화면 작업 문장 그대로다.
-     */
-    introPlans: "원하는 변경을 말하고 실제 화면에서 확인하세요. 기획서는 아래에서 AI 와 함께 써요.",
     guidePlan: "기획서 쓰기",
-    guidePlanBody: "AI 와 정책 · 기능을 정해요",
     guideBuild: "화면 만들기",
-    guideBuildBody: "기획서를 근거로 실제 화면을 고쳐요",
     guideShip: "발행 · 제출하기",
-    guideShipBody: "문서는 Confluence 에, 화면은 개발자에게",
     guideLabel: "작업 순서",
     guideAsk: "원하는 변경 말하기",
-    guideAskBody: "말·그림·문서로 요청해요",
     guideCheck: "화면 확인하기",
-    guideCheckBody: "직접 눌러 보고, 필요하면 되돌려요",
     guideSubmit: "개발자에게 제출하기",
-    guideSubmitBody: "프로젝트 전체 변경을 확인해 보내요",
     greet: (name: string) => `${name}님, 무엇을 만들까요?`,
     placeholder: "예: 회원 목록에 이름으로 찾는 검색창을 넣어 줘",
     hint: "그림·문서를 끌어다 놓을 수 있어요. 보내면 새 대화가 열려요.",
@@ -270,6 +259,13 @@ export const L = {
     draftNewDoc: "새 문서 초안",
     draftChanged: (count: number) => `바뀐 곳 ${count}`,
     draftConflict: "충돌을 골라 주세요",
+    // ── 홈 현관(2026-10-23 화면 전면 재설계 §3.6) — 두 시작 카드와 인사 아래 한 줄.
+    screenTitle: "화면",
+    /** 인사 아래 흐린 한 줄 — 프로젝트 이름(기획서를 연결했으면 기준 페이지 이름까지). */
+    where: (project: string, root: string | null) =>
+      root ? `${project} · 기획서 ${root}` : project,
+    /** `화면` 시작 카드 머리의 한 줄 소개(2026-10-24 QA 13) — 두 카드의 머리를 같은 해부(아이콘 · 이름 · 한 줄 소개 · 오른쪽 단추)로 맞춘다. */
+    screenIntro: "원하는 변경을 말하고, 실제 화면에서 확인하세요",
   },
   narrow: {
     chatTab: "대화",
@@ -491,19 +487,12 @@ export const L = {
   },
   transcript: {
     emptyTitle: "무엇을 만들까요?",
-    sharedWork: "새 대화에서도 이 프로젝트의 현재 화면을 이어서 수정해요",
     editScreenHint: "대화 내용을 고쳐 보내요. 화면은 현재 상태를 유지해요",
     emptyBody: (name: string) =>
       `오른쪽은 ${name}의 실제 화면이에요.\n원하는 변경을 입력하거나, 수정할 곳을 선택해 주세요.\n그림·기획 문서도 첨부할 수 있어요.`,
     /** 좁은 창(900px 미만)에서는 미리보기가 오른쪽이 아니라 탭이다. */
     emptyBodyNarrow: (name: string) =>
       `${name}의 실제 화면은 화면 탭에서 봐요.\n원하는 변경을 입력하거나, 수정할 곳을 선택해 주세요.\n그림·기획 문서도 첨부할 수 있어요.`,
-    /**
-     * 오른쪽 칸이 기획서일 때(2026-10-23 기획자 화면 손질 D7) — 이 대화는 화면을 고치는 대화이고, 문서는 근거로 담아 보낸다는
-     * 것과 문서를 고치는 곳(기획서의 `고치기`)을 말한다.
-     */
-    emptyBodyPlans: (name: string) =>
-      `이 대화는 ${name}의 화면을 고쳐요.\n기획서의 ‘화면 작업에 근거로 보내기’ 로 문서를 담아 말해 보세요.\n문서를 고치려면 기획서에서 ‘고치기’ 를 눌러요.`,
     emptyPreparing: (name: string) =>
       `${name} · 처음 켜는 중이에요.\n먼저 말해 두면 준비가 끝나는 대로 시작해요.`,
     queued: "준비가 끝나면 바로 보낼게요",
@@ -1518,7 +1507,7 @@ export const L = {
   // ── 찾기(⌘K) 창 — 셸 밖(components/shell)에 빌려 쓰는 판이라 사이드바와
   // 같은 말을 쓴다.
   palette: {
-    find: "대화 이름이나 내용, 프로젝트 찾기",
+    find: "문서, 대화 이름이나 내용, 프로젝트 찾기",
     findInProject: "이 프로젝트의 대화 이름이나 내용 찾기",
     recentConvs: "최근 대화",
     projectConvs: (name: string) => `${name}의 대화`,
@@ -1540,6 +1529,7 @@ export const L = {
     moving: "옮기는 중…",
     /** 낭독 전용 — 찾는 말을 바꾸고 잠시 뒤 결과 수를 한 번 말한다. */
     resultCount: (n: number) => `${n}개를 찾았어요`,
+    plansHint: "기획서로 가요",
   },
   // ── 기능 제안(PLAN-FEEDBACK) — 사이드바 바닥의 단추와 한 장의 대화상자
   feedback: {
@@ -1673,8 +1663,6 @@ export const L = {
     // 읽는 칸 — 사이드바의 항목 · 위쪽 막대 · 가져오기 줄
     sidebar: "기획서",
     open: "기획서 열기",
-    backToScreen: "미리보기로 돌아가기",
-    crumbPreview: "미리보기",
     crumbNav: "지금 위치",
     listHeading: "기획서",
     importNow: "새로 가져오기",
@@ -1696,7 +1684,6 @@ export const L = {
     filterNone: "맞는 문서가 없어요 — 다른 말로 찾아 보세요",
     foldOpen: (title: string) => `${title} 펼치기`,
     foldClose: (title: string) => `${title} 접기`,
-    lastViewed: "마지막으로 본 문서",
     docVersions: (version: number) => `판 ${version}`,
     // Confluence 전용 항목의 종류 — 이 앱이 열지 못하는 것을 제목 옆의 작은 글로 알린다(2026-10-23 F0).
     unsupportedKind: (type: string) =>
@@ -1721,11 +1708,11 @@ export const L = {
     listFailedBody: "인터넷 연결을 확인하고 다시 시도해 주세요",
     retry: "다시 시도",
     // 문서 — 본문 · 코멘트 · 읽기 실패
-    backToList: "목록으로",
+    backToList: "다른 문서 고르기",
     reading: "문서를 읽는 중…",
     readingNote: "Confluence 에서 가져오느라 몇 초 걸릴 수 있어요",
     docFailed: "문서를 읽지 못했어요 — 인터넷 연결을 확인하고 다시 시도해 주세요",
-    docUpdated: (when: string) => `${when} 수정`,
+    docUpdated: (when: string) => `${when} 고침`,
     openInConfluence: "Confluence 에서 열기",
     macroNoteTitle: "Confluence 에서만 온전히 보이는 부분이 있어요",
     macroNoteBody: "아래 절의 상자 · 표시는 여기서 자리만 보여요. 고치려면 Confluence 에서 열어 주세요.",
@@ -1740,6 +1727,10 @@ export const L = {
     commentsUnavailable: "코멘트는 지금 읽지 못했어요",
     commentAnchor: (anchor: string) => `이 부분: ${anchor}`,
     commentNoAuthor: "이름 없음",
+    menu: "기획서 더보기",
+    draftsInProgress: "작성 중인 초안",
+    hasDraft: "초안 있음",
+    focusTree: "목록에서 찾기",
   },
   // ── 기획 초안(2026-10-23 · 최종 구현 계획 F1) — 문서를 블록으로 읽고 고치는 초안 편집기. 발행은 다른 칸의 몫이다.
   drafts: {
@@ -1880,7 +1871,6 @@ export const L = {
     aiFailed: "AI 가 답을 마치지 못했어요",
     readBy: (count: number) => `AI 가 문서 ${count}개를 읽었어요`,
     // 변경안 카드 — 요약 · 걸음 · 처지 배지 · 채택 단추
-    preview: "미리보기",
     opAdopted: "채택함",
     opRejected: "거절함",
     staleBadge: "오래됨",
@@ -1928,7 +1918,7 @@ export const L = {
     limitSectionLength: "절 이름은 200자까지 쓸 수 있어요",
     startWithAi: "AI 와 시작하기",
     // ── 발행(2026-10-23 · 최종 구현 계획 F2) — Confluence 에 반영하기 전에 무엇이 반영되는지 보인다
-    publish: "Confluence 에 발행",
+    publish: "발행",
     /** 발행 게이트가 꺼져 있을 때 단추 안의 작은 표시와 그 풀이(2026-10-23 기획자 화면 손질 U2). */
     publishOff: "꺼짐",
     publishOffHint: "발행이 아직 꺼져 있어요 — 눌러서 반영할 내용은 미리 볼 수 있어요",
@@ -2008,7 +1998,7 @@ export const L = {
     resume: "초안 이어 쓰기",
     chipCount: (changed: number) => `초안 · ${changed}`,
     // ── 화면 작업에 근거 보내기(2026-10-23 · 최종 구현 계획 F3) — 문서 · 초안을 입력창 첨부로 담는다
-    sendToScreen: "화면 작업에 근거로 보내기",
+    sendToScreen: "화면에서 확인",
     sendTitle: "근거로 보내기",
     sendSub: "고른 문서와 절을 화면 작업의 근거로 입력창에 담아요.",
     sendScope: "보낼 범위",
@@ -2019,6 +2009,16 @@ export const L = {
     sentToComposer: "근거를 입력창에 담았어요 — 말을 붙여 보내 주세요",
     noComposer: "입력창을 찾지 못했어요 — 대화 칸을 열고 다시 시도해 주세요",
     sendFailed: "근거를 만들지 못했어요 — 잠시 뒤 다시 시도해 주세요",
+    // 전후 비교의 이름(2026-10-23 화면 전면 재설계 §4 D).
+    beforeChange: "바뀌기 전",
+    afterChange: "바뀐 뒤",
+    noBlock: "없음",
+    removedBlock: "이 블록을 지워요",
+    protectedHeading: "지워지는 Confluence 전용 조각",
+    currentDraft: "지금 초안",
+    proposalMenu: "변경안 더보기",
+    threadExpand: "기획 대화 펼치기",
+    threadCollapse: "기획 대화 줄이기",
   },
   // ── 기획 근거 줄(2026-10-23 · 최종 구현 계획 F3) — 화면 대화의 입력창 위에 이번 대화가
   // 삼은 근거가 한 줄로 선다. 칩을 누르면 그 문서 · 초안으로 돌아간다.

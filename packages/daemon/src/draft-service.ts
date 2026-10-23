@@ -2,13 +2,13 @@
  * 초안 서비스(2026-10-23 · 최종 구현 계획 F1 · 작업 B2) — 저장소 · 블록 엔진 · Confluence
  * 클라이언트 · 기획 AI · 발행 엔진을 잇는 몸. 모든 요청은 활성 프로젝트에서 돈다. 초안이
  * 바뀔 때마다 `draft.changed` 를, AI 진행마다 `draft.ai` 를 방송한다. 프런트가 보낸 문서
- * 아이디는 믿지 않고 — 원장(클론 `docs/plans/confluence.json`)과 뿌리 미러로 범위를 검사한다.
+ * 아이디는 믿지 않고 — 원장(프로젝트 폴더 사본의 `confluence/confluence.json`)과 사본 미러로 범위를 검사한다.
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { join, sep } from "node:path";
 import type {
   DraftBlock,
   DraftBlockStatus,
@@ -30,13 +30,10 @@ import type {
 } from "@colonova-design/protocol";
 import { draftStageOf } from "@colonova-design/protocol";
 import { ConfluenceClient, createConfluenceTransport } from "./confluence-client.js";
-import {
-  type ConfluenceLedger,
-  emptyConfluenceLedger,
-  readConfluenceLedger,
-} from "./confluence-ledger.js";
+import { type ConfluenceLedger, readConfluenceLedger } from "./confluence-ledger.js";
 import { deriveMarkdown } from "./confluence-markdown.js";
-import { confluenceLedgerFile, confluenceRootIdKey, confluenceSiteKey } from "./confluence-sync.js";
+import { confluenceMirrorLedger, confluenceMirrorRoot } from "./confluence-mirror.js";
+import { confluenceRootIdKey, confluenceSiteKey } from "./confluence-sync.js";
 import { type CredentialStore, loadConfluenceCredentials } from "./credentials.js";
 import { buildDraftPrompt, type DraftAiRunner, type DraftPromptRef } from "./draft-ai.js";
 import {
@@ -53,6 +50,7 @@ import {
   type ThreadRecord,
 } from "./draft-store.js";
 import type { DaemonLogger } from "./log.js";
+import { realpathBestEffort } from "./paths.js";
 import { planRefHeader } from "./plan-refs.js";
 import type { RestTransport } from "./rest-transport.js";
 import {
@@ -69,13 +67,13 @@ export interface DraftServiceDeps {
   registry: { activeSlug(): string | null; paths(slug: string): { root: string } };
   machineSetting: { get(key: string): string | null };
   credentials: CredentialStore;
-  /** 클론 뿌리 — 없으면 null(연결 전 · 내려간 프로젝트). */
-  workspaceRoot(slug: string): string | null;
   claudeExecutable(): string | null;
   broadcast(message: ServerMessage): void;
   logger: DaemonLogger;
   ai: DraftAiRunner;
   publisher: DraftPublisher;
+  /** 클론 뿌리 — 기획 AI 가 화면 코드를 읽는 두 번째 뿌리 · 클론 전이면 null(2026-10-23 · 기획서 사본 이동 계획 §6 · 사용자 결정 — 기획 AI 의 클론 읽기 허용). */
+  cloneRoot?(slug: string): string | null;
   now?: () => Date;
   /** 저장 전송 — 시험이 기록된 fixture 를 넣는다. 없으면 env 가 고른다. */
   transport?: (site: string) => RestTransport;
@@ -478,17 +476,16 @@ export class DraftService {
       : this.#snapshotOfDraft(input.docKey ?? "", sections);
   }
 
-  /** 가져온 문서의 스냅샷 — 원장으로 범위를 검사하고 클론의 파생 마크다운을 읽는다. */
+  /** 가져온 문서의 스냅샷 — 원장으로 범위를 검사하고 사본의 파생 마크다운을 읽는다. */
   #snapshotOfPage(slug: string, pageId: string, sections: string[]): DraftSnapshot {
     const ledger = this.#ledger(slug);
     const page = ledger.pages[pageId];
     if (page === undefined) {
       throw new Error("근거 문서가 기획서 목록에 없습니다 — 목록 가운데서 골라 주세요.");
     }
-    const root = this.#deps.workspaceRoot(slug);
     let markdown: string;
     try {
-      markdown = readFileSync(join(root ?? "", "docs", "plans", `${page.path}.md`), "utf8");
+      markdown = readFileSync(join(this.#mirrorRoot(slug), `${page.path}.md`), "utf8");
     } catch {
       throw new Error("기획서 본문을 읽지 못했습니다 — 가져오기를 다시 돌려 주세요.");
     }
@@ -579,22 +576,25 @@ export class DraftService {
       });
     };
     announce("started", {});
-    // 없는 클론의 임시 읽기 폴더 — 생성이 끝나면 거둔다.
+    // 사본이 없을 때의 임시 읽기 폴더 — 생성이 끝나면 거둔다.
     let tempRoot: string | null = null;
     try {
       const executable = this.#deps.claudeExecutable();
       if (executable === null) {
         throw new Error("기획 AI 를 찾지 못했습니다 — Claude Code CLI 를 먼저 설치해 주세요.");
       }
-      const cloneRoot = this.#deps.workspaceRoot(slug);
+      const mirrorRoot = this.#mirrorRoot(slug);
       let readRoot: string;
-      if (cloneRoot === null) {
+      if (existsSync(mirrorRoot)) {
+        readRoot = mirrorRoot;
+      } else {
+        // 첫 가져오기 전에는 사본 폴더가 없다 — 빈 임시 폴더로 AI 를 띄운다.
         tempRoot = mkdtempSync(join(tmpdir(), "draft-ai-"));
         readRoot = tempRoot;
-      } else {
-        readRoot = join(cloneRoot, "docs", "plans");
       }
       const ledger = this.#ledger(slug);
+      // 클론 뿌리 — 있으면 기획 AI 의 두 번째 읽기 뿌리로 싣는다(2026-10-23 · 기획서 사본 이동 계획 §6).
+      const cloneRoot = this.#deps.cloneRoot?.(slug) ?? null;
       const promptRefs: DraftPromptRef[] = refs.map(({ input: ref, title, version, path }) => {
         const markdown = this.#markdown(slug, path);
         return {
@@ -614,7 +614,14 @@ export class DraftService {
       const reads: DraftReadRef[] = [];
       const seenReads = new Set<string>();
       const answer = await this.#deps.ai(
-        { executable, readRoot, resume: thread.sdkSessionId, prompt, signal },
+        {
+          executable,
+          readRoot,
+          ...(cloneRoot !== null ? { extraRoots: [cloneRoot] } : {}),
+          resume: thread.sdkSessionId,
+          prompt,
+          signal,
+        },
         {
           onText: (accumulated) => announce("text", { text: accumulated }),
           onRead: (absPath) => {
@@ -1101,10 +1108,14 @@ export class DraftService {
     return this.#deps.transport?.(site) ?? createConfluenceTransport(process.env, site).transport;
   }
 
+  /** 사본 뿌리 — 프로젝트 폴더 아래 `confluence/`(2026-10-23 · 기획서 사본 이동 계획 §1 D1). */
+  #mirrorRoot(slug: string): string {
+    return confluenceMirrorRoot(this.#deps.registry.paths(slug).root);
+  }
+
   #ledger(slug: string): ConfluenceLedger {
-    const root = this.#deps.workspaceRoot(slug);
-    if (root === null) return emptyConfluenceLedger();
-    return readConfluenceLedger(confluenceLedgerFile(root));
+    // 원장 파일이 없으면 읽기가 빈 원장을 돌려준다 — 연결 전 · 아직 가져오기 전의 모양이다.
+    return readConfluenceLedger(confluenceMirrorLedger(this.#deps.registry.paths(slug).root));
   }
 
   #requireRecord(docKey: string, store?: DraftStore): DraftRecord {
@@ -1217,17 +1228,14 @@ export class DraftService {
   // ————— 안 — 근거 문서 —————
 
   /**
-   * 원장 경로의 파생 마크다운 — 클론 `docs/plans/<path>.md`. 읽지 못하면 묻기를 거절한다 — 빈 몸을
+   * 원장 경로의 파생 마크다운 — 사본 뿌리의 `<path>.md`. 읽지 못하면 묻기를 거절한다 — 빈 몸을
    * AI 에게 조용히 주지 않는다(2026-10-23 2차 검토 R3 발견 5).
    */
   #markdown(slug: string, path: string): string {
-    const root = this.#deps.workspaceRoot(slug);
-    if (root !== null) {
-      try {
-        return readFileSync(join(root, "docs", "plans", `${path}.md`), "utf8");
-      } catch {
-        // 읽지 못하면 아래 문장으로 넘어간다.
-      }
+    try {
+      return readFileSync(join(this.#mirrorRoot(slug), `${path}.md`), "utf8");
+    } catch {
+      // 읽지 못하면 아래 문장으로 넘어간다.
     }
     throw new Error("기획서 본문을 읽지 못했어요 — 새로 가져오기를 한 뒤 다시 물어 주세요");
   }
@@ -1266,12 +1274,12 @@ export class DraftService {
 
   /** AI 가 읽은 파일을 원장 문서로 돌린다 — 원장에 없는 파일은 null(담지 않는다). */
   #readRef(slug: string, absPath: string, ledger: ConfluenceLedger): DraftReadRef | null {
-    const root = this.#deps.workspaceRoot(slug);
-    if (root === null) return null;
-    const plansRoot = resolve(join(root, "docs", "plans"));
-    const resolved = resolve(absPath);
-    if (!resolved.startsWith(`${plansRoot}${sep}`)) return null;
-    const relative = resolved.slice(plansRoot.length + 1);
+    // 앞자리와 받은 경로를 같은 도구로 푼다 — 실행기가 실제 경로(realpath) 표기로 알려도
+    // 근거가 어긋나지 않게(2026-10-23 · 기획서 사본 이동 계획 §6 · 검토 R1).
+    const mirrorRoot = realpathBestEffort(this.#mirrorRoot(slug));
+    const resolved = realpathBestEffort(absPath);
+    if (!resolved.startsWith(`${mirrorRoot}${sep}`)) return null;
+    const relative = resolved.slice(mirrorRoot.length + 1);
     const withoutSuffix = relative.endsWith(".md") ? relative.slice(0, -".md".length) : relative;
     for (const [pageId, page] of Object.entries(ledger.pages)) {
       if (page.path === withoutSuffix) return { pageId, title: page.title, version: page.version };

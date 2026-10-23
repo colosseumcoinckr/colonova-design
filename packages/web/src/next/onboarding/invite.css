@@ -68,7 +68,7 @@
   padding: 10px 12px;
   border: 1px solid var(--line);
   border-radius: 12px;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
 }
 
 /* 새로 오는 행이 이 판의 소식이다 — 연한 브랜드 바탕. */
@@ -77,26 +77,11 @@
   background: var(--accent-soft);
 }
 
+/* 행의 갈래 알약 — 모양 · 색은 공통 부품 nx-pill(새로 = 포인트 · 바뀜 = 호박 · 그대로 = 물),
+   여기는 자리만. 색은 칩의 말과 함께 읽힌다. */
 .nx-inv .nx-inv-chip {
   justify-self: start;
   min-width: 56px;
-  padding: 2px 0;
-  border-radius: 999px;
-  background: var(--nx-hover);
-  color: var(--ink3);
-  font-size: 12px;
-  font-weight: 600;
-  text-align: center;
-}
-
-.nx-inv .nx-inv-chip--add {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-}
-
-.nx-inv .nx-inv-chip--update {
-  background: color-mix(in srgb, var(--amber) 16%, transparent);
-  color: var(--amber);
 }
 
 .nx-inv .nx-inv-main {
@@ -119,7 +104,7 @@
 
 .nx-inv .nx-inv-fine {
   margin: 2px 0 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.6;
   color: var(--ink3);
 }
@@ -148,31 +133,17 @@
   overflow-wrap: anywhere;
 }
 
-/* 이름 칸 — 옛 초대장이 이름을 싣지 않았을 때만. 초점 고리는 onboarding.css 의 공용 규칙이 입힌다. */
+/* 이름 칸 — 옛 초대장이 이름을 싣지 않았을 때만. 입력은 공통 부품 nx-input(36px · 초점 고리,
+   2026-10-23 화면 전면 재설계 §4 I)을 그대로 입는다. */
 .nx-inv .nx-inv-author {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 .nx-inv .nx-inv-author label {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--ink2);
-}
-
-.nx-inv .nx-inv-author input {
-  height: 36px;
-  min-width: 0;
-  padding: 0 12px;
-  border: 1px solid var(--line2);
-  border-radius: 10px;
-  background: var(--bg);
-  outline: 0;
-}
-
-.nx-inv .nx-inv-author input:focus-visible {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* ── 읽는 중 · 적용 중 */
@@ -181,7 +152,7 @@
   align-items: center;
   gap: 10px;
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   color: var(--ink2);
 }
 
@@ -194,9 +165,9 @@
   margin: 0;
   padding: 10px 12px;
   border-left: 3px solid var(--line2);
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 var(--r) var(--r) 0;
   background: var(--bg);
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   line-height: 1.6;
   color: var(--ink);
 }
@@ -213,7 +184,7 @@
 
 /* 날것의 이유를 접어 둔 자리. */
 .nx-inv .nx-inv-fold {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
@@ -254,7 +225,7 @@
 }
 
 .nx-inv .nx-inv-fail b {
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
@@ -262,7 +233,7 @@
 .nx-inv .nx-inv-fail span {
   display: block;
   margin-top: 1px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
@@ -331,7 +302,7 @@
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.55;
   color: var(--ink2);
 }
@@ -354,7 +325,7 @@
 .nx-inv .nx-inv-footnote {
   flex: 1 1 100%;
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.45;
   color: var(--ink2);
 }

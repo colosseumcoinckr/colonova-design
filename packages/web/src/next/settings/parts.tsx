@@ -128,14 +128,14 @@ export function SRow({
   );
 }
 
-/** 켜고 끄는 스위치 — 이름은 같은 줄 제목의 `id` 가 붙는다. */
+/** 켜고 끄는 스위치 — 이름은 같은 줄 제목의 글(`label`)이 aria-label 로 함께 선다. */
 export function Switch({
   on,
-  labelledBy,
+  label,
   onChange,
 }: {
   on: boolean;
-  labelledBy: string;
+  label: string;
   onChange: (next: boolean) => void;
 }) {
   return (
@@ -143,7 +143,7 @@ export function Switch({
       type="button"
       role="switch"
       aria-checked={on}
-      aria-labelledby={labelledBy}
+      aria-label={label}
       className={`nx-sw${on ? " nx-sw--on" : ""}`}
       onClick={() => onChange(!on)}
     />

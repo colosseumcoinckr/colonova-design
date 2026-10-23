@@ -13,6 +13,7 @@ import {
   attachEventDetail,
   defaultCopyTitle,
   docOpBlockerLines,
+  docOpFormState,
   docOpResultLine,
   headingSections,
 } from "../src/next/plans/doc-actions/doc-actions-model.ts";
@@ -148,4 +149,59 @@ test("근거의 절 목록 — 제목 블록만 세고 토큰과 표지를 벗�
   ];
   assert.deepEqual(headingSections(blocks), ["배경", "목표", "굵은 절 제목", "판을 정해요"]);
   assert.deepEqual(headingSections([paragraph("제목이 하나도 없다")]), []);
+});
+
+test("자리 재확인·실패 중에도 입력을 유지하고 확인만 잠근다", () => {
+  for (const op of ["copy", "move"] as const) {
+    const input = { preview: { ...preview([]), op }, parent: "page:101", title: "사본" };
+    assert.deepEqual(docOpFormState({ ...input, phase: "ready" }), {
+      keepBody: true,
+      canConfirm: true,
+    });
+    for (const phase of ["loading", "failed"] as const) {
+      assert.deepEqual(docOpFormState({ ...input, phase }), {
+        keepBody: true,
+        canConfirm: false,
+      });
+    }
+  }
+  for (const phase of ["loading", "ready", "failed"] as const) {
+    assert.deepEqual(docOpFormState({ phase, preview: null, parent: "", title: "" }), {
+      keepBody: false,
+      canConfirm: false,
+    });
+  }
+});
+
+test("입력을 유지해도 권한·자리·제목이 갖춰져야 확인할 수 있다", () => {
+  const input = {
+    phase: "ready" as const,
+    preview: { ...preview([]), op: "copy" as const },
+    parent: "page:101",
+    title: "사본",
+  };
+  assert.equal(docOpFormState({ ...input, parent: "" }).canConfirm, false);
+  assert.equal(docOpFormState({ ...input, title: "  " }).canConfirm, false);
+  assert.deepEqual(
+    docOpFormState({
+      ...input,
+      preview: { ...input.preview, blockers: ["no-permission"] },
+    }),
+    { keepBody: true, canConfirm: false },
+  );
+  assert.equal(
+    docOpFormState({
+      ...input,
+      preview: { ...input.preview, blockers: ["has-draft"] },
+    }).canConfirm,
+    true,
+  );
+  assert.equal(
+    docOpFormState({
+      ...input,
+      title: "",
+      preview: { ...input.preview, op: "move" },
+    }).canConfirm,
+    true,
+  );
 });

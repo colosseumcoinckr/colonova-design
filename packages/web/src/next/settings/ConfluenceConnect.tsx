@@ -25,8 +25,8 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
   const showCreds = !linked || expired || state.reconnecting;
   // 기준 페이지 찾기 — 아직 못 정했거나 바꾸러 연 동안. 연결이 끊기면 찾기도 못 돌므로 서지 않는다.
   const finder = linked && !expired && (rootTitle === null || state.changingRoot);
-  const chip =
-    model.tone === "ok" ? "" : model.tone === "warn" ? " nx-schip--amber" : " nx-schip--plain";
+  const chipTone =
+    model.tone === "ok" ? " nx-pill--green" : model.tone === "warn" ? " nx-pill--amber" : "";
   const submitOnEnter = (event: KeyboardEvent) => {
     if (composing(event)) return;
     if (event.key === "Enter" && model.ready && !busy) model.connect();
@@ -35,7 +35,7 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
   return (
     <SGroup>
       <SRow title={L.plans.title} sub={L.plans.titleSub}>
-        <span className={`nx-schip${chip}`}>{model.status}</span>
+        <span className={`nx-pill${chipTone}`}>{model.status}</span>
       </SRow>
 
       {linked && !showCreds && (
@@ -53,55 +53,74 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
       )}
 
       {showCreds && (
-        <>
-          <SRow title={L.plans.site} htmlFor="nx-conf-site">
-            <span className="nx-sfield">
-              <input
-                id="nx-conf-site"
-                className="nx-sinput"
-                type="text"
-                value={state.site}
-                maxLength={200}
-                placeholder={L.plans.sitePlaceholder}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={locked}
-                onChange={(event) => model.setSite(event.target.value)}
-              />
+        <div className="nx-sform">
+          {/* 입력 셋 — 한 줄기로 세운 공통 칸(nx-field · nx-input · 도움말). 이메일과 토큰은 일회성이다. */}
+          <div className="nx-field">
+            <label className="nx-field-label" htmlFor="nx-conf-site">
+              {L.plans.site}
+            </label>
+            <input
+              id="nx-conf-site"
+              className="nx-input"
+              type="text"
+              value={state.site}
+              maxLength={200}
+              placeholder={L.plans.sitePlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={locked}
+              onChange={(event) => model.setSite(event.target.value)}
+            />
+          </div>
+          <div className="nx-field">
+            <label className="nx-field-label" htmlFor="nx-conf-email">
+              {L.plans.email}
+            </label>
+            <input
+              id="nx-conf-email"
+              className="nx-input"
+              type="email"
+              value={state.email}
+              maxLength={200}
+              placeholder={L.plans.emailPlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={locked}
+              onChange={(event) => model.setEmail(event.target.value)}
+              onKeyDown={submitOnEnter}
+            />
+          </div>
+          <div className="nx-field">
+            <label className="nx-field-label" htmlFor="nx-conf-token">
+              {L.plans.token}
+            </label>
+            <input
+              id="nx-conf-token"
+              className="nx-input"
+              type="password"
+              value={state.token}
+              maxLength={400}
+              placeholder={L.plans.tokenPlaceholder}
+              autoComplete="new-password"
+              disabled={locked}
+              onChange={(event) => model.setToken(event.target.value)}
+              onKeyDown={submitOnEnter}
+            />
+            <span className="nx-field-help">{L.plans.tokenNote}</span>
+            <span className="nx-field-help">
+              {L.plans.tokenHelp}{" "}
+              <a
+                className="nx-slink"
+                href={TOKEN_PAGE_URL}
+                target="_blank"
+                rel="noreferrer"
+                onClick={linkClick}
+              >
+                {L.plans.tokenHelpLink}
+              </a>
             </span>
-          </SRow>
-          <SRow title={L.plans.email} htmlFor="nx-conf-email">
-            <span className="nx-sfield">
-              <input
-                id="nx-conf-email"
-                className="nx-sinput"
-                type="email"
-                value={state.email}
-                maxLength={200}
-                placeholder={L.plans.emailPlaceholder}
-                autoComplete="off"
-                spellCheck={false}
-                disabled={locked}
-                onChange={(event) => model.setEmail(event.target.value)}
-                onKeyDown={submitOnEnter}
-              />
-            </span>
-          </SRow>
-          <SRow title={L.plans.token} sub={L.plans.tokenNote} htmlFor="nx-conf-token">
-            <span className="nx-sfield">
-              <input
-                id="nx-conf-token"
-                className="nx-sinput"
-                type="password"
-                value={state.token}
-                maxLength={400}
-                placeholder={L.plans.tokenPlaceholder}
-                autoComplete="new-password"
-                disabled={locked}
-                onChange={(event) => model.setToken(event.target.value)}
-                onKeyDown={submitOnEnter}
-              />
-            </span>
+          </div>
+          <div className="nx-sform-act">
             {state.reconnecting && !busy && (
               <button
                 type="button"
@@ -111,9 +130,10 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
                 {L.plans.cancel}
               </button>
             )}
+            {/* 이 쪽의 으뜸은 하나 — 연결하기(2026-10-23 화면 전면 재설계 §4 H). */}
             <button
               type="button"
-              className="nx-btn nx-btn--sm nx-btn--pri"
+              className="nx-btn nx-btn--pri"
               disabled={locked || busy || !model.ready}
               onClick={model.connect}
             >
@@ -127,20 +147,8 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
                 L.plans.connect
               )}
             </button>
-          </SRow>
-          <p className="nx-snote nx-snote--row">
-            {L.plans.tokenHelp}
-            <a
-              className="nx-slink"
-              href={TOKEN_PAGE_URL}
-              target="_blank"
-              rel="noreferrer"
-              onClick={linkClick}
-            >
-              {L.plans.tokenHelpLink}
-            </a>
-          </p>
-        </>
+          </div>
+        </div>
       )}
 
       {linked && !expired && (
@@ -154,7 +162,7 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
               <span className="nx-sfield">
                 <input
                   id="nx-conf-root"
-                  className="nx-sinput"
+                  className="nx-input"
                   type="text"
                   value={state.rootQuery}
                   maxLength={200}

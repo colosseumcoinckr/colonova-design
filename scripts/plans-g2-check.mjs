@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * G2 읽기 판정 껍데기(2026-10-23 · 최종 구현 계획 G2) — 이 컴퓨터의 기획서 캐시(docs/plans)를
+ * G2 읽기 판정 껍데기(2026-10-23 · 최종 구현 계획 G2) — 이 컴퓨터의 기획서 사본(confluence 폴더)을
  * 블록 엔진(packages/daemon/dist/storage-report.js)으로 재어 숫자만 본다. 실제 기획 문서는
  * 어디로도 보내지 않고, 출력에 문서의 본문 글은 한 글자도 나오지 않는다 — 문서 줄에는 페이지 id ·
  * 판 · 크기 · 종류별 수 · 검사 결과만 실고, 제목과 업무 단계 표기는 --titles 를 켜야 붙는다.
  * 네트워크 요청이 없고, --json 으로 정한 파일 외에는 아무것도 쓰지 않는다.
  *
- *   node scripts/plans-g2-check.mjs <클론 또는 docs/plans 폴더> [--titles] [--json <파일>] [--only <페이지id,…>]
+ *   node scripts/plans-g2-check.mjs <프로젝트 폴더 또는 그 안의 confluence 폴더> [--titles] [--json <파일>] [--only <페이지id,…>]
  *
- * 클론 뿌리를 주면 docs/plans 의 원장(docs/plans/confluence.json)을 읽고, docs/plans 폴더를
- * 주면 그 자리의 원장을 읽는다. 원장에 없는 .storage.xml 파일은 건너뛴다.
+ * 프로젝트 폴더를 주면 그 안 confluence 의 원장(confluence/confluence.json)을 읽고, confluence
+ * 폴더를 주면 그 자리의 원장을 읽는다. 원장에 없는 .storage.xml 파일은 건너뛴다.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -17,12 +17,15 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const reportModule = join(repoRoot, "packages", "daemon", "dist", "storage-report.js");
+const mirrorModule = join(repoRoot, "packages", "daemon", "dist", "confluence-mirror.js");
 
-if (!existsSync(reportModule)) {
+if (!existsSync(reportModule) || !existsSync(mirrorModule)) {
   console.error("데몬 빌드가 없다 — pnpm build 를 먼저 돌린다.");
   process.exit(1);
 }
 const { reportFolder } = await import(reportModule);
+// 사본 폴더 · 원장 이름의 정본 — 데몬의 confluence-mirror 와 같은 낱말이다.
+const { MIRROR_DIR, MIRROR_LEDGER_NAME } = await import(mirrorModule);
 
 function fail(message) {
   console.error(message);
@@ -30,7 +33,7 @@ function fail(message) {
 }
 
 const USAGE =
-  "사용법: node scripts/plans-g2-check.mjs <클론 또는 docs/plans 폴더> [--titles] [--json <파일>] [--only <페이지id,…>]";
+  "사용법: node scripts/plans-g2-check.mjs <프로젝트 폴더 또는 그 안의 confluence 폴더> [--titles] [--json <파일>] [--only <페이지id,…>]";
 
 const args = process.argv.slice(2);
 let folder = null;
@@ -62,17 +65,18 @@ for (let i = 0; i < args.length; i += 1) {
 if (folder === null) fail(USAGE);
 
 const input = resolve(folder);
-const directLedger = join(input, "confluence.json");
-const nestedLedger = join(input, "docs", "plans", "confluence.json");
+// 사본 자리(2026-10-23 · 기획서 사본 이동 계획 §4) — 사본 폴더 자신이나 그 부모(프로젝트 폴더).
+const mirrorLedger = join(input, MIRROR_LEDGER_NAME);
+const nestedLedger = join(input, MIRROR_DIR, MIRROR_LEDGER_NAME);
 let plansDir = null;
 let ledgerFile = null;
-if (existsSync(directLedger)) {
+if (existsSync(mirrorLedger)) {
   plansDir = input;
-  ledgerFile = directLedger;
+  ledgerFile = mirrorLedger;
 } else if (existsSync(nestedLedger)) {
-  plansDir = join(input, "docs", "plans");
+  plansDir = join(input, MIRROR_DIR);
   ledgerFile = nestedLedger;
-} else fail(`원장을 찾지 못했다 — ${input} 아래에 confluence.json 이 없다`);
+} else fail(`원장을 찾지 못했다 — ${input} 아래에 ${MIRROR_LEDGER_NAME} 이 없다`);
 
 let ledger;
 try {
@@ -102,7 +106,7 @@ for (const id of ids) {
     xml: readFileSync(file, "utf8"),
   });
 }
-if (entries.length === 0) fail("건너뛴 뒤 남는 문서가 없다 — 원장과 docs/plans 의 파일을 본다");
+if (entries.length === 0) fail("건너뛴 뒤 남는 문서가 없다 — 원장과 confluence 폴더의 파일을 본다");
 
 const report = reportFolder(entries, { titles });
 const totals = report.totals;

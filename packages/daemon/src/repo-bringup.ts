@@ -9,6 +9,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { RepoErrorKind, RepoStatus } from "@colonova-design/protocol";
 import { withoutAppSecrets } from "./agent-env.js";
 import { extraPathPrefix, sanitizeRepoAgentSettings, trustWorkspace } from "./claude-trust.js";
+import { cleanupLegacyPlans, hasLegacyPlans, LEGACY_PLANS_DIR } from "./confluence-legacy.js";
 import { mergeNpmrc, npmrcPath } from "./credentials.js";
 import {
   currentPlatform,
@@ -124,6 +125,18 @@ export class BringUp {
         if (this.core.active) this.warmTree();
         this.core.setPhase("pulling", null);
         await this.core.scrubOriginCredential();
+        // 옛 기획서 사본의 정리(2026-10-23 · 기획서 사본 이동 계획 §5) — 사본은 클론 밖으로
+        // 옮겨졌고 옛 자리는 클론 안 기획서 폴더(confluence-legacy 의 LEGACY_PLANS_DIR)다.
+        // 최신화가 옛 사본을 옮겨 담기 전에 치운다. 첫 클론 갈래엔 옛 사본이 있을 수 없다.
+        // 실패해도 준비는 멈추지 않는다 — 다음 준비가 다시 한다.
+        try {
+          await this.core.lane.run("hygiene", () => this.sweepLegacyPlans());
+        } catch (error) {
+          createFileLogger().warn("옛 기획서 사본 정리 실패", {
+            name: error instanceof Error ? error.name : "unknown-error",
+            code: (error as NodeJS.ErrnoException).code ?? null,
+          });
+        }
         // Already cloned: re-read the remote and recover, never a blind ff —
         // 베이스 합치기는 받아오기를 누를 때만 한다(2026-10-20 사용자 요청). A
         // conflict left by an earlier run resurfaces with its Korean reason
@@ -210,6 +223,27 @@ export class BringUp {
   private clearBringUpDebris(): void {
     if (this.core.isCloned() || !existsSync(this.core.root)) return;
     rmSync(this.core.root, { recursive: true, force: true });
+  }
+
+  /**
+   * 옛 기획서 사본 정리 한 판 — 흔적이 있는 클론만 추적 목록을 물어 정리하고,
+   * 무엇이든 지웠으면 로그에 종류와 수만 남긴다(2026-10-23 · 기획서 사본 이동
+   * 계획 §5 · 오케스트레이터 검토). 흔적이 없으면 `git ls-files` 도 부르지
+   * 않는다 — 사본을 둔 적 없는 레포다. git 은 부르는 쪽의 hygiene 차선 안에서만
+   * 댄다.
+   */
+  private async sweepLegacyPlans(): Promise<void> {
+    if (!hasLegacyPlans(this.core.root)) return;
+    const listing = await this.core.git(["ls-files", "-z", "--", LEGACY_PLANS_DIR]);
+    const tracked = new Set(listing.split("\0").filter(Boolean));
+    const result = cleanupLegacyPlans(this.core.root, tracked);
+    if (result.removedFiles > 0 || result.removedDirs > 0 || result.excludeLine) {
+      createFileLogger().info("옛 기획서 사본 정리", {
+        files: result.removedFiles,
+        dirs: result.removedDirs,
+        excludeLine: result.excludeLine,
+      });
+    }
   }
 
   /**

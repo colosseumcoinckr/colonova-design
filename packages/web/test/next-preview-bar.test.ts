@@ -102,3 +102,60 @@ test("막대: 작업 기록 단추는 서랍을 여닫는 단추다 — aria-exp
   // 이름은 열림 여부에 따라 바뀌지 않는다(낭독기가 같은 단추로 안다) — 풍선만 열려 있으면 `닫기` 로 바뀐다.
   assert.match(button, /aria-label=\{L\.preview\.history\}/);
 });
+
+// ── 2026-10-23 화면 전면 재설계 §4 F — 조절 세 묶음 · 32px · 공통 부품
+
+/** 선택자 하나짜리 규칙의 몸 — 중첩이 없는 규칙만 읽는다(주석을 걷은 CSS). */
+function body(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(css);
+  assert.ok(match, `${selector} 규칙이 없다`);
+  return match[1] ?? "";
+}
+
+test("막대: 조절이 세 묶음으로 서고 묶음 사이 12px · 안 4px 이다", () => {
+  // 이동 묶음(뒤로 · 앞으로 · 새로 고침)과 보기 도구 묶음 둘이 `nx-pvg` 이고, 가운데는 주소 칸이다.
+  assert.equal(bar.match(/className="nx-pvg"/g)?.length, 1, "이동 묶음");
+  assert.equal(bar.match(/className="nx-pvg nx-pvg--tools"/g)?.length, 1, "보기 도구 묶음");
+  assert.match(bar, /className="nx-anchor nx-addrwrap"/);
+  assert.match(body(".nx-pvbar"), /gap:\s*var\(--sp-3\)/, "묶음 사이 12px");
+  assert.match(body(".nx-pvg"), /gap:\s*var\(--sp-1\)/, "묶음 안 4px");
+  // 보기 도구는 오른쪽 끝에 붙는다 — 주소 칸이 남는 폭을 쓴다.
+  assert.match(body(".nx-pvg--tools"), /margin-left:\s*auto/);
+});
+
+test("막대: 모든 조절은 32px 이고 좁아져도 줄이지 않는다 — 줄이는 것은 간격과 글자다", () => {
+  // 크기는 공통 부품(`nx-btn` · `nx-ibtn` 32px)이 정한다 — 이 파일이 따로 선언하지 않는다.
+  assert.doesNotMatch(css, /\.nx-pvbar \.nx-ibtn\s*\{[^}]*(?:width|height):/);
+  assert.match(body(".nx .nx-addr"), /height:\s*var\(--h-md\)/);
+  // 기기 칸(마디 단추)은 바깥 틀이 32px(안쪽 28px + 2px 두 겹)이다.
+  assert.match(body(".nx .nx-seg"), /padding:\s*var\(--sp-0_5\)/);
+  assert.match(body(".nx .nx-seg button"), /height:\s*var\(--h-sm\)/);
+  // 질의 안에서 조절을 30px 이하로 줄이는 규칙이 돌아오지 않는다(예전 480px 질의의 30px).
+  for (const { body: inner } of queries()) {
+    assert.doesNotMatch(inner, /(?:^|[;\s{])height:\s*(?:2\d|30)px/);
+    assert.doesNotMatch(inner, /\.nx-ibtn/);
+  }
+});
+
+test("막대: 단추는 공통 부품이다 — 포인트 바탕은 찍기가 켜졌을 때뿐이고 `nx-tbtn` 은 더 쓰지 않는다", () => {
+  assert.doesNotMatch(bar, /nx-tbtn/);
+  // 찍기 — 보통 단추(`nx-btn`)이고 켜짐에서만 `nx-btn--accent`.
+  assert.match(bar, /nx-btn nx-pin-t\$\{pinOn \? " nx-btn--accent" : ""\}/);
+  // 기록 — 서랍을 여닫는 단추라 고스트다. 열려 있는 동안의 진하기는 aria-expanded 가 칠한다.
+  assert.match(bar, /className="nx-btn nx-btn--ghost nx-hist-t"/);
+  assert.match(css, /\.nx \.nx-hist-t\[aria-expanded="true"\]\s*\{/);
+  // 입력창 칩(chat.css 의 `nx-tbtn`)이 기대던 `flex: none` 한 줄만 특이도 0 으로 남는다 — chat.css 의 값이 늘 이긴다.
+  assert.match(css, /:where\(\.nx\) \.nx-tbtn\s*\{\s*flex:\s*none;\s*\}/);
+  assert.doesNotMatch(css, /\.nx \.nx-tbtn/);
+});
+
+test("막대 CSS: 글자는 12px 이상이고 반 픽셀이 아니다(키캡 제외)", () => {
+  const sizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map((match) => Number(match[1]));
+  assert.deepEqual(
+    sizes.filter((size) => size < 12 || size % 1 !== 0),
+    [],
+  );
+  // 반 픽셀 길이(12.5px · 13.5px …)도 새로 쓰지 않는다 — 스피너 두께까지.
+  assert.deepEqual(css.match(/(?<![\w.-])\d*\.5px/g) ?? [], []);
+});

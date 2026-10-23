@@ -35,20 +35,27 @@ export function takePlanOpen(): PlanOpenTarget | null {
 
 /** 칩의 글 — 제목 · 판(또는 미발행 초안의 개정) · 첫 절과 나머지 수. */
 export function refChipText(ref: DraftPlanRef): string {
-  const { title, meta } = refChipParts(ref);
-  return meta === null ? title : `${title} · ${meta}`;
+  const { title, stage, section } = refChipParts(ref);
+  return [title, stage?.text ?? null, section]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
 }
 
 /**
- * 칩의 두 토막 — 제목(길면 칩 안에서 말린다)과 판 · 절(말리지 않는다). 제목이 길어도 판 · 초안 여부가 잘려 보이지
- * 않게 나눠 그린다(2026-10-23 화면 확인).
+ * 칩의 세 토막 — 제목(길면 칩 안에서 말린다) · 판 · 고른 절(말리지 않는다). 발행본의 판은 옅은
+ * 덧말로, 미발행 초안은 호박색 알약으로(`draft` — 눈에 남는 이유가 다르다). 제목이 길어도 판 ·
+ * 초안 여부가 잘려 보이지 않게 나눠 그린다(2026-10-23 화면 확인 · 2026-10-23 화면 전면 재설계 §4 E).
  */
-export function refChipParts(ref: DraftPlanRef): { title: string; meta: string | null } {
+export function refChipParts(ref: DraftPlanRef): {
+  title: string;
+  stage: { text: string; draft: boolean } | null;
+  section: string | null;
+} {
   const stage = ref.published
     ? ref.version !== null
-      ? L.planRefs.version(ref.version)
+      ? { text: L.planRefs.version(ref.version), draft: false }
       : null
-    : L.planRefs.draftRevision(ref.revision ?? 0);
+    : { text: L.planRefs.draftRevision(ref.revision ?? 0), draft: true };
   const first = ref.sections[0];
   const section =
     first === undefined
@@ -56,14 +63,29 @@ export function refChipParts(ref: DraftPlanRef): { title: string; meta: string |
       : ref.sections.length === 1
         ? first
         : `${first} ${L.planRefs.sectionsMore(ref.sections.length - 1)}`;
-  const meta = [stage, section].filter((part): part is string => part !== null).join(" · ");
-  return { title: ref.title, meta: meta === "" ? null : meta };
+  return { title: ref.title, stage, section };
 }
 
 /** 칩이 돌아가는 곳 — 초안이면 그 초안의 편집기, 가져온 문서면 그 문서다(초안이 앞선다). */
 export function refOpenTarget(ref: DraftPlanRef): PlanOpenTarget {
   if (ref.docKey !== null) return { docKey: ref.docKey };
   return { pageId: ref.pageId ?? "" };
+}
+
+/** 접힌 줄에 보이는 칩 수의 위 한계 — 나머지는 `+n` 이 펼친다. */
+export const CHIPS_SHOWN = 2;
+
+/**
+ * 둘째 칩까지 읽히는 줄(`.nx-pref`)의 가장 좁은 폭 — 줄 이름(44) · `+N`(19) · 간격(12)을 빼고 남는 폭을 칩 둘이 나눠 각각 125px 안팎
+ * (제목 네 글자 · 판이 말줄임으로 읽히는 폭)이 되는 폭이다(2026-10-24 QA 12). 그보다 좁은 칸에서는 칩 둘이 제목 두세 글자씩만 남아
+ * 읽히지 않으므로 첫 칩 하나만 서고 나머지는 `+N` 이 센다. 기본 대화 칸(400px)의 줄이 368px 라 둘이 선다.
+ */
+export const TWO_CHIPS_MIN_WIDTH = 330;
+
+/** 줄의 폭이 아는 만큼 서는 칩 수 — 폭을 아직 모르면(첫 그림 · 측정 전) 위 한계 그대로다. */
+export function chipsShownAt(width: number | null): number {
+  if (width === null) return CHIPS_SHOWN;
+  return width < TWO_CHIPS_MIN_WIDTH ? 1 : CHIPS_SHOWN;
 }
 
 /** 한 줄에 보이는 칩과 남은 수 — `max` 까지 보이고 나머지는 펼침 단추가 센다. */

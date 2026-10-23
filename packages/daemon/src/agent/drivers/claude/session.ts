@@ -179,12 +179,20 @@ export class ClaudeAgentSession implements AgentSession {
           base: input.cwd,
           // 이 프로젝트의 Claude 자동 메모 폴더 — CLI 의 기본 기능이라 막을 이유가 없다.
           extraRoots: autoMemoryRoots(input.transcript_path),
+          // 함께 연 기획서 사본 — 쓰기는 클론 밖이라 어차피 거절이고 이유만 기획서 말로 바뀐다
+          // (2026-10-23 · 기획서 사본 이동 계획 §6). 함께 여는 폴더는 지금 사본 하나뿐이다.
+          mirrorRoots: launch.additionalDirectories ?? [],
         },
       );
     this.run = query({
       prompt: this.queue,
       options: {
         cwd: launch.cwd,
+        // 함께 읽는 폴더(기획서 사본 · 2026-10-23 기획서 사본 이동 계획 §6) — SDK 가
+        // --add-dir 와 같은 추가 뿌리로 받는다. 재개 질의에도 같이 탄다. 비어 있으면 키가 없다.
+        ...(launch.additionalDirectories && launch.additionalDirectories.length > 0
+          ? { additionalDirectories: launch.additionalDirectories }
+          : {}),
         // 앱 공통 지침은 기본 프롬프트를 대체하지 않고 끝에 붙인다 —
         // 도구가 Claude 에게 주는 나머지 규칙은 그대로 살아 있어야 한다.
         ...(launch.appendSystemPrompt

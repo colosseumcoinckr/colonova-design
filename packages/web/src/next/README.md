@@ -1,7 +1,7 @@
 # next/ — 셸
 
 앱의 유일한 셸이 사는 자리다 — 옛 셸은 걷혔고 문장과 토큰은 이 폴더의
-`labels.ts` · `next.css` 가 정한 규칙(아래)을 따른다.
+`labels.ts` · `ui/tokens.css` · `next.css` 가 정한 규칙(아래)을 따른다.
 
 ## 여는 법
 
@@ -27,6 +27,16 @@
 - **클래스는 `nx-` 로 시작한다.** 토큰은 `next.css` 의 `.nx` 뿌리에 걸려 있어
   `styles.css` 의 전역 변수와 섞이지 않는다. 창 전체를 쓰는 뿌리(처음 한 번의
   `.nx-ob`)는 `.nx` 의 작업 틀 격자를 `display: block` 으로 풀어야 한다.
+- **크기는 `ui/tokens.css`, 색 짝 이름은 `next.css`.** 글자 · 간격 · 높이 · 그림자 · 글 폭은 토큰을 쓴다.
+  사람이 읽는 글은 12px 아래로 내리지 않는다(키캡 `kbd` · `.nx-pm` 이니셜만 예외). 반 픽셀 크기를 새로 쓰지 않고,
+  손대는 규칙은 토큰으로 옮긴다. 읽는 글은 `--fs-read`(15px) · `--lh-read`(1.7)다.
+- **공통 부품은 `ui/ui.css` 끝에 있다.** `nx-btn`(28 · 32 · 40px) · `nx-ibtn`(24 · 28 · 32px),
+  `nx-input`(+`--area`) · `nx-field`, `nx-pill`, `nx-banner`(+`-body` · `-act`),
+  `nx-empty`(+`-mark` · `-title` · `-desc` · `-act`), `nx-topbar`(52px),
+  `nx-li`(+`-main` · `-title` · `-sub` · `-end`)를 쓴다. 같은 모양을 각 칸의 CSS에 다시 선언하지 않는다.
+- **으뜸 단추는 한 화면에 하나다.** `nx-btn--pri`는 잉크 바탕이고, 포인트 색 바탕(`nx-btn--accent`)은 AI에게
+  `보내기`와 켜짐 상태에만 쓴다. 상태는 색과 함께 글이나 아이콘으로 말한다.
+  (2026-10-23 화면 전면 재설계 — [ux-redesign-2026-10-23.md](../../../../docs/ux-redesign-2026-10-23.md))
 - 주석은 한국어로 써도 된다 — 검사는 주석을 걷고 본다.
 
 ## 움직임
@@ -61,10 +71,13 @@
 - **모달**은 `ui/ModalFrame`(+`ModalHead` · `ModalBody` · `ModalFoot`)이다 — `role="dialog"` · 이름 ·
   초점 가두기/복귀 · Esc(맨 위 층만) · 스크림 누름 · 닫는 모션이 한 곳에 있다. 닫기의 길은 하나(`useModalClose`
   의 `request()`)이고 `locked` 면 Esc · 스크림 · ✕ 가 모두 잠긴다. 설정만 제 껍데기를 쓴다(`useClosing`).
+  공통 모달은 반경 16px(`--r-xl`), 머리 제목 18px(`--fs-h3`), 설명 13px(`--fs-sm`)다.
 - **팝**은 `ui/Popover` 다 — 줄을 고르는 팝은 `role="menu"`(↑ ↓ Home End · 글자 건너뛰기, 줄에 `menuitem`/
   `menuitemradio` 를 단다), 폼 · 카드가 든 팝은 `role="dialog"`. 닫히면 여는 요소로 초점이 돌아온다.
 - **되돌릴 수 없는 일**은 `ui/InlineConfirm` + `.nx-btn--dng` — 초점은 `그만두기` 에, Esc 는 확인만 접는다.
 - **토스트**는 `nav.toast(text)` 한 길이다(`ui/Toast` — 같은 문장도 새 알림, 손 · 초점이 얹히면 멈춤).
+  글자는 14px, 동작 단추는 28px다. 현재 크기는 `overlay.css`가 `ui.css`의 기본값 위에 덮는다.
+  (2026-10-24 화면 전면 재설계 §4 H·I)
 - **토큰**은 `ui/overlay.css` — 층(`--nx-z-pop` · `modal` · `palette` · `toast`), 시간(`--nx-t-in` ·
   `--nx-t-out` = `modalCloseMs`), 스크림 흐림 · 판 반경. 나가는 모션은 들어옴의 `reverse` 가 아니라
   제 키프레임이다(같은 이름은 다시 돌지 않아 판이 곧장 끝 상태로 건너뛴다).
@@ -87,36 +100,58 @@
 ```
 NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onboarding/FirstRun · NoProjects(창 전체)
 │           초대 파일 가져오기의 컨트롤러 하나 + onboarding/InviteConfirm(확인판)
-└ Workspace ─ useSessions · usePins · useShellNav 를 한 번만 부른다
-  ├ sidebar/Sidebar     새 대화 · 홈 · 기획서 · 찾기 / 전환기 / 다른 프로젝트 줄 / 대화 목록 · 도구가 한 일 / 설정
-  ├ home/HomeView       인사 · 큰 입력창(HomeComposer) + 시작점 칩(HomeStarters) · 기획서 묶음(HomePlans — 연결한 프로젝트만 · 작성 중인 초안 · 새 문서) · 서비스가 떴어요 줄(HomeReady) · 받은 편지함(HomeInbox) — 파일은 홈 어디에 놓아도 첨부
-  └ 작업 보기(홈에서도 마운트된 채 `nx-offstage` 로 숨는다 — 미리보기 게스트가 살게)
-    ├ status/StatusLine  제목 · 만드는 중 · 여정 세 점 · 제출(SubmitPopover) · 이번 작업(WorkPopover)
-    ├ status/ProblemLine 문제 문장 셋 · 초대 파일 휴지통에 넣기 줄 — 대화와 미리보기에 걸친 한 줄
-    ├ (좁은 창) 대화 | 화면 · <이름> 탭 — 기획서가 서 있으면 둘째 탭이 `기획서`
-    ├ chat/ChatColumn     대화록(Thread) · 카드 · 진행 줄(RunLine) · 입력창(Composer · ModelChip — 칩의 주인 subject: next · session · ComposerSuggest — `/` · `@` 목록)
-    ├ preview/PreviewColumn 막대 · 무대(PreviewHost) · 라이브 층(LiveLayer) · 말풍선 · 준비 화면 · 작업 기록 서랍
-    └ plans/PlansColumn   기획서 — 이어 보기 막대(미리보기 › 기획서 › 문서) · 가져오기 줄 · 목록(`PlansList` — 찾기 · 폴더 접기) · 문서 한 장(`PlanDocView` — 본문 · 코멘트)
+└ Workspace ─ useSessions · usePins · useShellNav · usePlansWorkspace를 한 번씩 부른다
+  ├ sidebar/Sidebar     앱 머리 / 프로젝트 전환기 / 홈 · 기획서 · 화면 · 찾기 / 자리별 목록 / 바닥
+  │ ├ 홈 · 화면          대화 + 새 대화 / 다른 프로젝트 줄 · 날짜별 대화 목록 · 도구가 한 일
+  │ └ plans/PlansSidebar 기준 페이지 + 새 문서 · ⋯ / 찾기 · 작성 중인 초안 · 트리(PlansList) / 가져온 때
+  ├ 홈 — home/HomeView   인사 · 프로젝트 한 줄 / HomeInbox(part="waiting") / 두 시작 카드 / 세 걸음 / HomeReady / HomeInbox(part="rest")
+  │ ├ home/HomePlans    기획서 카드 — 초안 셋 · 새 문서 · 기획서 열기(연결한 프로젝트만)
+  │ └ 화면 카드          화면 열기 · HomeComposer(입력창 · 첨부 · 모델 · HomeStarters)
+  └ 작업 보기            홈에서는 마운트된 채 nx-offstage
+    ├ 자리별 머리        기획서: plans/PlansHeader / 화면: status/StatusLine
+    ├ status/ProblemLine 문제 문장 · 초대 파일 안내(두 작업 자리에 유지)
+    ├ 기획서 자리        plans/PlansColumn — PlanDocView(본문 · 코멘트) / DraftEditor(문서 · 기획 대화)
+    │                   plans/PlansEmpty — 연결 없음 · 빈 목록 · 실패 · 만료 안내
+    └ 화면 자리          (좁은 창) 대화 | 화면 · <이름> 탭
+      ├ chat/ChatColumn  Thread · 카드 · RunLine · Composer(모델 · `/` · `@`)
+      └ preview/PreviewColumn 막대 · PreviewHost · LiveLayer · 말풍선 · 준비 화면 · 작업 기록 서랍
 ```
 
-**오른쪽 칸은 두 얼굴이다**(2026-10-18 기획서 동기화 · 개선 패스) — `nav.pane` 이 `preview` 면 미리보기, `plans` 면 기획서가 선다.
-둘 다 마운트된 채 한쪽만 선다(`offstage` → `.nx-offstage`, 홈이 앞에 설 때와 같은 규칙): 기획서를 열었다고 미리보기 게스트
-(스크롤 · 입력 중인 폼 · 핀)를 내리면 안 된다. 기획서 칸은 처음 열 때 마운트하고 그 뒤로 숨기만 한다 — 열린 문서 · 찾는 말 ·
-접은 폴더가 미리보기로 갔다 와도 그대로고, 기획서를 안 쓰는 프로젝트는 앱을 켤 때 목록을 읽지 않는다. 격자(`.nx-body`)의
-직계가 숨을 때는 `.nx-body > .nx-offstage`(shell.css)가 이긴다 — 칸 자신의 규칙(`.nx-preview` 의 `position: relative`)이
-뒤에서 읽혀 숨은 칸이 격자 칸을 차지하지 않게. 칸 안의 색은 `.nx` 의 토큰(`--ink2` · `--ink3` · `--nx-hover` …)만 읽는다
-(앱에 없는 이름은 var() 의 대체 색으로 조용히 떨어져 어두운 테마에서 글자가 흐려진다). 숨는 칸은 **제 뿌리에** `nx-offstage` 를
-단다 — `PreviewColumn` 이 prop 만 받고 클래스를 달지 않아 넓은 창의 기획서 칸이 대화 칸 아래 둘째 줄로 떨어졌다(2026-10-23 고침).
+**세 자리** — `Workspace`는 `view === "home"`이면 홈, `view === "thread" && pane === "plans"`이면 기획서,
+나머지 작업 보기는 화면으로 나눈다. 기획서 자리에는 `PlansHeader`가 서고 화면 대화 · 미리보기 · 화면 상태 줄 · 좁은 창의 탭은
+보이지 않는다. `ProblemLine`은 두 작업 자리에 남는다. 화면 자리에는 대화와 미리보기가 함께 서고 좁은 창에서만 탭으로 나눈다.
+기획서의 트리는 좁은 창의 사이드바 서랍 안에 있다.
+(2026-10-23 화면 전면 재설계 — [ux-redesign-2026-10-23.md](../../../../docs/ux-redesign-2026-10-23.md))
 
-**기획서 집중 배치**(2026-10-23 기획자 화면 손질 · `docs/planner-ux-2026-10-23.md`) — 기획서 칸이 초안 편집기를 열면
-`nav.setPlanDraft(true)` 로 알린다(이동 상태 `planDraft`). 넓은 창 · 작업 보기 · `pane === "plans"` · 초안이면 `Workspace` 가
-대화 칸에 `offstage` 를 주고(마운트 유지 — 입력창 · 대화록 · 근거 첨부 받기가 산다) 격자를 한 칸(`minmax(0, 1fr)`)으로 쓰며 경계를
-거둔다. 상태 줄의 제목은 `기획서`(읽기만)이고 `docFocus` 가 화면 작업 묶음(여정 · 받아오기 · 제출)을 접는다 — 훅과 상태는
-그대로라 미리보기로 돌아오면 같은 모습이다(U5 — `제출` 이 초안 곁에서 `발행` 과 헷갈리지 않게). 칸이 820px 보다 좁으면 기획
-대화는 칸 바닥에 붙는 판이다(`draft.css` 의 sticky — U3). 그동안의 `thread` 이동은 `pane` 을 `preview` 로 돌린다
-(`lib/nav.ts` — 비켜선 칸에 대화가 열리지 않게). 문서를 읽는 중(초안 없음)이면 대화 칸은 문서 곁에 그대로 선다. 좁은 창은 두 탭이
-같은 일을 하므로 배치는 그대로다 — 다만 이동 상태는 창 폭을 모르므로, 초안이 열린 채 대화를 열면 좁은 창에서도 둘째 탭이 미리보기로
-돌아온다(초안은 `기획서` 로 다시 연다).
+**숨는 칸은 마운트를 지킨다.** 미리보기의 입력 · 스크롤 · 핀, 화면 대화의 쓰던 글, 기획서의 열린 문서 · 초안을 유지한다.
+기획서 본문과 트리는 처음 기획서 자리를 열 때 마운트하고 그 뒤에는 숨긴다. `PlansWorkspace.tsx`의 `usePlansWorkspace`와
+`PlansContext`가 트리 · 본문 · 찾기의 목록과 선택 상태를 공유한다. 연결한 프로젝트에서 기획서나 팔레트를 처음 열 때 목록을 읽는다.
+팔레트는 이미 읽은 목록을 재사용하고, 기획서 자리에 다시 들어오면 목록을 갱신한다. 프로젝트가 바뀌면 목록 · 방문 상태 ·
+열린 문서 · 초안 선택 · 찾는 말 · 접힌 폴더를 초기화한다. 저장된 초안을 지우는 것은 아니다.
+
+숨는 칸은 **제 뿌리에** `nx-offstage`를 단다. 격자 직계에는 `.nx-body > .nx-offstage`가 이겨 숨은 칸이 자리를 차지하지 않는다.
+`PreviewColumn`의 뿌리 클래스 누락으로 기획서가 둘째 줄에 떨어졌던 결함은 2026-10-23 기획자 화면 손질에서 고쳤다.
+화면 대화 감싸개와 기획서 본문은 `aria-hidden`과 `inert`도 받는다. 칸 안의 색은 `.nx`의 토큰만 읽는다.
+
+**기획서 본문** — 읽기는 문서 한 장과 코멘트다. `PlansHeader`는 길 표시와 문서 단추를 놓고, `PlansEmpty`의 상태 안내는
+본문 가운데 선다. `Esc`는 읽는 문서를 닫지 않고 트리의 같은 줄로 초점을 옮긴다. 초안은 길 표시 아래 `DraftEditor`가
+두 줄 머리와 문서 · 기획 대화를 그린다. 문서와 오른쪽 기획 대화는 칸 폭 820px 이상에서 나란히 서고, 그보다 좁으면
+기획 대화가 바닥에 붙는 판이 된다. 2026-10-23 기획자 화면 손질의 초안 집중 배치를 기획서 자리 전체로 넓혔다.
+기존 `planDraft` · `setPlanDraft` · `StatusLine.docFocus` 계약은 남지만 `Workspace`의 자리 배치 조건으로 쓰지 않는다.
+
+**미리보기 막대** — `PreviewBar`는 이동(`nx-pvg`) · 화면 고르기(`nx-addrwrap`) · 보기 도구(`nx-pvg--tools`)
+세 묶음이다. 조절 높이는 32px, 기기 마디 안쪽 단추는 28px다. `수정할 곳 선택`은 보통 단추이며 켜졌을 때만
+`nx-btn--accent`를 쓰고 담긴 수를 배지로 표시한다. 좁은 칸에서는 기록 글자 · 배율 · 찍기 글자 · 앞으로 순으로 숨는다.
+
+**문제 줄** — `ProblemLine`은 공통 `nx-banner`에 아이콘 · 글 · 단추를 놓는다. 고치는 중은 호박색, 알렸다는 소식은 파랑,
+막힘 · 다시 연결은 빨강이다. 좁은 창은 제목 아래 본문만 두 줄 말줄임하고 단추를 아래로 내린다.
+준비 실패도 `PrepareCard`의 빨간 `nx-banner`다.
+(2026-10-24 화면 전면 재설계 §4 F·G)
+
+**홈의 두 카드** — 본문 폭 1000px 이상이면 `HomePlans`와 화면 카드가 나란히 같은 높이로 선다. 그보다 좁으면 위아래다.
+기획서를 연결하지 않았으면 화면 카드만 폭을 다 쓴다. `HomeInbox`의 필수 `part`는 `waiting`에서 기다리는 일만,
+`rest`에서 나머지 묶음과 기다리는 일이 없다는 안내만 그린다. 두 호출 사이에 카드 · 세 걸음 · `HomeReady`가 서고,
+받은 편지함의 판정 · 셈 · 접힘 규칙은 유지한다.
 
 첫 가져오기(프로젝트 0개)의 행이 모두 `새로` 면 확인판 없이 곧바로 적용하고, 첫
 프로젝트의 문제 문장 자리에 `초대 파일을 가져왔어요 — 휴지통에 넣기 · 나중에` 가 선다.
@@ -127,7 +162,7 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 `Step`(카드) · `Fold`(상태별 몸통의 접힘) · `InviteDrop`(놓는 자리와 `파일이 아직 없나요?` 의
 요청 문장 — `NoProjects` 와 함께 쓴다)이 맡는다. 눈으로 보는 견본은 `dev/onboarding-fixture.html`.
 
-이동 상태(홈 ↔ 대화 · 좁은 창의 탭 · 오른쪽 칸의 얼굴 · 서랍 · 접힘)는 `lib/nav.ts` 의 줄임 함수,
+이동 상태(홈 · 기획서 · 화면 · 화면 자리의 좁은 창 탭 · 서랍 · 접힘)는 `lib/nav.ts` 의 줄임 함수,
 그 손은 `lib/use-shell-nav.ts` 가 만든다. 주소에 싣지 않는다. 열린 대화의 주인은
 `sessions.activeId` 하나다. 같은 훅이 첫 준비가 끝난 순간(`lib/ready-watch.ts` — 데몬의
 `ProjectSummary.firstPrep` 표식과 보고 있는 화면으로 판정)을 알아 토스트와 홈의 `서비스가 떴어요` 줄
@@ -141,12 +176,13 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 | --- | --- |
 | `openThread(slug, threadId)` | 대화를 연다. 다른 프로젝트면 `project.activate` 뒤, 등록부가 옮겨 앉으면 연다 |
 | `newThread(slug?)` | 새 대화의 빈 자리(`sessions.fresh()`) — 세션은 첫 말이 나갈 때 태어난다 |
-| `goHome()` · `showThread()` | 홈 · 대화 보기 |
+| `goHome()` · `showThread()` | 홈 · 화면의 대화 보기(좁은 창은 대화 탭) |
+| `openScreen?()` | 열린 대화가 있으면 화면 자리로 가며 좁은 창은 화면 탭을 연다. 열린 대화가 없으면 새 대화의 빈 자리로 간다 |
 | `showScreen()` | 작업 화면의 미리보기 쪽(좁은 창은 화면 탭) — 홈의 `처음 켜는 준비` 줄이 부른다. `switchProject` 는 이미 활성인 프로젝트로는 아무 데도 가지 않는다(2026-10-07) |
 | `openProjectScreen(slug)` · `dismissReady(slug)` | 서비스가 떴다는 소식(토스트 · 홈 줄 · OS 알림)의 단추 — 활성이 아니면 옮긴 뒤 그 작업 화면 · 홈 줄 닫기 |
 | `switchProject(slug, { quiet? })` | 옮기기 + 토스트 — 옮겼는지(`Promise<boolean>`)를 돌려 줘 부르는 줄이 도는 표시를 세운다. 옮겨 앉으면 셸은 홈부터 |
 | `showTab("chat" \| "preview")` | 좁은 창의 탭 |
-| `openPlans()` · `showPane("preview" \| "plans")` | 오른쪽 칸을 기획서로(사이드바의 `기획서` — 이미 열려 있으면 다시 누르는 것이 닫는 길) · 오른쪽 칸의 얼굴을 바꾼다(기획서 칸의 `미리보기` 이음) |
+| `openPlans()` · `showPane("preview" \| "plans")` | 기획서 자리로 간다(다시 눌러도 머문다) · 기존 호출자가 화면/기획서 자리를 고르는 손 |
 | `openSettings()` · `toast(text, action?)` | 설정 대화상자(서랍이 열려 있으면 먼저 닫는다) · 잠깐 뜨는 한 줄 — `action`(`{ label, run }`)이 있으면 단추가 달리고 8초 머문다 |
 
 **`SlotProps`** — `ChatColumn`(단계 2)과 `PreviewColumn`(단계 3)이 함께 받는다:

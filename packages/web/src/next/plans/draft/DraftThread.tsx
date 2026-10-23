@@ -6,6 +6,7 @@ import type {
   DraftReadRef,
   DraftRefInput,
 } from "@colonova-design/protocol";
+import { ChevronDown, ChevronUp, Ellipsis } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useEffect,
@@ -18,6 +19,7 @@ import type { Daemon } from "../../../lib/daemon-client";
 import { L } from "../../labels";
 import type { ShellNav } from "../../slots";
 import { CloseIcon, PlusIcon, SendIcon, Spin } from "../../ui/icons";
+import { Popover } from "../../ui/Popover";
 import { escapeOwnedByLayer } from "../escape-layer";
 import { type PlanListRow, planRows } from "../plans-list";
 import { viewToMarkdown } from "./draft-model";
@@ -45,6 +47,7 @@ import { useDraftThread } from "./use-draft-thread";
 function ProposalCard({
   proposal,
   blocks,
+  currentTitle,
   locked,
   busy,
   onAdopt,
@@ -53,12 +56,15 @@ function ProposalCard({
 }: {
   proposal: DraftProposal;
   blocks: readonly DraftBlock[];
+  currentTitle: string;
   locked: boolean;
   busy: boolean;
   onAdopt: (proposalId: string, opIds: string[]) => void;
   onReject: (proposalId: string, opIds?: string[]) => void;
   onReask: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuAnchor = useRef<HTMLButtonElement>(null);
   const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
   const selectable = useMemo(() => new Set(selectableOpIds(proposal)), [proposal]);
   const open = useMemo(() => openOpIds(proposal), [proposal]);
@@ -90,10 +96,22 @@ function ProposalCard({
       <ul className="nx-dr-prop-steps">
         {proposal.ops.map((op) => {
           const checkable = selectable.has(op.opId);
-          const preview =
-            op.type === "replace" || op.type === "insert"
-              ? viewToMarkdown(op.view, tokensOf(op))
-              : "";
+          const beforeBlock =
+            op.type === "replace" || op.type === "delete"
+              ? blocks.find((block) => block.id === op.blockId)
+              : undefined;
+          const before =
+            op.type === "title"
+              ? currentTitle
+              : beforeBlock === undefined
+                ? ""
+                : viewToMarkdown(beforeBlock.view, beforeBlock.tokens);
+          const after =
+            op.type === "title"
+              ? op.title
+              : op.type === "replace" || op.type === "insert"
+                ? viewToMarkdown(op.view, tokensOf(op))
+                : "";
           return (
             <li key={op.opId} className="nx-dr-prop-step" data-state={op.state}>
               <label className="nx-dr-check">
@@ -106,7 +124,10 @@ function ProposalCard({
                 <span>{opSummary(op, blocks)}</span>
               </label>
               {op.state !== "open" && (
-                <span className="nx-dr-badge" data-op={op.state}>
+                <span
+                  className={`nx-pill nx-dr-badge${op.state === "adopted" ? " nx-pill--blue" : op.state === "stale" ? " nx-pill--amber" : ""}`}
+                  data-op={op.state}
+                >
                   {op.state === "adopted"
                     ? L.drafts.opAdopted
                     : op.state === "rejected"
@@ -115,14 +136,30 @@ function ProposalCard({
                 </span>
               )}
               {op.state === "stale" && <p className="nx-dr-prop-note">{L.drafts.opStale}</p>}
-              {preview !== "" && (
-                <details className="nx-dr-prop-preview">
-                  <summary>{L.drafts.preview}</summary>
-                  <div className="nx-dr-read">
-                    <Markdown text={preview} />
-                  </div>
-                </details>
-              )}
+              <div className="nx-dr-prop-compare">
+                <div className="nx-dr-prop-version">
+                  <span className="nx-dr-prop-version-label">
+                    {op.state === "open" ? L.drafts.beforeChange : L.drafts.currentDraft}
+                  </span>
+                  {before === "" ? (
+                    <p>{op.type === "insert" ? L.drafts.noBlock : L.drafts.opMissing}</p>
+                  ) : (
+                    <div className="nx-dr-read">
+                      <Markdown text={before} />
+                    </div>
+                  )}
+                </div>
+                <div className="nx-dr-prop-version nx-dr-prop-version--after">
+                  <span className="nx-dr-prop-version-label">{L.drafts.afterChange}</span>
+                  {after === "" ? (
+                    <p>{L.drafts.removedBlock}</p>
+                  ) : (
+                    <div className="nx-dr-read">
+                      <Markdown text={after} />
+                    </div>
+                  )}
+                </div>
+              </div>
             </li>
           );
         })}
@@ -130,7 +167,7 @@ function ProposalCard({
       <div className="nx-dr-prop-acts">
         <button
           type="button"
-          className="nx-btn nx-btn--sm"
+          className="nx-btn nx-btn--sm nx-btn--pri"
           disabled={locked || busy || picked.length === 0}
           title={locked ? L.drafts.locked : undefined}
           onClick={() => onAdopt(proposal.proposalId, picked)}
@@ -139,29 +176,65 @@ function ProposalCard({
         </button>
         <button
           type="button"
-          className="nx-btn nx-btn--sm"
-          disabled={locked || busy || open.length === 0}
-          title={locked ? L.drafts.locked : undefined}
-          onClick={() => onAdopt(proposal.proposalId, open)}
+          className="nx-ibtn nx-ibtn--sm"
+          ref={menuAnchor}
+          aria-label={L.drafts.proposalMenu}
+          title={L.drafts.proposalMenu}
+          aria-haspopup="menu"
+          aria-expanded={menuOpen}
+          onClick={() => setMenuOpen((before) => !before)}
         >
-          {L.drafts.adoptAll}
+          <Ellipsis className="nx-i" size={16} strokeWidth={1.8} aria-hidden="true" />
         </button>
-        <button
-          type="button"
-          className="nx-btn nx-btn--sm nx-btn--ghost"
-          disabled={busy}
-          onClick={() => onReject(proposal.proposalId, picked.length > 0 ? picked : undefined)}
-        >
-          {L.drafts.reject}
-        </button>
-        <button
-          type="button"
-          className="nx-btn nx-btn--sm nx-btn--ghost"
-          disabled={busy}
-          onClick={onReask}
-        >
-          {L.drafts.reask}
-        </button>
+        {menuOpen && (
+          <Popover
+            anchor={menuAnchor}
+            role="menu"
+            label={L.drafts.proposalMenu}
+            align="end"
+            up
+            float
+            onClose={() => setMenuOpen(false)}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="nx-mi"
+              disabled={locked || busy || open.length === 0}
+              title={locked ? L.drafts.locked : undefined}
+              onClick={() => {
+                setMenuOpen(false);
+                onAdopt(proposal.proposalId, open);
+              }}
+            >
+              {L.drafts.adoptAll}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="nx-mi"
+              disabled={busy}
+              onClick={() => {
+                setMenuOpen(false);
+                onReject(proposal.proposalId, picked.length > 0 ? picked : undefined);
+              }}
+            >
+              {L.drafts.reject}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="nx-mi"
+              disabled={busy}
+              onClick={() => {
+                setMenuOpen(false);
+                onReask();
+              }}
+            >
+              {L.drafts.reask}
+            </button>
+          </Popover>
+        )}
       </div>
     </article>
   );
@@ -231,7 +304,7 @@ function RefPicker({
     <div className="nx-dr-refpick" role="group" aria-label={L.drafts.addRef}>
       <div className="nx-dr-refpick-hd">
         <input
-          className="nx-dr-line"
+          className="nx-input nx-dr-line"
           value={query}
           placeholder={L.drafts.refSearchHint}
           aria-label={L.drafts.refSearchLabel}
@@ -274,7 +347,7 @@ function RefPicker({
       {picked !== null && (
         <div className="nx-dr-refsec">
           <input
-            className="nx-dr-line"
+            className="nx-input nx-dr-line"
             value={sectionsText}
             placeholder={L.drafts.refSectionsHint}
             aria-label={L.drafts.refSectionsLabel}
@@ -298,6 +371,7 @@ function MessageRow({
   message,
   proposal,
   blocks,
+  currentTitle,
   locked,
   busy,
   onAdopt,
@@ -307,6 +381,7 @@ function MessageRow({
   message: DraftMessage;
   proposal: DraftProposal | null;
   blocks: readonly DraftBlock[];
+  currentTitle: string;
   locked: boolean;
   busy: boolean;
   onAdopt: (proposalId: string, opIds: string[]) => void;
@@ -349,6 +424,7 @@ function MessageRow({
         <ProposalCard
           proposal={proposal}
           blocks={blocks}
+          currentTitle={currentTitle}
           locked={locked}
           busy={busy}
           onAdopt={onAdopt}
@@ -382,6 +458,7 @@ export function DraftThread({
   const [pendingRefs, setPendingRefs] = useState<Array<DraftReadRef & { sections?: string[] }>>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [inputText, setInputText] = useState("");
+  const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   // 근거 수의 한계 이유 — 선로의 상한(문서 20개)에 닿아 더 담지 못할 때 한 줄로 말한다.
   const [refNotice, setRefNotice] = useState<string | null>(null);
@@ -505,15 +582,36 @@ export function DraftThread({
 
   return (
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 대화 칸의 Esc 는 제 자리에서 멈추는 길이다
-    <aside className="nx-dr-thread" aria-label={L.drafts.threadTitle} onKeyDown={onColumnKey}>
+    <aside
+      className="nx-dr-thread"
+      data-expanded={expanded || undefined}
+      aria-label={L.drafts.threadTitle}
+      onKeyDown={onColumnKey}
+    >
       <header className="nx-dr-thread-hd">
         <h3 className="nx-dr-thread-title">{L.drafts.threadTitle}</h3>
         {draft.view !== null && <span className="nx-dr-thread-target">{draft.view.title}</span>}
+        <button
+          type="button"
+          className="nx-ibtn nx-ibtn--sm nx-dr-thread-toggle"
+          aria-expanded={expanded}
+          aria-label={expanded ? L.drafts.threadCollapse : L.drafts.threadExpand}
+          title={expanded ? L.drafts.threadCollapse : L.drafts.threadExpand}
+          onClick={() => setExpanded((before) => !before)}
+        >
+          {expanded ? (
+            <ChevronDown className="nx-i" size={16} strokeWidth={1.8} aria-hidden="true" />
+          ) : (
+            <ChevronUp className="nx-i" size={16} strokeWidth={1.8} aria-hidden="true" />
+          )}
+        </button>
         {/* 이 AI 가 무엇을 바꾸는지 입력 곁에서 말한다 — 화면 AI 와 헷갈리지 않게(정본 §6 실행 경계 · §11 첫 줄). */}
-        <p className="nx-dr-thread-scope">{L.drafts.threadScope}</p>
+        <p className="nx-dr-thread-scope" title={L.drafts.threadScope}>
+          {L.drafts.threadScope}
+        </p>
       </header>
       {thread.phase === "failed" ? (
-        <p className="nx-dr-fail" role="alert">
+        <p className="nx-banner nx-banner--red nx-dr-fail" role="alert">
           {thread.error ?? L.drafts.loadFailed}
           <button type="button" className="nx-btn nx-btn--sm" onClick={thread.retry}>
             {L.plans.retry}
@@ -522,7 +620,7 @@ export function DraftThread({
       ) : (
         <>
           {thread.error !== null && (
-            <p className="nx-dr-fail" role="alert">
+            <p className="nx-banner nx-banner--red nx-dr-fail" role="alert">
               {thread.error}
             </p>
           )}
@@ -543,6 +641,7 @@ export function DraftThread({
                         : (proposals.get(message.proposalId) ?? null)
                     }
                     blocks={blocks}
+                    currentTitle={draft.view?.title ?? ""}
                     locked={locked}
                     busy={busy}
                     onAdopt={adoptOps}
@@ -594,7 +693,7 @@ export function DraftThread({
                     {L.drafts.refChip(ref.title, ref.version, ref.sections)}
                     <button
                       type="button"
-                      className="nx-dr-refchip-x"
+                      className="nx-ibtn nx-ibtn--xs nx-dr-refchip-x"
                       title={L.drafts.removeRef}
                       aria-label={`${L.drafts.removeRef}: ${ref.title}`}
                       onClick={() => {
@@ -624,7 +723,7 @@ export function DraftThread({
             <div className="nx-dr-thread-row">
               <textarea
                 ref={inputRef}
-                className="nx-dr-area"
+                className="nx-input nx-input--area nx-dr-area"
                 rows={3}
                 value={inputText}
                 // 선로의 질문 한계 — 데몬의 검사에 부딪치기 전에 칸이 먼저 멈춘다(2026-10-23 화면 확인 · R2 검토 3).
@@ -637,7 +736,7 @@ export function DraftThread({
               <div className="nx-dr-thread-acts">
                 <button
                   type="button"
-                  className="nx-dr-act"
+                  className="nx-btn nx-btn--sm nx-btn--ghost"
                   aria-expanded={pickerOpen}
                   onClick={() => setPickerOpen((before) => !before)}
                 >
@@ -646,7 +745,7 @@ export function DraftThread({
                 </button>
                 <button
                   type="submit"
-                  className="nx-btn nx-btn--sm nx-btn--pri"
+                  className="nx-btn nx-btn--accent"
                   disabled={thread.running || inputText.trim() === ""}
                 >
                   <SendIcon />

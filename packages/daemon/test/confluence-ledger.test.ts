@@ -96,6 +96,37 @@ test("잘못된 타입 필드 — 깨진 값은 버리고 나머지는 산다", 
   });
 });
 
+test("사본 밖 경로 — 절대 경로와 `..` · `.` 조각은 조용히 버린다", () => {
+  const parsed = parseConfluenceLedger({
+    site: "https://colosseum.atlassian.net",
+    roots: ["933068815"],
+    lastSyncAt: "2026-10-18T00:40:00Z",
+    pages: {
+      산다: { path: "COLO/8.8 ColoNova/SSoT", title: "SSoT", version: 1 },
+      상위로: { path: "../바깥", title: "바깥", version: 1 },
+      절대: { path: "/etc/passwd", title: "절대", version: 1 },
+      온점조각: { path: "COLO/./루트", title: "온점", version: 1 },
+    },
+    folders: {
+      산다폴더: { path: "COLO/루트/화면 목록", title: "화면 목록" },
+      역슬래시: { path: "..\\바깥폴더", title: "바깥" },
+    },
+    unsupported: {
+      산다보드: { path: "COLO/루트/보드", title: "보드", type: "whiteboard" },
+      절대보드: { path: "\\Windows\\보드", title: "보드", type: "whiteboard" },
+    },
+  });
+  // 증분 쓰기와 거두기가 원장의 path 를 그대로 join 하므로 읽을 때 걸러낸다
+  // (2026-10-23 · 기획서 사본 이동 계획 · 오케스트레이터 검토 R2).
+  assert.deepEqual(Object.keys(parsed.pages), ["산다"]);
+  assert.deepEqual(parsed.folders, {
+    산다폴더: { path: "COLO/루트/화면 목록", title: "화면 목록" },
+  });
+  assert.deepEqual(parsed.unsupported, {
+    산다보드: { path: "COLO/루트/보드", title: "보드", type: "whiteboard" },
+  });
+});
+
 test("빈 값 · 널 · 배열 — 모두 빈 원장으로 내려앉는다", () => {
   for (const raw of [null, undefined, "", "문자열", [], 0, true]) {
     assert.deepEqual(parseConfluenceLedger(raw), emptyConfluenceLedger());

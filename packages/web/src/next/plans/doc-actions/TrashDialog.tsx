@@ -59,7 +59,7 @@ export function TrashDialog({
           </p>
         )}
         {phase === "failed" && (
-          <div className="nx-da-failed" role="alert">
+          <div className="nx-banner nx-banner--red nx-da-failed" role="alert">
             <p>{L.docOps.trashListFailed}</p>
             <button type="button" className="nx-btn nx-btn--sm" onClick={load}>
               <RefreshIcon />
@@ -68,11 +68,11 @@ export function TrashDialog({
           </div>
         )}
         {phase === "ready" && entries.length === 0 && (
-          <div className="nx-da-empty">
-            <span className="nx-da-empty-ic" aria-hidden="true">
+          <div className="nx-empty">
+            <span className="nx-empty-mark" aria-hidden="true">
               <TrashIcon />
             </span>
-            <b>{L.docOps.trashEmptyTitle}</b>
+            <b className="nx-empty-title">{L.docOps.trashEmptyTitle}</b>
           </div>
         )}
         {phase === "ready" && entries.length > 0 && (

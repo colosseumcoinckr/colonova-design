@@ -1,7 +1,7 @@
 /**
  * 문서 관리 서비스(2026-10-23 · 최종 구현 계획 F4 · 작업 D1a) — 휴지통 이동 · 복구 · 복제 ·
  * 위치 옮기기. 모든 요청은 활성 프로젝트에서 돌고, 프런트가 보낸 문서 아이디는 믿지 않는다 —
- * 원장(클론 `docs/plans/confluence.json`)과 뿌리로 범위를 검사한다. 영구 삭제는 제공하지
+ * 원장(프로젝트 폴더 사본의 `confluence/confluence.json`)과 사본으로 범위를 검사한다. 영구 삭제는 제공하지
  * 않고, 미발행 초안이 있는 문서를 자동 정리하지 않고, 삭제된 문서를 자동 재생성하지 않는다
  * (정본 계획 §9). 실사이트 쓰기는 발행 게이트(`COLONOVA_DESIGN_CONFLUENCE_PUBLISH=1`)가
  * 켜졌을 때만 열린다. 기록은 `plans/ops/<commandId>.json` 과 `plans/trash.json` 이다.
@@ -24,13 +24,9 @@ import {
   type ConfluenceWrite,
   createConfluenceTransport,
 } from "./confluence-client.js";
+import { type ConfluenceLedger, readConfluenceLedger } from "./confluence-ledger.js";
+import { confluenceMirrorLedger } from "./confluence-mirror.js";
 import {
-  type ConfluenceLedger,
-  emptyConfluenceLedger,
-  readConfluenceLedger,
-} from "./confluence-ledger.js";
-import {
-  confluenceLedgerFile,
   confluenceRootIdKey,
   confluenceRootTitleKey,
   confluenceSiteKey,
@@ -44,8 +40,6 @@ export interface DocOpsDeps {
   registry: { activeSlug(): string | null; paths(slug: string): { root: string } };
   machineSetting: { get(key: string): string | null };
   credentials: CredentialStore;
-  /** 클론 뿌리 — 없으면 null(연결 전 · 내려간 프로젝트). */
-  workspaceRoot(slug: string): string | null;
   broadcast(message: ServerMessage): void;
   logger: DaemonLogger;
   /** 저장 전송 — 시험이 기록된 가짜를 넣는다. 없으면 env 가 고른다. */
@@ -475,9 +469,8 @@ export class DocOps {
   }
 
   #ledger(slug: string): ConfluenceLedger {
-    const root = this.#deps.workspaceRoot(slug);
-    if (root === null) return emptyConfluenceLedger();
-    return readConfluenceLedger(confluenceLedgerFile(root));
+    // 원장 파일이 없으면 읽기가 빈 원장을 돌려준다 — 연결 전 · 아직 가져오기 전의 모양이다.
+    return readConfluenceLedger(confluenceMirrorLedger(this.#deps.registry.paths(slug).root));
   }
 
   #plansRoot(slug: string): string {

@@ -1,526 +1,399 @@
-/* 기획서 칸(2026-10-18 기획서 동기화 1단계 · M4, 같은 날 개선 패스) — 오른쪽 칸의 두 번째 얼굴.
-   미리보기 칸(`.nx-preview`)과 같은 바탕 · 같은 막대 높이로 서서 둘을 오가도 칸이 출렁이지 않는다.
-   색은 `.nx` 뿌리의 토큰(`--ink` · `--ink2` · `--ink3` …)만 읽는다 — 앱에 없는 이름을 쓰면 모든 테마가
-   조용히 고정 색으로 떨어진다. 단추는 `.nx button` 의 초기화(특이도 0,1,1)를 이기도록 `.nx` 를 앞에 단다. */
-
+/* 기획서의 트리와 종이 한 장(2026-10-23 화면 전면 재설계 §3.2 · §3.4). */
 .nx-plans {
+  --nx-pl-pad-top: var(--sp-8);
+  --nx-pl-pad-x: var(--sp-8);
+  --nx-pl-pad-bottom: var(--sp-12);
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--bg-2);
+  background: var(--bg);
   position: relative;
   overflow: hidden;
   container-type: inline-size;
   container-name: nxpl;
 }
-
-/* ---------- 위 막대 — 미리보기 › 기획서 › 문서, 오른쪽 끝에 새로 가져오기 ---------- */
 .nx-pl-bar {
-  height: var(--pv-bar-h, 48px);
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 12px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--line);
-}
-
-.nx-pl-crumbs {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  flex: 1 1 auto;
+  gap: var(--sp-2);
   min-width: 0;
+  background: var(--bg);
 }
-
-.nx .nx-pl-crumb {
-  display: inline-flex;
+.nx-pl-crumbs {
+  flex: 1;
+  display: flex;
   align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 8px;
-  margin: 0;
-  border-radius: var(--r);
+  gap: var(--sp-1);
+  min-width: 0;
+  font-size: var(--fs-ui);
   color: var(--ink2);
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
 }
-
-.nx .nx-pl-crumb--btn:hover {
-  background: var(--nx-hover);
-  color: var(--ink);
+.nx-pl-crumbs > .nx-i {
+  flex: none;
+  color: var(--ink3);
 }
-
-/* 지금 있는 자리 — 긴 문서 제목은 말줄임으로 자리를 지킨다. */
-.nx .nx-pl-crumb--here {
+.nx .nx-pl-root {
+  flex: none;
+  padding-inline: var(--sp-1);
+}
+.nx-pl-crumb-folder,
+.nx-pl-crumb-here {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--ink);
-  font-weight: 600;
+  white-space: nowrap;
 }
-
-.nx-pl-sep {
-  flex: none;
-  display: inline-flex;
+.nx-pl-crumb-folder {
+  min-width: 4ch;
+  flex: 0 2 auto;
   color: var(--ink3);
 }
-
-.nx .nx-pl-import {
+.nx-pl-crumb-here {
+  flex: 0 1 auto;
+  font-weight: var(--fw-semi);
+  color: var(--ink);
+}
+.nx-pl-crumbs .nx-pill {
   flex: none;
 }
-
-/* 칸이 좁아지면 단추는 그림만 — 이름은 `title` 이 낭독과 말풍선을 맡는다. */
-@container nxpl (max-width: 440px) {
-  .nx-pl-import-t {
-    display: none;
-  }
-
-  .nx .nx-pl-import {
-    width: 28px;
-    padding: 0;
-  }
-}
-
-/* ---------- 가져오기 줄 — 막대 아래의 한 줄 ---------- */
-.nx-pl-sync {
-  flex: none;
+.nx-pl-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 34px;
-  padding: 5px 16px;
-  border-bottom: 1px solid var(--line-soft);
+  flex: none;
+  gap: var(--sp-2);
+}
+.nx-pl-actions .nx-i {
+  width: var(--fs-ui);
+  height: var(--fs-ui);
+}
+.nx-pl-sidebar {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.nx-pl-sidebar[hidden] {
+  display: none;
+}
+.nx-pl-sync {
+  display: flex;
+  flex: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-cap);
+  line-height: var(--lh-ui);
   color: var(--ink3);
-  font-size: 12px;
-  line-height: 1.5;
 }
-
-.nx-pl-sync > span {
-  flex: 1 1 auto;
-  min-width: 0;
+.nx-pl-sync.nx-banner {
+  margin: var(--sp-2);
 }
-
-.nx-pl-sync--warn {
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
-.nx-pl-sync--bad {
-  color: var(--red);
-}
-
-/* ---------- 목록 ---------- */
 .nx-pl-list,
 .nx-pl-view {
-  flex: 1 1 auto;
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-
 .nx-pl-list {
-  padding: 12px 10px 28px;
+  padding: var(--sp-2);
 }
-
 .nx-pl-list[hidden] {
   display: none;
 }
-
 .nx-pl-find {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 34px;
-  padding: 0 6px 0 10px;
-  border: 1px solid var(--line2);
-  border-radius: var(--r);
-  background: var(--bg);
+}
+.nx-pl-find > .nx-i {
+  position: absolute;
+  left: var(--sp-3);
   color: var(--ink3);
+  pointer-events: none;
 }
-
-.nx-pl-find:focus-within {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-}
-
 .nx .nx-pl-find-in {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--ink);
-  font-size: 13.5px;
+  padding-inline: var(--sp-8);
+  width: 100%;
 }
-
-.nx-pl-find-in::placeholder {
-  color: var(--ink3);
+.nx-pl-find > button {
+  position: absolute;
+  right: var(--sp-1);
 }
-
-/* 지우는 단추는 우리 것 하나 — 브라우저의 둥근 ✕ 는 감춘다. */
 .nx-pl-find-in::-webkit-search-cancel-button {
   display: none;
 }
-
 .nx-pl-count {
-  margin: 10px 4px 6px;
+  margin: var(--sp-3) var(--sp-1) var(--sp-2);
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
 }
-
 .nx-pl-tree {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
 }
-
-/* 들여쓰기는 폴더의 깊이가 정한다 — 접는 단추(22px)가 줄의 앞에 서므로 깊이마다 16px 씩 밀린다. */
+/* 깊이마다 12px. 안내선은 들여쓰기 안에만 그린다. */
 .nx-pl-item {
+  position: relative;
   display: flex;
   align-items: center;
   min-width: 0;
-  padding-inline-start: calc(var(--nx-pl-depth, 0) * 16px);
+  padding-inline-start: calc(var(--nx-pl-depth, 0) * var(--sp-3));
 }
-
-.nx .nx-pl-fold {
-  flex: none;
-  width: 22px;
-  height: 28px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--r-sm);
-  color: var(--ink3);
-}
-
-.nx .nx-pl-fold:hover {
-  background: var(--nx-hover);
-  color: var(--ink);
-}
-
-/* 폴더가 아닌 줄의 빈 자리 — 제목이 같은 세로선에 서게 한다. */
-.nx .nx-pl-fold--none {
+.nx-pl-item::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: var(--sp-3);
+  width: calc(var(--nx-pl-depth, 0) * var(--sp-3));
+  background: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px var(--sp-3));
   pointer-events: none;
 }
-
+.nx .nx-pl-fold {
+  flex: none;
+}
+.nx-pl-fold--none {
+  pointer-events: none;
+}
 .nx-pl-fold > svg {
   transition: transform var(--nx-t-touch) var(--drift);
 }
-
 .nx-pl-fold--open > svg {
   transform: rotate(90deg);
 }
-
 .nx .nx-pl-row {
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 30px;
   display: flex;
+  flex: 1;
   align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  border-radius: var(--r);
-  font-size: 13.5px;
+  gap: var(--sp-1);
+  height: var(--h-row);
+  min-width: 0;
+  padding: 0 var(--sp-1_5);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-ui);
   text-align: start;
+  color: var(--ink2);
 }
-
 .nx .nx-pl-row:hover {
   background: var(--nx-hover);
 }
-
-/* 마지막으로 본 문서 — 사이드바의 고른 줄과 같은 눈에 뜬 자리 표시. */
 .nx .nx-pl-row--on {
   background: var(--nx-selected);
-  font-weight: 500;
+  color: var(--ink);
+  font-weight: var(--fw-medium);
 }
-
-/* 간격 없이 붙은 줄 — 전역 포커스 링이 위 · 아래 줄 위에 그려지지 않게 링을 상자 안에 그린다. */
+/* 트리에 있는 초안의 묶음 줄은 굵기로만 현재를 알린다(2026-10-24 PL1). */
+.nx .nx-pl-row--current {
+  color: var(--ink);
+  font-weight: var(--fw-semi);
+}
 .nx .nx-pl-row:focus-visible,
 .nx .nx-pl-fold:focus-visible {
   outline-offset: -2px;
 }
-
 .nx-pl-title {
-  flex: 1 1 auto;
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-/* 아래에 줄이 달린 줄(폴더)은 한 단계 굵게 — 접는 단추가 있는 줄이 구역의 머리로 읽힌다. */
+.nx-pl-row--folder .nx-pl-title,
 .nx-pl-row[data-fold] .nx-pl-title {
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
-
-/* 폴더 줄도 굵게 — 아래 줄이 없어 접는 단추가 없는 빈 폴더도 구역의 머리로 읽힌다. */
-.nx .nx-pl-row--folder .nx-pl-title {
-  font-weight: 600;
-}
-
-/* 찾기 결과의 둘째 말 — 어느 폴더의 문서인지. */
 .nx-pl-folder {
-  flex: 0 1 auto;
   max-width: 40%;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
 }
-
-.nx-pl-ver {
-  flex: none;
-  color: var(--ink3);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-
-/* Confluence 전용 항목 — 여기서 열지 못한다. 흐린 글과 커서로 알리고, 손가락을 얹어도 눈에 뜨지 않게. */
 .nx .nx-pl-row--off {
-  cursor: not-allowed;
   color: var(--ink3);
+  cursor: default;
 }
-
 .nx .nx-pl-row--off:hover {
   background: transparent;
 }
-
-/* 전용 항목의 종류 — 제목 옆의 작은 보조 글. */
 .nx-pl-kind {
-  flex: none;
-  color: var(--ink3);
-  font-size: 12px;
+  flex: 0 1 auto;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-cap);
 }
-
-/* ---------- 한 줄 안내 · 비었을 때 · 읽는 중 ---------- */
+.nx-pl-row .nx-pill {
+  flex: none;
+}
+.nx-pl-fresh {
+  margin-bottom: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line);
+}
+.nx-pl-fresh-t {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: var(--h-row);
+  padding-inline: var(--sp-1);
+  color: var(--ink2);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
+  list-style: none;
+  cursor: pointer;
+}
+.nx-pl-fresh-t::-webkit-details-marker {
+  display: none;
+}
+.nx-pl-fresh[open] > summary .nx-i {
+  transform: rotate(90deg);
+}
+.nx-pl-fresh-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
 .nx-pl-note {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 8px;
-  margin: 12px 4px;
+  gap: var(--sp-2);
+  margin: var(--sp-3) var(--sp-1);
   color: var(--ink3);
-  font-size: 13px;
-  line-height: 1.55;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
 }
-
 .nx-pl-note-sub {
   flex-basis: 100%;
-  font-size: 12px;
 }
-
-.nx-pl-empty {
-  display: grid;
-  justify-items: center;
-  gap: 8px;
-  max-width: 360px;
-  margin: 0 auto;
-  padding: 24px 20px;
-  text-align: center;
+.nx-pl-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
 }
-
-/* 안내 한 장은 칸의 세로 한가운데에 선다 — 목록 칸이 열이 되고 안내는 위아래 자동 여백을 받는다. 가운데 맞춤(`justify-content:
-   center`)이 아니라 자동 여백인 이유: 칸이 낮아 안내가 넘칠 때 가운데 맞춤은 위가 잘려 굴려도 닿을 수 없고, 자동 여백은 위에서부터
-   시작해 굴려 볼 수 있다. */
+.nx-pl-state > .nx-empty,
+.nx-pl-doc--failed > .nx-empty {
+  width: 100%;
+  margin: auto;
+  max-width: var(--w-read);
+  padding-inline: 0;
+}
+.nx-plans .nx-empty-title,
+.nx-plans .nx-empty-desc {
+  margin: 0;
+}
 .nx-pl-list--center {
   display: flex;
   flex-direction: column;
-  /* 목록의 아래 여백(28px)이 더 커서 그대로 두면 안내가 16px 위로 치우친다 — 위아래를 같게. */
-  padding-block: 12px;
 }
-
-.nx-pl-list--center > .nx-pl-empty {
+.nx-pl-list--center > .nx-empty {
   margin-block: auto;
 }
-
-.nx-pl-empty-ic {
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  margin-bottom: 4px;
-  border-radius: 14px;
-  background: var(--accent-soft);
-  color: var(--accent);
+.nx-pl-view,
+.nx-pl-state {
+  padding: var(--nx-pl-pad-top) var(--nx-pl-pad-x) var(--nx-pl-pad-bottom);
 }
-
-.nx-pl-empty-t {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-}
-
-.nx-pl-empty-b {
-  margin: 0;
-  color: var(--ink3);
-  font-size: 13px;
-  line-height: 1.65;
-}
-
-.nx-pl-empty-act {
+.nx-pl-view--failed {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-  margin-top: 8px;
 }
-
-/* ---------- 문서 한 장 ---------- */
-.nx-pl-view {
-  padding: 20px 20px 40px;
+.nx-pl-doc--failed {
+  width: 100%;
+  max-width: var(--w-read);
+  margin: auto;
 }
-
 .nx-pl-doc {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  max-width: 780px;
+  gap: var(--sp-6);
+  width: 100%;
+  max-width: var(--w-read);
   margin: 0 auto;
-  padding: 26px 32px 32px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
 }
-
-@container nxpl (max-width: 520px) {
-  .nx-pl-view {
-    padding: 12px;
-  }
-
-  .nx-pl-doc {
-    padding: 18px 16px 24px;
-  }
-}
-
 .nx-pl-doc-hd {
   display: grid;
-  gap: 8px;
-  padding-bottom: 14px;
-  border-bottom: 1px solid var(--line-soft);
+  gap: var(--sp-3);
 }
-
 .nx-pl-doc-title {
   margin: 0;
-  font-size: 20px;
-  font-weight: 650;
-  line-height: 1.35;
-  text-wrap: balance;
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-semi);
+  line-height: var(--lh-tight);
   overflow-wrap: anywhere;
 }
-
-/* 열 때 초점이 오는 제목 — 마우스로 연 뒤에는 고리를 그리지 않는다(키보드면 그린다). */
-.nx-pl-doc-title:focus:not(:focus-visible) {
+/* 문서를 열면 프로그램이 제목으로 초점을 옮긴다(낭독기가 제목을 읽게) — 사람이 Tab 으로 닿는 자리가 아니라 고리를 그리지 않는다.
+   ⌘K 로 열면 :focus-visible 이 서서 붉은 사각 고리가 보였다(2026-10-24 눈 확인 Q-14 · FXF). */
+.nx-pl-doc-title[tabindex="-1"]:focus,
+.nx-pl-doc-title[tabindex="-1"]:focus-visible {
   outline: none;
 }
-
 .nx-pl-doc-meta {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 12px;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
   color: var(--ink3);
-  font-size: 12.5px;
 }
-
-.nx-pl-chip {
-  padding: 1px 8px;
-  border-radius: var(--r-pill);
-  background: var(--nx-hover);
-  color: var(--ink2);
-  font-weight: 500;
+.nx-pl-doc-meta > span + span::before {
+  content: "·";
+  margin-right: var(--sp-2);
 }
-
-.nx-pl-ext {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-inline-start: auto;
-  color: var(--accent);
-  font-weight: 500;
-  text-decoration: none;
-}
-
-.nx-pl-ext:hover {
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
 .nx-pl-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
   min-width: 0;
-  font-size: 14px;
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
 }
-
-/* Confluence 에서만 보이는 자리(정보 상자 · 첨부 …) — 본문 한 줄이 비어 보이지 않게 점선 상자로 알린다. */
+.nx-pl-body .md {
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
+}
 .nx-pl-note-box {
   margin: 0;
-  padding: 8px 12px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px dashed var(--line2);
   border-radius: var(--r);
   background: var(--bg-2);
-  color: var(--ink3);
-  font-size: 12.5px;
-}
-
-.nx-pl-macro {
-  display: flex;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: var(--r-md);
-  background: var(--blue-soft);
   color: var(--ink2);
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: var(--fs-sm);
 }
-
-.nx-pl-macro > div {
-  min-width: 0;
-}
-
-.nx-pl-macro b {
-  color: var(--ink);
-  font-weight: 600;
-}
-
 .nx-pl-macro p {
-  margin: 2px 0 0;
+  margin: var(--sp-1) 0 0;
 }
-
 .nx-pl-macro-ic {
   flex: none;
-  display: inline-flex;
-  padding-top: 1px;
   color: var(--blue);
 }
-
 .nx-pl-macro-list {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 6px;
-  margin: 8px 0 0;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 0;
   padding: 0;
   list-style: none;
 }
-
-.nx-pl-macro-list li {
-  padding: 1px 8px;
-  border-radius: var(--r-pill);
-  background: color-mix(in srgb, var(--blue) 14%, transparent);
-  color: var(--ink);
-  font-size: 12px;
+.nx-pl-macro-list li + li::before {
+  content: "·";
+  margin-right: var(--sp-2);
 }
-
+@container nxpl (max-width: 520px) {
+  .nx-pl-view,
+  .nx-pl-state {
+    --nx-pl-pad-top: var(--sp-5);
+    --nx-pl-pad-x: var(--sp-4);
+    --nx-pl-pad-bottom: var(--sp-8);
+  }
+}
 /* ---------- 코멘트 ---------- */
 .nx-pl-comments {
   display: grid;
@@ -531,13 +404,13 @@
 
 .nx-pl-comments-t {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-h3);
   font-weight: 600;
 }
 
 .nx-pl-comments > .nx-pl-note {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-cap);
 }
 
 .nx-pl-comment-list {
@@ -565,30 +438,29 @@
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .nx-pl-comment-hd span {
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
 }
 
 .nx-pl-comment-anchor {
   padding-inline-start: 8px;
   border-inline-start: 2px solid var(--line2);
   color: var(--ink3);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   overflow-wrap: anywhere;
 }
 
 .nx-pl-comment-body {
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-/* ---------- 읽는 중 · 읽기 실패 ---------- */
 .nx-pl-skel {
   display: grid;
   gap: 10px;
@@ -623,68 +495,6 @@
   width: 40%;
 }
 
-.nx-pl-fail {
-  padding: 12px 14px;
-  border-radius: var(--r-md);
-  background: var(--red-soft);
-  color: var(--ink2);
-  font-size: 13px;
-  line-height: 1.55;
-}
-
-.nx-pl-fail p {
-  margin: 0 0 8px;
-}
-
-.nx-pl-fail-act {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-/* ---------- 새 문서 단추 · 초안 표시(2026-10-23 · 최종 구현 계획 F2) ---------- */
-.nx .nx-pl-newdoc {
-  flex: none;
-}
-
-/* 새 문서 초안 묶음 — 아직 Confluence 에 없는 문서의 초안이 목록 맨 위에 선다. */
-.nx-pl-fresh {
-  flex: none;
-  padding: 10px 12px 6px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.nx-pl-fresh-t {
-  margin: 0 0 4px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--ink3);
-}
-
-.nx-pl-fresh-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 2px;
-}
-
-/* 초안 칩 — 문서 줄의 이름 옆에 선다. 결과를 모르는 동안은 주황으로 눈에 뜬다. */
-.nx-pl-draft {
-  flex: none;
-  padding: 1px 8px;
-  border-radius: var(--r-pill);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.nx-pl-draft[data-tone="warn"] {
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
 /* 새 문서 창 — 제목 · 들어갈 자리 · 밑그림의 세 칸이다. */
 .nx-nd {
   width: min(480px, calc(100vw - 48px));
@@ -699,7 +509,7 @@
   display: grid;
   gap: 5px;
   color: var(--ink2);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .nx .nx-nd-field input,
@@ -710,19 +520,19 @@
   border-radius: var(--r-sm);
   background: var(--bg);
   color: var(--ink);
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
 }
 
 .nx-nd-fail {
   margin: 10px 0 0;
   color: var(--red);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 /* 제목의 한계 이유 — 제목 칸이 선로의 상한에서 멈출 때 왜인지 말한다(2026-10-23 화면 확인). */
 .nx-nd-limit {
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
 }
 
 /* 들어갈 자리가 하나도 없을 때의 안내 — 이유와 `새로 가져오기` 길을 먼저 보인다(2026-10-23 화면 확인). */
@@ -734,9 +544,32 @@
   border-radius: var(--r-md);
   background: var(--amber-soft);
   color: var(--amber);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .nx-nd-noplace p {
   margin: 0;
+}
+
+/* 공용 마크다운의 상대 크기를 문서 읽기 눈금에 맞춘다(2026-10-23 화면 전면 재설계 §4 C). */
+.nx-pl-body .md h1 {
+  font-size: var(--fs-h2);
+}
+.nx-pl-body .md h2 {
+  font-size: var(--fs-h3);
+}
+.nx-pl-body .md h3,
+.nx-pl-body .md h4 {
+  font-size: var(--fs-lg);
+}
+.nx-pl-body .md table {
+  font-size: var(--fs-ui);
+}
+.nx-pl-body .md code,
+.nx-pl-body .md pre code {
+  font-size: var(--fs-sm);
+}
+.nx-pl-body .md .md__codelang,
+.nx-pl-body .md .md__codeacts .ghost {
+  font-size: var(--fs-cap);
 }

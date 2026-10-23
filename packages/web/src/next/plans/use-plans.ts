@@ -24,6 +24,8 @@ export interface PlanDocBody {
 export interface PlansState {
   /** 원장 목록 — 아직 읽기 전이면 null, 읽었는데 아무것도 없으면 빈 배열이다. */
   docs: PlanDoc[] | null;
+  /** 원장이 정한 기준 페이지(2026-10-24 RS 4). */
+  roots: string[];
   /** Confluence 폴더 — 문서와 같은 나눔 경로로 목록에 폴더 줄을 세운다. */
   folders: PlanFolder[];
   /** 이 앱이 열지 못하는 Confluence 전용 항목(화이트보드 · 데이터베이스 등) — 읽기 전용 줄이다. */
@@ -41,6 +43,7 @@ export interface PlansState {
 
 const INITIAL: PlansState = {
   docs: null,
+  roots: [],
   folders: [],
   unsupported: [],
   drafts: [],
@@ -68,7 +71,10 @@ export interface PlansHand {
   importNow: () => void;
 }
 
-export function usePlans(daemon: Daemon): PlansHand {
+export function usePlans(daemon: Daemon, enabled = true): PlansHand {
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
+  const scope = useRef(0);
   const [state, setState] = useState<PlansState>(INITIAL);
   const apiRef = useRef(daemon.api);
   apiRef.current = daemon.api;
@@ -85,6 +91,7 @@ export function usePlans(daemon: Daemon): PlansHand {
 
   /** 초안 요약을 조용히 다시 읽는다 — 못 읽으면 이전 것을 그대로 둔다(칩은 곁가지다). */
   const loadDrafts = useCallback(() => {
+    if (!enabledRef.current) return;
     draftSeq.current += 1;
     const seq = draftSeq.current;
     apiRef.current
@@ -100,6 +107,7 @@ export function usePlans(daemon: Daemon): PlansHand {
 
   const loadList = useCallback(
     (quiet: boolean) => {
+      if (!enabledRef.current) return;
       loadDrafts();
       listSeq.current += 1;
       const seq = listSeq.current;
@@ -115,6 +123,7 @@ export function usePlans(daemon: Daemon): PlansHand {
           setState((before) => ({
             ...before,
             docs: reply.docs ?? [],
+            roots: reply.roots ?? [],
             folders: reply.folders ?? [],
             unsupported: reply.unsupported ?? [],
             listPhase: "ready",
@@ -134,6 +143,10 @@ export function usePlans(daemon: Daemon): PlansHand {
   );
 
   const reset = useCallback(() => {
+    scope.current += 1;
+    listSeq.current += 1;
+    draftSeq.current += 1;
+    listBusy.current = false;
     docSeq.current += 1;
     window.clearTimeout(endTimer.current);
     setState(INITIAL);
@@ -185,9 +198,11 @@ export function usePlans(daemon: Daemon): PlansHand {
   }, []);
 
   const importNow = useCallback(() => {
+    const startedIn = scope.current;
     window.clearTimeout(endTimer.current);
     setState((before) => ({ ...before, importing: true, importEnd: null }));
     const finish = (importEnd: PlanImportEnd) => {
+      if (startedIn !== scope.current) return;
       setState((before) => ({ ...before, importing: false, importEnd }));
       endTimer.current = window.setTimeout(
         () => setState((before) => ({ ...before, importEnd: null })),
@@ -198,6 +213,7 @@ export function usePlans(daemon: Daemon): PlansHand {
     apiRef.current
       .confluenceImportNow()
       .then((result) => {
+        if (startedIn !== scope.current) return;
         finish({ kind: "done", imported: result.imported, capped: result.capped });
         loadList(true);
       })

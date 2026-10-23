@@ -1,26 +1,28 @@
 /* 초안 편집기(2026-10-23 · 최종 구현 계획 F1) — 기획서 칸의 고치기 얼굴. plans.css 의 `.nx-pl-*` 와 같은
    토큰(--ink · --line · --accent …)만 읽고, 클래스는 `nx-dr-*` 로만 산다. 단추는 `.nx button` 의 초기화
-   (특이도 0,1,1)를 이기도록 `.nx` 를 앞에 단다. 문서 한 장(`.nx-pl-doc`)과 같은 폭 · 반경으로 서서
-   고치기 · 닫기가 오가도 칸이 출렁이지 않는다. */
+   (특이도 0,1,1)를 이기도록 `.nx` 를 앞에 단다. 읽기와 같은 종이 위에 편집한다
+   (2026-10-24 PL1 · 화면 전면 재설계 §3.4). */
+
+:where(.nx-dr-place-row, .nx-dr-check) > input {
+  accent-color: var(--accent);
+}
 
 .nx-dr {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  max-width: 780px;
+  gap: var(--sp-3);
+  width: 100%;
+  max-width: var(--w-read);
   margin: 0 auto;
-  padding: 22px 28px 32px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
+  padding: var(--nx-pl-pad-top) 0 0;
 }
 
 /* ---------- 머리 — 제목 한 줄, 그 아래 한 줄 상태와 단추(2026-10-23 기획자 화면 손질 D3) ----------
    단추가 제목과 한 줄을 나누면 제목이 낱말마다 꺾였다 — 제목은 첫 줄을 다 쓴다. */
 .nx-dr-hd {
   display: grid;
-  gap: 8px;
-  padding-bottom: 12px;
+  gap: var(--sp-2);
+  padding-bottom: var(--sp-3);
   border-bottom: 1px solid var(--line-soft);
 }
 
@@ -29,7 +31,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px 12px;
+  gap: var(--sp-2) var(--sp-3);
   min-width: 0;
 }
 
@@ -37,7 +39,7 @@
   flex: 1 1 auto;
   min-width: 0;
   display: grid;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 /* 눌러 고치는 제목 — 대화 이름 바꾸기와 같은 말이다: 눌러야 고칠 수 있다는 뜻이다. */
@@ -45,14 +47,14 @@
   display: block;
   width: 100%;
   margin: 0;
-  padding: 2px 6px;
+  padding: 0;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink);
-  font-size: 19px;
-  font-weight: 650;
-  line-height: 1.35;
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-semi);
+  line-height: var(--lh-tight);
   text-align: start;
   overflow-wrap: anywhere;
 }
@@ -67,162 +69,56 @@
 
 .nx .nx-dr-title-in {
   width: 100%;
-  height: 34px;
-  padding: 0 8px;
-  border: 1px solid var(--accent);
-  border-radius: var(--r-sm);
-  box-shadow: 0 0 0 3px var(--accent-soft);
-  background: var(--bg);
-  color: var(--ink);
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-semi);
 }
 
 .nx-dr-meta {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 10px;
-  padding-inline-start: 6px;
+  gap: var(--sp-1) var(--sp-3);
   color: var(--ink3);
-  font-size: 12.5px;
-}
-
-/* 업무 단계 표기 배지 — 제목의 `v0.8` 같은 원문 표기다. */
-.nx-dr-stage {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 1px 8px;
-  border-radius: var(--r-pill);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.nx-dr-stage-note {
-  font-weight: 400;
-  color: var(--ink2);
-}
-
-/* `아직 발행 전` — 이 컴퓨터의 보관과 팀의 공식본을 가르는 조용한 알약(경고가 아니라 처지다). */
-.nx-dr-unpub {
-  padding: 1px 8px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-pill);
-  background: var(--bg-2);
-  color: var(--ink2);
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.nx-dr-acts-hd {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-inline-start: auto;
-}
-
-/* 발행 단추 안의 `꺼짐` — 게이트가 꺼진 동안 누르기 전에 말한다(2026-10-23 기획자 화면 손질 U2). */
-.nx-dr-off {
-  margin-inline-start: 6px;
-  padding: 0 6px;
-  border-radius: var(--r-pill);
-  background: var(--bg-2);
-  color: var(--ink3);
-  font-size: 11.5px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
 }
 
 /* 이어 보기 막대의 `초안` 표시 — 지금 문서가 아니라 그 초안을 본다는 말이다. */
 .nx-dr-chip {
   flex: none;
-  padding: 1px 8px;
+  padding: 1px var(--sp-2);
   border-radius: var(--r-pill);
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-/* ---------- 알림 줄 — 색만이 아니라 글로 알린다 ---------- */
-.nx-dr-lock,
-.nx-dr-fail {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px 10px;
-  margin: 0;
-  padding: 9px 12px;
-  border-radius: var(--r-md);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.nx-dr-lock {
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
-.nx-dr-fail {
-  background: var(--red-soft);
-  color: var(--ink2);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
 }
 
 /* 입력 한계의 이유 한 줄 — 칸이 선로의 상한에서 멈출 때 왜인지 말한다(2026-10-23 화면 확인). */
 .nx-dr-limit {
   margin: 0;
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
 }
 
 /* ---------- 처지 띠 · 발행 확인 창(2026-10-23 · 최종 구현 계획 F2) ---------- */
-.nx-dr-band {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px 12px;
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: var(--r-md);
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-
-.nx-dr-band--warn {
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
-.nx-dr-band--ok {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.nx-dr-band--conflict {
-  background: var(--red-soft);
-  color: var(--red);
-}
-
-/* 결과 확인 필요 — 상태 문장 띠와 그 아래 손(2026-10-23 화면 확인). */
+/* 결과 확인 필요 — 상태 문장 띠와 그 아래 손(2026-10-23 화면 확인). 둘은 한 틀이다(2026-10-24 QA 16): 앱 공통의 문제 띠
+   (`nx-banner` — 톤 · 아이콘 · 글 · 단추)가 한 상자로 서도록 손 줄이 띠 바로 아래에 같은 톤 · 테두리 · 반경으로 이어 닫는다.
+   마크업은 그대로다 — 띠(role="status")는 상태 문장만 읽히고 단추 · 확인판은 띠 밖에 선다(R2 검토 9). 확인판은 상자 밖 아래의 제 카드다. */
 .nx-dr-bandwrap {
   display: grid;
-  gap: 6px;
+  gap: 0;
+}
+
+/* 띠의 아래 테두리 · 모서리는 손 줄이 맡는다 — 둘 사이에 선이 지나지 않는다. */
+.nx-dr-bandwrap > .nx-dr-band--warn {
+  border-bottom-width: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 /* 상태 문장 띠 — 제목과 몸의 글이 세로로 선다. */
-.nx-dr-band--stack {
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.nx-dr-band--stack b {
-  color: inherit;
-}
-
 .nx-dr-band-s {
-  margin: 2px 0 0;
+  margin: var(--sp-0_5) 0 0;
   color: var(--ink2);
 }
 
@@ -230,18 +126,24 @@
   flex: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
-.nx-dr-bandwrap .nx-dr-band-act {
-  padding: 0 2px;
+/* 손 줄 — 띠(`nx-banner--amber`)와 같은 바탕 · 테두리에 위 선 · 위 모서리가 없다. 단추는 글과 같은 왼쪽 끝에서 시작한다 —
+   앞 그림(15px) + 사이(12px). 글과 단추 사이는 띠의 아래 여백(12px)이 맡는다. */
+.nx-dr-bandwrap > .nx-dr-band-act {
+  padding: 0 var(--sp-4) var(--sp-3) calc(var(--sp-4) + 15px + var(--sp-3));
+  border: 1px solid color-mix(in srgb, var(--amber) 32%, transparent);
+  border-top-width: 0;
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  background: var(--amber-soft);
 }
 
 /* 절 이름의 한계 이유 — 절 칸 아래 제 첫 줄에 선다(2026-10-23 화면 확인). */
 .nx-dr-refsec {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 .nx-dr-refsec .nx-dr-limit {
@@ -260,33 +162,27 @@
 .nx-pb-note {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   margin: 0;
   color: var(--ink3);
-  font-size: 13px;
-}
-
-.nx-pb-fail {
-  margin: 10px 0 0;
-  color: var(--red);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .nx-pb-facts {
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
   margin: 0;
 }
 
 .nx-pb-fact {
   display: grid;
   grid-template-columns: 64px 1fr;
-  gap: 10px;
+  gap: var(--sp-3);
 }
 
 .nx-pb-fact dt {
   color: var(--ink3);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.6;
 }
 
@@ -294,7 +190,7 @@
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
 }
 
 .nx-pb-before {
@@ -302,16 +198,16 @@
 }
 
 .nx-pb-vers {
-  margin: 12px 0 0;
+  margin: var(--sp-3) 0 0;
   color: var(--ink2);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
 }
 
 .nx-pb-sec-t {
-  margin: 16px 0 6px;
-  font-size: 12.5px;
-  font-weight: 600;
+  margin: var(--sp-4) 0 var(--sp-1_5);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
   color: var(--ink2);
 }
 
@@ -321,96 +217,55 @@
   padding: 0;
   display: grid;
   gap: 3px;
-  font-size: 13px;
+  font-size: var(--fs-sm);
 }
 
 .nx-pb-stage-note {
-  margin: 16px 0 6px;
+  margin: var(--sp-4) 0 var(--sp-1_5);
   color: var(--amber);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 /* 새 표기의 한계 이유 — 표기 칸이 선로의 상한에서 멈출 때 왜인지 말한다(2026-10-23 화면 확인). */
 .nx-pb-limit {
-  margin: 6px 0 0;
+  margin: var(--sp-1_5) 0 0;
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
 }
 
 .nx-pb-stage-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-}
-
-.nx-pb-stage-field {
-  display: grid;
-  gap: 4px;
-  color: var(--ink2);
-  font-size: 12.5px;
+  gap: var(--sp-3);
 }
 
 .nx .nx-pb-stage-in {
   width: 96px;
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid var(--line2);
-  border-radius: var(--r-sm);
-  background: var(--bg);
-  color: var(--ink);
-  font-size: 13px;
   font-variant-numeric: tabular-nums;
-}
-
-.nx .nx-pb-stage-field select {
-  height: 30px;
-  padding: 0 6px;
-  border: 1px solid var(--line2);
-  border-radius: var(--r-sm);
-  background: var(--bg);
-  color: var(--ink);
-  font-size: 13px;
 }
 
 .nx-pb-blockers {
   list-style: none;
-  margin: 16px 0 0;
+  margin: var(--sp-4) 0 0;
   padding: 0;
   display: grid;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 .nx-pb-blocker {
-  display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px 12px;
-  padding: 8px 10px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r);
-  background: var(--bg-2);
-  font-size: 12.5px;
-}
-
-.nx-pb-result {
-  margin: 14px 0 0;
-  padding: 9px 12px;
-  border-radius: var(--r-md);
-  background: var(--blue-soft);
-  color: var(--ink2);
-  font-size: 12.5px;
 }
 
 .nx-pb-foot {
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .nx-pb-foot-act {
   flex: 1 1 auto;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 .nx .nx-pb a.nx-btn {
@@ -420,8 +275,8 @@
 /* 읽는 중 — 문서 한 장의 뼈대와 같은 모양이다. */
 .nx-dr-skel {
   display: grid;
-  gap: 10px;
-  padding: 6px 0 2px;
+  gap: var(--sp-3);
+  padding: var(--sp-1_5) 0 var(--sp-0_5);
 }
 
 .nx-dr-skel i {
@@ -455,13 +310,13 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--sp-1);
   min-width: 0;
 }
 
 .nx-dr-block {
   position: relative;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid transparent;
   border-radius: var(--r);
 }
@@ -474,7 +329,8 @@
 
 .nx-dr-read {
   min-width: 0;
-  font-size: 14px;
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
 }
 
 /* 배지가 선 블록은 글이 배지 밑으로 들어가지 않게 오른쪽을 비운다 — 좁은 칸에서 `…따른다고침` 처럼 겹쳤다
@@ -507,27 +363,8 @@
 /* 처지 배지 — 블록의 오른쪽 위에 조용히 선다. */
 .nx-dr-badge {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  padding: 1px 8px;
-  border-radius: var(--r-pill);
-  font-size: 11.5px;
-  font-weight: 600;
-}
-
-.nx-dr-badge[data-status="changed"] {
-  background: var(--blue-soft);
-  color: var(--blue);
-}
-
-.nx-dr-badge[data-status="new"] {
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-
-.nx-dr-badge[data-status="conflict"] {
-  background: var(--red-soft);
-  color: var(--red);
+  top: var(--sp-2);
+  right: var(--sp-2);
 }
 
 /*
@@ -537,54 +374,44 @@
  */
 .nx-dr-acts {
   position: absolute;
-  top: -22px;
-  right: 6px;
+  top: -28px;
+  right: var(--sp-1_5);
   z-index: 3;
   display: flex;
-  flex-wrap: wrap;
-  gap: 2px;
-  padding: 2px;
+  gap: var(--sp-0_5);
+  padding: var(--sp-0_5);
   border: 1px solid var(--line-soft);
   border-radius: var(--r);
   background: var(--bg);
-  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+  box-shadow: var(--elev-1);
   opacity: 0;
   pointer-events: none;
   transition: opacity var(--nx-t-touch) var(--drift);
 }
 
+/* 첫 손잡이는 머리 아래 블록 안에 둔다. 글과 배지도 그 아래에서 시작한다(2026-10-24 QA 9 · FXD). */
+.nx-dr-block:first-child:has(> .nx-dr-acts) {
+  padding-top: var(--sp-12);
+}
+
+.nx-dr-block:first-child > .nx-dr-acts {
+  top: var(--sp-1_5);
+}
+
+.nx-dr-block:where(:first-child:has(> .nx-dr-acts)) > .nx-dr-badge {
+  top: var(--sp-12);
+}
+
 .nx-dr-block:hover .nx-dr-acts,
-.nx-dr-block:focus-within .nx-dr-acts {
+.nx-dr-block:focus-within .nx-dr-acts,
+.nx-dr-acts[data-open="true"] {
   opacity: 1;
   pointer-events: auto;
 }
 
-.nx .nx-dr-act {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 24px;
-  padding: 0 7px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--ink3);
-  font-size: 12px;
-}
-
-.nx .nx-dr-act:hover:not(:disabled) {
-  background: var(--nx-hover);
-  color: var(--ink);
-}
-
-.nx .nx-dr-act:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
 /* ---------- 보존 조각 — 여기서 고치지 않는다 ---------- */
 .nx-dr-keep {
-  padding: 8px 12px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px dashed var(--line2);
   border-radius: var(--r);
   background: var(--bg-2);
@@ -592,37 +419,37 @@
 
 .nx-dr-keep-t {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
   color: var(--ink2);
 }
 
 .nx-dr-keep-b {
-  margin: 2px 0 0;
-  font-size: 12px;
+  margin: var(--sp-0_5) 0 0;
+  font-size: var(--fs-cap);
   color: var(--ink3);
 }
 
-/* ---------- 충돌 — 내 것과 Confluence 것을 나란히 ---------- */
+/* ---------- 충돌 — 내 것과 Confluence 것을 위아래로 ---------- */
 .nx-dr-conflict {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-3);
   min-width: 0;
 }
 
 .nx-dr-side {
   min-width: 0;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--line-soft);
   border-radius: var(--r);
   background: var(--bg);
 }
 
 .nx-dr-side-t {
-  margin: 0 0 4px;
-  font-size: 12px;
-  font-weight: 600;
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
   color: var(--ink3);
 }
 
@@ -630,8 +457,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  margin-top: 6px;
+  gap: var(--sp-1_5);
+  margin-top: var(--sp-1_5);
   padding-right: 64px;
 }
 
@@ -639,9 +466,9 @@
 .nx-dr-add {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-  padding: 6px;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  padding: var(--sp-1_5);
   border: 1px dashed var(--line2);
   border-radius: var(--r);
 }
@@ -649,9 +476,9 @@
 /* ---------- 고치는 칸 ---------- */
 .nx-dr-pane {
   display: grid;
-  gap: 8px;
-  margin-top: 6px;
-  padding: 10px 12px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1_5);
+  padding: var(--sp-3) var(--sp-3);
   border: 1px solid var(--accent);
   border-radius: var(--r-md);
   box-shadow: 0 0 0 3px var(--accent-soft);
@@ -661,94 +488,64 @@
 .nx-dr-pane-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-width: 0;
 }
 
 .nx .nx-dr-level {
   flex: none;
   width: 64px;
-  height: 30px;
-  padding: 0 4px;
-  border: 1px solid var(--line2);
-  border-radius: var(--r-sm);
-  background: var(--bg);
-  color: var(--ink);
-  font-size: 13px;
 }
 
 .nx .nx-dr-line {
   flex: 1 1 auto;
   min-width: 0;
-  height: 30px;
-  padding: 0 8px;
-  border: 1px solid var(--line2);
-  border-radius: var(--r-sm);
-  background: var(--bg);
-  color: var(--ink);
-  font-size: 13.5px;
 }
 
 .nx .nx-dr-area {
   width: 100%;
-  box-sizing: border-box;
-  padding: 7px 9px;
-  border: 1px solid var(--line2);
-  border-radius: var(--r-sm);
-  background: var(--bg);
-  color: var(--ink);
-  font: inherit;
-  font-size: 13.5px;
-  line-height: 1.55;
-  resize: vertical;
+
+  line-height: var(--lh-read);
 }
 
 .nx-dr-check {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   color: var(--ink2);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 /* 표 고치기 — 좁은 창에서는 가로로 스크롤된다. */
 .nx-dr-sheet-wrap {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-1_5);
   min-width: 0;
 }
 
 .nx-dr-sheet {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-bottom: 2px;
+  gap: var(--sp-1);
+  padding-bottom: var(--sp-0_5);
   overflow-x: auto;
 }
 
 .nx-dr-sheet-row {
   display: flex;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .nx .nx-dr-cell {
   flex: 1 0 120px;
-  box-sizing: border-box;
-  padding: 5px 7px;
-  border: 1px solid var(--line2);
-  border-radius: var(--r-sm);
-  background: var(--bg);
-  color: var(--ink);
-  font: inherit;
-  font-size: 12.5px;
-  line-height: 1.5;
-  resize: vertical;
+
+  min-height: 0;
 }
 
 /* 머리 셀 — 굵게, 한 톤 어두운 바탕으로. */
 .nx .nx-dr-cell--head {
-  font-weight: 650;
+  font-weight: var(--fw-semi);
   background: var(--bg-2);
 }
 
@@ -756,7 +553,7 @@
 .nx-dr-pane-act {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 .nx-dr-pane-act {
@@ -767,13 +564,13 @@
 .nx-dr-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: var(--sp-1) var(--sp-3);
   margin: 0;
-  padding: 6px 8px;
+  padding: var(--sp-1_5) var(--sp-2);
   border-radius: var(--r-sm);
   background: var(--bg-2);
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
 }
 
 .nx-dr-legend-item {
@@ -785,27 +582,28 @@
   margin: 0;
 }
 
+/* 결과 확인 필요 띠의 확인판(`재전송 없이 종료`)은 상자 밖 아래의 제 카드 — 상자와 한 칸 떨어져 선다(2026-10-24 QA 16). */
+.nx-dr-bandwrap > .nx-dr-confirm {
+  margin-top: var(--sp-2);
+}
+
 .nx-dr-empty {
   display: grid;
   justify-items: center;
-  gap: 10px;
-  padding: 28px 16px;
+  gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-4);
   text-align: center;
 }
 
 .nx-dr-empty p {
   margin: 0;
   color: var(--ink3);
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 1.6;
 }
 
 /* ---------- 좁은 칸 — 충돌의 두 쪽이 위아래로 선다 ---------- */
 @container nxpl (max-width: 520px) {
-  .nx-dr {
-    padding: 14px 14px 22px;
-  }
-
   .nx-dr-conflict {
     grid-template-columns: 1fr;
   }
@@ -813,26 +611,19 @@
   .nx-dr-conflict-act {
     padding-right: 0;
   }
-
-  .nx-dr-thread {
-    padding: 12px 12px 16px;
-  }
 }
 
 /* ---------- 기획 대화 — 편집기 곁의 대화 칸(2026-10-23 · 최종 구현 계획 F1).
    넓은 칸에서는 편집기 오른쪽에, 좁은 칸에서는 아래에 선다(@container nxpl). ---------- */
+/* 편집기와 대화는 여백 없는 두 칸이다. 종이 여백은 편집기 쪽만 가진다(2026-10-24 PL1). */
 .nx-dr-with {
   display: grid;
-  gap: 14px;
   align-items: start;
-  max-width: 1280px;
-  margin: 0 auto;
+  width: 100%;
 }
 
-/* 판 안에서는 편집기가 가운데 정렬을 내려놓고 칸을 채운다 — 대화 칸과 나란히 서기 위해서다. */
-.nx-dr-with .nx-dr {
-  max-width: none;
-  margin: 0;
+.nx-pl-view.nx-pl-view--draft {
+  padding: 0;
 }
 
 /*
@@ -842,6 +633,15 @@
  * 꺾이고 블록 손잡이가 글을 덮었다). 이때 두 쪽은 따로 구른다 — 문서를 내려 읽어도 기획 대화의 입력이 바닥에 남고, 초안
  * 머리(제목 · 발행)가 위에 붙는다.
  */
+.nx-pl-view--draft .nx-dr-hd {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  margin: calc(-1 * var(--nx-pl-pad-top)) calc(-1 * var(--nx-pl-pad-x)) 0;
+  padding: var(--nx-pl-pad-top) var(--nx-pl-pad-x) var(--sp-3);
+  background: var(--bg);
+}
+
 @container nxpl (min-width: 820px) {
   .nx-dr-with {
     grid-template-columns: minmax(0, 1fr) minmax(280px, min(34%, 400px));
@@ -865,17 +665,6 @@
     min-height: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
-    border-radius: var(--r-lg);
-  }
-
-  .nx-pl-view--draft .nx-dr-hd {
-    position: sticky;
-    top: -12px;
-    z-index: 4;
-    margin: -22px -28px 0;
-    padding: 22px 28px 12px;
-    border-radius: var(--r-lg) var(--r-lg) 0 0;
-    background: var(--card);
   }
 
   .nx-pl-view--draft .nx-dr-thread {
@@ -892,18 +681,52 @@
 
 /*
  * 좁은 칸(820px 미만) — 문서와 기획 대화가 위아래로 서는 동안 기획 대화는 칸 바닥에 붙는 판이 된다(2026-10-23 기획자
- * 화면 손질 U3). 문서를 내려 읽어도 AI 의 입력이 늘 보이고, 기록은 판 안에서 구른다. 판은 칸 높이의 절반을 넘지 않는다.
- * 문서 끝에 닿으면 판은 제 자리(문서 아래)에 앉는다.
+ * 화면 손질 U3). 문서를 내려 읽어도 AI 의 입력이 늘 보이고, 기록은 판 안에서 구른다. 변경안을 읽을 높이를 확보하고,
+ * 펼치면 문서 칸의 대부분을 쓴다(2026-10-24 QA 2 · FXD). 문서 끝에 닿으면 판은 제 자리(문서 아래)에 앉는다.
  */
 @container nxpl (max-width: 819px) {
   .nx-pl-view--draft .nx-dr-thread {
     position: sticky;
     bottom: 0;
     z-index: 5;
-    max-height: min(40vh, 400px);
+    border-inline-start: 0;
+    border-top: 1px solid var(--line);
+    height: min(56vh, 520px);
+    max-height: min(56vh, 520px);
     overflow-y: auto;
     overscroll-behavior: contain;
     box-shadow: 0 -10px 28px rgb(0 0 0 / 12%);
+  }
+
+  .nx-pl-view--draft .nx-dr-thread[data-expanded="true"] {
+    height: 82vh;
+    max-height: 82vh;
+  }
+
+  .nx-pl-view--draft .nx-dr-thread-hd {
+    align-items: center;
+  }
+
+  .nx-dr-thread-target {
+    flex: 1 1 0;
+  }
+
+  .nx .nx-pl-view--draft .nx-dr-thread-toggle {
+    display: inline-flex;
+    margin-inline-start: auto;
+  }
+
+  .nx-dr-thread-scope {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nx .nx-dr-thread-row > textarea {
+    field-sizing: content;
+    min-height: calc(2lh + var(--sp-4) + 2px);
+    max-height: calc(4lh + var(--sp-4) + 2px);
   }
 
   .nx-pl-view--draft .nx-dr-thread-log {
@@ -917,33 +740,37 @@
 .nx-dr-thread {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--card);
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  border-inline-start: 1px solid var(--line);
+  background: var(--side);
 }
 
 .nx-dr-thread-hd {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 4px 10px;
-  padding-bottom: 8px;
+  gap: var(--sp-1) var(--sp-3);
+  padding-bottom: var(--sp-2);
   border-bottom: 1px solid var(--line-soft);
 }
 
 .nx-dr-thread-title {
   margin: 0;
-  font-size: 14px;
-  font-weight: 650;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semi);
   color: var(--ink);
+}
+
+.nx .nx-dr-thread-toggle {
+  display: none;
 }
 
 .nx-dr-thread-target {
   min-width: 0;
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -954,33 +781,33 @@
   flex-basis: 100%;
   margin: 0;
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
   line-height: 1.5;
 }
 
 .nx-dr-thread-log {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--sp-3);
 }
 
 .nx-dr-thread-empty {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   margin: 0;
-  padding: 10px 12px;
+  padding: var(--sp-3) var(--sp-3);
   border-radius: var(--r-md);
   background: var(--bg-2);
   color: var(--ink3);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.6;
 }
 
 /* 말 한 편 — 사람의 말은 알약으로 오른쪽에, AI 의 말은 왼쪽에 붙인다. */
 .nx-dr-msg {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-1_5);
   min-width: 0;
 }
 
@@ -996,30 +823,31 @@
   border-radius: var(--r-md);
   background: var(--accent-soft);
   color: var(--ink);
-  font-size: 13px;
-  line-height: 1.6;
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
 .nx-dr-msg-md {
   min-width: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
 }
 
 .nx-dr-msg-reads {
   margin: 0;
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
 }
 
 .nx-dr-msg-err {
   margin: 0;
-  padding: 7px 10px;
+  padding: 7px var(--sp-3);
   border-radius: var(--r-md);
   background: var(--red-soft);
   color: var(--ink2);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -1029,7 +857,7 @@
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--sp-1);
   margin: 0;
   padding: 0;
 }
@@ -1037,34 +865,20 @@
 .nx-dr-refchip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: var(--sp-1);
+  padding: var(--sp-0_5) var(--sp-2);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-pill);
   background: var(--bg-2);
   color: var(--ink2);
-  font-size: 11.5px;
-}
-
-.nx .nx-dr-refchip-x {
-  display: inline-flex;
-  align-items: center;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink3);
-  cursor: pointer;
-}
-
-.nx .nx-dr-refchip-x:hover {
-  color: var(--ink);
+  font-size: var(--fs-cap);
 }
 
 /* 도는 중 — 누적 설명과 취소. */
 .nx-dr-working {
   display: grid;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: var(--sp-1_5);
+  padding: var(--sp-2) var(--sp-3);
   border: 1px dashed var(--line2);
   border-radius: var(--r-md);
 }
@@ -1073,23 +887,23 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 10px;
+  gap: var(--sp-1) var(--sp-3);
 }
 
 .nx-dr-working-line {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   margin: 0;
   color: var(--ink2);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 /* 변경안 카드 — 요약 · 걸음 · 미리보기 · 채택 단추. */
 .nx-dr-prop {
   display: grid;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-md);
   background: var(--bg);
@@ -1097,14 +911,14 @@
 
 .nx-dr-prop-sum {
   margin: 0;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
 }
 
 .nx-dr-prop-steps {
   list-style: none;
   display: grid;
-  gap: 6px;
+  gap: var(--sp-1_5);
   margin: 0;
   padding: 0;
 }
@@ -1112,8 +926,8 @@
 .nx-dr-prop-step {
   position: relative;
   display: grid;
-  gap: 4px;
-  padding: 6px 8px;
+  gap: var(--sp-1);
+  padding: var(--sp-1_5) var(--sp-2);
   border: 1px solid transparent;
   border-radius: var(--r);
 }
@@ -1124,66 +938,55 @@
 }
 
 .nx-dr-prop-step .nx-dr-check {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 /* 걸음의 배지는 블록의 것과 달리 줄 안에 선다. */
 .nx-dr-prop-step .nx-dr-badge {
-  position: static;
-  justify-self: start;
-}
-
-.nx-dr-badge[data-op="adopted"] {
-  background: var(--blue-soft);
-  color: var(--blue);
-}
-
-.nx-dr-badge[data-op="rejected"] {
-  background: var(--bg-2);
-  color: var(--ink3);
-}
-
-.nx-dr-badge[data-op="stale"] {
-  background: var(--amber-soft);
-  color: var(--amber);
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
 }
 
 .nx-dr-prop-note {
   margin: 0;
   color: var(--amber);
-  font-size: 12px;
-}
-
-.nx-dr-prop-preview summary {
-  cursor: pointer;
-  color: var(--ink3);
-  font-size: 12px;
-}
-
-.nx-dr-prop-preview .nx-dr-read {
-  margin-top: 6px;
-  padding: 8px 10px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r);
-  background: var(--bg-2);
-  font-size: 12.5px;
+  font-size: var(--fs-cap);
 }
 
 .nx-dr-prop-acts {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line-soft);
+  background: var(--bg);
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.nx-dr-prop-acts > button {
+  flex: none;
 }
 
 /* 입력 — 여러 줄 칸, 근거 칩 줄, 근거 고르기 판. */
 .nx-dr-thread-form {
+  flex: none;
+  margin-top: auto;
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
+}
+
+/* 옆 칸 입력은 세 줄, 바닥 판은 두 줄부터 자란다(2026-10-24 QA 2 · FXD). */
+.nx .nx-dr-thread-row > textarea {
+  resize: none;
 }
 
 .nx-dr-thread-row {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 .nx-dr-thread-acts {
@@ -1191,20 +994,20 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .nx-dr-refpick {
   display: grid;
-  gap: 8px;
-  padding: 10px;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
   border: 1px dashed var(--line2);
   border-radius: var(--r-md);
 }
 
 .nx-dr-refpick-hd {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 .nx-dr-refpick-hd .nx-dr-line {
@@ -1215,7 +1018,7 @@
 .nx-dr-reflist {
   list-style: none;
   display: grid;
-  gap: 2px;
+  gap: var(--sp-0_5);
   max-height: 220px;
   overflow-y: auto;
   margin: 0;
@@ -1227,14 +1030,14 @@
   flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 2px 10px;
+  gap: var(--sp-0_5) var(--sp-3);
   width: 100%;
-  padding: 6px 8px;
+  padding: var(--sp-1_5) var(--sp-2);
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   text-align: start;
 }
 
@@ -1253,17 +1056,17 @@
 
 .nx-dr-refrow-m {
   color: var(--ink3);
-  font-size: 11.5px;
+  font-size: var(--fs-cap);
 }
 
 .nx-dr-refnone {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-3);
   color: var(--ink3);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 /* 절 이름 칸 — 벌임과 이유 줄은 위의 .nx-dr-refsec 가 함께 말한다. */
@@ -1277,5 +1080,208 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
+}
+
+/* 공통 부품에 없는 배치만 둔다(2026-10-23 화면 전면 재설계 §4 D). */
+.nx-dr-main {
+  min-width: 0;
+  padding: 0 var(--nx-pl-pad-x);
+}
+/* 끝 여백을 실제 내용 높이에 넣는다. padding은 머리의 붙는 범위에서 빠진다(2026-10-24 QA 1 · FXD). */
+.nx-dr-main > .nx-dr::after {
+  content: "";
+  flex: none;
+  height: calc(var(--nx-pl-pad-bottom) - var(--sp-3));
+}
+.nx-dr-read .md,
+.nx-dr-msg-md .md {
+  font-size: inherit;
+  line-height: var(--lh-read);
+}
+.nx-dr-prop-compare {
+  display: grid;
+  gap: var(--sp-1_5);
+  min-width: 0;
+}
+.nx-dr-prop-version {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.nx-dr-prop-version--after {
+  background: var(--blue-soft);
+}
+.nx-dr-prop-version-label {
+  color: var(--ink2);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
+}
+.nx-dr-prop-version > p {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink2);
+}
+.nx-dr-prop-version .nx-dr-read {
+  font-size: var(--fs-ui);
+}
+.nx-dr-prop-step .nx-dr-check {
+  align-items: flex-start;
+}
+.nx-dr-place-row > input,
+.nx-dr-place-row > svg {
+  flex: none;
+}
+.nx-dr-place-row > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-dr-noplace {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.nx-dr-noplace > p {
+  margin: 0;
+}
+.nx-dr-prop-step .nx-dr-check input {
+  flex: none;
+  margin-top: var(--sp-1);
+}
+.nx-dr-prop-step .nx-dr-check span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.nx-dr-refchip {
+  min-height: var(--h-sm);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.nx-dr-refchip-x {
+  flex: none;
+}
+.nx-pb-counts {
+  margin: 0;
+  font-size: var(--fs-read);
+  font-weight: var(--fw-semi);
+}
+.nx-pb .nx-mbody {
+  display: grid;
+  gap: var(--sp-4);
+}
+.nx-pb .nx-pb-sec-t,
+.nx-pb .nx-pb-vers,
+.nx-pb .nx-pb-blockers,
+.nx-pb .nx-pb-stage-note {
+  margin-top: 0;
+}
+.nx-pb .nx-banner {
+  margin: 0;
+}
+.nx-pb-stage-row > .nx-field {
+  flex: 1 1 140px;
+}
+.nx .nx-pb-stage-in {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+.nx-dr-place {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.nx-dr-place legend {
+  padding: 0;
+  margin-bottom: var(--sp-1_5);
+}
+.nx-dr-place > p {
+  margin: 0 0 var(--sp-1_5);
+}
+.nx-dr-place-list {
+  max-height: 192px;
+  overflow: auto;
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  background: var(--cmp);
+}
+.nx-dr-place-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  height: var(--h-row);
+  padding-inline-end: var(--sp-2);
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+}
+.nx-dr-place-row:hover {
+  background: var(--nx-hover);
+}
+.nx-dr-place-row[data-selected="true"] {
+  background: var(--accent-soft);
+}
+.nx-dr-place-row:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+@media (hover: none) {
+  .nx-dr-acts {
+    position: static;
+    width: fit-content;
+    margin-top: var(--sp-2);
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* 마크다운의 비율 글자는 반 픽셀을 만들므로 읽는 칸에서 정수 토큰으로 정한다. */
+.nx-dr-read .md h1,
+.nx-dr-msg-md .md h1 {
+  font-size: var(--fs-h2);
+}
+.nx-dr-read .md h2,
+.nx-dr-msg-md .md h2 {
+  font-size: var(--fs-h3);
+}
+.nx-dr-read .md h3,
+.nx-dr-msg-md .md h3,
+.nx-dr-read .md h4,
+.nx-dr-msg-md .md h4 {
+  font-size: var(--fs-lg);
+}
+.nx-dr-read .md table,
+.nx-dr-msg-md .md table {
+  font-size: var(--fs-ui);
+}
+.nx-dr-read .md code,
+.nx-dr-msg-md .md code {
+  font-size: var(--fs-sm);
+}
+
+/* 공통 모달의 이전 글자 크기는 내 창 안에서 토큰으로 맞춘다. */
+.nx :is(.nx-pb, .nx-nd) .nx-mhd h2 {
+  font-size: var(--fs-h3);
+}
+.nx :is(.nx-pb, .nx-nd) .nx-mhd p {
+  font-size: var(--fs-sm);
+}
+
+.nx-dr-stage-note {
+  color: var(--ink2);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-regular);
+}
+
+.nx-dr-acts-hd {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-1_5);
+  margin-inline-start: auto;
 }

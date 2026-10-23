@@ -10,8 +10,9 @@ import { ChevronRightIcon, PencilIcon, PlansDocIcon, PlusIcon } from "../ui/icon
 const SHOWN = 3;
 
 /**
- * 홈의 기획서 묶음(2026-10-23 기획자 화면 손질 D4) — 기획서를 연결한 프로젝트의 홈에만 선다. 기획자가 홈에서 곧장
- * 작성 중인 초안으로 돌아가고(누르면 그 초안이 기획서 칸의 편집기로 열린다 — 넓은 창은 집중 배치), 새 문서를 연다.
+ * 홈의 `기획서` 시작 카드(2026-10-23 기획자 화면 손질 D4 · 화면 전면 재설계 §3.6) — 기획서를 연결한 프로젝트의
+ * 홈에만 선다. `화면` 카드와 같은 머리 모양(아이콘 · 이름 · 오른쪽 단추)에 작성 중인 초안 셋이 몸통이다.
+ * 줄을 누르면 그 초안이 기획서 칸의 편집기로 열리고(넓은 창은 집중 배치), `새 문서` 로 시작한다.
  *
  * 초안 목록은 셸이 한 번 읽은 것(`useDraftSummaries` — 이 컴퓨터의 초안 저장소)이다. 아직 읽기 전이면(null) 줄 자리를 비워
  * 두고, 읽었는데 없으면 그렇게 말한다. 연결이 끊겼으면 머리 줄이 그 사실을 말하고 `새 문서` 가 잠긴다(기획서 칸의 막대와 같다).
@@ -31,20 +32,20 @@ export function HomePlans({
   const shown = rows?.slice(0, SHOWN) ?? [];
   const more = rows === null ? 0 : rows.length - shown.length;
   return (
-    <section className="nx-hplans" aria-label={L.home.plansTitle}>
-      <div className="nx-hplans-hd">
-        <span className="nx-hplans-ic" aria-hidden="true">
+    <section className="nx-hcard" aria-label={L.home.plansTitle}>
+      <div className="nx-hcard-hd">
+        <span className="nx-hcard-ic" aria-hidden="true">
           <PlansDocIcon />
         </span>
-        <div className="nx-hplans-t">
-          <b className="nx-hplans-name">{L.home.plansTitle}</b>
-          <span className={`nx-hplans-scope${summary.expired ? " nx-hplans-scope--warn" : ""}`}>
+        <div className="nx-hcard-t">
+          <b className="nx-hcard-name">{L.home.plansTitle}</b>
+          <span className={`nx-hcard-sub${summary.expired ? " nx-hcard-sub--warn" : ""}`}>
             {summary.expired
               ? L.plans.statusExpired
               : L.home.plansScope(summary.rootTitle, summary.pages)}
           </span>
         </div>
-        <div className="nx-hplans-acts">
+        <div className="nx-hcard-acts">
           <button
             type="button"
             className="nx-btn nx-btn--sm"
@@ -62,7 +63,7 @@ export function HomePlans({
         </div>
       </div>
       {rows !== null && (
-        <div className="nx-hplans-body">
+        <div className="nx-hcard-bd">
           <h3 className="nx-hplans-sub">{L.home.plansInProgress}</h3>
           {shown.length === 0 ? (
             <p className="nx-hplans-none">{L.home.plansNone}</p>

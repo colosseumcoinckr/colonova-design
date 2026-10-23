@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   Ellipsis,
   Eye,
   History,
@@ -64,3 +65,5 @@ export const SmallCheckIcon = make(Check, 12, 2.2);
 export const MinusIcon = make(Minus, 14);
 export const PlusIcon = make(Plus, 14);
 export const ArrowIcon = make(ArrowRight, 14);
+/** 화면을 띄우지 못한 실패 띠의 그림 — 문제 띠(`nx-banner--red`)의 앞 그림이다. */
+export const AlertIcon = make(CircleAlert, 16);

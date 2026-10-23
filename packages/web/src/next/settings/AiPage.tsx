@@ -290,7 +290,7 @@ export function AiPage({
         <SRow title={L.live.followRow} id="nx-ai-follow" sub={L.live.followRowSub}>
           <Switch
             on={settings.followEdits}
-            labelledBy="nx-ai-follow"
+            label={L.live.followRow}
             onChange={(followEdits) => onSettingsChange({ followEdits })}
           />
         </SRow>
@@ -472,7 +472,7 @@ function AgentLoginCode({ daemon }: { daemon: Daemon }) {
   return (
     <span className="nx-slogin-code">
       <input
-        className="nx-sinput nx-sinput--code"
+        className="nx-input"
         type="password"
         value={code}
         spellCheck={false}

@@ -128,15 +128,16 @@ export function SettleLine({
       {answer != null && (
         <button
           type="button"
-          className={`nx-settle-btn${copied ? " nx-settle-btn--done" : ""}`}
+          className={`nx-ibtn nx-ibtn--sm${copied ? " nx-settle-btn--done" : ""}`}
           title={L.transcript.copyOne}
           aria-label={L.transcript.copyOne}
           onClick={() => copy(answer)}
         >
           {copied ? <CheckIcon /> : <CopyIcon />}
-          {copied && <span>{L.transcript.copied}</span>}
         </button>
       )}
+      {/* 복사한 순간 — 확인 아이콘과 곁에 선 한마디. 낭독은 아래의 sr 칸이 맡는다. */}
+      {copied && <span className="nx-settle-copied">{L.transcript.copied}</span>}
       {/* 복사한 결과는 눈이 아니라 낭독으로도 한 번 말한다. */}
       <span className="nx-sr" role="status">
         {copied ? L.transcript.copied : ""}
@@ -146,7 +147,7 @@ export function SettleLine({
           <button
             ref={anchor}
             type="button"
-            className="nx-settle-btn"
+            className="nx-ibtn nx-ibtn--sm"
             title={L.transcript.settleMenuTip}
             aria-label={L.transcript.settleMenuTip}
             aria-haspopup="menu"

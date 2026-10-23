@@ -197,6 +197,12 @@ function PaletteCase() {
   const mode = query.get("activate");
   return open ? (
     <Palette
+      documents={[
+        { pageId: "2001", title: "주문 취소 정책", folder: "02.정책서" },
+        { pageId: "3001", title: "주문 목록과 검색", folder: "03.기능설계서" },
+      ]}
+      onOpenDocument={(pageId: string) => calls.push(`document:${pageId}`)}
+      onOpenPlans={() => calls.push("plans")}
       titleForThread={(t: { title: string }) => t.title}
       activeSessionId="t1"
       projects={projects}

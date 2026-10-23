@@ -64,3 +64,27 @@ export function headingSections(blocks: DraftBlock[]): string[] {
   }
   return sections;
 }
+
+/** 재확인 중에도 입력은 남기고 확인만 잠근다(2026-10-24 RDH 초점 검토 1). */
+export function docOpFormState({
+  phase,
+  preview,
+  parent,
+  title,
+}: {
+  phase: "loading" | "ready" | "failed";
+  preview: DocOpPreview | null;
+  parent: string;
+  title: string;
+}): { keepBody: boolean; canConfirm: boolean } {
+  if (preview === null) return { keepBody: false, canConfirm: false };
+  const picksParent = preview.op === "copy" || preview.op === "move";
+  return {
+    keepBody: true,
+    canConfirm:
+      phase === "ready" &&
+      preview.blockers.every((name) => name === "has-draft") &&
+      (!picksParent || parent !== "") &&
+      (preview.op !== "copy" || title.trim() !== ""),
+  };
+}

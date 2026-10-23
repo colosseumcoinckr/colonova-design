@@ -10,6 +10,7 @@
  *
  * 2026-10-04 ux-review: --r-md 는 두 값을 갖는다 — .nx 안의 부품은 10px, styles.css 뿌리는 6px. 구 셸 부품이 섞여 들어오면 6px 대신 10px 로 입는다.
  */
+@import "./ui/tokens.css";
 @import "./ui/ui.css";
 @import "./ui/overlay.css";
 @import "./ui/sheet.css";

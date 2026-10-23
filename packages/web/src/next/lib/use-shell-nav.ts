@@ -209,6 +209,10 @@ export function useShellNav({
     goHome: () => dispatch({ type: "home" }),
     showThread: () => dispatch({ type: "thread" }),
     showScreen: () => dispatch({ type: "screen" }),
+    openScreen: () => {
+      if (sessions.activeId === null) freshHere();
+      else dispatch({ type: "screen" });
+    },
     openPlans: () => dispatch({ type: "plans" }),
     showPane: (pane) => dispatch({ type: "pane", pane }),
     setPlanDraft: (open) => dispatch({ type: "plan-draft", open }),
@@ -276,7 +280,7 @@ export function useShellNav({
     const step = stepFirstPrep(watchingPrep.current, daemon.projects);
     watchingPrep.current = step.watching;
     const seen: SeenView = {
-      view: state.view,
+      view: state.pane === "plans" ? "home" : state.view,
       tab: state.tab,
       narrow,
       activeSlug: daemon.activeSlug,
@@ -297,7 +301,7 @@ export function useShellNav({
         run: () => latest.current.nav.openProjectScreen(slug),
       });
     }
-  }, [daemon.projects, daemon.activeSlug, state.view, state.tab, narrow, showToast]);
+  }, [daemon.projects, daemon.activeSlug, state.view, state.pane, state.tab, narrow, showToast]);
 
   const setCollapsed = useCallback(
     (value: boolean) => {

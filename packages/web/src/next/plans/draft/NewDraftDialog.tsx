@@ -6,6 +6,7 @@ import { RefreshIcon, Spin } from "../../ui/icons";
 import { ModalBody, ModalFoot, ModalFrame, ModalHead } from "../../ui/ModalFrame";
 import type { PlanListRow } from "../plans-list";
 import { DRAFT_LIMITS } from "./limits";
+import { ParentPicker } from "./ParentPicker";
 
 /**
  * 새 문서 창(2026-10-23 · 최종 구현 계획 F2) — 기획서 목록의 `새 문서` 가 여는 한 장. 제목과
@@ -74,9 +75,10 @@ export function NewDraftDialog({
       <ModalHead title={L.drafts.newDocTitle} sub={L.drafts.newDocSub} />
       <ModalBody>
         <div className="nx-nd-fields">
-          <label className="nx-nd-field">
-            <span>{L.drafts.titleField}</span>
+          <label className="nx-field">
+            <span className="nx-field-label">{L.drafts.titleField}</span>
             <input
+              className="nx-input"
               aria-label={L.drafts.titleField}
               value={title}
               disabled={creating}
@@ -92,26 +94,18 @@ export function NewDraftDialog({
           </label>
           {selectable.length > 0 ? (
             <>
-              <label className="nx-nd-field">
-                <span>{L.drafts.newDocParent}</span>
+              <ParentPicker
+                rows={selectable}
+                label={L.drafts.newDocParent}
+                placeholder={L.drafts.newDocParentPick}
+                value={parent}
+                disabled={creating}
+                onChange={setParent}
+              />
+              <label className="nx-field">
+                <span className="nx-field-label">{L.drafts.newDocTemplate}</span>
                 <select
-                  aria-label={L.drafts.newDocParent}
-                  value={parent}
-                  disabled={creating}
-                  onChange={(event) => setParent(event.target.value)}
-                >
-                  <option value="">{L.drafts.newDocParentPick}</option>
-                  {selectable.map((row) => (
-                    <option key={`${row.kind}:${row.pageId}`} value={`${row.kind}:${row.pageId}`}>
-                      {"\u00A0\u00A0".repeat(row.depth)}
-                      {row.title}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="nx-nd-field">
-                <span>{L.drafts.newDocTemplate}</span>
-                <select
+                  className="nx-input"
                   aria-label={L.drafts.newDocTemplate}
                   value={template}
                   disabled={creating}
@@ -129,7 +123,7 @@ export function NewDraftDialog({
           ) : (
             // 들어갈 자리가 하나도 없다 — 빈 고르기 칸을 세우지 않고 이유와 길을 먼저 보인다(2026-10-23
             // 화면 확인 · R2 검토 10). 만들기 단추는 자리를 고르지 않으면 잠긴 채다.
-            <div className="nx-nd-noplace" role="note">
+            <div className="nx-banner nx-banner--amber nx-dr-noplace" role="note">
               <p>{L.drafts.newDocNoPlace}</p>
               <button type="button" className="nx-btn nx-btn--sm" onClick={onImport}>
                 <RefreshIcon />
@@ -139,7 +133,7 @@ export function NewDraftDialog({
           )}
         </div>
         {error !== null && (
-          <p className="nx-nd-fail" role="alert">
+          <p className="nx-banner nx-banner--red" role="alert">
             {error}
           </p>
         )}

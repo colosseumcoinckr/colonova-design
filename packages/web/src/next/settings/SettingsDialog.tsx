@@ -319,7 +319,7 @@ export function SettingsDialog({
                     <Icon />
                     <span>{PAGE_TITLE[id]}</span>
                     {pill && (
-                      <span className={`nx-set-pill nx-set-pill--${pill.tone}`}>
+                      <span className={`nx-pill nx-set-pill nx-pill--${pill.tone}`}>
                         <i aria-hidden="true" />
                         {pill.text}
                       </span>

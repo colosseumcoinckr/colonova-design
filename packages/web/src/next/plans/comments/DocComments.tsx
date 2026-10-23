@@ -1,7 +1,7 @@
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import type { Daemon, PlanDocComment } from "../../../lib/daemon-client";
 import { L } from "../../labels";
-import { Spin } from "../../ui/icons";
+import { InfoIcon, Spin } from "../../ui/icons";
 import { type PlanCommentRow, planCommentRows } from "../plans-list";
 import { CommentComposer, type ComposerMode } from "./CommentComposer";
 import {
@@ -306,14 +306,14 @@ export function DocComments({
   // 읽기에 실패했으면 한 줄만 — 쓰기 단추도 인라인 닻 단추도 없다.
   if (comments === null) {
     return (
-      <section className="nx-pl-comments">
+      <section className="nx-pl-comments nx-dc">
         <p className="nx-pl-note">{L.plans.commentsUnavailable}</p>
       </section>
     );
   }
 
   return (
-    <section className="nx-pl-comments">
+    <section className="nx-pl-comments nx-dc">
       <InlineAnchorButton onSelect={askInline} body={body} />
       {notice !== null && (
         <p className="nx-dc-notice" role="status">
@@ -342,7 +342,8 @@ export function DocComments({
       )}
       {shown > 0 && <h4 className="nx-pl-comments-t">{L.plans.commentHeading(shown)}</h4>}
       {/* 쓰기가 꺼져 있으면(발행 게이트) 「바로 남아요」 대신 그 사실을 쓰기 전에 말한다(2026-10-23 기획자 화면 손질 U2). */}
-      <p className="nx-pl-note">
+      <p className={writable === false ? "nx-banner nx-banner--amber" : "nx-pl-note"}>
+        {writable === false && <InfoIcon />}
         {writable === false ? L.comments.reason["publish-disabled"] : L.plans.commentNote}
       </p>
       {threads.map((thread) => (

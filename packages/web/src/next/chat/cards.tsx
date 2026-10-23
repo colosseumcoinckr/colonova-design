@@ -218,6 +218,7 @@ export function ReplyBox({
         <input
           // biome-ignore lint/a11y/noAutofocus: 답하기를 누른 손이 곧 쓸 자리다.
           autoFocus
+          className="nx-input"
           value={draft}
           placeholder={placeholder}
           aria-label={L.composer.noteToDev}
@@ -236,7 +237,7 @@ export function ReplyBox({
         </span>
         <button
           type="button"
-          className="nx-btn nx-btn--sm nx-btn--pri"
+          className="nx-btn nx-btn--pri"
           disabled={busy || draft.trim() === ""}
           onClick={() => void send()}
         >
@@ -291,7 +292,7 @@ export function ReviewCard({
         <span className="nx-muted">{L.cards.reviewDone}</span>
         <span className="nx-grow" />
         {replyId !== null && (
-          <button type="button" className="nx-btn nx-btn--sm" onClick={() => setOpen((v) => !v)}>
+          <button type="button" className="nx-btn" onClick={() => setOpen((v) => !v)}>
             {L.cards.reply}
           </button>
         )}
@@ -411,7 +412,7 @@ export function ReceiptCard({
         <div className="nx-cfoot">
           {same?.url && (
             <a
-              className="nx-btn nx-btn--sm"
+              className="nx-btn"
               href={same.url}
               target="_blank"
               rel="noreferrer"
@@ -422,16 +423,12 @@ export function ReceiptCard({
             </a>
           )}
           {nobody && same?.url && (
-            <button type="button" className="nx-btn nx-btn--sm" onClick={() => copy(same.url)}>
+            <button type="button" className="nx-btn" onClick={() => copy(same.url)}>
               {copied ? L.cards.receiptLinkCopied : L.cards.receiptCopyLink}
             </button>
           )}
           {noteOk && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm"
-              onClick={() => setNoteOpen((open) => !open)}
-            >
+            <button type="button" className="nx-btn" onClick={() => setNoteOpen((open) => !open)}>
               {L.cards.noteMore}
             </button>
           )}
@@ -738,6 +735,7 @@ export function AskCard({
                 <input
                   // biome-ignore lint/a11y/noAutofocus: 직접 답하기를 누른 손이 곧 쓸 자리다.
                   autoFocus
+                  className="nx-input"
                   value={free[q.question] ?? ""}
                   placeholder={L.cards.askFree}
                   aria-label={L.cards.askFree}
@@ -756,7 +754,9 @@ export function AskCard({
                 {single && (
                   <button
                     type="button"
-                    className={`nx-btn nx-btn--sm nx-btn--pri${
+                    /* 그림 없는 단일 질문(instant)은 누르는 순간 가서 바닥 보내기가 없다 — 이 단추가 카드의 으뜸이다.
+                       바닥 보내기가 설 때(!instant)만 보통 단추로 내려 카드의 으뜸을 하나로 지킨다(2026-10-23 화면 전면 재설계 §4 E). */
+                    className={`nx-btn${instant ? " nx-btn--pri" : ""}${
                       pressed === `free:${q.question}` ? " nx-btn--picked" : ""
                     }`}
                     disabled={sent || !(free[q.question] ?? "").trim()}
@@ -780,7 +780,7 @@ export function AskCard({
           {/* 잠긴 이유는 눈에도 한 줄로 서고 `aria-describedby` 로 묶인다. */}
           <button
             type="button"
-            className="nx-btn nx-btn--sm nx-btn--pri"
+            className="nx-btn nx-btn--pri"
             disabled={!complete || sent}
             aria-describedby={complete ? undefined : needId}
             onClick={() => send(merged(), "send")}
@@ -862,7 +862,7 @@ export function FailCard({
           {onLogin && (
             <button
               type="button"
-              className="nx-btn nx-btn--sm"
+              className="nx-btn"
               onClick={() => {
                 setLoginStarted(true);
                 onLogin();
@@ -873,7 +873,7 @@ export function FailCard({
           )}
           <button
             type="button"
-            className="nx-btn nx-btn--sm nx-btn--pri"
+            className="nx-btn nx-btn--pri"
             disabled={live}
             aria-describedby={live ? whyId : undefined}
             title={live ? L.chat.retryLive : undefined}

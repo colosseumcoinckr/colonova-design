@@ -67,7 +67,7 @@ export function InlineAnchorButton({
   return (
     <button
       type="button"
-      className="nx-dc-anchor-btn"
+      className="nx-btn nx-btn--sm nx-dc-anchor-btn"
       style={{ top: `${pick.top + 6}px`, left: `${pick.left}px` }}
       // 누르는 사이 선택이 풀리지 않게 — 마우스 내림을 단추가 삼키지 않는다.
       onMouseDown={(event) => event.preventDefault()}

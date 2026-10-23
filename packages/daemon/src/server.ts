@@ -773,14 +773,7 @@ export class DaemonServer {
     this.confluence = new ConfluenceSync({
       machineSetting: this.machineSetting,
       credentials: this.credentials,
-      workspaceOf: (slug) => {
-        const workspaces = this.fleet?.workspaces.get(slug);
-        if (workspaces === undefined) return null;
-        return {
-          root: workspaces.repo.root,
-          laneRun: (kind, job, opts) => workspaces.repo.laneRun(kind, job, opts),
-        };
-      },
+      projectRoot: (slug) => (this.registry?.get(slug) ? this.registry.paths(slug).root : null),
       slugs: () => this.registry?.list().map((project) => project.slug) ?? [],
       logger: this.logger,
     });
@@ -791,12 +784,15 @@ export class DaemonServer {
       registry: this.registry,
       machineSetting: this.machineSetting,
       credentials: this.credentials,
-      workspaceRoot: (slug) => this.fleet?.workspaces.get(slug)?.repo.root ?? null,
       claudeExecutable: () => this.claudeExecutable,
       broadcast: (m) => this.broadcast(m),
       logger: this.logger,
       ai: createDraftAiRunner(),
       publisher: new DraftPublisher(),
+      cloneRoot: (slug) => {
+        const workspaces = this.fleet?.workspaces.get(slug);
+        return workspaces?.repo.isCloned() ? workspaces.repo.root : null;
+      },
     });
     // 문서 관리 — 기획 초안 바로 옆에서 만든다(2026-10-23 작업 D1a). 적용 · 결과 불명 뒤에는 트리를
     // 걷게 한다 — 이동 · 휴지통은 증분이 못 본다(2026-10-23 · 최종 구현 계획 F2 · 작업 B5).
@@ -804,7 +800,6 @@ export class DaemonServer {
       registry: this.registry,
       machineSetting: this.machineSetting,
       credentials: this.credentials,
-      workspaceRoot: (slug) => this.fleet?.workspaces.get(slug)?.repo.root ?? null,
       broadcast: (m) => this.broadcast(m),
       logger: this.logger,
       walkNow: (slug) => this.confluence.walkNow(slug),
@@ -815,7 +810,6 @@ export class DaemonServer {
       registry: this.registry,
       machineSetting: this.machineSetting,
       credentials: this.credentials,
-      workspaceRoot: (slug) => this.fleet?.workspaces.get(slug)?.repo.root ?? null,
       logger: this.logger,
     });
     this.router = new RequestRouter({

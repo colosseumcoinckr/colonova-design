@@ -10,8 +10,9 @@
 import { markTurn } from "@colonova-design/protocol";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { Block } from "../src/lib/daemon-client";
+import type { Block, Daemon } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
+import { PlanRefStrip } from "../src/next/chat/PlanRefStrip";
 import { RunLine } from "../src/next/chat/RunLine";
 import { RunPlan } from "../src/next/chat/RunPlan";
 import { Thread } from "../src/next/chat/Thread";
@@ -617,6 +618,71 @@ function PlanPills() {
 }
 
 /**
+ * `?scene=refs` — 기획 근거 줄(2026-10-23 · 최종 구현 계획 F3 · 화면 전면 재설계 §4 E). 발행본 칩(판 · 절)과
+ * 미발행 초안의 호박색 알약, 세 개째의 `+1` 펼침을 눈으로 본다.
+ */
+const refsDaemon = {
+  api: {
+    draftRefs: () =>
+      Promise.resolve({
+        refs: [
+          {
+            at: "",
+            ref: {
+              title: "회원 목록 개편 기획서",
+              pageId: "123",
+              docKey: null,
+              url: null,
+              version: 4,
+              revision: null,
+              published: true,
+              sections: ["배경"],
+            },
+          },
+          {
+            at: "",
+            ref: {
+              title: "로그인 화면 문구 다듬기",
+              pageId: null,
+              docKey: "n-00112233445566778899aabbccddeeff",
+              url: null,
+              version: null,
+              revision: 2,
+              published: false,
+              sections: [],
+            },
+          },
+          {
+            at: "",
+            ref: {
+              title: "결제 내역 빈 화면 안내",
+              pageId: "456",
+              docKey: null,
+              url: null,
+              version: 12,
+              revision: null,
+              published: true,
+              sections: ["빈 화면 안내", "빈 결과", "다시 시도"],
+            },
+          },
+        ],
+      }),
+  },
+} as unknown as Daemon;
+
+const refsNav = { openPlans: () => calls.push("plans") } as unknown as Parameters<
+  typeof PlanRefStrip
+>[0]["nav"];
+
+function RefStrip() {
+  return (
+    <div className="nx-cmp-wrap">
+      <PlanRefStrip daemon={refsDaemon} sessionId="fixture" sentCount={1} nav={refsNav} />
+    </div>
+  );
+}
+
+/**
  * `?scene=tools` — 작업 과정 줄의 도구 이름(2026-10-07 베타 준비 분석). `browser_snapshot` 같은 영어가 그대로 뜨던 자리가
  * 한국어로 읽히는지 본다: Claude 의 `mcp__서버__이름` · 통계가 아는 공급자 이름 · 모르는 도구(원문 그대로).
  * 줄 머리를 눌러 펼쳐 본다 — 작업 과정 보기는 이 장면에서 켜져 있다.
@@ -766,6 +832,10 @@ const longAnswer = [
   "1. 회원 목록을 열고 검색창에 `김` 을 쳐 보세요. 이름에 「김」이 든 회원만 남아야 해요.",
   "2. 아무도 없는 이름(예: `zzz`)을 치면 안내 문구가 보여야 해요.",
   "3. 검색어를 지우면 전체 목록으로 돌아와야 해요.",
+  "",
+  "```tsx",
+  'const [query, setQuery] = useState("");',
+  "```",
   "",
   "> 검색은 지금 화면에 불러온 회원 안에서만 찾아요. 서버에서 찾는 방식은 개발자와 상의가 필요해요.",
   "",
@@ -1033,6 +1103,7 @@ function Fixture() {
           />
           {scene === "working" && <WorkingLines />}
           {scene === "working" && <PlanPills />}
+          {scene === "refs" && <RefStrip />}
         </div>
       </section>
       {scene === null && <LiveFixture />}

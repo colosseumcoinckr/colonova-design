@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { writeConfluenceLedger } from "../dist/confluence-ledger.js";
-import { confluenceLedgerFile } from "../dist/confluence-sync.js";
+import { confluenceMirrorLedger } from "../dist/confluence-mirror.js";
 import { MemoryCredentialStore } from "../dist/credentials.js";
 import { DocComments } from "../dist/doc-comments.js";
 import type { DaemonLogger } from "../dist/log.js";
 import type { RestTransport } from "../dist/rest-transport.js";
 
 /**
- * 문서 코멘트 서비스 시험(2026-10-23 · 작업 D2a) — 임시 폴더의 가짜 프로젝트 · 가짜 클론(원장),
+ * 문서 코멘트 서비스 시험(2026-10-23 · 작업 D2a) — 임시 폴더의 가짜 프로젝트 · 기획서 사본(원장),
  * 기록된 전송으로 게이트 · 범위 · 인라인 닻 · 판 대조 · 멱등 · 모르는 결과를 본다. 합성 문장만
  * 쓰고, 실사이트는 절대 두드리지 않는다(doc-ops.test.ts 양식).
  */
@@ -66,9 +66,9 @@ interface Rig {
 
 function rig(): Rig {
   const home = mkdtempSync(join(tmpdir(), "doc-comments-"));
-  const cloneRoot = join(home, "clone");
-  mkdirSync(join(cloneRoot, "docs", "plans"), { recursive: true });
-  writeConfluenceLedger(confluenceLedgerFile(cloneRoot), {
+  // 기획서 사본 — 프로젝트 폴더 아래 confluence/ 다. 클론은 아예 없다(2026-10-23 · 기획서 사본 이동 계획 §1 D1).
+  mkdirSync(join(home, "demo", "confluence"), { recursive: true });
+  writeConfluenceLedger(confluenceMirrorLedger(join(home, "demo")), {
     site: SITE,
     roots: [ROOT_ID],
     lastSyncAt: null,
@@ -137,7 +137,6 @@ function rig(): Rig {
     registry: { activeSlug: () => "demo", paths: (slug) => ({ root: join(home, slug) }) },
     machineSetting: { get: (key) => setting[key] ?? null },
     credentials,
-    workspaceRoot: () => cloneRoot,
     logger,
     transport: () => transport,
     now: () => NOW,

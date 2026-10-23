@@ -162,7 +162,7 @@ export function HomeComposer({
   );
 
   return (
-    <div className="nx-hero">
+    <>
       <div className="nx-hc">
         <Composer
           daemon={daemon}
@@ -199,6 +199,6 @@ export function HomeComposer({
           }))
         }
       />
-    </div>
+    </>
   );
 }

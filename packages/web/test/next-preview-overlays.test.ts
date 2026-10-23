@@ -155,3 +155,69 @@ test("서랍: 게스트가 다시 쏜 Esc(대상이 문서)도 서랍을 닫고,
   // 이 칸을 가린 옆 서랍(main 이 inert)의 Esc 는 그 서랍의 몫이다.
   assert.match(drawer, /panel\.current\?\.closest\("\[inert\]"\)/);
 });
+
+// ── 2026-10-23 화면 전면 재설계 §4 F — 작업 기록 서랍 · 말풍선 · 준비 카드
+
+const prepare = strip(readFileSync(join(dir, "PrepareCard.tsx"), "utf8"));
+const bubble = strip(readFileSync(join(dir, "PinBubble.tsx"), "utf8"));
+
+test("서랍: 시각 12 · 제목 14 · 부제 13 — 반 픽셀과 12px 아래 글자가 없다", () => {
+  assert.match(body(".nx-ht"), /font-size:\s*var\(--fs-ui\)/);
+  assert.match(body(".nx-hs"), /font-size:\s*var\(--fs-sm\)/);
+  assert.match(body(".nx-hd2"), /font-size:\s*var\(--fs-sm\)/);
+  assert.match(body(".nx-hmeta"), /font-size:\s*var\(--fs-cap\)/);
+  assert.match(body(".nx-hday"), /font-size:\s*var\(--fs-sm\)/);
+  const sizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map((match) => Number(match[1]));
+  assert.deepEqual(
+    sizes.filter((size) => size < 12 || size % 1 !== 0),
+    [],
+  );
+});
+
+test("서랍: 타임라인의 마디는 제목 첫 줄의 가운데(18px)에 앉고 선이 거기서 시작하고 끝난다", () => {
+  // 제목 줄 높이 20px + 줄 위 여백 8px → 첫 줄의 가운데 18px. 마디(10px)는 13px 아래, 사건 알(20px)은 8px 아래에서 시작한다.
+  assert.match(body(".nx-ht"), /line-height:\s*20px/);
+  assert.match(body(".nx-hnode"), /height:\s*10px/);
+  assert.match(body(".nx-hnode"), /margin-top:\s*13px/);
+  assert.match(
+    css,
+    /\.nx-hnode--merge,\s*\.nx-hnode--restore,\s*\.nx-hnode--comment\s*\{[^}]*height:\s*20px;[^}]*margin-top:\s*8px/,
+  );
+  assert.match(body(".nx-hitem--first::before"), /top:\s*18px/);
+  assert.match(body(".nx-hitem--last::before"), /bottom:\s*calc\(100% - 18px\)/);
+  assert.match(
+    css,
+    /\.nx-hitem--target::before\s*\{[^}]*var\(--hist-undo-line\) 18px, var\(--line2\) 18px/,
+  );
+});
+
+test("서랍: `여기로 되돌리기` 는 보통 소단추(nx-btn--sm)의 모양이고 줄 전체가 하나의 단추다 — 안쪽 것은 모양뿐(aria-hidden)", () => {
+  assert.match(drawer, /<span className="nx-btn nx-btn--sm nx-hgo" aria-hidden="true">/);
+  // 단추 안에 단추를 넣지 않는다(잘못된 HTML · ↑ ↓ 걷기의 `button.nx-hmain` 하나).
+  assert.doesNotMatch(drawer, /<button[^>]*nx-hgo/);
+  // 일의 크기 칩 · 지금 표식은 공통 알약(nx-pill)이다.
+  assert.match(drawer, /nx-pill nx-pill--accent nx-hnow/);
+  assert.match(drawer, /nx-pill nx-pill--amber/);
+  assert.doesNotMatch(css, /\.nx-hchip\b/);
+});
+
+test("말풍선: 글 14px · 단추 28px(nx-btn--sm) — 바닥 줄에서 단추가 겹치지 않을 만큼 넓다", () => {
+  assert.match(body(".nx-pinbub-h"), /font-size:\s*var\(--fs-ui\)/);
+  assert.match(body(".nx .nx-pinbub-note"), /font-size:\s*var\(--fs-ui\)/);
+  assert.equal(bubble.match(/className="nx-btn nx-btn--sm[^"]*"/g)?.length, 2);
+  const width = Number(/width:\s*(\d+)px/.exec(body(".nx-pinbub"))?.[1]);
+  assert.ok(
+    width >= 320,
+    `말풍선 폭 ${width}px 는 14px 글자의 바닥 줄(줄바꿈 · 지금 보내기 ⌘↵ · 담기 ↵)에 모자라다`,
+  );
+});
+
+test("준비 카드: 진행 단계 줄 13px · 실패는 앱 공통의 문제 띠(nx-banner--red)다", () => {
+  assert.match(body(".nx-prep-step"), /font-size:\s*var\(--fs-sm\)/);
+  assert.match(prepare, /nx-banner nx-banner--red nx-prep-fail/);
+  // 실패는 알림이다(곧바로 읽힌다) · 다시 시도와 복사 단추는 띠의 단추 줄에 선다.
+  assert.match(prepare, /nx-banner nx-banner--red nx-prep-fail" role="alert"/);
+  assert.match(prepare, /<div className="nx-banner-act">/);
+  assert.match(prepare, /\{help && \(/);
+  assert.doesNotMatch(css, /\.nx-prep-retry|\.nx-prep-still/);
+});

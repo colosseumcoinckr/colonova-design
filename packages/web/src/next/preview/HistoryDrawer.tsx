@@ -27,6 +27,7 @@ import {
 import { useFreshKeys } from "../lib/use-fresh-keys";
 import { InlineConfirm } from "../ui/InlineConfirm";
 import {
+  AlertIcon,
   CloseIcon,
   CommentNodeIcon,
   HistoryEmptyIcon,
@@ -516,7 +517,7 @@ export function HistoryDrawer({
         </div>
         <div className="nx-hist-sub">{L.history.sub}</div>
         {lockWhy !== null && (
-          <p className="nx-hist-lock" id={workingWhyId} role="status">
+          <p className="nx-banner nx-banner--amber nx-hist-lock" id={workingWhyId} role="status">
             <span className="nx-hist-lockdot" aria-hidden="true" />
             {lockWhy}
           </p>
@@ -620,7 +621,9 @@ export function HistoryDrawer({
                           </span>
                         )}
                         <span className="nx-hmeta">
-                          {current && <span className="nx-hnow">{L.history.now}</span>}
+                          {current && (
+                            <span className="nx-pill nx-pill--accent nx-hnow">{L.history.now}</span>
+                          )}
                           <time className="nx-htime" dateTime={entry.at} title={clock}>
                             {whenOf(entry.at, now)}
                           </time>
@@ -630,7 +633,7 @@ export function HistoryDrawer({
                             </span>
                           )}
                           {!current && (
-                            <span className="nx-hgo" aria-hidden="true">
+                            <span className="nx-btn nx-btn--sm nx-hgo" aria-hidden="true">
                               <UndoIcon />
                               {L.history.toHere}
                             </span>
@@ -692,23 +695,28 @@ export function HistoryDrawer({
               </section>
             );
           })}
-          {/* 2026-10-04 ux-review(2차): 목록 읽기 실패에는 다시 읽는 손을 옆에 둔다. */}
+          {/* 2026-10-04 ux-review(2차): 목록 읽기 실패에는 다시 읽는 손을 옆에 둔다. 모양은 앱 공통의 문제 띠다 —
+              아이콘 · 글 · 단추(2026-10-24 QA 16). */}
           {readFailed && (
-            <div className="nx-hist-error" role="status">
-              {L.history.readFailed}
-              <button
-                type="button"
-                className="nx-btn nx-btn--sm"
-                onClick={() => setTick((n) => n + 1)}
-              >
-                {L.vocab.retry}
-              </button>
+            <div className="nx-banner nx-banner--amber nx-hist-error" role="status">
+              <AlertIcon />
+              <div className="nx-banner-body">{L.history.readFailed}</div>
+              <div className="nx-banner-act">
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm"
+                  onClick={() => setTick((n) => n + 1)}
+                >
+                  {L.vocab.retry}
+                </button>
+              </div>
             </div>
           )}
           {/* 되돌리기 실패는 확인 카드 안에서 말한다 — 카드를 접은 뒤에 실패가 돌아왔을 때만 바닥에 남는다. */}
           {restoreFailed && confirm === null && (
-            <div className="nx-hist-error" role="alert">
-              {L.history.restoreFailed}
+            <div className="nx-banner nx-banner--amber nx-hist-error" role="alert">
+              <AlertIcon />
+              <div className="nx-banner-body">{L.history.restoreFailed}</div>
             </div>
           )}
         </div>
@@ -785,10 +793,12 @@ function RevertCard({
       returnRef={returnTo}
     >
       <ul className="nx-hchips">
-        {names.length > 0 && <li className="nx-hchip">{L.history.chipScreens(names.length)}</li>}
-        <li className="nx-hchip">{L.history.chipChanges(summary.count)}</li>
+        {names.length > 0 && (
+          <li className="nx-pill nx-pill--accent">{L.history.chipScreens(names.length)}</li>
+        )}
+        <li className="nx-pill nx-pill--accent">{L.history.chipChanges(summary.count)}</li>
         {summary.withComments && (
-          <li className="nx-hchip nx-hchip--warn">{L.history.chipComments}</li>
+          <li className="nx-pill nx-pill--amber">{L.history.chipComments}</li>
         )}
       </ul>
       {names.length > 0 && (

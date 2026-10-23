@@ -85,13 +85,14 @@ export function SendToScreen({
       <ModalHead title={L.drafts.sendTitle} sub={L.drafts.sendSub} />
       <ModalBody>
         {isDraft && (
-          <p className="nx-da-note nx-da-note--draft" role="note">
+          <p className="nx-banner nx-banner--amber" role="note">
             {L.drafts.sendDraftNote}
           </p>
         )}
-        <label className="nx-da-field">
-          <span>{L.drafts.sendScope}</span>
+        <label className="nx-field">
+          <span className="nx-field-label">{L.drafts.sendScope}</span>
           <select
+            className="nx-input"
             aria-label={L.drafts.sendScope}
             value={scope}
             disabled={busy}
@@ -107,7 +108,7 @@ export function SendToScreen({
           </select>
         </label>
         {error !== null && (
-          <p className="nx-da-fail" role="alert">
+          <p className="nx-banner nx-banner--red" role="alert">
             {error}
           </p>
         )}

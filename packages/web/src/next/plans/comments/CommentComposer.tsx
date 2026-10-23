@@ -161,7 +161,7 @@ export function CommentComposer({
       )}
       <textarea
         ref={area}
-        className="nx-dc-area"
+        className="nx-input nx-input--area nx-dc-area"
         rows={mode.kind === "footer" ? 2 : 3}
         aria-label={PLACEHOLDER[mode.kind]}
         placeholder={PLACEHOLDER[mode.kind]}
@@ -208,7 +208,7 @@ export function CommentComposer({
         ) : (
           <button
             type="button"
-            className="nx-btn nx-btn--sm nx-btn--pri"
+            className="nx-btn nx-btn--sm"
             disabled={locked || !count.sendable}
             onClick={() => void send()}
           >

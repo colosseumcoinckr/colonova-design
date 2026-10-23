@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import type { ServerMessage } from "@colonova-design/protocol";
 import { writeConfluenceLedger } from "../dist/confluence-ledger.js";
-import { confluenceLedgerFile } from "../dist/confluence-sync.js";
+import { confluenceMirrorLedger } from "../dist/confluence-mirror.js";
 import { MemoryCredentialStore } from "../dist/credentials.js";
 import type { DraftAiAnswer, DraftAiRequest, DraftAiRunner } from "../dist/draft-ai.js";
 import { DraftPublisher } from "../dist/draft-publish.js";
@@ -178,11 +178,11 @@ interface Rig {
 
 function rig(runner: DraftAiRunner): Rig {
   const home = mkdtempSync(join(tmpdir(), "draft-flow-"));
-  const cloneRoot = join(home, "clone");
-  const readRoot = join(cloneRoot, "docs", "plans");
+  // 기획서 사본 — 프로젝트 폴더 아래 confluence/ 다. 클론은 아예 없다(2026-10-23 · 기획서 사본 이동 계획 §1 D1).
+  const readRoot = join(home, "demo", "confluence");
   mkdirSync(readRoot, { recursive: true });
   writeFileSync(join(readRoot, "COLO-policy.md"), "");
-  writeConfluenceLedger(confluenceLedgerFile(cloneRoot), {
+  writeConfluenceLedger(confluenceMirrorLedger(join(home, "demo")), {
     site: SITE,
     roots: [ROOT_ID],
     lastSyncAt: null,
@@ -308,7 +308,6 @@ function rig(runner: DraftAiRunner): Rig {
     registry: { activeSlug: () => "demo", paths: (slug) => ({ root: join(home, slug) }) },
     machineSetting: { get: (key) => setting[key] ?? null },
     credentials,
-    workspaceRoot: () => cloneRoot,
     claudeExecutable: () => "/usr/local/bin/claude",
     broadcast: (message) => messages.push(message),
     logger,
@@ -416,7 +415,7 @@ test("초안 흐름 — 열고 고치고 묻고 채택해 발행하고, 원격 �
     );
     const call = aiCalls[0];
     assert.equal(call?.resume, null);
-    assert.match(call?.readRoot ?? "", /docs[/\\]plans$/);
+    assert.equal(call?.readRoot, join(rig1.home, "demo", "confluence"));
     assert.ok(call?.prompt.includes(TITLE));
     assert.ok(call?.prompt.includes("표의 재시도 값을 다듬어 줘"));
     const threadAfterAsk = rig1.service.thread(KEY);

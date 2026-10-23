@@ -8,8 +8,7 @@
  *
  * 주소 끝의 `?case=list` 처럼 보일 상태를(쉼표로 이으면 나란히), `?theme=dark` 로 테마를, `?w=1000&h=760`
  * 으로 틀의 크기를, `?narrow=1` 로 좁은 창(900px 아래 — 대화 칸이 숨는다)을 고른다. 상태는 눌러 볼 수 있다 —
- * 문서 행을 누르면 본문이 서고, `새로 가져오기` 는 1.2초 뒤 끝난다. 새 상태는 여기에 더한다. 틀은 사이드바를 뺀
- * 본문이다 — 1440 창(사이드바 264px)은 `w=1176`. 대화 칸 자리는 400px 이고 초안이 열리면 비켜선다(셸의 집중 배치).
+ * 문서 행을 누르면 본문이 서고, `새로 가져오기` 는 1.2초 뒤 끝난다. 새 상태는 여기에 더한다. 틀은 320px 트리와 문서 본문이다. 문서를 열어도 트리는 남는다(2026-10-23 화면 전면 재설계 §4 C).
  * 발행 게이트는 데몬처럼 기본 꺼짐이고(발행 단추의 `꺼짐` · 코멘트 절의 안내), `?writable=1` 이면 켜진 모습이다.
  *   · none        — 아직 연결하지 않은 프로젝트(원장 없음)
  *   · empty       — 연결했지만 가져온 문서가 없다
@@ -48,12 +47,16 @@ import type {
   DraftView,
   ProjectSummary,
 } from "@colonova-design/protocol";
-import { StrictMode, useMemo, useState } from "react";
+import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Daemon, PlanDocComment } from "../src/lib/daemon-client";
-import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
+import { applyStoredTheme, applyStoredTypeScale, useSettings } from "../src/lib/settings";
 import { PlansColumn } from "../src/next/plans/PlansColumn";
+import { PlansSidebar } from "../src/next/plans/PlansSidebar";
+import { PlansContext, usePlansWorkspace } from "../src/next/plans/PlansWorkspace";
 import type { ShellNav } from "../src/next/slots";
+import { Workspace } from "../src/next/Workspace";
+import { mockDaemon, PROJECTS, REPO, STATUS } from "./overlay-mocks";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
 import "../src/next/next.css";
@@ -63,8 +66,8 @@ applyStoredTypeScale();
 const query = new URLSearchParams(location.search);
 const theme = query.get("theme");
 if (theme) document.documentElement.dataset.theme = theme;
-const FRAME_W = Number(query.get("w")) || 1180;
-const FRAME_H = Number(query.get("h")) || 760;
+const FRAME_W = Number(query.get("w")) || window.innerWidth - 40;
+const FRAME_H = Number(query.get("h")) || window.innerHeight - 78;
 const NARROW = query.get("narrow") === "1";
 const CASES = (query.get("case") ?? "list").split(",");
 
@@ -425,7 +428,7 @@ function projectFor(id: string): ProjectSummary {
               expired: false,
               rootTitle: "8.8 ColoNova",
               lastImportAt: ago(3),
-              pages: DOCS.length,
+              pages: id === "big" ? bigDocs().length : DOCS.length,
             };
   // 발행 게이트 — 기본은 데몬처럼 꺼짐이다(발행 단추의 `꺼짐` · 코멘트 절의 안내). `?writable=1` 이면 켜진 모습.
   const writable = query.get("writable") === "1";
@@ -552,6 +555,20 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
   // 초안 편집기의 메모리 상태 — 열쇠별로 하나를 캐시하고, 고치기 · 발행이 여기에 쌓인다.
   let draftKey: string | null = null;
   let draft: DraftView | null = null;
+  // 새 문서 초안의 선택 줄도 실제 셸에서 확인한다(2026-10-24 RS 3).
+  if (new URLSearchParams(location.search).has("newDraft")) {
+    draft = {
+      ...sampleDraft("2001", false),
+      docKey: "n-c0ffee0011223344556677889900aabb",
+      kind: "new",
+      pageId: null,
+      title: "RS 새 문서 초안",
+      baseTitle: null,
+      baseVersion: null,
+      parent: { id: "1000", type: "page", title: DOCS[0].title },
+    };
+    draftKey = draft.docKey;
+  }
   let copySerial = 1;
   let commentSeq = COMMENTS.length + 1;
   const comments = COMMENTS.map((row) => ({ ...row }));
@@ -625,6 +642,7 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
           observedVersion: 12,
           updatedAt: ago(40),
         },
+        ...(draft?.kind === "new" ? [{ ...draft, changedBlocks: 0 }] : []),
       ] satisfies DraftSummary[]),
     draftOpen: (pageId: string) => {
       const view = openDraft(`p-${pageId}`);
@@ -922,11 +940,14 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
       if (id === "none") return later(80, { docs: null });
       if (id === "empty" || id === "expired-empty") return later(80, { docs: [] });
       if (id === "big") return later(160, { docs: bigDocs() });
-      return later(160, { docs: DOCS });
+      return later(160, {
+        docs: DOCS,
+        roots: [new URLSearchParams(location.search).get("root") ?? "1000"],
+      });
     },
     docRead: (pageId: string) => {
       if (id === "doc-failed") return failLater(700);
-      const doc = DOCS.find((row) => row.pageId === pageId) ?? DOCS[5];
+      const doc = (id === "big" ? bigDocs() : DOCS).find((row) => row.pageId === pageId) ?? DOCS[5];
       const reply = {
         markdown: POLICY(doc),
         sections: [
@@ -1114,66 +1135,111 @@ function Frame({ id }: { id: string }) {
     openPlans: () => setLine("기획서 열기"),
     toast: (text: string) => setLine(`토스트: ${text}`),
   } as unknown as ShellNav;
-  // 셸의 집중 배치를 따른다(2026-10-23 기획자 화면 손질 D2) — 초안 편집기가 열리면 대화 칸 자리가 비켜서고 기획서 칸이 본문
-  // 폭을 다 쓴다. 대화 칸의 폭은 셸의 처음 값(400px · `Workspace` 의 CHAT_DEFAULT)이다.
-  const [draftOpen, setDraftOpen] = useState(false);
-  const focus = !NARROW && draftOpen;
-  const columns = NARROW || focus ? "minmax(0, 1fr)" : "400px minmax(0, 1fr)";
+  const plans = usePlansWorkspace({ daemon, project, active: true });
   return (
-    <div id={`fixture-${id}`} style={{ width: FRAME_W }}>
-      <div
-        style={{ font: "11.5px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}
-      >
-        {id}
-        <br />→ {line}
+    <PlansContext.Provider value={plans}>
+      <div id={`fixture-${id}`} style={{ width: FRAME_W }}>
+        <div
+          style={{ font: "12px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}
+        >
+          {id}
+          <br />→ {line}
+        </div>
+        <div
+          className="nx"
+          style={{
+            display: "grid",
+            gridTemplateColumns: NARROW ? "minmax(0, 1fr)" : "320px minmax(0, 1fr)",
+            height: FRAME_H,
+            width: FRAME_W,
+            overflow: "hidden",
+            border: "1px dashed #8884",
+          }}
+        >
+          {!NARROW && (
+            <aside className="nx-sidebar" style={{ width: 320 }}>
+              <PlansSidebar nav={nav} />
+            </aside>
+          )}
+          <main className="nx-main">
+            <PlansColumn daemon={daemon} project={project} nav={nav} />
+          </main>
+        </div>
       </div>
-      <div
-        className="nx"
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          height: FRAME_H,
-          width: FRAME_W,
-          overflow: "hidden",
-          border: "1px dashed #8884",
-        }}
-      >
-        <main className="nx-main" style={{ flex: 1 }}>
-          <div className="nx-view nx-work">
-            <div className="nx-body" style={{ gridTemplateColumns: columns }}>
-              {!NARROW && (
-                <section
-                  className={`nx-chat${focus ? " nx-offstage" : ""}`}
-                  style={{ padding: 24, font: "12px monospace", color: "#888" }}
-                >
-                  대화 칸 자리
-                </section>
-              )}
-              <PlansColumn daemon={daemon} project={project} nav={nav} onDraftOpen={setDraftOpen} />
-            </div>
-          </div>
-        </main>
-      </div>
-    </div>
+    </PlansContext.Provider>
+  );
+}
+
+/** 실제 셸의 이동·마운트·지연 읽기 확인(2026-10-23 화면 전면 재설계 §9). */
+function WorkspaceCase() {
+  const { settings, update } = useSettings();
+  const [slug, setSlug] = useState("colonova-cdp");
+  const daemon = useMemo(() => {
+    const requests: string[] = [];
+    const plan = daemonFor("list", (line) => requests.push(line));
+    const projects = [
+      { ...PROJECTS[0], ...projectFor("list"), pendingCount: 0, threads: [], working: false },
+      { ...PROJECTS[1], confluence: undefined, pendingCount: 0, threads: [], working: false },
+    ];
+    const base = mockDaemon({
+      projects,
+      activeSlug: slug,
+      repo: { ...REPO, pendingChanges: 0, cycleScreens: [] },
+      status: { ...STATUS, projects, activeProject: slug },
+      onDraftEvent: plan.onDraftEvent,
+    });
+    const api = new Proxy(base.api, {
+      get(target, key: keyof Daemon["api"]) {
+        if (key === "projectActivate") return async (next: string) => setSlug(next);
+        if (key === "listSessions" || key === "history") return async () => [];
+        if (key in plan.api)
+          return (...args: unknown[]) => {
+            requests.push(String(key));
+            return (plan.api[key] as (...input: unknown[]) => unknown)(...args);
+          };
+        return target[key];
+      },
+    });
+    return { ...base, api, fixtureRequests: requests };
+  }, [slug]);
+  useEffect(() => {
+    (window as unknown as { __plansFixture: { requests: string[] } }).__plansFixture = {
+      requests: daemon.fixtureRequests,
+    };
+  }, [daemon]);
+  return (
+    <Workspace
+      daemon={daemon}
+      settings={settings}
+      onChatChange={(patch) => update({ chat: { ...settings.chat, ...patch } })}
+      onLayoutChange={(patch) => update({ layout: { ...settings.layout, ...patch } })}
+      onSettingsChange={update}
+      onRenameSession={() => {}}
+      discardableInvitePath="/fixture/invite.json"
+    />
   );
 }
 
 createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
-    <div
-      style={{
-        background: "var(--bg)",
-        minHeight: "100vh",
-        padding: 20,
-        display: "flex",
-        gap: 24,
-        alignItems: "flex-start",
-        flexWrap: "wrap",
-      }}
-    >
-      {CASES.map((id) => (
-        <Frame key={id} id={id} />
-      ))}
-    </div>
+    {query.get("workspace") === "1" ? (
+      <WorkspaceCase />
+    ) : (
+      <div
+        style={{
+          background: "var(--bg)",
+          minHeight: "100vh",
+          padding: 20,
+          display: "flex",
+          gap: 24,
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+        }}
+      >
+        {CASES.map((id) => (
+          <Frame key={id} id={id} />
+        ))}
+      </div>
+    )}
   </StrictMode>,
 );

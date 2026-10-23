@@ -4,8 +4,14 @@ import type { Daemon } from "../../../lib/daemon-client";
 import { L } from "../../labels";
 import { Spin } from "../../ui/icons";
 import { ModalBody, ModalFoot, ModalFrame, ModalHead } from "../../ui/ModalFrame";
+import { ParentPicker } from "../draft/ParentPicker";
 import type { PlanListRow } from "../plans-list";
-import { defaultCopyTitle, docOpBlockerLines, docOpResultLine } from "./doc-actions-model";
+import {
+  defaultCopyTitle,
+  docOpBlockerLines,
+  docOpFormState,
+  docOpResultLine,
+} from "./doc-actions-model";
 import "./doc-actions.css";
 
 /**
@@ -106,16 +112,8 @@ export function DocOpDialog({
 
   // 초안 안내는 막는 이유 목록에 서지 않고 창의 안내 줄이 말한다(2026-10-23 화면 확인 · R2 검토 7) —
   // 나머지 이유가 확인 단추를 닫는다.
-  const blockers = preview === null ? [] : preview.blockers.filter((name) => name !== "has-draft");
   const blockerTexts = preview === null ? [] : docOpBlockerLines(preview);
-  const targetMissing = picksParent && parent === "";
-  const titleMissing = op === "copy" && title.trim() === "";
-  const ready =
-    phase === "ready" &&
-    preview !== null &&
-    blockers.length === 0 &&
-    !targetMissing &&
-    !titleMissing;
+  const { keepBody, canConfirm } = docOpFormState({ phase, preview, parent, title });
   // 초안 안내 — 복제에서는 아예 두지 않는다(사본에는 이 컴퓨터의 초안이 얽히지 않는다).
   const showDraftNote = preview !== null && preview.hasDraft === true && op !== "copy";
   const showChildren =
@@ -136,11 +134,11 @@ export function DocOpDialog({
           </p>
         )}
         {phase === "failed" && (
-          <p className="nx-da-fail" role="alert">
+          <p className="nx-banner nx-banner--red" role="alert">
             {loadError}
           </p>
         )}
-        {phase === "ready" && preview !== null && (
+        {keepBody && preview !== null && (
           <>
             <dl className="nx-da-facts">
               <div className="nx-da-fact">
@@ -149,40 +147,34 @@ export function DocOpDialog({
               </div>
             </dl>
             {showChildren && (
-              <p className="nx-da-children" role="note">
+              <p className="nx-banner nx-banner--amber" role="note">
                 {L.docOps.childCount(preview.childCount ?? 0)}
               </p>
             )}
             {showDraftNote && (
-              <p className="nx-da-note" role="note">
+              <p className="nx-banner nx-banner--blue" role="note">
                 {L.docOps.hasDraft}
               </p>
             )}
             {picksParent && (
-              <label className="nx-da-field">
-                <span>{L.docOps.target}</span>
-                <select
-                  aria-label={L.docOps.target}
-                  value={parent}
-                  disabled={sending}
-                  onChange={(event) => setParent(event.target.value)}
-                >
-                  <option value="">{L.docOps.targetPick}</option>
-                  {rows
-                    .filter((row) => row.kind !== "unsupported")
-                    .map((row) => (
-                      <option key={`${row.kind}:${row.pageId}`} value={`${row.kind}:${row.pageId}`}>
-                        {"\u00A0\u00A0".repeat(row.depth)}
-                        {row.title}
-                      </option>
-                    ))}
-                </select>
-              </label>
+              <ParentPicker
+                rows={rows}
+                label={L.docOps.target}
+                placeholder={L.docOps.targetPick}
+                value={parent}
+                disabled={sending}
+                onChange={(value) => {
+                  // 자리를 고른 즉시 확인을 잠근다(2026-10-23 화면 전면 재설계 §4 D).
+                  setPhase("loading");
+                  setParent(value);
+                }}
+              />
             )}
             {op === "copy" && (
-              <label className="nx-da-field">
-                <span>{L.docOps.newTitle}</span>
+              <label className="nx-field">
+                <span className="nx-field-label">{L.docOps.newTitle}</span>
                 <input
+                  className="nx-input"
                   aria-label={L.docOps.newTitle}
                   value={title}
                   disabled={sending}
@@ -193,17 +185,19 @@ export function DocOpDialog({
             {blockerTexts.length > 0 && (
               <ul className="nx-da-blockers">
                 {blockerTexts.map((line) => (
-                  <li key={line}>{line}</li>
+                  <li className="nx-banner nx-banner--amber" key={line}>
+                    {line}
+                  </li>
                 ))}
               </ul>
             )}
             {result !== null && result.state !== "applied" && (
-              <p className="nx-da-result" role="status">
+              <p className="nx-banner nx-banner--amber nx-da-result" role="status">
                 {docOpResultLine(result)}
               </p>
             )}
             {error !== null && (
-              <p className="nx-da-fail" role="alert">
+              <p className="nx-banner nx-banner--red" role="alert">
                 {error}
               </p>
             )}
@@ -214,7 +208,7 @@ export function DocOpDialog({
         <button
           type="button"
           className="nx-btn nx-btn--pri"
-          disabled={!ready || sending || locked}
+          disabled={!canConfirm || sending || locked}
           onClick={() => void send()}
         >
           {sending ? (

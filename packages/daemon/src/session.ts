@@ -33,9 +33,7 @@ import {
   bashCommandVerdict,
   OUTSIDE_COMMAND_REFUSAL,
   OUTSIDE_WRITE_REFUSAL,
-  PLANS_WRITE_REFUSAL,
   pathWritable,
-  plansFolderTarget,
 } from "./write-guard.js";
 
 /**
@@ -263,6 +261,11 @@ interface SessionLaunch {
    * 앱 공통 지침 — 기본 시스템 프롬프트 끝에 붙는다.
    */
   appendSystemPrompt?: string;
+  /**
+   * 세션이 작업 폴더 밖에서 함께 읽는 폴더(기획서 사본) · 절대 경로
+   * (2026-10-23 · 기획서 사본 이동 계획 §6).
+   */
+  additionalDirectories?: string[];
 }
 
 export interface SessionOptions {
@@ -1184,10 +1187,6 @@ export class Session {
     }
     if (tool.kind === "edit") {
       const paths = tool.paths ?? [];
-      // 기획서 폴더는 클론 안이지만 고치지 않는다 — 훅의 판정(fileWriteVerdict)과 같은 함수다(2026-10-19).
-      if (paths.some((value) => plansFolderTarget(value, { cwd: this.cwd }))) {
-        return Promise.resolve({ behavior: "deny", message: PLANS_WRITE_REFUSAL });
-      }
       if (paths.length > 0) {
         // Relative names resolve against cwd and symlinks resolve through,
         // so a policy compares prefixes without being talked past.

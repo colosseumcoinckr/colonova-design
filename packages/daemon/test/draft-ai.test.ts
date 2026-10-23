@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -27,10 +27,18 @@ const OUTSIDE = mkdtempSync(join(tmpdir(), "draft-ai-out-"));
 mkdirSync(join(ROOT, "안"));
 symlinkSync(OUTSIDE, join(ROOT, "밖링크"), "dir");
 symlinkSync(join(ROOT, "안"), join(ROOT, "안링크"), "dir");
+const CLONE = mkdtempSync(join(tmpdir(), "draft-ai-clone-"));
+mkdirSync(join(CLONE, "src"));
+symlinkSync(OUTSIDE, join(CLONE, "밖링크"), "dir");
+const ALIAS = mkdtempSync(join(tmpdir(), "draft-ai-alias-"));
+symlinkSync(realpathSync(CLONE), join(ALIAS, "클론"), "dir");
+symlinkSync(realpathSync(OUTSIDE), join(ALIAS, "밖"), "dir");
 
 test.after(() => {
   rmSync(ROOT, { recursive: true, force: true });
   rmSync(OUTSIDE, { recursive: true, force: true });
+  rmSync(CLONE, { recursive: true, force: true });
+  rmSync(ALIAS, { recursive: true, force: true });
 });
 
 const INIT = { type: "system", subtype: "init", session_id: "sdk-init" };
@@ -270,6 +278,141 @@ test("confine 훅은 readRoot 안의 경로만 두고 밖 · `..` · 심볼릭 �
   );
 });
 
+test("extraRoots 를 주면 추가 읽기 뿌리가 실리고 안 주면 키가 없다", async () => {
+  const withRoots = fakeQuery([success(ANSWER)]);
+  await createDraftAiRunner(withRoots.fn)(
+    makeRequest({ extraRoots: [CLONE] }).request,
+    collector(),
+  );
+  assert.deepEqual(withRoots.calls[0].options.additionalDirectories, [realpathSync(CLONE)]);
+  const withoutRoots = fakeQuery([success(ANSWER)]);
+  await createDraftAiRunner(withoutRoots.fn)(makeRequest().request, collector());
+  assert.equal("additionalDirectories" in withoutRoots.calls[0].options, false);
+});
+
+test("뿌리가 둘이면 클론 안은 지나고 두 뿌리 밖 · 빠져나가는 경로는 막는다", async () => {
+  const { fn, calls } = fakeQuery([success(ANSWER)]);
+  await createDraftAiRunner(fn)(makeRequest({ extraRoots: [CLONE] }).request, collector());
+  const hook = confineOf(calls[0]);
+  // 클론 안의 Read — 추가 뿌리로 함께 열린 연결 레포다.
+  assert.deepEqual(
+    await hook({
+      hook_event_name: "PreToolUse",
+      tool_name: "Read",
+      tool_input: { file_path: join(CLONE, "src/app.ts") },
+    }),
+    {},
+  );
+  // 절대 경로 Glob 도 클론 안이면 지나간다.
+  const realClone = realpathSync(CLONE);
+  assert.deepEqual(
+    await hook({
+      hook_event_name: "PreToolUse",
+      tool_name: "Glob",
+      tool_input: { pattern: join(realClone, "src", "**", "*.ts") },
+    }),
+    {},
+  );
+  // 두 뿌리 밖 · `..` 로 나가는 경로 · 클론 밖을 가리키는 링크는 막힌다.
+  for (const toolInput of [
+    { file_path: "/etc/hosts" },
+    { file_path: join(CLONE, "..", "밖.md") },
+    { file_path: join(CLONE, "밖링크", "문서.md") },
+  ]) {
+    const reason = denyReason(
+      await hook({ hook_event_name: "PreToolUse", tool_name: "Read", tool_input: toolInput }),
+    );
+    assert.ok(reason !== null, `거절해야 한다: ${JSON.stringify(toolInput)}`);
+  }
+  // 절대 경로 Glob 이 두 뿌리 밖을 가리키면 막힌다.
+  const outsideGlob = denyReason(
+    await hook({
+      hook_event_name: "PreToolUse",
+      tool_name: "Glob",
+      tool_input: { pattern: "/etc/**" },
+    }),
+  );
+  assert.ok(outsideGlob !== null, "두 뿌리 밖의 Glob 을 거절해야 한다");
+});
+
+test("Glob 의 중괄호 확장 · Grep 의 glob 거름은 `..` · `~` 마디를 숨겨도 막는다(2026-10-23 · 검토 R1)", async () => {
+  const { fn, calls } = fakeQuery([success(ANSWER)]);
+  await createDraftAiRunner(fn)(makeRequest({ extraRoots: [CLONE] }).request, collector());
+  const hook = confineOf(calls[0]);
+  // 중괄호 확장 — 슬래시로만 쪼개면 `{..,src}/**` 이 `..` 마디를 숨긴 채 지나간다.
+  for (const pattern of ["{..,src}/**", "{..}/{..}/etc/*", "{~,x}/*"]) {
+    const reason = denyReason(
+      await hook({ hook_event_name: "PreToolUse", tool_name: "Glob", tool_input: { pattern } }),
+    );
+    assert.ok(reason !== null, `Glob 을 거절해야 한다: ${pattern}`);
+  }
+  // Grep 의 glob 거름 칸도 같은 규칙이다 — pattern 은 정규식이라 그대로 둔다.
+  const grepReason = denyReason(
+    await hook({
+      hook_event_name: "PreToolUse",
+      tool_name: "Grep",
+      tool_input: { pattern: "찾는다", glob: "../.." },
+    }),
+  );
+  assert.ok(grepReason !== null, "Grep 의 glob 거름을 거절해야 한다");
+  assert.deepEqual(
+    await hook({
+      hook_event_name: "PreToolUse",
+      tool_name: "Grep",
+      tool_input: { pattern: "찾는다", glob: "**/*.md" },
+    }),
+    {},
+  );
+});
+
+test("경로 칸이 여럿이면 모두 뿌리 안이어야 지나간다(2026-10-23 · 검토 R1)", async () => {
+  const { fn, calls } = fakeQuery([success(ANSWER)]);
+  await createDraftAiRunner(fn)(makeRequest().request, collector());
+  const hook = confineOf(calls[0]);
+  // 첫 칸만 보면 지나가는 입력 — 뒤의 칸이 밖을 가리키면 막는다.
+  for (const toolInput of [
+    { file_path: "기획서/a.md", path: "/etc" },
+    { file_path: join(ROOT, "안", "a.md"), notebook_path: "/etc/nb.ipynb" },
+  ]) {
+    const reason = denyReason(
+      await hook({ hook_event_name: "PreToolUse", tool_name: "Read", tool_input: toolInput }),
+    );
+    assert.ok(reason !== null, `거절해야 한다: ${JSON.stringify(toolInput)}`);
+  }
+  assert.deepEqual(
+    await hook({
+      hook_event_name: "PreToolUse",
+      tool_name: "Grep",
+      tool_input: { pattern: "찾는다", path: join(ROOT, "기획서") },
+    }),
+    {},
+  );
+});
+
+test("절대 경로 Glob 은 심볼릭 별명을 실제 경로로 풀어 견준다(2026-10-23 · 검토 R1)", async () => {
+  const { fn, calls } = fakeQuery([success(ANSWER)]);
+  await createDraftAiRunner(fn)(makeRequest({ extraRoots: [CLONE] }).request, collector());
+  const hook = confineOf(calls[0]);
+  // 별명이 클론을 가리키면 패턴 표기가 두 뿌리 밖이어도 실제 경로로 지나간다.
+  assert.deepEqual(
+    await hook({
+      hook_event_name: "PreToolUse",
+      tool_name: "Glob",
+      tool_input: { pattern: join(ALIAS, "클론", "src", "**", "*.ts") },
+    }),
+    {},
+  );
+  // 별명이 두 뿌리 밖을 가리키면 막힌다.
+  const reason = denyReason(
+    await hook({
+      hook_event_name: "PreToolUse",
+      tool_name: "Glob",
+      tool_input: { pattern: join(ALIAS, "밖", "**") },
+    }),
+  );
+  assert.ok(reason !== null, "밖을 가리키는 별명의 Glob 을 거절해야 한다");
+});
+
 test("설명은 누적해 흐르고 읽은 파일은 절대 경로로 알린다", async () => {
   const { fn } = fakeQuery([
     INIT,
@@ -468,6 +611,17 @@ test("묻는 글은 블록 · 토큰 이름표 · 근거 문서 · 요청을 실
   assert.ok(prompt.includes("사람: 앞에서 물었다"));
   assert.ok(prompt.includes("[이번 요청]"));
   assert.ok(prompt.includes("두 문단을 합쳐 준다"));
+});
+
+test("묻는 글에는 연결 레포 참고와 비밀 금지 규칙이 실린다", () => {
+  const prompt = buildDraftPrompt({
+    draft: makeDraft(),
+    text: "물어본다",
+    refs: [],
+    history: [],
+  });
+  assert.ok(prompt.includes("함께 열린 연결 레포의 파일은 화면을 이해하는 참고로만 읽고"));
+  assert.ok(prompt.includes("비밀 키 · 토큰 · 자격 증명은 읽거나 답에 남기지 않는다"));
 });
 
 test("긴 근거 문서는 앞부분에서 자르고 잘랐다고 적는다", () => {

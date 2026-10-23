@@ -620,13 +620,27 @@ function Step({
           )}
         </span>
         <span className="nx-ob-name">{title}</span>
-        <span className="nx-ob-r" aria-live="polite" title={status}>
-          {status}
+        <span
+          className={`nx-pill nx-ob-r${pillToneOf(state, current)}`}
+          aria-live="polite"
+          title={status}
+        >
+          {/* 알약은 flex 라 글에 곧장 말줄임이 먹지 않는다 — 글을 감싼 칸이 줄고 전체는 title 로(2026-10-24 RF 검토). */}
+          <span className="nx-ob-r-t">{status}</span>
         </span>
       </div>
       {children}
     </li>
   );
+}
+
+/** 상태 알약의 색 — 통과는 초록, 막힘은 빨강, 서 있는 카드는 포인트, 나머지는 물 알약.
+ *  색은 늘 상태 말과 함께 선다(정본 §11). */
+function pillToneOf(state: CardState, current: boolean): string {
+  if (state === "ok") return " nx-pill--green";
+  if (state === "fail") return " nx-pill--red";
+  if (current) return " nx-pill--accent";
+  return "";
 }
 
 /**
@@ -695,6 +709,7 @@ function LoginCodeForm({ daemon }: { daemon: Daemon }) {
     <div>
       <div className="nx-row">
         <input
+          className="nx-input"
           type="password"
           value={code}
           spellCheck={false}

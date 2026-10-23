@@ -1,7 +1,13 @@
 /*
  * 기획 근거 줄(2026-10-23 · 최종 구현 계획 F3 · 작업 F3b) — 화면 대화의 입력창 바로 위에
  * 이번 대화가 삼은 근거가 한 줄로 선다. 칩을 누르면 기획서 칸이 그 문서 · 초안으로 돌아간다.
- * 칩이 늘어나도 줄은 하나 — 옆으로 굴러가며 입력창을 밀어 올리지 않는다.
+ * 칩이 늘어나도 줄은 하나 — 입력창을 밀어 올리지 않는다.
+ * 칩의 해부는 문서 아이콘 · 제목 · 판(또는 미발행 초안 알약) · 고른 절,
+ * 28px · 13px(2026-10-23 화면 전면 재설계 §4 E).
+ *
+ * 접힌 줄의 칩은 줄의 폭에 맞춰 줄어든다 — 제목이 먼저 말줄임이고 미발행 초안 알약이 그다음이며, 좁은 칸(≤ 460px)에서는 고른 절의
+ * 글자가 빠진다(칩의 풍선에는 전체 글이 있다). `+N` 은 칩의 칸 밖이라 폭이 모자라도 늘 보인다(2026-10-24 QA 12: 420 · 560 에서
+ * 둘째 칩과 `+N` 이 옆으로 밀려 가려지던 것). 펼친 줄은 칩이 제 폭으로 서고 옆으로 굴러간다.
  */
 
 .nx-pref {
@@ -11,48 +17,74 @@
   margin: 0 0 8px 4px;
   min-width: 0;
   animation: nx-fade 0.2s;
+  /* 줄의 폭을 질의가 읽는다 — 좁은 칸에서만 절의 글자를 접는다. */
+  container: nxpref / inline-size;
 }
 
 .nx-pref-label {
   flex: none;
-  font-size: 11.5px;
+  font-size: var(--fs-cap);
   color: var(--ink3);
   white-space: nowrap;
 }
 
-/* 칩의 줄 — 한 줄을 지킨다. 펼쳐진 칩은 옆으로 굴러간다(막대는 숨긴다 — 두 줄이 되는 것보다 낫다). */
+/* 칩의 줄 — 접힌 동안은 넘친 것을 자른다(칩이 먼저 줄어든다). `+N` 은 이 칸 밖에 있다. 초점 고리(바깥 2px + 띄움 2px)가 칸의 가장자리에서
+   잘리지 않게 안쪽 여백을 주고 같은 만큼 바깥으로 뺀다. */
 .nx-pref-chips {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: none;
+  overflow: hidden;
+  padding: 4px;
+  margin: -4px;
 }
 
-.nx-pref-chips::-webkit-scrollbar {
+/* 펼친 줄 — 칩이 제 폭으로 서고 옆으로 굴러간다(막대는 숨긴다 — 두 줄이 되는 것보다 낫다). */
+.nx-pref-chips--open {
+  flex: 1 1 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* 굴러가는 칩이 잘리는 자리와 `+N` 사이에 접힌 줄과 같은 6px 를 남긴다. */
+  margin-right: 0;
+}
+
+.nx-pref-chips--open::-webkit-scrollbar {
   display: none;
 }
 
-/* 근거 칩 — 입력창 위 알약(.nx-plan-pill)과 같은 몸값. 제목이 길면 칩 안에서 말린다. */
+/* 근거 칩 — 입력창의 칩(nx-tbtn)과 같은 28px. 줄 안에서 줄어든다(`min-width: 0` — 칩의 글이 한 줄이라 안쪽 최소 폭이 곧 글 전체여서
+   이것이 없으면 줄어들지 못하고 오른쪽 칩과 `+N` 이 밀려 가려졌다). 칩 안에서는 제목이 먼저, 그다음 초안 알약이 말줄임이다. */
 .nx .nx-pref-chip {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 6px;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  height: var(--h-sm);
   max-width: 260px;
-  padding: 5px 12px;
-  border-radius: var(--r-pill);
+  padding: 0 10px;
+  border-radius: var(--r-sm);
   border: 1px solid var(--line2);
   background: var(--card);
   color: var(--ink2);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   white-space: nowrap;
 }
 
-/* 제목만 말린다 — 판 · 초안 여부와 절은 끝까지 보인다. */
+.nx-pref-chips--open .nx-pref-chip {
+  flex: none;
+}
+
+.nx-pref-chip > .nx-i {
+  flex: none;
+  color: var(--ink3);
+}
+
+/* 제목이 먼저 말린다 — 세 글자 아래로는 줄어들지 않는다(그 아래는 칩이 오른쪽 끝에서 자른다). */
 .nx-pref-title {
-  min-width: 0;
+  min-width: 3em;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -62,22 +94,39 @@
   color: var(--ink3);
 }
 
+/* 미발행 초안의 호박색 알약(`nx-pill` 20px) — 28px 칩 안에서 가운데 선다. 칩이 모자라면 알약도 줄임표로 줄어든다(제목 다음). */
+.nx-pref-chip .nx-pill {
+  display: block;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 20px;
+  text-overflow: ellipsis;
+}
+
 .nx .nx-pref-chip:hover {
   background: var(--nx-hover);
   color: var(--ink);
 }
 
-/* 펼침 — 남은 근거의 수를 세는 조용한 글자 단추. 펼쳐져도 같은 자리에서 접는 길이 된다. */
+/* 펼침 — 남은 근거의 수를 세는 조용한 글자 단추. 칩의 칸 밖이라 늘 보인다. 펼쳐져도 같은 자리에서 접는 길이 된다. */
 .nx .nx-pref-more {
   flex: none;
   padding: 0;
   border: 0;
   background: none;
   color: var(--ink3);
-  font-size: 12px;
+  font-size: var(--fs-cap);
   white-space: nowrap;
 }
 
 .nx .nx-pref-more:hover {
   color: var(--ink);
+}
+
+/* 좁은 칸 — 고른 절의 글자는 칩의 풍선(title)에만 남긴다. 제목 · 판 · 초안 알약이 먼저 읽혀야 한다. */
+@container nxpref (max-width: 460px) {
+  .nx-pref-chips:not(.nx-pref-chips--open) .nx-pref-sec {
+    display: none;
+  }
 }

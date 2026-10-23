@@ -8,8 +8,9 @@
  * 함수를 읽어 두 길의 답이 갈라지지 않는다.
  *
  * 1. 파일 쓰기 도구(Write · Edit · MultiEdit · NotebookEdit)는 세션의 클론과 임시 폴더 안만 고친다.
- *    클론 안이라도 기획서 폴더(`docs/plans/` — 앱이 Confluence 에서 가져온 읽기 전용 사본)는 고치지 않는다
- *    (2026-10-19). 셸 도구의 쓰기는 이 폴더를 보지 않는다 — 공통 규칙의 한 구절이 그 몫이다.
+ *    기획서 사본 뿌리(`mirrorRoots` — 화면 세션에 함께 열린 Confluence 사본)도 밖이지만, 안을 가리킨
+ *    때는 거절 이유만 기획서 말로 바꾼다 — AI 가 사본 파일을 보고 고치려 들기 때문이다(2026-10-23 ·
+ *    기획서 사본 이동 계획 §6). 셸 도구의 쓰기는 사본 뿌리를 이유로 보지 않는다 — 공통 규칙의 한 구절이 그 몫이다.
  *    경로는 풀어서 본다 — 상대 경로는 클론 기준, `..` · `~` · 심볼릭 링크(끊어진 링크 — 아직 없는 파일을
  *    가리키는 링크 — 는 대상을 따라간다, paths.ts) · 아직 없는 파일 ·
  *    Windows 의 드라이브 문자와 대소문자 · 유니코드 정규화(한글 폴더 이름)까지.
@@ -51,12 +52,13 @@ export const OUTSIDE_WRITE_REFUSAL =
   "이 프로젝트 폴더 밖의 파일은 고치지 않아요 — 프로젝트 안의 파일만 고쳐 주세요.";
 
 /**
- * 파일 쓰기 도구가 기획서 폴더(`docs/plans/`)를 겨눌 때 AI 가 읽는 한 문장(2026-10-19) — 그 폴더는 앱이
- * Confluence 에서 가져온 읽기 전용 사본이다. 보관 · 제출에서 빠지므로 AI 가 고친 것은 아무 데도 가지 않고,
- * 다음 세션의 AI 가 그것을 Confluence 의 글로 잘못 읽는다. 사용자 어휘만 쓴다(다른 거절 문장과 같은 규칙).
+ * 파일 쓰기 도구가 기획서 사본 뿌리를 겨눌 때 AI 가 읽는 한 문장(2026-10-23 · 기획서 사본 이동 계획 §6) —
+ * 사본은 앱이 Confluence 에서 주기적으로 새로 받아 덮어쓰는 읽기 전용 거울이고 아직 발행하지 않은 초안은
+ * 거기에 없다. 판정은 클론 밖 거절과 같고 이유만 다르다 — AI 가 사본 파일을 보고 고치려 들기 때문이다.
+ * 사용자 어휘만 쓴다(다른 거절 문장과 같은 규칙).
  */
 export const PLANS_WRITE_REFUSAL =
-  "기획서는 이 앱에서 읽기만 해요 — 기획서의 내용은 Confluence 에서 고쳐 주세요.";
+  "가져온 기획서는 읽기만 해요 — 기획서는 기획서 칸의 초안이나 Confluence 에서 고쳐 주세요.";
 
 /** Bash 의 뻔한 파괴(sudo · 클론 밖 삭제/권한/덮어쓰기)에 읽는 한 문장. */
 export const OUTSIDE_COMMAND_REFUSAL =
@@ -95,6 +97,12 @@ export interface WriteScope {
   tempRoots?: readonly string[];
   /** 그 밖에 쓰게 두는 폴더 — 훅이 Claude 의 자동 메모 폴더를 싣는다(`autoMemoryRoots`). */
   extraRoots?: readonly string[];
+  /**
+   * 화면 세션에 함께 열린 기획서 사본 뿌리(절대 경로) — 클론 밖이라 쓰기는 이미 거절이고, 이 안을
+   * 가리킨 때는 거절 이유만 기획서 말로 바꾼다(2026-10-23 · 기획서 사본 이동 계획 §6). 생략하면
+   * 사본 자리도 보통 클론 밖이다.
+   */
+  mirrorRoots?: readonly string[];
   /** 경로의 모양과 대소문자 규칙 — 생략하면 이 컴퓨터. */
   platform?: Platform;
   /** `~` 의 자리 — 생략하면 홈 폴더. */
@@ -121,12 +129,9 @@ interface Ctx {
   realpath: (absolute: string) => string;
   /** 허용 뿌리 — 각 뿌리와 그 realpath. 모두 절대 경로. */
   roots: string[];
-  /** 클론 안이지만 고치지 않는 기획서 폴더 — 클론과 그 realpath 의 `docs/plans`. */
-  plans: string[];
+  /** 거절 이유만 바꾸는 기획서 사본 뿌리 — 각 뿌리와 그 realpath. 모두 절대 경로. */
+  mirrors: string[];
 }
-
-/** 기획서 폴더 — confluence-sync 의 PLANS_DIR 와 같은 자리(앱이 Confluence 에서 가져온 사본). */
-const PLANS_FOLDER = ["docs", "plans"] as const;
 
 function pathApi(platform: Platform): path.PlatformPath {
   return platform === "win32" ? path.win32 : path.posix;
@@ -178,7 +183,13 @@ function context(scope: WriteScope): Ctx {
     // 파일 시스템의 뿌리이거나 홈을 품은 "임시 폴더"(TMPDIR=$HOME 같은 설정)는 울타리를 지운다 — 뺀다.
     .filter((root) => root !== api.parse(root).root && !isInside(root, home, light));
   const roots = [cwd, ...others].flatMap((root) => [root, realpath(root)]);
-  const plans = [cwd, realpath(cwd)].map((root) => api.join(root, ...PLANS_FOLDER));
+  const mirrors: string[] = [];
+  for (const root of scope.mirrorRoots ?? []) {
+    const absolute = api.resolve(root);
+    for (const candidate of [absolute, realpath(absolute)]) {
+      if (!mirrors.includes(candidate)) mirrors.push(candidate);
+    }
+  }
   return {
     api,
     platform,
@@ -186,7 +197,7 @@ function context(scope: WriteScope): Ctx {
     base,
     realpath,
     roots: [...new Set(roots)],
-    plans: [...new Set(plans)],
+    mirrors,
   };
 }
 
@@ -236,19 +247,6 @@ export function pathWritable(target: string, scope: WriteScope): boolean {
   return insideRoots(resolveTarget(target, ctx), ctx);
 }
 
-function insidePlans(absolute: string, ctx: Ctx): boolean {
-  return ctx.plans.some((folder) => isInside(folder, absolute, ctx));
-}
-
-/**
- * 이 경로가 기획서 폴더(`docs/plans/`) 안인가(2026-10-19) — 파일 쓰기 도구의 판정과 코어의 편집 판정이 같은 이
- * 함수를 읽는다. 받는 경로는 절대 경로이거나 클론 기준 상대 경로다.
- */
-export function plansFolderTarget(target: string, scope: WriteScope): boolean {
-  const ctx = context(scope);
-  return insidePlans(resolveTarget(target, ctx), ctx);
-}
-
 /** 파일 쓰기 도구의 입력에서 고치려는 경로들 — claude/session.ts 의 classifyTool 이 읽는 칸과 같다. */
 export function fileWriteTargets(input: Record<string, unknown>): string[] {
   return [input.file_path, input.notebook_path, input.path].filter(
@@ -258,7 +256,8 @@ export function fileWriteTargets(input: Record<string, unknown>): string[] {
 
 /**
  * 파일 쓰기 도구 호출의 판정. 쓰기 도구가 아니거나 경로가 없으면 통과 — 경로 없는 호출은 도구가
- * 스스로 거절한다. 하나라도 클론 · 임시 폴더 밖이면 거절, 클론 안이라도 기획서 폴더면 거절(2026-10-19).
+ * 스스로 거절한다. 하나라도 클론 · 임시 폴더 밖이면 거절이다. 기획서 사본 뿌리도 밖이지만, 안을
+ * 가리킨 때는 이유만 기획서 말로 바꾼다(2026-10-23 · 기획서 사본 이동 계획 §6).
  */
 export function fileWriteVerdict(
   toolName: string,
@@ -271,8 +270,11 @@ export function fileWriteVerdict(
   const ctx = context(scope);
   for (const target of targets) {
     const absolute = resolveTarget(target, ctx);
-    if (!insideRoots(absolute, ctx)) return { allow: false, reason: OUTSIDE_WRITE_REFUSAL };
-    if (insidePlans(absolute, ctx)) return { allow: false, reason: PLANS_WRITE_REFUSAL };
+    if (insideRoots(absolute, ctx)) continue;
+    // 사본 뿌리도 밖이다 — 판정은 같고 이유만 기획서 말이다(2026-10-23 · 기획서 사본 이동 계획 §6).
+    if (ctx.mirrors.some((root) => isInside(root, absolute, ctx)))
+      return { allow: false, reason: PLANS_WRITE_REFUSAL };
+    return { allow: false, reason: OUTSIDE_WRITE_REFUSAL };
   }
   return { allow: true };
 }

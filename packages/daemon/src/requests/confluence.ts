@@ -6,18 +6,14 @@ import {
 } from "../confluence-client.js";
 import { readConfluenceLedger } from "../confluence-ledger.js";
 import { deriveMarkdown } from "../confluence-markdown.js";
-import {
-  confluenceLedgerFile,
-  confluenceSiteKey,
-  ensurePlansExclude,
-  resetLedgerOnRootChange,
-} from "../confluence-sync.js";
+import { confluenceMirrorLedger } from "../confluence-mirror.js";
+import { confluenceSiteKey, resetLedgerOnRootChange } from "../confluence-sync.js";
 import { CONFLUENCE_PAT_ITEM, loadConfluenceCredentials } from "../credentials.js";
 import type { RequestHandlers, RouterDeps } from "./types.js";
 
 type ConfluenceDeps = Pick<
   RouterDeps,
-  "registry" | "machineSetting" | "fleet" | "credentials" | "confluence"
+  "registry" | "machineSetting" | "credentials" | "confluence"
 >;
 
 // doc.* 의 나머지(휴지통 · 복구 · 복제 · 위치 변경)는 requests/doc-ops.ts 의 몫이다(2026-10-23 작업 D1a).
@@ -48,8 +44,8 @@ export function confluenceHandlers(deps: ConfluenceDeps): RequestHandlers<Conflu
  * 이메일·토큰은 한 번만 받는다: 검증(/user/current)이 이기면 자격은 저장소의
  * `confluence-pat` 한 몸으로, 연결 미러는 machine.json 의 슬러그 붙은 키로 둔다 —
  * 다른 프로젝트의 연결을 덮어쓰지 않고, 응답 어디에도 자격이 다시 나오지 않는다.
- * 이미 저장된 자격으로 뿌리만 고를 때는 이메일·토큰을 비우고 보낸다. 연결이 서면
- * 클론의 `.git/info/exclude` 에 기획서 폴더 거름을 박는다(F7 — 첫 쓰기보다 앞선다).
+ * 이미 저장된 자격으로 뿌리만 고를 때는 이메일·토큰을 비우고 보낸다. 연결은 사본 폴더를
+ * 만들지 않는다(2026-10-23 · 기획서 사본 이동 계획 §5) — 첫 가져오기가 만든다.
  */
 async function confluenceConnect(
   deps: ConfluenceDeps,
@@ -62,6 +58,11 @@ async function confluenceConnect(
 ): Promise<{ site: string; rootTitle: string | null }> {
   const slug = deps.registry.activeSlug();
   if (slug === null || slug === "") {
+    throw new Error("연결할 프로젝트가 없습니다 — 프로젝트를 먼저 골라 주세요.");
+  }
+  // 깨진 활성 슬러그 — 등록부에 없는 프로젝트의 가상 폴더 원장을 연결이 덮지 않게 한다
+  // (2026-10-23 · 기획서 사본 이동 계획 · 오케스트레이터 검토 R2).
+  if (deps.registry.get(slug) === null) {
     throw new Error("연결할 프로젝트가 없습니다 — 프로젝트를 먼저 골라 주세요.");
   }
   // 옛 뿌리의 id — 거울에 새기기 전의 값이어야 뿌리 교체를 알 수 있다.
@@ -97,17 +98,14 @@ async function confluenceConnect(
     deps.machineSetting.set(`confluenceRootId:${slug}`, message.rootPageId);
     deps.machineSetting.set(`confluenceRootTitle:${slug}`, rootTitle);
   }
-  const workspace = deps.fleet.workspaces.get(slug);
-  if (workspace !== undefined) {
-    // 뿌리가 바뀐 연결이면 원장을 비운다 — 새 뿌리의 문서가 처음부터 다시 걷힌다(옛 문서가 목록에 남지 않는다).
-    resetLedgerOnRootChange(
-      workspace.repo.root,
-      previousRootId,
-      // 선로의 짝 규칙이 이미 걸러 rootPageId 는 있다 — 없으면 같은 뿌리로 본다.
-      message.rootPageId ?? previousRootId ?? "",
-    );
-    ensurePlansExclude(workspace.repo.root);
-  }
+  // 뿌리가 바뀐 연결이면 원장을 비운다 — 새 뿌리의 문서가 처음부터 다시 걷힌다(옛 문서가 목록에 남지 않는다).
+  // 워크스페이스와 상관없이 프로젝트 폴더의 원장에 쓴다(2026-10-23 · 기획서 사본 이동 계획 §5).
+  resetLedgerOnRootChange(
+    deps.registry.paths(slug).root,
+    previousRootId,
+    // 선로의 짝 규칙이 이미 걸러 rootPageId 는 있다 — 없으면 같은 뿌리로 본다.
+    message.rootPageId ?? previousRootId ?? "",
+  );
   // 다시 연결이 서면 만료는 내려앉는다 — 루프가 다시 달린다.
   deps.confluence.clearExpired(slug);
   return { site, rootTitle };
@@ -138,22 +136,23 @@ async function confluenceSuggestRoots(
 }
 
 /**
- * 기획서 목록 — 원장이 아는 트리와 판. 연결이 없거나 아직 가져온 것이 없으면
- * docs 가 null 이다(읽지 못함이 아니라 「아직 없다」). docs 가 있으면 폴더와 미지원
- * 종류의 계층도 늘 실는다(2026-10-23 최종 구현 계획 F0 — 둘 다 파일이 없는 원장 항목이다).
+ * 기획서 목록 — 원장이 아는 트리와 판. 연결이 없으면 docs 가 null 이다(읽지 못함이
+ * 아니라 「아직 없다」). docs 가 있으면 폴더와 미지원 종류의 계층도 늘 실는다
+ * (2026-10-23 최종 구현 계획 F0 — 둘 다 파일이 없는 원장 항목이다). 원장은 워크스페이스와
+ * 상관없이 프로젝트 폴더에서 읽는다(2026-10-23 · 기획서 사본 이동 계획 §5).
  */
 function docList(deps: ConfluenceDeps): {
   docs: Array<{ pageId: string; title: string; version: number; path: string }> | null;
+  roots?: string[];
   folders?: Array<{ folderId: string; title: string; path: string }>;
   unsupported?: Array<{ contentId: string; title: string; path: string; type: string }>;
 } {
   const slug = deps.registry.activeSlug();
   const site = slug === null ? null : deps.machineSetting.get(confluenceSiteKey(slug));
   if (slug === null || site === null) return { docs: null };
-  const workspace = deps.fleet.workspaces.get(slug);
-  if (workspace === undefined) return { docs: null };
-  const ledger = readConfluenceLedger(confluenceLedgerFile(workspace.repo.root));
+  const ledger = readConfluenceLedger(confluenceMirrorLedger(deps.registry.paths(slug).root));
   return {
+    roots: ledger.roots,
     docs: Object.entries(ledger.pages).map(([pageId, page]) => ({
       pageId,
       title: page.title,

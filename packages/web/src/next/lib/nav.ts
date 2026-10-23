@@ -4,20 +4,13 @@
  * 의 `activeId` 가 주인이다 — 여기엔 두 번째 사본을 두지 않는다.
  */
 export interface NavState {
-  /** `home` 큰 입력창과 받은 편지함(U6) · `thread` 대화 + 미리보기. */
+  /** `home` 은 홈, `thread` 는 pane 에 따라 기획서 또는 화면이다. */
   view: "home" | "thread";
   /** 좁은 창(900px 아래)의 두 탭 중 앞에 선 것(U16). 넓은 창은 읽지 않는다. */
   tab: "chat" | "preview";
-  /**
-   * 작업 화면 오른쪽 칸의 얼굴(2026-10-18 기획서 동기화 1단계 · M4) — 미리보기 아니면
-   * 기획서. 기획서는 뷰어일 뿐 고치는 곳이 아니므로 셸의 한 칸으로 산다.
-   */
+  /** 기획서와 화면 자리의 구분(2026-10-23 화면 전면 재설계 §3.1). */
   pane: "preview" | "plans";
-  /**
-   * 기획서 칸에 초안 편집기가 열려 있는가(2026-10-23 기획자 화면 손질 D2) — 칸이 알린다. 넓은 창에서 기획서가 앞에 서
-   * 있으면 집중 배치(화면 대화 칸이 비켜선다)다. 그동안 대화를 열면(사이드바 · ⌘T · 찾기 · 알림) 화면 쪽으로 돌아온다 —
-   * 비켜선 칸에 대화가 열리면 누른 손에 아무 일도 없어 보인다. 초안은 기획서 칸에 열린 채 남는다.
-   */
+  /** 기존 호출 계약을 유지한다. 자리 배치는 초안 여부와 무관하다(2026-10-23 화면 전면 재설계 §3.4). */
   planDraft: boolean;
   /** 좁은 창의 사이드바 서랍이 열려 있는가(`≡` · 스크림). */
   drawer: boolean;
@@ -45,9 +38,9 @@ export type NavAction =
    * 넓은 창은 두 칸이 함께 서고, 좁은 창은 화면 탭이 앞에 선다.
    */
   | { type: "screen" }
-  /** 오른쪽 칸을 기획서 보기로(사이드바의 기획서 항목) — 대화 보기 위에 미리보기와 한 칸을 나눠 선다. */
+  /** 기획서 자리로 간다. 다시 골라도 같은 자리다. */
   | { type: "plans" }
-  /** 오른쪽 칸의 얼굴을 바꾼다 — 기획서 칸의 돌아오는 길이 쓴다. */
+  /** 기존 호출자가 기획서와 화면 자리를 바꾸는 길이다. */
   | { type: "pane"; pane: NavState["pane"] }
   /** 기획서 칸의 초안 편집기가 열리고 닫혔다 — 칸이 알린다(2026-10-23 D2). */
   | { type: "plan-draft"; open: boolean }
@@ -81,19 +74,12 @@ export function navReducer(state: NavState, action: NavAction): NavState {
       // (미리보기)이 앞에 서야 한다. 열어 둔 문서의 기억은 기획서 칸이 쥐고 있어 다시 열면 그 자리다.
       return { ...state, view: "home", pane: "preview", drawer: false };
     case "thread":
-      // 대화를 여는 손은 서랍을 닫는다 — 좁은 창에서 고른 행이 스크림 뒤에 숨지 않게. 초안을 고치는 중(집중 배치)이면
-      // 화면 쪽으로 돌아온다 — 대화 칸이 비켜서 있어 연 대화가 보이지 않는다(2026-10-23 기획자 화면 손질 D2). 문서를 읽는
-      // 중이면 그대로다 — 대화 칸이 문서 곁에 서 있다.
-      return {
-        ...state,
-        view: "thread",
-        pane: state.pane === "plans" && state.planDraft ? "preview" : state.pane,
-        drawer: false,
-      };
+      // 대화는 언제나 화면 자리로 연다(2026-10-23 화면 전면 재설계 §3.1).
+      return { ...state, view: "thread", pane: "preview", tab: "chat", drawer: false };
     case "screen":
       return { ...state, view: "thread", tab: "preview", pane: "preview", drawer: false };
     case "plans":
-      // 기획서는 대화 보기의 오른쪽 칸이다 — 홈에서 곧장 열리면 대화 틀도 함께 선다.
+      // 대화와 미리보기는 숨고 기획서 본문이 선다(2026-10-23 화면 전면 재설계 §3.4).
       return { ...state, view: "thread", tab: "preview", pane: "plans", drawer: false };
     case "pane":
       return state.pane === action.pane ? state : { ...state, pane: action.pane };

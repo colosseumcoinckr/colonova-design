@@ -19,12 +19,9 @@ import {
   type ConfluenceWrite,
   createConfluenceTransport,
 } from "./confluence-client.js";
-import {
-  type ConfluenceLedger,
-  emptyConfluenceLedger,
-  readConfluenceLedger,
-} from "./confluence-ledger.js";
-import { confluenceLedgerFile, confluenceRootIdKey, confluenceSiteKey } from "./confluence-sync.js";
+import { type ConfluenceLedger, readConfluenceLedger } from "./confluence-ledger.js";
+import { confluenceMirrorLedger } from "./confluence-mirror.js";
+import { confluenceRootIdKey, confluenceSiteKey } from "./confluence-sync.js";
 import { type CredentialStore, loadConfluenceCredentials } from "./credentials.js";
 import type { DaemonLogger } from "./log.js";
 import type { RestTransport } from "./rest-transport.js";
@@ -34,8 +31,6 @@ export interface DocCommentsDeps {
   registry: { activeSlug(): string | null; paths(slug: string): { root: string } };
   machineSetting: { get(key: string): string | null };
   credentials: CredentialStore;
-  /** 클론 뿌리 — 없으면 null(연결 전 · 내려간 프로젝트). 범위는 원장으로 본다. */
-  workspaceRoot(slug: string): string | null;
   logger: DaemonLogger;
   /** 저장 전송 — 시험이 기록된 가짜를 넣는다. 없으면 env 가 고른다. */
   transport?: (site: string) => RestTransport;
@@ -365,9 +360,8 @@ export class DocComments {
   }
 
   #ledger(slug: string): ConfluenceLedger {
-    const root = this.#deps.workspaceRoot(slug);
-    if (root === null) return emptyConfluenceLedger();
-    return readConfluenceLedger(confluenceLedgerFile(root));
+    // 원장 파일이 없으면 읽기가 빈 원장을 돌려준다 — 연결 전 · 아직 가져오기 전의 모양이다.
+    return readConfluenceLedger(confluenceMirrorLedger(this.#deps.registry.paths(slug).root));
   }
 
   #plansRoot(slug: string): string {

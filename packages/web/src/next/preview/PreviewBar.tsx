@@ -45,10 +45,10 @@ export interface ScreenRow {
 }
 
 /**
- * 미리보기 막대 — 목업 `.pvbar`: 왼쪽은 ‹ › ⟳ · 주소(=화면 이름, 누르면 화면 목록),
- * 오른쪽 한 묶음은 PC/태블릿/휴대폰 · 찍기(이 막대의 주 단추) · 기록 · 배율 알약(100% 가
- * 아닐 때만) · `···`(배율 · AI에게 이 화면 보여 주기 · 제출한 때의 화면 · 단축키).
- * 넓으면 기록이 글자를 입고, 좁아지면 글자부터 감긴다(2026-10-06 막대 개편).
+ * 미리보기 막대 — 조절을 세 묶음으로 세운다(2026-10-23 화면 전면 재설계 §4 F). 묶음 사이 12px · 안 4px · 모든 조절 32px:
+ * ① 이동 — ‹ › ⟳ ② 화면 고르기 — 주소(=화면 이름, 누르면 화면 목록) ③ 보기 도구 — PC/태블릿/휴대폰(마디 단추) · 수정할 곳 선택
+ * (보통 단추 — 켜졌을 때만 포인트 바탕) · 작업 기록 · 배율 알약(100% 가 아닐 때만) · `···`(배율 · AI에게 이 화면 보여 주기 ·
+ * 제출한 때의 화면 · 단축키). 넓으면 기록이 글자를 입고, 좁아지면 글자부터 감긴다(2026-10-06 막대 개편).
  */
 export function PreviewBar({
   canBack,
@@ -184,36 +184,38 @@ export function PreviewBar({
 
   return (
     <div className="nx-pvbar">
-      <button
-        type="button"
-        className="nx-ibtn"
-        title={tipWith(L.preview.back, "back")}
-        aria-label={L.preview.back}
-        disabled={!canBack}
-        onClick={onBack}
-      >
-        <BackIcon />
-      </button>
-      <button
-        type="button"
-        className="nx-ibtn nx-fwd"
-        title={tipWith(L.preview.forward, "forward")}
-        aria-label={L.preview.forward}
-        disabled={!canForward}
-        onClick={onForward}
-      >
-        <ForwardIcon />
-      </button>
-      <button
-        type="button"
-        className={`nx-ibtn nx-reload${loading ? " nx-reload--busy" : ""}`}
-        title={tipWith(L.preview.reload, "reload")}
-        aria-label={L.preview.reload}
-        aria-busy={loading}
-        onClick={onReload}
-      >
-        <ReloadIcon />
-      </button>
+      <div className="nx-pvg">
+        <button
+          type="button"
+          className="nx-ibtn"
+          title={tipWith(L.preview.back, "back")}
+          aria-label={L.preview.back}
+          disabled={!canBack}
+          onClick={onBack}
+        >
+          <BackIcon />
+        </button>
+        <button
+          type="button"
+          className="nx-ibtn nx-fwd"
+          title={tipWith(L.preview.forward, "forward")}
+          aria-label={L.preview.forward}
+          disabled={!canForward}
+          onClick={onForward}
+        >
+          <ForwardIcon />
+        </button>
+        <button
+          type="button"
+          className={`nx-ibtn nx-reload${loading ? " nx-reload--busy" : ""}`}
+          title={tipWith(L.preview.reload, "reload")}
+          aria-label={L.preview.reload}
+          aria-busy={loading}
+          onClick={onReload}
+        >
+          <ReloadIcon />
+        </button>
+      </div>
 
       <div className="nx-anchor nx-addrwrap" ref={addrRef}>
         <button
@@ -265,157 +267,160 @@ export function PreviewBar({
         )}
       </div>
 
-      <fieldset className="nx-seg" aria-label={L.preview.device}>
-        {deviceButton("desktop", L.preview.devicePc, <PcIcon />)}
-        {deviceButton("tablet", L.preview.deviceTablet, <TabletIcon />)}
-        {deviceButton("mobile", L.preview.devicePhone, <PhoneIcon />)}
-      </fieldset>
+      <div className="nx-pvg nx-pvg--tools">
+        <fieldset className="nx-seg" aria-label={L.preview.device}>
+          {deviceButton("desktop", L.preview.devicePc, <PcIcon />)}
+          {deviceButton("tablet", L.preview.deviceTablet, <TabletIcon />)}
+          {deviceButton("mobile", L.preview.devicePhone, <PhoneIcon />)}
+        </fieldset>
 
-      <button
-        type="button"
-        className={`nx-tbtn nx-pin-t${pinOn ? " nx-tbtn--on" : ""}${pinLocked ? " nx-tbtn--locked" : ""}`}
-        title={pinLocked ?? keyHint(pinOn ? L.preview.pinOffTip : L.preview.pinTip)}
-        aria-label={pinName}
-        aria-pressed={pinOn}
-        aria-disabled={pinLocked !== null}
-        onClick={onPin}
-      >
-        <PinIcon />
-        <span className="nx-pin-w">{L.preview.pin}</span>
-        {pinCount > 0 && <Count n={pinCount} className={pinOn ? "nx-cnt--inv" : undefined} />}
-      </button>
-      <button
-        type="button"
-        ref={historyBtn}
-        className={`nx-tbtn nx-hist-t${historyOpen ? " nx-tbtn--sel" : ""}`}
-        title={historyOpen ? L.history.close : L.preview.history}
-        aria-label={L.preview.history}
-        aria-expanded={historyOpen}
-        aria-controls={drawerId}
-        onClick={onHistory}
-      >
-        <span className="nx-hist-ic">
-          <HistoryIcon />
-        </span>
-        <span className="nx-hist-w">{L.preview.history}</span>
-      </button>
-      {/* 배율이 100% 가 아닐 때만 — 메뉴 안에 숨은 상태가 막대에서도 보이고, 한 번에 돌아간다. */}
-      {native && !zoomState.reset && (
+        {/* 수정할 곳 선택 — 보통 단추이고 켜졌을 때만 포인트 바탕이다(포인트 바탕은 AI 에게 `보내기` 와 켜짐 상태뿐). */}
         <button
           type="button"
-          className="nx-tbtn nx-zoom-t"
-          title={L.preview.zoomReset}
-          aria-label={`${L.preview.zoomReset} · ${Math.round(zoom * 100)}%`}
-          onClick={() => onZoom("reset")}
+          className={`nx-btn nx-pin-t${pinOn ? " nx-btn--accent" : ""}${pinLocked ? " nx-pin-t--locked" : ""}`}
+          title={pinLocked ?? keyHint(pinOn ? L.preview.pinOffTip : L.preview.pinTip)}
+          aria-label={pinName}
+          aria-pressed={pinOn}
+          aria-disabled={pinLocked !== null}
+          onClick={onPin}
         >
-          {Math.round(zoom * 100)}%
+          <PinIcon />
+          <span className="nx-pin-w">{L.preview.pin}</span>
+          {pinCount > 0 && <Count n={pinCount} className={pinOn ? "nx-cnt--inv" : undefined} />}
         </button>
-      )}
-
-      <div className="nx-anchor" ref={moreRef}>
         <button
           type="button"
-          className="nx-ibtn"
-          title={L.preview.more}
-          aria-label={L.preview.more}
-          aria-haspopup="dialog"
-          aria-expanded={moreOpen}
-          onClick={() => setMoreOpen((open) => !open)}
+          ref={historyBtn}
+          className="nx-btn nx-btn--ghost nx-hist-t"
+          title={historyOpen ? L.history.close : L.preview.history}
+          aria-label={L.preview.history}
+          aria-expanded={historyOpen}
+          aria-controls={drawerId}
+          onClick={onHistory}
         >
-          <MoreIcon />
+          <span className="nx-hist-ic">
+            <HistoryIcon />
+          </span>
+          <span className="nx-hist-w">{L.preview.history}</span>
         </button>
-        {moreOpen && (
-          <Popover
-            anchor={moreRef}
-            onClose={() => setMoreOpen(false)}
-            align="end"
-            className="nx-more-pop"
-            label={L.preview.more}
+        {/* 배율이 100% 가 아닐 때만 — 메뉴 안에 숨은 상태가 막대에서도 보이고, 한 번에 돌아간다. */}
+        {native && !zoomState.reset && (
+          <button
+            type="button"
+            className="nx-btn nx-btn--ghost nx-zoom-t"
+            title={L.preview.zoomReset}
+            aria-label={`${L.preview.zoomReset} · ${Math.round(zoom * 100)}%`}
+            onClick={() => onZoom("reset")}
           >
-            {native && (
-              <>
-                <div className="nx-mh">{L.preview.zoom}</div>
-                <div className="nx-mseg">
-                  <button
-                    type="button"
-                    title={L.preview.zoomOut}
-                    aria-label={L.preview.zoomOut}
-                    disabled={zoomState.out}
-                    onClick={() => onZoom("out")}
-                  >
-                    <MinusIcon />
-                  </button>
-                  <button
-                    type="button"
-                    className={zoomState.reset ? "nx-mseg--on" : ""}
-                    title={L.preview.zoomReset}
-                    aria-label={L.preview.zoomReset}
-                    onClick={() => onZoom("reset")}
-                  >
-                    {Math.round(zoom * 100)}%
-                  </button>
-                  <button
-                    type="button"
-                    title={L.preview.zoomIn}
-                    aria-label={L.preview.zoomIn}
-                    disabled={zoomState.in}
-                    onClick={() => onZoom("in")}
-                  >
-                    <PlusIcon />
-                  </button>
-                </div>
-                <div className="nx-msep" />
-              </>
-            )}
-            {native && (
+            {Math.round(zoom * 100)}%
+          </button>
+        )}
+
+        <div className="nx-anchor" ref={moreRef}>
+          <button
+            type="button"
+            className="nx-ibtn"
+            title={L.preview.more}
+            aria-label={L.preview.more}
+            aria-haspopup="dialog"
+            aria-expanded={moreOpen}
+            onClick={() => setMoreOpen((open) => !open)}
+          >
+            <MoreIcon />
+          </button>
+          {moreOpen && (
+            <Popover
+              anchor={moreRef}
+              onClose={() => setMoreOpen(false)}
+              align="end"
+              className="nx-more-pop"
+              label={L.preview.more}
+            >
+              {native && (
+                <>
+                  <div className="nx-mh">{L.preview.zoom}</div>
+                  <div className="nx-mseg">
+                    <button
+                      type="button"
+                      title={L.preview.zoomOut}
+                      aria-label={L.preview.zoomOut}
+                      disabled={zoomState.out}
+                      onClick={() => onZoom("out")}
+                    >
+                      <MinusIcon />
+                    </button>
+                    <button
+                      type="button"
+                      className={zoomState.reset ? "nx-mseg--on" : ""}
+                      title={L.preview.zoomReset}
+                      aria-label={L.preview.zoomReset}
+                      onClick={() => onZoom("reset")}
+                    >
+                      {Math.round(zoom * 100)}%
+                    </button>
+                    <button
+                      type="button"
+                      title={L.preview.zoomIn}
+                      aria-label={L.preview.zoomIn}
+                      disabled={zoomState.in}
+                      onClick={() => onZoom("in")}
+                    >
+                      <PlusIcon />
+                    </button>
+                  </div>
+                  <div className="nx-msep" />
+                </>
+              )}
+              {native && (
+                <button
+                  type="button"
+                  // 이유를 말하는 항목의 통일 표기 — 닫히지 않는 항목은 aria-disabled 로(2026-10-04 ux-review).
+                  className={`nx-mi${showAiBusy ? " nx-mi--dis" : ""}`}
+                  aria-disabled={showAiBusy}
+                  onClick={() => {
+                    if (showAiBusy) return;
+                    setMoreOpen(false);
+                    onShowAi();
+                  }}
+                >
+                  <CameraIcon />
+                  <span className="nx-mt">
+                    <b>{showAiBusy ? L.preview.showAiBusy : L.preview.showAi}</b>
+                    <small>{L.preview.showAiSub}</small>
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
-                // 이유를 말하는 항목의 통일 표기 — 닫히지 않는 항목은 aria-disabled 로(2026-10-04 ux-review).
-                className={`nx-mi${showAiBusy ? " nx-mi--dis" : ""}`}
-                aria-disabled={showAiBusy}
+                className={`nx-mi${frozenReady ? "" : " nx-mi--dis"}`}
+                aria-disabled={!frozenReady}
                 onClick={() => {
-                  if (showAiBusy) return;
+                  if (!frozenReady) return;
                   setMoreOpen(false);
-                  onShowAi();
+                  onFrozen();
                 }}
               >
-                <CameraIcon />
+                <EyeIcon />
                 <span className="nx-mt">
-                  <b>{showAiBusy ? L.preview.showAiBusy : L.preview.showAi}</b>
-                  <small>{L.preview.showAiSub}</small>
+                  <b>{L.preview.frozenOpen}</b>
+                  <small>{frozenReady ? L.preview.frozenOpenSub : L.preview.frozenLocked}</small>
                 </span>
               </button>
-            )}
-            <button
-              type="button"
-              className={`nx-mi${frozenReady ? "" : " nx-mi--dis"}`}
-              aria-disabled={!frozenReady}
-              onClick={() => {
-                if (!frozenReady) return;
-                setMoreOpen(false);
-                onFrozen();
-              }}
-            >
-              <EyeIcon />
-              <span className="nx-mt">
-                <b>{L.preview.frozenOpen}</b>
-                <small>{frozenReady ? L.preview.frozenOpenSub : L.preview.frozenLocked}</small>
-              </span>
-            </button>
-            <div className="nx-msep" />
-            <button
-              type="button"
-              className="nx-mi"
-              onClick={() => {
-                setMoreOpen(false);
-                onShortcuts();
-              }}
-            >
-              <KeyboardIcon />
-              {L.preview.shortcuts}
-            </button>
-          </Popover>
-        )}
+              <div className="nx-msep" />
+              <button
+                type="button"
+                className="nx-mi"
+                onClick={() => {
+                  setMoreOpen(false);
+                  onShortcuts();
+                }}
+              >
+                <KeyboardIcon />
+                {L.preview.shortcuts}
+              </button>
+            </Popover>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -481,7 +486,7 @@ function AddressList({
       >
         {here ? <SmallCheckIcon /> : <EyeIcon />}
         <b>{entry.name}</b>
-        {entry.modified && <span className="nx-screen-recent">{L.preview.recent}</span>}
+        {entry.modified && <span className="nx-pill nx-pill--accent">{L.preview.recent}</span>}
         {/* 이름이 없는 화면만 주소로 말한다 — 이름이 있는 줄의 `/` 는 비개발자에게 군더더기다. */}
         {entry.name === L.preview.untitledScreen && <span className="nx-mi-r">{entry.path}</span>}
       </button>
@@ -491,7 +496,7 @@ function AddressList({
   return (
     <>
       <input
-        className="nx-addr-in"
+        className="nx-input nx-addr-in"
         placeholder={L.preview.addrPlaceholder}
         aria-label={L.preview.addrPlaceholder}
         autoComplete="off"

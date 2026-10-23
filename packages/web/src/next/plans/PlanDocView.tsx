@@ -1,46 +1,29 @@
 import type { DocOpResult, DraftSummary } from "@colonova-design/protocol";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Markdown } from "../../components/Markdown";
 import type { Daemon } from "../../lib/daemon-client";
 import { timeAgo } from "../../lib/format";
-import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
 import type { ShellNav } from "../slots";
-import { ExternalIcon, InfoIcon, PencilIcon, Spin } from "../ui/icons";
+import { InfoIcon, Spin } from "../ui/icons";
 import { DocComments } from "./comments/DocComments";
-import { DocActions } from "./doc-actions/DocActions";
-import { SendToScreen } from "./doc-actions/SendToScreen";
-import {
-  docUrl,
-  macroHeadings,
-  type PlanListRow,
-  planBodyBlocks,
-  splitFrontmatter,
-} from "./plans-list";
+import { PlansEmpty } from "./PlansEmpty";
+import { macroHeadings, type PlanListRow, planBodyBlocks, splitFrontmatter } from "./plans-list";
 import type { PlanDocBody, PlanPhase } from "./use-plans";
 
-/**
- * 기획서 한 문서(2026-10-18 기획서 동기화 1단계 · M4 개선 패스) — 제목 · 판 · 고친 때 · Confluence 에서
- * 열기, 본문, 안 풀린 코멘트. 본문이 오기 전에도 제목과 판은 목록이 알아서 곧바로 선다 — 읽는 동안(몇 초
- * 걸린다: 문서와 코멘트는 그 자리에서 Confluence 에서 읽는다) 빈 화면을 보지 않게. 머리에는 화면 작업에
- * 근거 보내기와 문서 관리(복제 · 위치 옮기기 · 휴지통)가 함께 선다(2026-10-23 · 최종 구현 계획 F3 · F4).
- */
+/** 종이 한 장에 제목 · 판 · 본문 · 코멘트를 놓는다. 동작은 PlansHeader 가 맡는다(2026-10-23 화면 전면 재설계 §4 C). */
 export function PlanDocView({
   pageId,
   row,
-  site,
   phase,
   doc,
   draft,
   daemon,
-  nav,
-  rows,
   onRetry,
   onBack,
-  onEdit,
-  onApplied,
   onRefresh,
   writable,
+  focusTitle = true,
 }: {
   pageId: string;
   /** 목록이 아는 이 문서의 줄 — 목록이 아직 없으면 null. */
@@ -65,6 +48,7 @@ export function PlanDocView({
   onRefresh: (pageId: string) => void;
   /** 이 앱이 Confluence 에 쓸 수 있는가(발행 게이트) — 코멘트 절이 쓰기 전에 꺼짐을 말한다(2026-10-23 U2). */
   writable?: boolean;
+  focusTitle?: boolean;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
   // 본문 덩어리 — 인라인 코멘트의 닻 단추가 듣는 자리다(2026-10-23 · 최종 구현 계획 F4).
@@ -76,21 +60,25 @@ export function PlanDocView({
   // 문서가 열리면 초점이 제목으로 온다 — 키보드로 연 사람이 보이지 않는 목록 위에 남지 않게.
   // biome-ignore lint/correctness/useExhaustiveDependencies: 문서가 바뀔 때만
   useEffect(() => {
-    title.current?.focus({ preventScroll: true });
+    if (focusTitle) title.current?.focus({ preventScroll: true });
   }, [pageId]);
 
   const shownTitle = row?.title ?? parsed?.meta.title ?? "";
   const version = row?.version ?? parsed?.meta.version ?? null;
   const updatedAt = parsed?.meta.updatedAt ?? null;
-  const link = site === null ? null : docUrl(site, pageId);
-  // 근거 보내기의 절 목록 — 읽은 문서의 머리말이다(2026-10-23 · 최종 구현 계획 F3). 읽기 전이면
-  // 문서 전체만 담는다.
-  const [sendOpen, setSendOpen] = useState(false);
-  const sections = useMemo(
-    () => (doc === null ? [] : doc.sections.map((section) => section.heading)),
-    [doc],
-  );
-
+  if (phase === "failed")
+    return (
+      <article className="nx-pl-doc--failed" role="alert">
+        <PlansEmpty title={L.plans.docFailed}>
+          <button type="button" className="nx-btn" onClick={onRetry}>
+            {L.plans.retry}
+          </button>
+          <button type="button" className="nx-btn nx-btn--ghost" onClick={onBack}>
+            {L.plans.backToList}
+          </button>
+        </PlansEmpty>
+      </article>
+    );
   return (
     <article className="nx-pl-doc" aria-busy={phase === "loading"}>
       <header className="nx-pl-doc-hd">
@@ -98,36 +86,9 @@ export function PlanDocView({
           {shownTitle}
         </h3>
         <div className="nx-pl-doc-meta">
-          {version !== null && <span className="nx-pl-chip">{L.plans.docVersions(version)}</span>}
+          {version !== null && <span>{L.plans.docVersions(version)}</span>}
           {updatedAt !== null && <span>{L.plans.docUpdated(timeAgo(Date.parse(updatedAt)))}</span>}
-          {row !== null && row.folder !== "" && (
-            <span className="nx-pl-doc-folder">{row.folder}</span>
-          )}
-          {link !== null && (
-            <a
-              className="nx-pl-ext"
-              href={link}
-              target="_blank"
-              rel="noreferrer"
-              onClick={linkClick}
-            >
-              {L.plans.openInConfluence}
-              <ExternalIcon />
-            </a>
-          )}
-          <button type="button" className="nx-btn nx-btn--sm" onClick={() => setSendOpen(true)}>
-            {L.drafts.sendToScreen}
-          </button>
-          {/* 기획자의 다음 손은 고치기다 — 으뜸 단추로 세운다(2026-10-23 기획자 화면 손질 D6). */}
-          <button
-            type="button"
-            className="nx-btn nx-btn--sm nx-btn--pri"
-            onClick={() => onEdit(pageId)}
-          >
-            <PencilIcon />
-            {draft !== null ? L.drafts.resume : L.drafts.edit}
-          </button>
-          <DocActions daemon={daemon} pageId={pageId} rows={rows} onApplied={onApplied} />
+          {draft !== null && <span>{L.plans.hasDraft}</span>}
         </div>
       </header>
 
@@ -147,28 +108,14 @@ export function PlanDocView({
         </>
       )}
 
-      {phase === "failed" && (
-        <div className="nx-pl-fail" role="alert">
-          <p>{L.plans.docFailed}</p>
-          <div className="nx-pl-fail-act">
-            <button type="button" className="nx-btn nx-btn--sm" onClick={onRetry}>
-              {L.plans.retry}
-            </button>
-            <button type="button" className="nx-btn nx-btn--sm nx-btn--ghost" onClick={onBack}>
-              {L.plans.backToList}
-            </button>
-          </div>
-        </div>
-      )}
-
       {phase === "ready" && doc !== null && (
         <>
           {macros.length > 0 && (
-            <div className="nx-pl-macro" role="note">
+            <div className="nx-banner nx-banner--blue nx-pl-macro" role="note">
               <span className="nx-pl-macro-ic" aria-hidden="true">
                 <InfoIcon />
               </span>
-              <div>
+              <div className="nx-banner-body">
                 <b>{L.plans.macroNoteTitle}</b>
                 <p>{L.plans.macroNoteBody}</p>
                 <ul className="nx-pl-macro-list">
@@ -203,15 +150,6 @@ export function PlanDocView({
             writable={writable}
           />
         </>
-      )}
-      {sendOpen && (
-        <SendToScreen
-          daemon={daemon}
-          nav={nav}
-          target={{ pageId }}
-          sections={sections}
-          onClose={() => setSendOpen(false)}
-        />
       )}
     </article>
   );

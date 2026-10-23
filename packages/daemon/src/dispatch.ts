@@ -24,6 +24,7 @@ import { systemHandlers } from "./requests/system.js";
 import type { RequestHandlers, RouterDeps } from "./requests/types.js";
 import { ReviveBudget } from "./revive-budget.js";
 import type { Session } from "./session.js";
+import { screenSessionDirs } from "./session-dirs.js";
 import { dropTape, readTape, spliceTape } from "./session-tape.js";
 import { threadProvider } from "./thread-provider.js";
 import { REVIVE_GRACE_MS } from "./turn-retry.js";
@@ -93,6 +94,19 @@ export class RequestRouter {
 
   private workspaceOfSession(sessionId: string): ProjectWorkspaces | null {
     return this.deps.fleet.workspaceOfSession(sessionId);
+  }
+
+  /**
+   * 세션 cwd(실제 경로)가 어떤 프로젝트의 클론인지 — 그 프로젝트 폴더. 모르면 null.
+   * 화면 세션의 함께 여는 폴더(기획서 사본)를 찾는 길(2026-10-23 · 기획서 사본 이동 계획 §6).
+   */
+  private projectRootOfCwd(cwd: string): string | null {
+    for (const project of this.deps.registry.list()) {
+      if (realpathBestEffort(this.deps.registry.paths(project.slug).repoRoot) === cwd) {
+        return this.deps.registry.paths(project.slug).root;
+      }
+    }
+    return null;
   }
 
   /**
@@ -225,6 +239,7 @@ export class RequestRouter {
       const model = message.model ?? (defaultsFit ? defaults.model : undefined);
       const effort = message.effort ?? (defaultsFit ? defaults.effort : undefined);
       const fastMode = message.fastMode === true;
+      const additionalDirectories = screenSessionDirs(this.projectRootOfCwd(sessionCwd));
       const session = this.deps.manager.create({
         cwd: sessionCwd,
         provider,
@@ -238,6 +253,7 @@ export class RequestRouter {
           ...(model ? { model } : {}),
           ...(effort ? { effort } : {}),
           ...(fastMode ? { fastMode: true } : {}),
+          ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
         },
       });
       // 태어날 때의 빠르게 — 새 대화 자리에서 미리 켠 ⚡ 선택. 첫 selectors
@@ -488,6 +504,9 @@ export class RequestRouter {
       const targetExecutable = targetDriver
         ? ((await targetDriver.isAvailable().catch(() => null))?.executable ?? null)
         : null;
+      // 새 대화 · 재개와 같이 분기도 사본 폴더를 함께 연다 — 폴더가 있을 때만
+      // (2026-10-23 · 기획서 사본 이동 계획 §6 · 검토 R1).
+      const additionalDirectories = screenSessionDirs(this.projectRootOfCwd(target.cwd));
       const result = await this.deps.manager.branch({
         sessionId: message.sessionId,
         cwd: this.workspaceCwd(),
@@ -499,6 +518,7 @@ export class RequestRouter {
           writePolicy: repoWritePolicy(this.workspaceCwd()),
           launch: {
             ...(targetExecutable ? { executable: targetExecutable } : {}),
+            ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
           },
         },
       });
@@ -559,6 +579,7 @@ export class RequestRouter {
       );
     }
     const instructions = this.projectInstructions(spec.cwd);
+    const additionalDirectories = screenSessionDirs(this.projectRootOfCwd(spec.cwd));
     const session = this.deps.manager.create({
       cwd: spec.cwd,
       provider: spec.provider,
@@ -571,6 +592,7 @@ export class RequestRouter {
         resume: spec.id,
         ...(spec.chosen.model ? { model: spec.chosen.model } : {}),
         ...(spec.chosen.effort ? { effort: spec.chosen.effort } : {}),
+        ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
       },
     });
     // The tree's child row points at the same id; a rescan picks the new life up.

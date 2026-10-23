@@ -295,21 +295,30 @@ export function ConversationList({
     const on = threadView && thread.id === activeSessionId;
     const system = Boolean(SYSTEM_THREAD_TITLES[thread.title]);
     const menuOpen = menuFor === thread.id;
-    const sub =
+    const screens = screensById.get(thread.id) ?? "";
+    const status =
       thread.state === "running"
         ? L.journey.making
         : thread.state === "awaiting"
           ? L.sidebar.waitingAnswer
           : failed
             ? L.sidebar.aiFailedRetry
-            : (screensById.get(thread.id) ?? "");
+            : "";
+    // 진행은 점으로, 응답이 필요한 상태와 화면 이름은 둘째 줄로 읽힌다(2026-10-24 결함 반영 FXS · QA 5).
+    const sub =
+      thread.state === "awaiting"
+        ? L.sidebar.waitingAnswer
+        : failed && thread.state !== "running"
+          ? L.vocab.aiFailed
+          : screens;
+    const label = [titleFor(thread), status, screens].filter(Boolean).join(" · ");
 
     if (renaming?.id === thread.id) {
       return (
         <div className="nx-conv-row">
           <input
             ref={renameInput}
-            className="nx-conv-rename"
+            className="nx-input nx-conv-rename"
             value={renaming.draft}
             aria-label={L.convMenu.renameLabel}
             onChange={(event) => setRenaming({ id: thread.id, draft: event.target.value })}
@@ -334,7 +343,8 @@ export function ConversationList({
           type="button"
           className={`nx-conv${on ? " nx-conv--on" : ""}`}
           // 긴 제목은 줄에서 잘린다 — 전체 이름은 이 이름표가 말한다(OtherProjects 와 같은 결).
-          title={titleFor(thread)}
+          title={label}
+          aria-label={label}
           aria-current={on ? "true" : undefined}
           onClick={() => onOpen(thread)}
           onKeyDown={moveFocus}
@@ -377,7 +387,7 @@ export function ConversationList({
               anchorOf(thread.id).current = element;
             }}
             type="button"
-            className="nx-conv-menu"
+            className="nx-ibtn nx-ibtn--xs nx-conv-menu"
             aria-label={L.convMenu.label}
             aria-haspopup="menu"
             aria-expanded={menuOpen}

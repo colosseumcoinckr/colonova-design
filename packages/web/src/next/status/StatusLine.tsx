@@ -33,8 +33,9 @@ const FRESH_RECEIPT_MS = 30_000;
 const QUIET_AFTER_SEND_MS = 800;
 
 /**
- * 상태 줄(U2) — 대화와 미리보기 위에 걸친 한 줄. 왼쪽은 대화 제목(눌러서 이름을
- * 바꾼다), 오른쪽은 `프로젝트 이름 · 프로젝트 전체 작업` 과 여정 세 점, 그리고 `제출`.
+ * 상태 줄(U2) — 대화와 미리보기 위에 걸친 한 줄(52px). 왼쪽은 대화 제목(눌러서 이름을
+ * 바꾼다), 오른쪽은 프로젝트 이름과 여정 세 점, 그리고 `제출`(2026-10-23 화면 전면 재설계 §4 G —
+ * `프로젝트 전체 작업` 의 뜻은 이번 작업 팝이 말한다).
  * AI 가 도는 동안 여정 앞에 단계 말이 붙는다(단계 10) —
  * 지금 도는 도구의 묶음이 `화면을 살펴보는 중` · `화면 파일을 고치는 중` ·
  * `검사를 돌리는 중` 을 고르고, 첫 보내기가 60초를 넘으면 시계 뒤에
@@ -42,7 +43,7 @@ const QUIET_AFTER_SEND_MS = 800;
  * 좁은 창(U16)에서는 제목이 빠지고 지금 점만 글자를 갖는다.
  *
  * 오른쪽 묶음(`nx-project-work`)은 제목이 쓰고 남은 자리를 모두 갖는 컨테이너다 — 자리가
- * 줄면 범위의 말 → 이름 → 앞으로 올 점들의 글자 순으로 접히고, 지금 점의 글자와 `제출` 은
+ * 줄면 이름 → 앞으로 올 점들의 글자 → 받아오기 순으로 접히고, 지금 점의 글자와 `제출` 은
  * 끝까지 남는다(status.css 의 컨테이너 질의). 컨테이너가 제 폭을 갖지 못하면(폭 0)
  * 질의가 늘 가장 좁은 쪽으로 읽혀 `만드는 중` 이 사라지니, 이 묶음의 `flex` 를 지우지 않는다.
  *
@@ -98,6 +99,9 @@ export function StatusLine({
   const [workOpen, setWorkOpen] = useState(false);
   // 받아오기(2026-10-20 사용자 요청) — 개발자가 반영한 내용은 누를 때만 합친다. 단추는 상태 줄과 `이번 작업` 둘이다.
   const baseRow = baseSyncRow(daemon.repo, journey.making);
+  // 받아오기 단추가 서 있는가 — 서 있으면 여정이 쓸 수 있는 폭이 그만큼 줄어 접힘의 기준 폭이 오른다(status.css 의 `--base`).
+  const basePull =
+    baseRow.kind === "ready" || baseRow.kind === "pulling" || baseRow.kind === "waiting";
   const [baseAsking, setBaseAsking] = useState(false);
   const refreshBase = () => {
     if (baseAsking) return;
@@ -337,6 +341,27 @@ export function StatusLine({
   }, [journey.current, journey.points]);
 
   const busy = submit.busy ?? (sending ? "running" : null);
+  // 단추의 지금 얼굴 — 답(영수증 · 막힘)이 먼저, 도는 중, 그다음 잠김. 잠긴 얼굴만 으뜸이 아니다.
+  const submitState =
+    flash === "done"
+      ? " nx-submit--sent"
+      : flash === "failed"
+        ? redOn
+          ? " nx-submit--failed"
+          : " nx-submit--shaking"
+        : busy
+          ? " nx-submit--busy"
+          : submit.enabled
+            ? ""
+            : " nx-submit--locked";
+  const submitLocked = submitState === " nx-submit--locked";
+  // 지금 서 있는 얼굴 — 하나만이다(답이 먼저, 도는 중, 그다음 쉬는 얼굴). 얼굴마다 제 폭을 갖고 서므로 둘이 함께 서면 단추가 두 배로 늘어난다.
+  const submitFace: "idle" | "running" | "retrying" | "done" | "failed" =
+    flash === "done" || flash === "failed"
+      ? flash
+      : busy === "running" || busy === "retrying"
+        ? busy
+        : "idle";
   const reviewers =
     submit.more && daemon.repo?.handoff?.reviewers && daemon.repo.handoff.reviewers.length > 0
       ? daemon.repo.handoff.reviewers
@@ -397,17 +422,17 @@ export function StatusLine({
       {!docFocus && (
         <>
           <div
-            className={`nx-anchor nx-project-work${makingState === "on" ? " nx-project-work--making" : ""}`}
+            className={`nx-anchor nx-project-work${makingState === "on" ? " nx-project-work--making" : ""}${basePull ? " nx-project-work--base" : ""}`}
           >
+            {/* 프로젝트 이름만 — 「프로젝트 전체 작업」 이라는 뜻은 이번 작업 팝과 풍선이 말한다(2026-10-23 화면 전면 재설계 §4 G). */}
             <span className="nx-work-scope" title={L.journey.projectWork(scopeName)}>
               <b>{scopeName}</b>
-              <span className="nx-work-scope-rest">{` · ${L.journey.projectScope}`}</span>
             </span>
             <button
               ref={journeyRef}
               type="button"
               className={`nx-journey${makingState === "on" ? " nx-journey--making" : ""}`}
-              title={`${L.journey.projectWork(scopeName)} · ${L.journey.openWork}`}
+              title={`${L.journey.projectScope} · ${L.journey.openWork}`}
               aria-haspopup="dialog"
               aria-expanded={workOpen}
               aria-label={workName}
@@ -472,12 +497,10 @@ export function StatusLine({
                 );
               })}
             </button>
-            {(baseRow.kind === "ready" ||
-              baseRow.kind === "pulling" ||
-              baseRow.kind === "waiting") && (
+            {basePull && (
               <button
                 type="button"
-                className="nx-btn nx-btn--sm nx-base-pull"
+                className="nx-btn nx-base-pull"
                 title={
                   baseRow.kind === "ready"
                     ? L.work.baseChipTitle(baseRow.behind)
@@ -532,19 +555,9 @@ export function StatusLine({
             <button
               ref={submitRef}
               type="button"
-              className={`nx-submit${
-                flash === "done"
-                  ? " nx-submit--sent"
-                  : flash === "failed"
-                    ? redOn
-                      ? " nx-submit--failed"
-                      : " nx-submit--shaking"
-                    : busy
-                      ? " nx-submit--busy"
-                      : submit.enabled
-                        ? ""
-                        : " nx-submit--locked"
-              }`}
+              // 이 자리의 유일한 으뜸(잉크)이다. 잠기면 으뜸을 내려놓고 보통 단추의 꺼짐 모양으로 선다 — 눌러서 이유를 읽는
+              // 단추라 `disabled` 가 아니라 `aria-disabled` 다(2026-10-23 화면 전면 재설계 §4 G).
+              className={`nx-btn${submitLocked ? "" : " nx-btn--pri"} nx-submit${submitState}`}
               // 말풍선이 떠 있는 동안은 같은 문장이 툴팁으로 또 뜨지 않게 뺀다.
               title={why ? undefined : submit.reason}
               aria-disabled={!submit.enabled || busy !== null}
@@ -578,27 +591,37 @@ export function StatusLine({
                 setConfirmOpen((open) => !open);
               }}
             >
-              {/* 다섯 얼굴을 한 자리에 겹쳐 둔다 — 단추 폭이 가장 넓은 얼굴에 맞아
-              고정되고, 얼굴은 150ms 교차 페이드로 갈아입는다(왼쪽 여정이 밀리지
-              않게). 잠긴 얼굴은 쉬는 얼굴과 같은 글자다. 갈아입은 결판은 살아있는 영역이 소리로도 흐른다. */}
-              <span className="nx-submit-face" aria-hidden={busy !== null || flash !== null}>
-                {L.submit.idle}
+              {/* 다섯 얼굴 가운데 하나만 서고, 단추 폭은 서 있는 얼굴의 글에 맞는다(좌우 12px — `제출` 은 글 두 자의 단추).
+              얼굴이 갈릴 때 폭이 0fr ↔ 1fr 로 옮겨 가며 교차 페이드한다 — 오른쪽 묶음이 오른쪽에 붙어 있어 글이 긴 얼굴
+              (`제출하는 중…`)에서는 왼쪽 여정이 부드럽게 한 걸음 밀렸다 돌아온다(2026-10-24 QA 7: 가장 긴 얼굴에 폭을
+              묶어 `제출` 이 155px 상자로 서던 것). 잠긴 얼굴은 쉬는 얼굴과 같은 글자다. 갈아입은 결과는 살아있는 영역이
+              소리로도 흐른다. */}
+              <span className="nx-submit-face" aria-hidden={submitFace !== "idle"}>
+                <span className="nx-submit-face-in">{L.submit.idle}</span>
               </span>
-              <span className="nx-submit-face" aria-hidden={busy !== "running"}>
-                <Spin />
-                {L.submit.running}
+              <span className="nx-submit-face" aria-hidden={submitFace !== "running"}>
+                <span className="nx-submit-face-in">
+                  <Spin />
+                  {L.submit.running}
+                </span>
               </span>
-              <span className="nx-submit-face" aria-hidden={busy !== "retrying"}>
-                <Spin />
-                {L.submit.retrying}
+              <span className="nx-submit-face" aria-hidden={submitFace !== "retrying"}>
+                <span className="nx-submit-face-in">
+                  <Spin />
+                  {L.submit.retrying}
+                </span>
               </span>
-              <span className="nx-submit-face" aria-hidden={flash !== "done"}>
-                <DrawnCheck />
-                {L.submit.done}
+              <span className="nx-submit-face" aria-hidden={submitFace !== "done"}>
+                <span className="nx-submit-face-in">
+                  <DrawnCheck />
+                  {L.submit.done}
+                </span>
               </span>
-              <span className="nx-submit-face" aria-hidden={flash !== "failed"}>
-                <FailIcon />
-                {submitCopy.label}
+              <span className="nx-submit-face" aria-hidden={submitFace !== "failed"}>
+                <span className="nx-submit-face-in">
+                  <FailIcon />
+                  {submitCopy.label}
+                </span>
               </span>
             </button>
             {confirmOpen && (

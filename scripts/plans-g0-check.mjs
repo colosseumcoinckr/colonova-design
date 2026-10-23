@@ -5,7 +5,7 @@
 // 쓰는 법:
 //   COLONOVA_DESIGN_CONFLUENCE_EMAIL=… COLONOVA_DESIGN_CONFLUENCE_TOKEN=… \
 //   node scripts/plans-g0-check.mjs --site <사이트> --root <뿌리 페이지 id> \
-//     [--ledger <클론 또는 docs/plans 폴더>] [--json <파일>]
+//     [--ledger <프로젝트 폴더 또는 그 안의 confluence 폴더>] [--json <파일>]
 //
 // 자격은 환경 변수(COLONOVA_DESIGN_CONFLUENCE_EMAIL · COLONOVA_DESIGN_CONFLUENCE_TOKEN)
 // 에서만 읽는다 — 인자로 받지 않아 셸 기록에 남지 않는다.
@@ -22,19 +22,20 @@
 // (전부를 받는 쪽 — 증분의 좁힘 `id = 뿌리 OR ancestor = 뿌리` 도 같다).
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
   ConfluenceClient,
   createConfluenceTransport,
 } from "../packages/daemon/dist/confluence-client.js";
 import { parseConfluenceLedger } from "../packages/daemon/dist/confluence-ledger.js";
+import { MIRROR_DIR, MIRROR_LEDGER_NAME } from "../packages/daemon/dist/confluence-mirror.js";
 import { compareScope, getOnlyTransport } from "../packages/daemon/dist/scope-report.js";
 
 const USAGE = [
   "G0 범위 대조 — 읽기만 실행한다.",
   "  COLONOVA_DESIGN_CONFLUENCE_EMAIL=… COLONOVA_DESIGN_CONFLUENCE_TOKEN=… \\",
   "  node scripts/plans-g0-check.mjs --site <사이트> --root <뿌리 페이지 id> \\",
-  "    [--ledger <클론 또는 docs/plans 폴더>] [--json <파일>]",
+  "    [--ledger <프로젝트 폴더 또는 그 안의 confluence 폴더>] [--json <파일>]",
   "뿌리는 숫자 id 여야 한다 — 숫자가 아니면 CQL 의 좁힘이 사이트 전체로 퍼진다.",
 ].join("\n");
 
@@ -149,18 +150,20 @@ if (!search.readable) {
 }
 const cql = search.value.map((hit) => ({ id: hit.id }));
 
-// 4. 원장 — 클론 뿌리나 docs/plans 폴더를 받는다. 없으면 대조 없이 건너뛴다.
+// 4. 원장 — 프로젝트 폴더나 그 안의 confluence 폴더를 받는다. 없으면 대조 없이 건너뛴다.
 function ledgerFileOf(arg) {
   const abs = resolve(arg);
-  const inPlans = basename(abs) === "plans" && basename(dirname(abs)) === "docs";
-  return inPlans ? join(abs, "confluence.json") : join(abs, "docs", "plans", "confluence.json");
+  const inMirror = basename(abs) === MIRROR_DIR;
+  return inMirror ? join(abs, MIRROR_LEDGER_NAME) : join(abs, MIRROR_DIR, MIRROR_LEDGER_NAME);
 }
 
 let ledger = null;
 if (ledgerArg !== null) {
   const file = ledgerFileOf(ledgerArg);
   if (!existsSync(file)) {
-    console.error("원장 파일이 없다 — --ledger 는 클론 뿌리나 docs/plans 폴더를 가리켜야 합니다.");
+    console.error(
+      "원장 파일이 없다 — --ledger 는 프로젝트 폴더나 그 안의 confluence 폴더를 가리켜야 합니다.",
+    );
     process.exit(1);
   }
   ledger = parseConfluenceLedger(JSON.parse(readFileSync(file, "utf8")));

@@ -1,46 +1,71 @@
-/* 문서 코멘트(2026-10-23 · 최종 구현 계획 F4 · 작업 D2b) — 기획서 문서의 코멘트 읽기 · 쓰기. plans.css 의
-   `.nx-pl-comment*` 옷을 그대로 입고 더 입히는 것만 `nx-dc-*` 로 산다. 색은 `.nx` 뿌리의 토큰만 읽고,
-   단추는 `.nx button` 초기화를 이기도록 `.nx` 를 앞에 단다(doc-actions.css 와 같은 모양). */
+/* 코멘트 절은 자기 뿌리에서 읽기 카드와 입력을 맞춘다(2026-10-23 화면 전면 재설계 §4 D). */
+.nx-dc {
+  gap: var(--sp-4);
+  padding-top: var(--sp-6);
+}
 
-/* 답글 줄 — 맨 위 줄보다 안으로 들어가 스레드가 한눈에 보인다. */
+.nx-dc .nx-pl-comments-t {
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semi);
+}
+
+.nx-dc > .nx-pl-note {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--ink2);
+}
+
+.nx-dc .nx-pl-comment-list {
+  gap: var(--sp-3);
+}
+
+.nx-dc .nx-pl-comment {
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.nx-dc .nx-pl-comment-body {
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
+}
+
+.nx-dc .nx-pl-comment-hd {
+  font-size: var(--fs-ui);
+}
+
+.nx-dc .nx-pl-comment-hd span {
+  font-size: var(--fs-cap);
+  color: var(--ink2);
+}
+
+.nx-dc .nx-pl-comment-anchor {
+  padding-inline-start: var(--sp-3);
+  border-inline-start: 2px solid var(--line2);
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+}
+
 .nx-dc-row--reply {
-  margin-inline-start: 16px;
+  margin-inline-start: var(--sp-4);
   border-inline-start: 2px solid var(--line-soft);
   border-start-start-radius: 0;
   border-end-start-radius: 0;
 }
 
-/* 줄마다 설 단추 — 본문 아래 오른쪽에 조용히 선다. */
 .nx-dc-act {
   display: flex;
   justify-content: flex-end;
-  gap: 2px;
-  margin-top: 2px;
+  gap: var(--sp-1);
 }
 
-/* 입력 — 인라인 인용과 여러 줄 칸, 그 아래 단추 줄. */
 .nx-dc-composer {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 
-/* 인라인 입력의 닻 인용 — 줄의 닻 문장과 같은 옷이다. */
-.nx-dc-composer .nx-dc-quote {
-  font-size: 12.5px;
-}
-
-.nx .nx-dc-area {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 7px 9px;
-  border: 1px solid var(--line2);
-  border-radius: var(--r-sm);
-  background: var(--bg);
-  color: var(--ink);
-  font: inherit;
-  font-size: 13.5px;
-  line-height: 1.55;
-  resize: vertical;
+.nx-dc .nx-banner {
+  margin: 0;
 }
 
 .nx-dc-bar {
@@ -48,28 +73,27 @@
   align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 .nx-dc-count {
-  color: var(--ink3);
-  font-size: 12px;
+  color: var(--ink2);
+  font-size: var(--fs-cap);
 }
 
 .nx-dc-fail {
   color: var(--red);
-  font-size: 12.5px;
-  line-height: 1.5;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
 }
 
 .nx-dc-fail small {
   display: block;
-  color: var(--ink3);
-  font-size: 11.5px;
+  color: var(--ink2);
+  font-size: var(--fs-sm);
   overflow-wrap: anywhere;
 }
 
-/* 남은 글자 · 실패의 말 — 단추들 왼쪽에 자리를 넓게 쓴다. */
 .nx-dc-bar > .nx-dc-count,
 .nx-dc-bar > .nx-dc-fail {
   flex: 1 1 160px;
@@ -78,49 +102,33 @@
   text-align: left;
 }
 
-/* 적용됨의 한 줄 알림 — 지나가는 일이므로 눈에 뜨되 조용하다. */
 .nx-dc-notice {
   margin: 0;
   color: var(--green);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
-/* 닻 판정의 안내 — 다시 고르게 하는 말이다. */
 .nx-dc-anchor-fail {
   margin: 0;
   color: var(--ink2);
 }
 
-/* 해결의 줄 안 판 — 확인 문장과 단추가 한 줄로 선다. */
 .nx-dc-resolve {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-1_5);
   margin: 0;
   color: var(--ink2);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .nx-dc-resolve .nx-dc-fail {
   flex: 1 1 160px;
 }
 
-/* 본문 선택 단추 — 고른 문장 끝에 뜨는 작은 단추(화면의 눈금을 그대로 쓴다). */
 .nx .nx-dc-anchor-btn {
   position: fixed;
-  z-index: 30;
-  height: 28px;
-  padding: 0 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--card);
-  color: var(--ink);
-  box-shadow: 0 2px 10px color-mix(in srgb, var(--ink) 14%, transparent);
-  font-size: 12.5px;
-  white-space: nowrap;
-}
-
-.nx .nx-dc-anchor-btn:hover {
-  background: var(--nx-hover);
+  z-index: var(--nx-z-pop);
+  box-shadow: var(--elev-2);
 }

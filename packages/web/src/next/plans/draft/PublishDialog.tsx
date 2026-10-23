@@ -4,13 +4,12 @@ import type { Daemon } from "../../../lib/daemon-client";
 import { linkClick } from "../../../lib/open-link";
 import { L } from "../../labels";
 import type { ShellNav } from "../../slots";
-import { ExternalIcon, Spin } from "../../ui/icons";
+import { ExternalIcon, InfoIcon, Spin } from "../../ui/icons";
 import { ModalBody, ModalFoot, ModalFrame, ModalHead } from "../../ui/ModalFrame";
 import { docUrl } from "../plans-list";
 import { DRAFT_LIMITS } from "./limits";
 import {
   blockerLines,
-  changeSummary,
   newCommandId,
   nextNotation,
   resultLine,
@@ -159,7 +158,7 @@ export function PublishDialog({
   };
 
   const blockers = preview === null ? [] : blockerLines(preview);
-  const summary = preview === null ? [] : changeSummary(preview);
+
   const stageNeeded = preview !== null && stageInputNeeded(preview);
   const link =
     preview !== null && preview.pageId !== null && site !== null
@@ -183,7 +182,7 @@ export function PublishDialog({
           </p>
         )}
         {phase === "failed" && (
-          <p className="nx-pb-fail" role="alert">
+          <p className="nx-banner nx-banner--red" role="alert">
             {loadError}
           </p>
         )}
@@ -211,6 +210,34 @@ export function PublishDialog({
                 </div>
               )}
             </dl>
+            <section className="nx-pb-changes" aria-label={L.drafts.changeHeading}>
+              <h3 className="nx-pb-sec-t">{L.drafts.changeHeading}</h3>
+              <p className="nx-pb-counts">
+                {L.drafts.changeCounts(
+                  preview.changes.changed,
+                  preview.changes.inserted,
+                  preview.changes.deleted,
+                ) || L.drafts.blocker["nothing-to-publish"]}
+              </p>
+            </section>
+            {preview.changes.protectedRemoved.length > 0 && (
+              <section
+                className="nx-banner nx-banner--amber"
+                aria-label={L.drafts.protectedHeading}
+              >
+                <div className="nx-banner-body">
+                  <b>{L.drafts.protectedHeading}</b>
+                  <ul className="nx-pb-change-list">
+                    {preview.changes.protectedRemoved.map((machine, at) => (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: 같은 종류의 조각도 각각 보인다.
+                      <li key={`${at}-${machine}`}>
+                        {L.drafts.protectedRemoved(L.drafts.tokenLabel(machine))}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </section>
+            )}
             <p className="nx-pb-vers">
               {L.drafts.previewVersions(
                 preview.baseVersion,
@@ -218,24 +245,14 @@ export function PublishDialog({
                 preview.draftRevision,
               )}
             </p>
-            {summary.length > 0 && (
-              <section className="nx-pb-changes" aria-label={L.drafts.changeHeading}>
-                <h3 className="nx-pb-sec-t">{L.drafts.changeHeading}</h3>
-                <ul className="nx-pb-change-list">
-                  {summary.map((line) => (
-                    <li key={line}>{line}</li>
-                  ))}
-                </ul>
-              </section>
-            )}
             {stageNeeded && (
               <section className="nx-pb-stage" aria-label={L.drafts.stageNotation}>
                 <p className="nx-pb-stage-note">{L.drafts.stageRevision}</p>
                 <div className="nx-pb-stage-row">
-                  <label className="nx-pb-stage-field">
-                    <span>{L.drafts.stageNotation}</span>
+                  <label className="nx-field">
+                    <span className="nx-field-label">{L.drafts.stageNotation}</span>
                     <input
-                      className="nx-pb-stage-in"
+                      className="nx-input nx-pb-stage-in"
                       aria-label={L.drafts.stageNotation}
                       value={notation}
                       disabled={sending}
@@ -244,9 +261,10 @@ export function PublishDialog({
                       onChange={(event) => setNotation(event.target.value)}
                     />
                   </label>
-                  <label className="nx-pb-stage-field">
-                    <span>{L.drafts.stageReason}</span>
+                  <label className="nx-field">
+                    <span className="nx-field-label">{L.drafts.stageReason}</span>
                     <select
+                      className="nx-input"
                       aria-label={L.drafts.stageReason}
                       value={reason}
                       disabled={sending}
@@ -269,8 +287,9 @@ export function PublishDialog({
             {blockers.length > 0 && (
               <ul className="nx-pb-blockers">
                 {blockers.map((line) => (
-                  <li key={line.text} className="nx-pb-blocker">
-                    <span className="nx-pb-blocker-t">{line.text}</span>
+                  <li key={line.text} className="nx-banner nx-banner--amber nx-pb-blocker">
+                    <InfoIcon />
+                    <span className="nx-banner-body">{line.text}</span>
                     {line.action === "rebase" && (
                       <button
                         type="button"
@@ -313,12 +332,12 @@ export function PublishDialog({
               </ul>
             )}
             {result !== null && (
-              <p className="nx-pb-result" role="status">
+              <p className="nx-banner nx-banner--blue" role="status">
                 {resultLine(result)}
               </p>
             )}
             {error !== null && (
-              <p className="nx-pb-fail" role="alert">
+              <p className="nx-banner nx-banner--red" role="alert">
                 {error}
               </p>
             )}

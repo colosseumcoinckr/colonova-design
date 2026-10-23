@@ -129,6 +129,10 @@ function Row({
  * 개발자 확인을 기다리는 요청(2026-10-07 UX 점검 3단계)은 `지금 진행 중` 에 한 줄로 선다 — `개발자 확인을 기다려요`
  * 와 며칠째. 사용자의 손이 필요한 일이 아니라서 `답을 기다려요` 의 수에도, 사이드바의 배지에도 세지 않고 눌러서 그
  * 프로젝트로 갈 뿐이다. 도는 표식이 없는 줄이라 AI 가 일하는 줄과 눈으로 갈린다.
+ *
+ * `part` 로 묶음을 골라 그린다(2026-10-23 화면 전면 재설계 §3.6) — `waiting` 은 `답을 기다려요` 만,
+ * `rest` 는 나머지 묶음만. 홈이 이 둘을 두 번 부르며 그 사이에 두 시작 카드가 선다. 필수 prop 이라
+ * 까먹고 못 넘기면 타입 검사가 막는다(검토 결함 — 기본값으로 두 번 그려지던 것). 셈 · 접힘 · 거둠 규칙은 나뉘어도 그대로다.
  */
 export function HomeInbox({
   daemon,
@@ -137,6 +141,7 @@ export function HomeInbox({
   onSwitch,
   onOpenWork,
   onShowScreen,
+  part,
 }: {
   daemon: Daemon;
   /** 대화의 표시 이름 — 사용자가 바꾼 이름을 따른다(사이드바와 같은 이름). */
@@ -150,6 +155,8 @@ export function HomeInbox({
    * 준비 분석 · 첫 5분). 첫 프로젝트는 늘 활성이라 `onSwitch` 만으로는 이 줄을 눌러도 아무 일도 없었다.
    */
   onShowScreen: () => void;
+  /** 묶음 고르기 — `waiting`(맨 위의 기다림) · `rest`(나머지 묶음). 필수: 두 묶음을 나눠 그리는 것이 이 컴포넌트의 쓰임이다. */
+  part: "waiting" | "rest";
 }) {
   const landed = daemon.repo?.landed;
   const feed = useMemo(
@@ -282,19 +289,21 @@ export function HomeInbox({
   const openHere = (sessionId: string) => active && onOpenThread(active.slug, sessionId);
 
   return (
-    <div className="nx-inbox">
-      {waitCount > 0 ? (
+    <div className={`nx-inbox${part === "waiting" ? " nx-inbox--waiting" : ""}`}>
+      {part === "waiting" && waitCount > 0 && (
         <h3 className="nx-ih">
           {L.home.waiting} <Count n={waitCount} />
         </h3>
-      ) : (
+      )}
+      {part === "rest" && waitCount === 0 && (
         <div className={`nx-calm ${lock ? "nx-calm--lock" : "nx-calm--ok"}`}>
           {/* 연결이 열리기 전에는 「비었음」을 알 수 없다 — 낡은 「기다리는 일이 없어요」를 말하지 않는다. */}
           <span className="nx-calm-i">{lock ? <InfoIcon /> : <CalmIcon />}</span>
           {lock ?? L.home.calm}
         </div>
       )}
-      {active &&
+      {part === "waiting" &&
+        active &&
         feed.asking.map((item) => {
           const key = item.kind === "review" ? `review-${item.sessionId}` : item.requestId;
           const busy =
@@ -393,22 +402,23 @@ export function HomeInbox({
             </div>
           );
         })}
-      {otherWaiting.map((project) => (
-        <Row
-          key={project.slug}
-          className={rowClass(`wait-${project.slug}`)}
-          lead={<ProjectMark slug={project.slug} name={project.name} size="sm" />}
-          title={project.name}
-          meta={
-            <span className="nx-tone--amber">
-              {L.sidebar.waitingAnswerCount(project.pendingCount)}
-            </span>
-          }
-          onClick={() => onSwitch(project.slug)}
-        />
-      ))}
+      {part === "waiting" &&
+        otherWaiting.map((project) => (
+          <Row
+            key={project.slug}
+            className={rowClass(`wait-${project.slug}`)}
+            lead={<ProjectMark slug={project.slug} name={project.name} size="sm" />}
+            title={project.name}
+            meta={
+              <span className="nx-tone--amber">
+                {L.sidebar.waitingAnswerCount(project.pendingCount)}
+              </span>
+            }
+            onClick={() => onSwitch(project.slug)}
+          />
+        ))}
 
-      {runCount > 0 && (
+      {part === "rest" && runCount > 0 && (
         <details
           className="nx-fold"
           open={foldMemo.running}
@@ -479,7 +489,7 @@ export function HomeInbox({
         </details>
       )}
 
-      {feed.resume.length > 0 && (
+      {part === "rest" && feed.resume.length > 0 && (
         <details
           className="nx-fold"
           open={foldMemo.resume}
@@ -504,7 +514,7 @@ export function HomeInbox({
         </details>
       )}
 
-      {recentCount > 0 && (
+      {part === "rest" && recentCount > 0 && (
         <details
           className="nx-fold"
           open={foldMemo.recent}
@@ -554,7 +564,7 @@ export function HomeInbox({
       )}
 
       {/* 반영된 일(2026-10-08 · A2b) — 병합돼 서비스가 된 요청들. 새 작업이 시작돼도 지워지지 않는 성취의 기록이다. 없으면 묶음도 없다. */}
-      {feed.landed.length > 0 && (
+      {part === "rest" && feed.landed.length > 0 && (
         <details
           className="nx-fold"
           open={foldMemo.landed}

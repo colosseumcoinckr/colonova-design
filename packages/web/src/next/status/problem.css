@@ -1,12 +1,13 @@
-/* 문제 문장(ProblemLine) — 상태 줄 바로 아래, 대화와 미리보기에 걸친 한 줄. */
+/* 문제 문장(ProblemLine) — 상태 줄 바로 아래, 대화와 미리보기에 걸친 한 줄.
+   모양은 앱 공통의 문제 띠(`nx-banner` + 톤 — 아이콘 · 한 줄 · 단추)이고, 이 자리에서는 폭을 다 쓰는 띠라 반경과 옆 테두리만 걷는다 —
+   안쪽 여백(12px 16px) · 톤 · 글 크기는 상자 띠와 같다(2026-10-23 화면 전면 재설계 §4 G · 2026-10-24 QA 16: 따로 둔 8px 여백을 걷었다).
+   톤: 고치는 중 호박 · 알렸어요 파랑 · 막힘 · 다시 연결 빨강. */
 
 .nx-problem {
-  display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 9px 16px;
-  font-size: 13px;
-  border-bottom: 1px solid var(--line);
+  /* 폭을 다 쓰는 띠 — 아래 선만 남긴다. */
+  border-width: 0 0 1px;
+  border-radius: 0;
   animation: nx-fade 0.2s;
   /* 종류가 바뀔 때 배경이 옷을 갈아입는다 — 같은 줄 안에서 색만 이어진다. */
   transition: background 0.25s ease;
@@ -16,6 +17,14 @@
 .nx-problem-fixed {
   display: inline-flex;
   color: var(--green);
+}
+
+/* 아이콘은 한 줄의 가운데에 — `nx-banner` 의 첫 줄 맞춤(2px)은 여러 줄 글을 위한 것이다. */
+.nx-problem > .nx-i,
+.nx-problem > .nx-problem-fixed,
+.nx-problem > .nx-spin {
+  flex: none;
+  margin-top: 0;
 }
 
 /* 닫힘 — 한 줄을 그리드 줄째(1fr → 0fr)로 접으며 사라진다. 감싸개는 자리를
@@ -62,37 +71,32 @@
   }
 }
 
-.nx-problem b {
-  font-weight: 600;
-  white-space: nowrap;
+/* 글은 한 줄로 흐른다 — 제목(굵게)과 본문이 이어 읽히고, 모자라면 낱말 단위로 줄을 바꾼다. */
+.nx-problem .nx-banner-body {
+  display: block;
 }
 
-/* 「다 고쳤어요」 앞의 초록 체크(.nx-problem-fixed)도 span 이다 — 본문 규칙이 그것까지 잡으면
-   (0-1-1 이 0-1-0 을 이긴다) 체크가 회색으로 한 줄 폭만큼 늘어난다. 본문 span 만 겨눈다.
-   끝의 `+N`(.nx-problem-more)도 본문이 아니라 표시다. */
-.nx-problem span:not(.nx-problem-fixed):not(.nx-problem-more) {
+.nx-problem b {
+  margin-right: var(--sp-2);
+  font-weight: var(--fw-semi);
+}
+
+.nx-problem .nx-banner-body > span {
   color: var(--ink2);
-  min-width: 0;
-  flex: 1;
   word-break: keep-all;
 }
 
-/* `개발자에게 알렸어요` 의 ✕ — 아이콘 한 칸이라 정사각으로 줄인다. */
+/* `개발자에게 알렸어요` 의 ✕ — 아이콘 단추라 정사각이다(`nx-ibtn--sm`). 띠의 색 위에서도 손에 올리면 보인다. */
 .nx .nx-problem .nx-problem-close {
-  width: 26px;
-  padding: 0;
-  flex: none;
+  color: var(--ink2);
 }
 
 /* 줄에 선 문제 외의 열린 문제 수(`+N`) — 본문 칸을 잡지 않는 작은 표시다. */
 .nx-problem-more {
   flex: none;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
   color: var(--ink2);
-}
-
-.nx-problem--fixing {
-  background: var(--amber-soft);
 }
 
 .nx-problem--fixing b,
@@ -100,21 +104,15 @@
   color: var(--amber);
 }
 
-.nx-problem--notified {
-  background: var(--blue-soft);
-}
-
 .nx-problem--notified b,
 .nx-problem--notified > .nx-i {
   color: var(--blue);
 }
 
-.nx-problem--reconnect {
-  background: var(--red-soft);
-}
-
 .nx-problem--reconnect b,
-.nx-problem--reconnect > .nx-i {
+.nx-problem--reconnect > .nx-i,
+.nx-problem--blocked b,
+.nx-problem--blocked > .nx-i {
   color: var(--red);
 }
 
@@ -122,22 +120,35 @@
   /* 숨기지 않고 줄을 바꿔 담는다 — 본문은 두 줄까지 감기고 손은 아래 줄로
      내려온다(2026-10-04 ux-review). */
   flex-wrap: wrap;
-  row-gap: 6px;
+  row-gap: var(--sp-2);
 }
 
-.nx--narrow .nx-problem span:not(.nx-problem-fixed):not(.nx-problem-more) {
-  flex: 1 1 100%;
+/* 좁은 창: 제목은 한 줄, 본문은 그 아래 두 줄까지(넘치면 줄임표), 손은 아래 줄로 — 말줄임은 본문 한 칸(span)에만 건다. 제목 · 본문을 함께
+   담은 상자에 걸면 낡은 엔진에서 둘이 따로 줄이 되어 본문이 한 줄밖에 못 산다(2026-10-04 ux-review 의 모양을 그대로 지킨다). */
+.nx--narrow .nx-problem .nx-banner-body {
+  flex: 1 1 0;
+  min-width: calc(100% - var(--sp-8));
+}
+
+.nx--narrow .nx-problem b {
+  display: block;
+  margin-right: 0;
+}
+
+.nx--narrow .nx-problem .nx-banner-body > span {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   overflow: hidden;
 }
 
-.nx--narrow .nx-problem b {
-  flex: 1;
+/* 단추 줄은 글과 같은 왼쪽 끝에서 시작한다 — 앞 그림(16px) + 사이(12px). */
+.nx--narrow .nx-problem .nx-banner-act {
+  flex: 1 1 100%;
+  padding-left: calc(16px + var(--sp-3));
 }
 
-.nx-problem--blocked {
-  color: var(--red);
-  background: var(--red-soft);
+/* 단추가 없는 문제 줄(고치는 중 · 알렸어요)은 단추 줄이 비어 있다 — 좁은 창에서 줄 간격만 남지 않게 접는다. */
+.nx-problem .nx-banner-act:empty {
+  display: none;
 }

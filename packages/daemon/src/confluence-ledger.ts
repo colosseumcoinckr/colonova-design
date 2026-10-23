@@ -1,6 +1,6 @@
 /**
- * 기획서 원장 (2026-10-18 기획서 동기화 · 계획 항목 9) — `docs/plans/confluence.json` 이
- * 사는 모양과 읽기 · 쓰기. 설계 문서(docs/confluence-sync-design-2026-10-18.md)의
+ * 기획서 원장 (2026-10-18 기획서 동기화 · 계획 항목 9) — 사본 뿌리(`<프로젝트 폴더>/confluence`)
+ * 의 `confluence.json` 이 사는 모양과 읽기 · 쓰기. 설계 문서(docs/confluence-sync-design-2026-10-18.md)의
  * 예시 그대로다.
  *
  * 어디서 끊겨도 다음 시작이 이어받는다(cycle-ledger.ts 계약): parse 는 절대 던지지
@@ -12,7 +12,7 @@ import { dirname } from "node:path";
 import type { ConfluenceSection } from "./confluence-markdown.js";
 
 export interface ConfluenceLedgerPage {
-  /** docs/plans 아래 상대 경로 — 트리 걷기마다 다시 계산된다(id 는 불변 · 실측). 이동은 시작 걷기가 잡는다. */
+  /** 사본 뿌리 아래 상대 경로 — 트리 걷기마다 다시 계산된다(id 는 불변 · 실측). 이동은 시작 걷기가 잡는다. */
   path: string;
   title: string;
   version: number;
@@ -57,9 +57,16 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
     : null;
 
 const asString = (value: unknown): string | null => (typeof value === "string" ? value : null);
-
 const asInt = (value: unknown): number | null =>
   typeof value === "number" && Number.isInteger(value) ? value : null;
+
+/** 사본 안에 머무는 경로인가 — 절대 경로이거나 `/` · `\` 로 쪼갠 조각에 `..` · `.` 이 끼면
+ * 버린다. 증분 쓰기와 거두기가 원장의 path 를 그대로 join 하므로 읽을 때 걸러낸다
+ * (2026-10-23 · 기획서 사본 이동 계획 · 오케스트레이터 검토 R2). */
+function mirrorSafePath(path: string): boolean {
+  if (path.startsWith("/") || path.startsWith("\\")) return false;
+  return path.split(/[\\/]/).every((part) => part !== ".." && part !== ".");
+}
 
 /** 절 목록 — 제목이 문자열이고 매크로 표식이 참 · 거짓인 것만 산다. */
 function parseSections(raw: unknown): ConfluenceSection[] {
@@ -89,7 +96,7 @@ function parsePage(raw: unknown): ConfluenceLedgerPage | null {
   if (record === null) return null;
   const path = asString(record.path);
   const version = asInt(record.version);
-  if (path === null || path === "" || version === null) return null;
+  if (path === null || path === "" || !mirrorSafePath(path) || version === null) return null;
   return {
     path,
     title: asString(record.title) ?? "",
@@ -104,7 +111,7 @@ function parseFolder(raw: unknown): ConfluenceLedgerFolder | null {
   const record = asRecord(raw);
   if (record === null) return null;
   const path = asString(record.path);
-  if (path === null || path === "") return null;
+  if (path === null || path === "" || !mirrorSafePath(path)) return null;
   return { path, title: asString(record.title) ?? "" };
 }
 
@@ -114,7 +121,9 @@ function parseUnsupported(raw: unknown): ConfluenceLedgerUnsupported | null {
   if (record === null) return null;
   const path = asString(record.path);
   const type = asString(record.type);
-  if (path === null || path === "" || type === null || type === "") return null;
+  if (path === null || path === "" || !mirrorSafePath(path) || type === null || type === "") {
+    return null;
+  }
   return { path, title: asString(record.title) ?? "", type };
 }
 

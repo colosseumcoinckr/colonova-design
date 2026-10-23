@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { DraftPlanRef, DraftRefEntry } from "@colonova-design/protocol";
 // 순수 모듈 — src 에서 곧장 읽는다(next-run-plan.test.ts 와 같은 모양).
 import {
+  CHIPS_SHOWN,
+  chipsShownAt,
   refChipText,
   refOpenTarget,
   stashPlanOpen,
   stripRows,
+  TWO_CHIPS_MIN_WIDTH,
   takePlanOpen,
 } from "../src/next/chat/plan-ref-strip.ts";
 
@@ -111,4 +115,66 @@ test("맡겨 둔 열기 요청 — 꺼내면 비고, 나중 것이 먼저 것을
   assert.deepEqual(takePlanOpen(), { docKey: "n-00112233445566778899aabbccddeeff" });
   // 꺼내면 비었다 — 같은 요청이 두 번 열리지 않는다.
   assert.equal(takePlanOpen(), null);
+});
+
+test("한 줄 — 칩 수는 줄의 폭을 읽는다: 모르면 위 한계, 둘째 칩이 읽힐 폭이면 둘, 더 좁으면 하나(2026-10-24 QA 12)", () => {
+  assert.equal(chipsShownAt(null), CHIPS_SHOWN);
+  assert.equal(chipsShownAt(1200), CHIPS_SHOWN);
+  assert.equal(chipsShownAt(TWO_CHIPS_MIN_WIDTH), CHIPS_SHOWN);
+  assert.equal(chipsShownAt(TWO_CHIPS_MIN_WIDTH - 1), 1);
+  assert.equal(chipsShownAt(0), 1);
+  // 위 한계를 넘기지 않는다 — 폭이 넓어도 접힌 줄의 칩은 둘까지다.
+  assert.ok(chipsShownAt(99999) <= CHIPS_SHOWN);
+});
+
+/** 근거 줄의 마크업 · CSS — 칩이 넘쳐도 `+N` 이 가려지지 않는 틀(2026-10-24 QA 12). */
+const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+const stripCss = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "");
+const refCss = stripCss(read("../src/next/chat/plan-ref-strip.css"));
+const refTsx = read("../src/next/chat/PlanRefStrip.tsx");
+const refRule = (selector: string): string => {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(refCss);
+  assert.ok(match, `${selector} 규칙이 없다`);
+  return match[1] ?? "";
+};
+
+test("근거 줄 — `+N` 은 칩 상자 밖의 줄 자식이라 칩이 줄어들거나 굴러가도 늘 보인다", () => {
+  // 마크업: 칩 상자(`nx-pref-chips`)가 닫힌 뒤에 `+N` 이 선다.
+  assert.match(refTsx, /<\/div>\s*\{foldable > 0 && \(/);
+  assert.match(refTsx, /<div className="nx-pref" ref=\{strip\}>/);
+  assert.match(refTsx, /className=\{`nx-pref-chips\$\{open \? " nx-pref-chips--open" : ""\}`\}/);
+  // 폭은 실제 줄을 읽어 센다 — 고정 수가 아니다.
+  assert.match(refTsx, /new ResizeObserver\(read\)/);
+  assert.match(refTsx, /chipsShownAt\(width\)/);
+  // 풍선에는 전체 글이 있다 — 줄어든 칩을 손을 올려 읽는다.
+  assert.match(refTsx, /title=\{refChipText\(entry\.ref\)\}/);
+  // `+N` 자신은 줄어들지 않는다.
+  assert.match(refRule(".nx .nx-pref-more"), /flex:\s*none/);
+});
+
+test("근거 줄 — 칩은 줄어든다: 칩 상자는 넘침을 가두고, 칩은 `min-width: 0` · 최대 폭 · 말줄임이다", () => {
+  const chips = refRule(".nx-pref-chips");
+  assert.match(chips, /min-width:\s*0\s*;/);
+  assert.match(chips, /overflow:\s*hidden/);
+  const chip = refRule(".nx .nx-pref-chip");
+  // 칩의 글은 한 줄이라 안쪽 최소 폭이 글 전체다 — 이 둘이 없으면 줄어들지 못하고 오른쪽이 밀려 가려진다.
+  assert.match(chip, /flex:\s*0 1 auto/);
+  assert.match(chip, /min-width:\s*0\s*;/);
+  assert.match(chip, /overflow:\s*hidden/);
+  assert.match(chip, /max-width:\s*260px/);
+  assert.match(refRule(".nx-pref-title"), /text-overflow:\s*ellipsis/);
+  // 펼친 줄은 칩이 제 폭으로 서고 옆으로 굴러간다.
+  assert.match(refRule(".nx-pref-chips--open .nx-pref-chip"), /flex:\s*none/);
+  assert.match(refRule(".nx-pref-chips--open"), /overflow-x:\s*auto/);
+});
+
+test("근거 줄 — 줄의 폭을 이름 붙은 컨테이너(nxpref)가 읽고, 좁은 칸은 절의 글자만 접는다", () => {
+  assert.match(refRule(".nx-pref"), /container:\s*nxpref\s*\/\s*inline-size/);
+  const queries = refCss.match(/@container[^{]*\{/g) ?? [];
+  assert.deepEqual(queries, ["@container nxpref (max-width: 460px) {"]);
+  assert.match(
+    refCss,
+    /@container nxpref \(max-width: 460px\) \{\s*\.nx-pref-chips:not\(\.nx-pref-chips--open\) \.nx-pref-sec \{\s*display:\s*none;/,
+  );
 });

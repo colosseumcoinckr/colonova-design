@@ -40,6 +40,51 @@ test("위험 문자 — 구분자와 예약 문자는 `-` 로 바꾸고 끝의 �
   assert.equal(paths.get("e"), "COLO/뿌리/제-목");
 });
 
+test("예약 이름 — Confluence 제목이 Claude Code 의 특별한 이름이 되지 않는다(2026-10-23 · 기획서 사본 이동 계획 §6 함정 1)", () => {
+  const root = node("r", "뿌리", [
+    node("11", "CLAUDE"),
+    node("12", "claude.local"),
+    node("13", "Agents"),
+    node("14", ".claude"),
+    node("15", ".git"),
+    node("16", "policy.claude"), // 제목 안의 claude 는 특별하지 않다
+  ]);
+  const paths = planPaths(root, "COLO");
+  assert.equal(paths.get("11"), "COLO/뿌리/CLAUDE-11");
+  assert.equal(paths.get("12"), "COLO/뿌리/claude.local-12");
+  assert.equal(paths.get("13"), "COLO/뿌리/Agents-13");
+  assert.equal(paths.get("14"), "COLO/뿌리/-claude");
+  assert.equal(paths.get("15"), "COLO/뿌리/-git");
+  assert.equal(paths.get("16"), "COLO/뿌리/policy.claude");
+});
+
+test("`~` 앞머리 — 개인 공간 키와 제목은 `-` 마디가 된다(2026-10-23 · 기획서 사본 이동 계획 §6 · 검토 R1)", () => {
+  const paths = planPaths(node("1", "~임시"), "~abc");
+  assert.equal(paths.get("1"), "-abc/-임시");
+  assert.equal(planPaths(node("2", "보통"), "PROD").get("2"), "PROD/보통");
+});
+
+test("앞공백 우회 — 앞머리 걷기는 trim 뒤에 돈다(2026-10-23 · 검토 R1)", () => {
+  const root = node("r", "뿌리", [
+    node("31", " .claude"),
+    node("32", "  ~abc"),
+    node("33", " CLAUDE "),
+  ]);
+  const paths = planPaths(root, "COLO");
+  assert.equal(paths.get("31"), "COLO/뿌리/-claude");
+  assert.equal(paths.get("32"), "COLO/뿌리/-abc");
+  assert.equal(paths.get("33"), "COLO/뿌리/CLAUDE-33");
+});
+
+test("깊은 자리의 예약 이름 — 폴더 제목에도 같은 규칙이다", () => {
+  const root = node("r", "뿌리", [
+    node("f", "설정", [node("21", "agents", [node("22", "AGENTS")])], "folder"),
+  ]);
+  const paths = planPaths(root, "COLO");
+  assert.equal(paths.get("21"), "COLO/뿌리/설정/agents-21");
+  assert.equal(paths.get("22"), "COLO/뿌리/설정/agents-21/AGENTS-22");
+});
+
 test("이름 충돌 — 둘째부터 페이지 id 를 붙이고 잘려도 같은 규칙이다", () => {
   const root = node("r", "뿌리", [
     node("11", "정책"),

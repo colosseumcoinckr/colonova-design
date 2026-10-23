@@ -172,7 +172,7 @@
   align-items: center;
   gap: 6px;
   margin: 14px 0 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.4;
   animation: nx-ob-rise 0.4s var(--drift) 180ms backwards;
 }
@@ -213,7 +213,7 @@
   /* 한 칸이 카드 폭을 못 넘긴다 — 알약의 긴 이메일(`kim@…` 한 낱말)이 칸을 밀어 카드 전체가 옆으로 넘치지 않게
      한다(2026-10-07 계정 줄). 자동 칸은 내용의 최소 폭까지 늘어난다. */
   grid-template-columns: minmax(0, 1fr);
-  gap: 8px;
+  gap: var(--sp-3);
 }
 
 /* 세 카드는 60ms 간격으로 올라온다. nx-rise 는 가운데 정렬 팝오버의 것이라 가로 이동이
@@ -344,27 +344,28 @@
 
 .nx-ob-name {
   min-width: 0;
-  font-size: 14.5px;
+  font-size: var(--fs-ui);
   font-weight: 600;
 }
 
-/* 상태 알약 — 지금 어떤 상태인지 색과 글로 함께 말한다. */
+/* 상태 알약 — 모양은 공통 부품 nx-pill(높이 20 · 12px), 여기는 자리와 줄임만. 색은 상태의
+   곁들이며 글(상태 말)이 함께 선다(2026-10-23 화면 전면 재설계 §4 H). */
 .nx-ob-r {
   margin-left: auto;
   max-width: 58%;
-  padding: 3px 10px;
-  border-radius: var(--r-pill);
-  background: var(--nx-hover);
-  color: var(--ink2);
-  font-size: 12px;
-  font-weight: 500;
-  text-align: right;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   transition:
     background-color 0.3s var(--drift),
     color 0.3s var(--drift);
+}
+
+/* 알약(nx-pill)은 flex 상자라 그 안의 글에 곧장 말줄임이 먹지 않는다 — 글을 감싼 칸이 줄고
+   잘린 전체 문장은 알약의 title 로 닿는다(2026-10-24 RF 검토). */
+.nx-ob-r-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* 지난 항목 — 한 줄로 가라앉는다. */
@@ -372,8 +373,7 @@
   background: color-mix(in srgb, var(--card) 45%, transparent);
 }
 
-.nx-ob-step[data-state="ok"] .nx-ob-tile,
-.nx-ob-step[data-state="ok"] .nx-ob-r {
+.nx-ob-step[data-state="ok"] .nx-ob-tile {
   background: var(--green-soft);
   color: var(--green);
 }
@@ -390,8 +390,7 @@
     0 10px 32px -14px color-mix(in srgb, var(--accent) 38%, transparent);
 }
 
-.nx-ob-step[data-current] .nx-ob-tile,
-.nx-ob-step[data-current] .nx-ob-r {
+.nx-ob-step[data-current] .nx-ob-tile {
   background: var(--accent-soft);
   color: var(--accent);
 }
@@ -414,8 +413,7 @@
     0 10px 32px -14px color-mix(in srgb, var(--red) 34%, transparent);
 }
 
-.nx-ob-step[data-state="fail"] .nx-ob-tile,
-.nx-ob-step[data-state="fail"] .nx-ob-r {
+.nx-ob-step[data-state="fail"] .nx-ob-tile {
   background: var(--red-soft);
   color: var(--red);
 }
@@ -460,6 +458,15 @@
   background: var(--bg-2);
 }
 
+/* 서 있는 카드의 강한 단추는 큰 단추(40px)다 — 체크리스트에서 지금 손이 갈 일 하나.
+   초대 파일 놓는 곳의 단추는 32px 로 정했다(2026-10-23 화면 전면 재설계 §4 H). */
+.nx-ob-step[data-current] .nx-ob-acts .nx-btn--pri {
+  height: var(--h-lg);
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-read);
+  border-radius: var(--r-md);
+}
+
 /* ── 몸통 ── */
 .nx-ob-d {
   color: var(--ink2);
@@ -476,14 +483,8 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   margin-top: 12px;
-}
-
-.nx-ob-acts .nx-btn {
-  height: 34px;
-  padding: 0 16px;
-  font-size: 13.5px;
 }
 
 /* 설치의 세 칸 막대 — 내려받기 · 설치 · 확인. 지난 칸은 차고, 지금 칸은 흐른다. */
@@ -535,7 +536,7 @@
 }
 
 .nx-ob-log {
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink3);
   margin-top: 8px;
   font-variant-numeric: tabular-nums;
@@ -544,7 +545,7 @@
 /* 접는 안내 — `브라우저가 열리지 않았나요?` · `초대 파일이 아직 없나요?`. */
 .nx-ob-help {
   margin-top: 12px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
@@ -596,15 +597,9 @@
   gap: 6px;
 }
 
-.nx-ob-help input {
+/* 붙여넣기 칸은 공통 부품 nx-input(36px · 초점 고리)을 그대로 입는다 — 2026-10-23 화면 전면 재설계 §4 I. */
+.nx-ob-help .nx-row .nx-input {
   flex: 1;
-  height: 32px;
-  border: 1px solid var(--line2);
-  border-radius: 8px;
-  padding: 0 10px;
-  outline: 0;
-  background: var(--bg);
-  min-width: 0;
 }
 
 /* 복사하거나 붙여 넣는 한 줄 — 안 쪽 우물처럼 한 톤 들어가 있다. 눌러 고르면 통째로 잡힌다. */
@@ -627,7 +622,7 @@
 .nx-codebox--ask {
   margin: 10px 0 0;
   font-family: var(--font);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.55;
   color: var(--ink);
   white-space: pre-wrap;
@@ -691,12 +686,6 @@
   justify-content: center;
   gap: 6px;
   margin-top: 12px;
-}
-
-.nx-drop .nx-btn {
-  height: 34px;
-  padding: 0 16px;
-  font-size: 13.5px;
 }
 
 .nx-drop .nx-ob-more {
@@ -793,7 +782,7 @@
   align-items: center;
   gap: 6px;
   margin-top: 14px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink3);
 }
 
@@ -1014,7 +1003,7 @@
 
 .nx-mhd h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--fs-h3);
 }
 
 .nx-mhd .nx-ibtn {
@@ -1032,13 +1021,6 @@
   justify-content: flex-end;
   gap: 8px;
   margin-top: 14px;
-}
-
-/* 입력칸의 초점 고리 — 키보드로 닿을 때만 테두리와 겉 띠가 선다. */
-.nx-ob-help input:focus-visible,
-.nx-inv-author input:focus-visible {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 /* 설치 단계의 말 — 단계가 바뀔 때만 아주 옅게 번쩍인다. */

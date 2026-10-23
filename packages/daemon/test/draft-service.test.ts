@@ -1,5 +1,14 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -11,7 +20,7 @@ import type {
   ServerMessage,
 } from "@colonova-design/protocol";
 import { writeConfluenceLedger } from "../dist/confluence-ledger.js";
-import { confluenceLedgerFile } from "../dist/confluence-sync.js";
+import { confluenceMirrorLedger } from "../dist/confluence-mirror.js";
 import { MemoryCredentialStore } from "../dist/credentials.js";
 import type { DraftAiAnswer, DraftAiRequest, DraftAiRunner } from "../dist/draft-ai.js";
 import {
@@ -32,7 +41,7 @@ import type { RestTransport } from "../dist/rest-transport.js";
 import { blockFingerprint } from "../dist/storage-blocks.js";
 
 /**
- * 초안 서비스 시험(2026-10-23 · 작업 B2) — 임시 폴더의 가짜 프로젝트 · 가짜 클론(원장과 파생
+ * 초안 서비스 시험(2026-10-23 · 작업 B2) — 임시 폴더의 가짜 프로젝트 · 기획서 사본(원장과 파생
  * 마크다운), 기록된 전송, 가짜 AI, 가짜 발행기로 열기 · 만들기 · 고치기 · 묻기 · 채택 · 발행
  * 묶음을 본다. 합성 문서만 쓰고, 실사이트는 절대 두드리지 않는다.
  */
@@ -271,11 +280,12 @@ function rig<P extends DraftPublisher = FakePublisher>(
   runner: DraftAiRunner,
   publisher: P = new FakePublisher() as P,
   home: string = mkdtempSync(join(tmpdir(), "draft-service-")),
+  options?: { cloneRoot?: (slug: string) => string | null },
 ): Rig<P> {
-  const cloneRoot = join(home, "clone");
-  const readRoot = join(cloneRoot, "docs", "plans");
+  // 기획서 사본 — 프로젝트 폴더 아래 confluence/ 다. 클론은 아예 없다(2026-10-23 · 기획서 사본 이동 계획 §1 D1).
+  const readRoot = join(home, "demo", "confluence");
   mkdirSync(join(readRoot, "COLO"), { recursive: true });
-  writeConfluenceLedger(confluenceLedgerFile(cloneRoot), {
+  writeConfluenceLedger(confluenceMirrorLedger(join(home, "demo")), {
     site: SITE,
     roots: [ROOT_ID],
     lastSyncAt: null,
@@ -393,7 +403,6 @@ function rig<P extends DraftPublisher = FakePublisher>(
     registry: { activeSlug: () => "demo", paths: (slug) => ({ root: join(home, slug) }) },
     machineSetting: { get: (key) => setting[key] ?? null },
     credentials,
-    workspaceRoot: () => cloneRoot,
     claudeExecutable: () => "/usr/local/bin/claude",
     broadcast: (message) => messages.push(message),
     logger,
@@ -401,6 +410,7 @@ function rig<P extends DraftPublisher = FakePublisher>(
     publisher,
     now: () => NOW,
     transport: () => transport,
+    ...(options?.cloneRoot !== undefined ? { cloneRoot: options.cloneRoot } : {}),
   });
   return {
     service,
@@ -661,6 +671,85 @@ test("버리기 — 결과를 기다리는 초안은 거절이고 편집 중인 
   }
 });
 
+test("묻기 — 클론 뿌리 의존이 디렉터리를 돌려주면 AI 요청에 extraRoots 로 실린다", async () => {
+  const ai = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
+  const home = mkdtempSync(join(tmpdir(), "draft-service-"));
+  const rig1 = rig(ai.runner, new FakePublisher(), home, {
+    cloneRoot: (slug) => join(home, slug, "repo"),
+  });
+  try {
+    mkdirSync(join(rig1.home, "demo", "repo"), { recursive: true });
+    await rig1.service.open(PAGE_ID);
+    rig1.service.ask(KEY, "첫 문단을 다듬어 줘", []);
+    await until(
+      () => aiMessages(rig1.messages).some((message) => message.phase === "done"),
+      "done 방송",
+    );
+    assert.deepEqual(ai.calls[0]?.extraRoots, [join(rig1.home, "demo", "repo")]);
+  } finally {
+    rig1.cleanup();
+  }
+});
+
+test("묻기 — 클론 뿌리 의존이 없거나 null 을 돌려주면 AI 요청에 extraRoots 키가 없다", async () => {
+  const absent = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
+  const rigAbsent = rig(absent.runner);
+  const nullish = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
+  const rigNull = rig(nullish.runner, undefined, undefined, {
+    cloneRoot: () => null,
+  });
+  try {
+    await rigAbsent.service.open(PAGE_ID);
+    rigAbsent.service.ask(KEY, "첫 문단을 다듬어 줘", []);
+    await until(
+      () => aiMessages(rigAbsent.messages).some((message) => message.phase === "done"),
+      "done 방송",
+    );
+    assert.equal(absent.calls[0]?.extraRoots, undefined);
+    assert.ok(!("extraRoots" in (absent.calls[0] ?? {})));
+
+    await rigNull.service.open(PAGE_ID);
+    rigNull.service.ask(KEY, "첫 문단을 다듬어 줘", []);
+    await until(
+      () => aiMessages(rigNull.messages).some((message) => message.phase === "done"),
+      "done 방송",
+    );
+    assert.ok(!("extraRoots" in (nullish.calls[0] ?? {})));
+  } finally {
+    rigAbsent.cleanup();
+    rigNull.cleanup();
+  }
+});
+
+test("묻기 — 실행기가 실제 경로 표기로 읽음을 알려도 읽은 근거가 남는다(2026-10-23 · 검토 R1)", async () => {
+  const ai = fakeAi(async (request, callbacks) => {
+    // 사본 뿌리가 심볼릭 링크 뒤에 있으면 실행기는 실제 경로(realpath) 표기로 알린다.
+    callbacks.onRead(realpathSync(join(request.readRoot, "COLO", "login.md")));
+    return { reply: "다듬었다.", summary: "다듬기", ops: [], sdkSessionId: null };
+  });
+  const holder = mkdtempSync(join(tmpdir(), "draft-service-real-"));
+  mkdirSync(join(holder, "real"));
+  symlinkSync(join(holder, "real"), join(holder, "link"), "dir");
+  const rig1 = rig(ai.runner, new FakePublisher(), join(holder, "link"));
+  try {
+    await rig1.service.open(PAGE_ID);
+    rig1.service.ask(KEY, "첫 문단을 다듬어 줘", []);
+    await until(
+      () => aiMessages(rig1.messages).some((message) => message.phase === "done"),
+      "done 방송",
+    );
+    const readBroadcast = aiMessages(rig1.messages).find((message) => message.phase === "read");
+    assert.deepEqual(readBroadcast?.read, { pageId: PAGE_ID, title: "로그인 화면", version: 4 });
+    const thread = rig1.service.thread(KEY);
+    assert.deepEqual(thread.messages[1]?.reads, [
+      { pageId: PAGE_ID, title: "로그인 화면", version: 4 },
+    ]);
+  } finally {
+    rig1.cleanup();
+    rmSync(holder, { recursive: true, force: true });
+  }
+});
+
 test("묻기 — 사람 메시지 · AI 답 · 변경안 · 방송 순서 · 절 잘라 내기", async () => {
   const ai = fakeAi(async (request, callbacks) => {
     assert.equal(request.resume, null);
@@ -698,8 +787,8 @@ test("묻기 — 사람 메시지 · AI 답 · 변경안 · 방송 순서 · 절
       aiMessages(rig1.messages).map((message) => message.phase),
       ["started", "text", "text", "read", "done"],
     );
-    // 읽기 폴더는 클론의 기획서 폴더다 — AI 의 읽기는 그 안에 갇힌다.
-    assert.match(ai.calls[0]?.readRoot ?? "", /docs[/\\]plans$/);
+    // 읽기 뿌리는 프로젝트 폴더의 기획서 사본이다 — AI 의 읽기는 그 안에 갇힌다.
+    assert.equal(ai.calls[0]?.readRoot, join(rig1.home, "demo", "confluence"));
     const readBroadcast = aiMessages(rig1.messages).find((message) => message.phase === "read");
     assert.deepEqual(readBroadcast?.read, { pageId: PAGE_ID, title: "로그인 화면", version: 4 });
     const doneBroadcast = aiMessages(rig1.messages).find((message) => message.phase === "done");
@@ -736,12 +825,68 @@ test("묻기 — 사람 메시지 · AI 답 · 변경안 · 방송 순서 · 절
   }
 });
 
+test("사본만 있으면 클론 없이도 문서를 열고 근거 스냅샷을 만든다(2026-10-23 · 기획서 사본 이동)", async () => {
+  const ai = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
+  const rig1 = rig(ai.runner);
+  try {
+    const opened = await rig1.service.open(PAGE_ID);
+    assert.equal(opened.title, "로그인 화면");
+    const snapshot = rig1.service.snapshot({ pageId: PAGE_ID, sections: ["로그인 흐름"] });
+    assert.equal(snapshot.ref.pageId, PAGE_ID);
+    const text = Buffer.from(snapshot.attachment.data, "base64").toString("utf8");
+    assert.match(text, /첫 절의 몸이다\./);
+    assert.doesNotMatch(text, /다음 절의 몸이다\./);
+    // 프로젝트 폴더에는 사본과 기획 데이터만 산다 — 클론 폴더는 아예 없다.
+    assert.deepEqual(readdirSync(join(rig1.home, "demo")).sort(), ["confluence", "plans"]);
+  } finally {
+    rig1.cleanup();
+  }
+});
+
+test("기획 AI 의 읽기 뿌리 — 사본이 있으면 사본 뿌리, 없으면 임시 폴더다(2026-10-23 · 기획서 사본 이동)", async () => {
+  const withMirror = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
+  const rig1 = rig(withMirror.runner);
+  try {
+    await rig1.service.open(PAGE_ID);
+    rig1.service.ask(KEY, "뭘 볼 수 있지", []);
+    await until(
+      () => aiMessages(rig1.messages).some((message) => message.phase === "done"),
+      "사본 자리 done 방송",
+    );
+    assert.equal(withMirror.calls[0]?.readRoot, join(rig1.home, "demo", "confluence"));
+  } finally {
+    rig1.cleanup();
+  }
+  // 사본이 없는 자리 — 첫 가져오기 전이다. 읽기 뿌리는 임시 폴더고 생성이 끝나면 거둔다.
+  const bare = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
+  const rig2 = rig(bare.runner);
+  try {
+    rmSync(join(rig2.home, "demo", "confluence"), { recursive: true, force: true });
+    const created = await rig2.service.create({
+      title: "새 문서",
+      parentId: ROOT_ID,
+      parentType: "page",
+    });
+    rig2.service.ask(created.docKey, "뭘 볼 수 있지", []);
+    await until(
+      () => aiMessages(rig2.messages).some((message) => message.phase === "done"),
+      "임시 자리 done 방송",
+    );
+    const readRoot = bare.calls[0]?.readRoot ?? "";
+    assert.notEqual(readRoot, join(rig2.home, "demo", "confluence"));
+    assert.match(readRoot, /draft-ai-/);
+    assert.equal(existsSync(readRoot), false);
+  } finally {
+    rig2.cleanup();
+  }
+});
+
 test("묻기 — 근거 문서의 파생 마크다운이 없으면 거절이고 AI 를 부르지 않는다", async () => {
   const ai = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
   const rig1 = rig(ai.runner);
   try {
     await rig1.service.open(PAGE_ID);
-    // 원장은 55 번 문서를 알지만 클론에 파생 마크다운이 없다 — 클론 재생성 뒤의 꼴이다.
+    // 원장은 55 번 문서를 알지만 사본에 파생 마크다운이 없다 — 사본을 다시 받기 전의 꼴이다.
     // 문서 전체를 근거로 골랐을 때.
     await assert.rejects(
       Promise.resolve().then(() =>
@@ -1355,10 +1500,9 @@ interface RebuildRig {
 /** 재구성 시험의 자리 — 진짜 발행기가 흐르는 원격 거울(mirror)로 발행 · 재구성 · 다시 맞추기를 본다. */
 function rebuildRig(runner: DraftAiRunner): RebuildRig {
   const home = mkdtempSync(join(tmpdir(), "draft-rebuild-"));
-  const cloneRoot = join(home, "clone");
-  const readRoot = join(cloneRoot, "docs", "plans");
+  const readRoot = join(home, "demo", "confluence");
   mkdirSync(join(readRoot, "COLO"), { recursive: true });
-  writeConfluenceLedger(confluenceLedgerFile(cloneRoot), {
+  writeConfluenceLedger(confluenceMirrorLedger(join(home, "demo")), {
     site: SITE,
     roots: [ROOT_ID],
     lastSyncAt: null,
@@ -1464,7 +1608,6 @@ function rebuildRig(runner: DraftAiRunner): RebuildRig {
     registry: { activeSlug: () => "demo", paths: (slug) => ({ root: join(home, slug) }) },
     machineSetting: { get: (key) => setting[key] ?? null },
     credentials,
-    workspaceRoot: () => cloneRoot,
     claudeExecutable: () => "/usr/local/bin/claude",
     broadcast: (message) => messages.push(message),
     logger: { info() {}, warn() {}, error() {} },

@@ -1,5 +1,5 @@
 import { type PointerEvent, useEffect, useState } from "react";
-import { SIDEBAR_WIDTH_BOUNDS } from "../../lib/settings";
+import { PLANS_SIDEBAR_WIDTH_BOUNDS, SIDEBAR_WIDTH_BOUNDS } from "../../lib/settings";
 import { clampWidth, SIDEBAR_DEFAULT, sidebarBounds, type WidthBounds } from "./shell-metrics";
 
 export interface SidebarWidth {
@@ -26,8 +26,14 @@ export interface SidebarWidth {
 export function useSidebarWidth(
   stored: number | null,
   save: (width: number | null) => void,
+  plans = false,
 ): SidebarWidth {
-  const [width, setWidth] = useState(stored ?? SIDEBAR_DEFAULT);
+  const defaultWidth = plans ? 320 : SIDEBAR_DEFAULT;
+  const [width, setWidth] = useState(stored ?? defaultWidth);
+  useEffect(() => {
+    setWidth(stored ?? defaultWidth);
+    setDrag(null);
+  }, [stored, defaultWidth]);
   const [drag, setDrag] = useState<{ startX: number; startWidth: number } | null>(null);
   // 창이 줄면 상한이 내려온다 — 두 칸이 쓸 자리를 먼저 지킨다.
   const [windowWidth, setWindowWidth] = useState(() => window.innerWidth);
@@ -37,7 +43,11 @@ export function useSidebarWidth(
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const bounds = sidebarBounds(windowWidth, SIDEBAR_WIDTH_BOUNDS);
+  const bounds = sidebarBounds(
+    windowWidth,
+    plans ? PLANS_SIDEBAR_WIDTH_BOUNDS : SIDEBAR_WIDTH_BOUNDS,
+    plans,
+  );
   const shown = clampWidth(width, bounds);
 
   return {
@@ -78,7 +88,7 @@ export function useSidebarWidth(
         save(next);
       },
       onReset: () => {
-        setWidth(SIDEBAR_DEFAULT);
+        setWidth(defaultWidth);
         save(null);
       },
     },

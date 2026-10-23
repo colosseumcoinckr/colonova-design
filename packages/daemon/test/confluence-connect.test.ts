@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { readConfluenceLedger, writeConfluenceLedger } from "../dist/confluence-ledger.js";
+import { confluenceMirrorLedger } from "../dist/confluence-mirror.js";
 import { MemoryCredentialStore } from "../dist/credentials.js";
 import { RequestRouter, type RouterDeps } from "../dist/dispatch.js";
 import { MachineSetting } from "../dist/machine-setting.js";
@@ -40,12 +41,15 @@ interface Rig {
   store: MemoryCredentialStore;
   machine: MachineSetting;
   machineFile: string;
+  /** 등록부가 아는 프로젝트 폴더 — 원장은 `<프로젝트 폴더>/confluence/confluence.json` 에 산다. */
+  projectRoot: string;
   cloneRoot: string;
   cleanup(): void;
 }
 
-/** 라우터 한 대 — 활성 프로젝트는 demo 고, 클론은 임시 폴더의 .git 이다. */
-function rig(fixturePairs: Array<Record<string, unknown>>, slug = "demo"): Rig {
+/** 라우터 한 대 — 활성 프로젝트는 demo 고, 클론은 임시 폴더의 .git 이다. 등록부에 없는
+ * 슬러그(registered 거짓)는 깨진 활성 슬러그의 검토 R2 케이스다. */
+function rig(fixturePairs: Array<Record<string, unknown>>, slug = "demo", registered = true): Rig {
   const home = mkdtempSync(join(tmpdir(), "confluence-connect-"));
   const fixtureDir = join(home, "fixtures");
   mkdirSync(fixtureDir);
@@ -57,10 +61,15 @@ function rig(fixturePairs: Array<Record<string, unknown>>, slug = "demo"): Rig {
   const cloneRoot = join(home, "clone");
   mkdirSync(join(cloneRoot, ".git", "info"), { recursive: true });
   const fleet = {
-    workspaces: new Map([[slug, { repo: { root: cloneRoot } }]]),
+    // 연결은 워크스페이스와 상관없이 돈다 — 사본은 클론 밖 프로젝트 폴더에 산다(2026-10-23 · 사본 이동 계획).
+    workspaces: new Map(),
   };
   const router = new RequestRouter({
-    registry: { activeSlug: () => slug },
+    registry: {
+      activeSlug: () => slug,
+      get: () => (registered ? { slug } : null),
+      paths: () => ({ root: home, repoRoot: cloneRoot }),
+    },
     credentials: store,
     machineSetting: machine,
     fleet,
@@ -76,6 +85,7 @@ function rig(fixturePairs: Array<Record<string, unknown>>, slug = "demo"): Rig {
     store,
     machine,
     machineFile,
+    projectRoot: home,
     cloneRoot,
     cleanup() {
       if (previous === undefined) delete process.env.COLONOVA_DESIGN_CONFLUENCE_FIXTURE;
@@ -133,7 +143,11 @@ test("연결 — 두 프로젝트는 서로의 미러를 덮어쓰지 않는다(
     await rig3.router.dispatch(connect());
     // 같은 저장소 자격으로 둘째 프로젝트(beta)를 다른 사이트에 묶는다.
     const routerBeta = new RequestRouter({
-      registry: { activeSlug: () => "beta" },
+      registry: {
+        activeSlug: () => "beta",
+        get: () => ({ slug: "beta" }),
+        paths: () => ({ root: rig3.projectRoot, repoRoot: rig3.cloneRoot }),
+      },
       credentials: rig3.store,
       machineSetting: rig3.machine,
       fleet: { workspaces: new Map() },
@@ -224,33 +238,23 @@ test("기준 페이지 찾기 — 연결 전엔 한국어 거절, 연결 뒤엔 
   }
 });
 
-test("거름 — 연결이 서면 클론의 .git/info/exclude 에 기획서 폴더가 한 줄로 박힌다(멱등)", async () => {
-  const rig7 = rig([
-    fixture("연결 확인", WHO_URL, 200, AUTH_USER),
-    fixture("연결 확인", WHO_URL, 200, AUTH_USER),
-  ]);
+test("연결은 클론의 .git/info/exclude 를 건드리지 않는다 — 사본은 클론 밖에 산다", async () => {
+  const rig7 = rig([fixture("연결 확인", WHO_URL, 200, AUTH_USER)]);
+  const excludeFile = join(rig7.cloneRoot, ".git", "info", "exclude");
+  writeFileSync(excludeFile, "node_modules/\n");
   try {
     await rig7.router.dispatch(connect());
-    await rig7.router.dispatch(connect());
-    const exclude = readFileSync(join(rig7.cloneRoot, ".git", "info", "exclude"), "utf8");
-    const lines = exclude.split(/\r?\n/).filter((line) => line === "docs/plans/");
-    assert.equal(lines.length, 1, exclude);
+    assert.equal(readFileSync(excludeFile, "utf8"), "node_modules/\n");
+    // 사본 폴더도 만들지 않는다 — 첫 가져오기가 만든다(2026-10-23 · 사본 이동 계획 §5).
+    assert.equal(existsSync(confluenceMirrorLedger(rig7.projectRoot)), false);
   } finally {
     rig7.cleanup();
   }
 });
 
 test("뿌리를 바꿔 다시 연결하면 원장이 비워진다 — 새 뿌리의 문서가 처음부터 다시 걷힌다(2026-10-18 설계자 지적)", async () => {
-  const rig4 = rig([
-    fixture("누구나", WHO_URL, 200, AUTH_USER),
-    fixture("뿌리 문서", "/wiki/api/v2/pages/999?body-format=storage", 200, {
-      id: "999",
-      title: "8.8 ColoNova",
-      spaceId: "SP1",
-      version: { number: 1 },
-      parentId: null,
-      body: { storage: { value: "<p>가</p>", representation: "storage" } },
-    }),
+  const who = () => fixture("연결 확인", WHO_URL, 200, AUTH_USER);
+  const root555 = () =>
     fixture("새 뿌리 문서", "/wiki/api/v2/pages/555?body-format=storage", 200, {
       id: "555",
       title: "9.0 ColoNova",
@@ -258,11 +262,11 @@ test("뿌리를 바꿔 다시 연결하면 원장이 비워진다 — 새 뿌리
       version: { number: 1 },
       parentId: null,
       body: { storage: { value: "<p>나</p>", representation: "storage" } },
-    }),
-  ]);
+    });
+  const rig4 = rig([who(), who(), who(), who(), root555(), root555()]);
   try {
     await rig4.router.dispatch(connect());
-    const ledgerFile = join(rig4.cloneRoot, "docs", "plans", "confluence.json");
+    const ledgerFile = confluenceMirrorLedger(rig4.projectRoot);
     // 뿌리(999)를 이미 골라 둔 연결 — 거울에 새기고 옛 문서를 원장에 심어 둔다.
     rig4.machine.set("confluenceRootId:demo", "999");
     writeConfluenceLedger(ledgerFile, {
@@ -286,7 +290,37 @@ test("뿌리를 바꿔 다시 연결하면 원장이 비워진다 — 새 뿌리
     assert.deepEqual(cleared.roots, []);
     assert.deepEqual(Object.keys(cleared.pages), []);
     assert.equal(rig4.machine.get("confluenceRootId:demo"), "555");
+    // 원장 파일이 아직 없으면 비울 것도 없다 — 뿌리를 바꿔도 연결이 파일을 만들지 않는다.
+    rmSync(ledgerFile);
+    rig4.machine.set("confluenceRootId:demo", "999");
+    await rig4.router.dispatch(connect({ email: undefined, token: undefined, rootPageId: "555" }));
+    assert.equal(existsSync(ledgerFile), false);
   } finally {
     rig4.cleanup();
+  }
+});
+
+test("깨진 활성 슬러그 — 등록부에 없으면 거절하고 가상 폴더의 원장을 덮지 않는다", async () => {
+  const rig8 = rig([fixture("연결 확인", WHO_URL, 200, AUTH_USER)], "ghost", false);
+  try {
+    // 등록부가 모르는 슬러그의 가상 폴더에 이미 원장이 있다 — 연결이 비우면 안 된다.
+    const ledgerFile = confluenceMirrorLedger(rig8.projectRoot);
+    mkdirSync(dirname(ledgerFile), { recursive: true });
+    const before = `${JSON.stringify({
+      site: "https://keep.atlassian.net",
+      roots: ["1"],
+      lastSyncAt: null,
+      pages: {},
+      folders: {},
+      unsupported: {},
+    })}\n`;
+    writeFileSync(ledgerFile, before);
+    await assert.rejects(rig8.router.dispatch(connect()), /연결할 프로젝트가 없습니다/);
+    // 아무 파일도 만들거나 덮지 않고, 자격 · 미러도 남기지 않는다.
+    assert.equal(readFileSync(ledgerFile, "utf8"), before);
+    assert.equal(rig8.machine.get("confluenceSite:ghost"), null);
+    assert.equal(await rig8.store.load("confluence-pat"), null);
+  } finally {
+    rig8.cleanup();
   }
 });

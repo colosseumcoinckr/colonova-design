@@ -560,7 +560,7 @@ select {
   border-radius: var(--r-md);
   padding: 8px 11px;
   font-family: var(--mono);
-  font-size: var(--font-ui-125);
+  font-size: max(12px, round(nearest, var(--font-ui-125), 1px));
   margin: 0;
   color: var(--text-2);
 }
@@ -775,16 +775,17 @@ select {
 .md h3 {
   margin-top: 16px;
 }
+/* 2026-10-23 화면 전면 재설계 §5 — em 배율이 15px 본문에서 소수 픽셀(17.25 · 13.05 · 14.1 …)을 만들었다. round() 로 정수 픽셀에 붙이고, 코드는 12px 아래로 내리지 않는다. */
 .md h1 {
-  font-size: 1.2em;
+  font-size: round(nearest, 1.2em, 1px);
 }
 .md h2 {
-  font-size: 1.15em;
+  font-size: round(nearest, 1.15em, 1px);
   padding-bottom: 4px;
   border-bottom: 1px solid var(--line-soft);
 }
 .md h3 {
-  font-size: 1.05em;
+  font-size: round(nearest, 1.05em, 1px);
 }
 .md h4 {
   font-size: 1em;
@@ -802,7 +803,7 @@ select {
 }
 .md code {
   font-family: var(--mono);
-  font-size: 0.87em;
+  font-size: max(12px, round(nearest, 0.87em, 1px));
   background: var(--panel-2);
   border: 1px solid var(--line-soft);
   border-radius: var(--r-sm);
@@ -822,7 +823,7 @@ select {
   background: none;
   border: 0;
   padding: 0;
-  font-size: var(--font-ui-125);
+  font-size: max(12px, round(nearest, var(--font-ui-125), 1px));
   line-height: 1.55;
   color: var(--text-2);
 }
@@ -905,7 +906,7 @@ select {
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  font-size: 0.94em;
+  font-size: round(nearest, 0.94em, 1px);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
 }
@@ -2336,7 +2337,7 @@ button .ic {
 }
 
 .nx-fs .nx-fs-hint {
-  font-size: 12.5px;
+  font-size: 13px;
   color: var(--muted, #5c5749);
 }
 

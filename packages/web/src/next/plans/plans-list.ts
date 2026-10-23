@@ -1,3 +1,4 @@
+import { matchRange } from "../../components/shell/palette-match.ts";
 import { timeAgo } from "../../lib/format.ts";
 import { L } from "../labels.ts";
 
@@ -44,6 +45,33 @@ export interface PlanListRow {
   hasChildren: boolean;
   /** 바로 위 폴더의 이름 — 찾기 결과의 둘째 줄이 된다(뿌리는 빈 글). */
   folder: string;
+}
+
+/** 본문에 선 문서가 선택 줄이다. 새 문서 초안이면 문서 트리는 비운다(2026-10-24 RS 3). */
+export function selectedPlanPage(
+  openId: string | null,
+  draftKey: string | null,
+  draftPageId: string | null,
+  drafts: ReadonlyArray<{ docKey: string; pageId: string | null }>,
+): string | null {
+  if (draftKey === null) return openId;
+  const draft = drafts.find((one) => one.docKey === draftKey);
+  if (draft !== undefined) return draft.pageId;
+  // 요약이 아직 오지 않았어도 기존 문서 초안의 열쇠는 문서 번호를 안다.
+  return draftPageId ?? (draftKey.startsWith("p-") ? draftKey.slice(2) || null : null);
+}
+
+/** 마지막 문서 → 원장의 기준 페이지 → 첫 문서. 방금 휴지통에 넣은 것은 제외한다(2026-10-24 RS 4). */
+export function initialPlanPage(
+  rows: readonly PlanListRow[],
+  roots: readonly string[],
+  lastViewed: string | null,
+  excluded: string | null = null,
+): string | null {
+  const docs = rows.filter((row) => row.kind === "doc" && row.pageId !== excluded);
+  const available = new Set(docs.map((row) => row.pageId));
+  if (lastViewed !== null && available.has(lastViewed)) return lastViewed;
+  return roots.find((id) => available.has(id)) ?? docs[0]?.pageId ?? null;
 }
 
 /** 숫자는 숫자로 센다 — `v2` 가 `v10` 앞에, `02.` 가 `10.` 앞에. */
@@ -166,7 +194,7 @@ export function filterPlanRows(rows: PlanListRow[], query: string): PlanListRow[
   return rows.filter((row) => {
     if (row.kind === "folder") return false;
     const haystack = `${row.title} ${row.folder}`.normalize("NFC").toLowerCase();
-    return tokens.every((token) => haystack.includes(token));
+    return tokens.every((token) => matchRange(token, haystack) !== null);
   });
 }
 

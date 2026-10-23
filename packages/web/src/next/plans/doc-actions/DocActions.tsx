@@ -49,7 +49,7 @@ export function DocActions({
     <span className="nx-da-menu">
       <button
         type="button"
-        className="nx-ibtn nx-ibtn--sm"
+        className="nx-ibtn"
         aria-label={L.docOps.menu}
         title={L.docOps.menu}
         aria-haspopup="menu"

@@ -1,0 +1,63 @@
+/*
+ * 셸의 크기 토큰(2026-10-23 화면 전면 재설계 — docs/ux-redesign-2026-10-23.md §5).
+ * 색은 여기서 정하지 않는다 — 활성 팔레트(styles.css 의 html[data-theme])와 next.css 의 짝 이름이 정한다.
+ * 반경 --r-sm · --r · --r-md · --r-lg · --r-pill 은 next.css 의 .nx 뿌리에 있다. 여기는 그 밖의 것만 둔다.
+ * 앱 전체 크기는 데스크톱의 확대(⌘= · ⌘- · ⌘0)가 맡아 px 토큰도 함께 커진다.
+ */
+.nx {
+  /* 글자 — 사람이 읽는 글은 12px 아래로 내리지 않는다(키캡 · 프로젝트 이니셜만 예외). 반 픽셀 크기를 새로 쓰지 않는다. */
+  --fs-cap: 12px;
+  --fs-sm: 13px;
+  --fs-ui: 14px;
+  --fs-read: 15px;
+  --fs-lg: 16px;
+  --fs-h3: 18px;
+  --fs-h2: 20px;
+  --fs-h1: 26px;
+  --fs-hero: 30px;
+  --lh-tight: 1.3;
+  --lh-ui: 1.45;
+  --lh-read: 1.7;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semi: 600;
+  --fw-bold: 700;
+
+  /* 간격 — 4px 걸음. 반 걸음(2 · 6)은 맞춤에만 쓴다. */
+  --sp-0_5: 2px;
+  --sp-1: 4px;
+  --sp-1_5: 6px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* 반경 — 모달 · 큰 판. 나머지는 next.css. */
+  --r-xl: 16px;
+
+  /* 높이 — 단추 셋(28 · 32 · 40) · 입력 36 · 목록 줄 32 · 자리 줄 34 · 머리 줄 52. */
+  --h-xs: 24px;
+  --h-sm: 28px;
+  --h-md: 32px;
+  --h-input: 36px;
+  --h-lg: 40px;
+  --h-row: 32px;
+  --h-nav: 34px;
+  --h-bar: 52px;
+
+  /* 그림자 — 카드는 선으로 서고 그림자는 옅다. 팝 · 모달은 팔레트의 그림자를 빌린다. */
+  --elev-1: 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent);
+  --elev-2: var(--shadow-pop);
+  --elev-3: var(--shadow-pop), 0 24px 64px -24px color-mix(in srgb, var(--ink) 22%, transparent);
+
+  /* 초점 — 불투명한 포인트 색(styles.css 의 :focus-visible 와 같은 색 — 밝은 팔레트에서도 대비 3:1). */
+  --focus: var(--accent);
+
+  /* 글 폭 — 읽는 글(기획서 본문) · 홈. */
+  --w-read: 760px;
+  --w-home: 1040px;
+}

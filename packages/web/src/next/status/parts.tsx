@@ -76,7 +76,8 @@ export function dayText(iso: string | null): string | null {
 }
 
 /**
- * 화면 한 줄 — 작은 그림 · 제목 · 그 화면을 만든 말 · 시각(목업 `.wp-row`). `onOpen` 을 건네면 줄 전체가
+ * 화면 한 줄 — 작은 그림 · 제목(14) · 그 화면을 만든 말(13) · 시각(12). 줄 해부는 앱 공통의 `nx-li` 다(2026-10-23 화면 전면
+ * 재설계 §4 G · 옛 목업 `.wp-row`). `onOpen` 을 건네면 줄 전체가
  * 그 화면을 여는 단추가 되고 끝에 `›` 가 선다(`이번 작업` — 제출 확인에는 열기 단추가 따로 있는데 여기에는
  * 없었다, 2026-10-06 겹판 조사). 건네지 않으면 읽는 줄이다.
  */
@@ -106,16 +107,20 @@ export function ScreenRow({
         <i />
         <i />
       </span>
-      <span className="nx-wp-t">
-        <b>{screen.title}</b>
-        {note && <span>{note}</span>}
+      <span className="nx-li-main">
+        <span className="nx-li-title">{screen.title}</span>
+        {note && (
+          <span className="nx-li-sub" title={note}>
+            {note}
+          </span>
+        )}
       </span>
-      <span className="nx-wp-r">{whenText(screen.at)}</span>
+      <span className="nx-li-end">{whenText(screen.at)}</span>
     </>
   );
   if (!onOpen) {
     return (
-      <div className="nx-wp-row" title={screen.route}>
+      <div className="nx-li nx-wp-row" title={screen.route}>
         {body}
       </div>
     );
@@ -123,7 +128,7 @@ export function ScreenRow({
   return (
     <button
       type="button"
-      className="nx-wp-row nx-wp-row--btn"
+      className="nx-li nx-wp-row nx-wp-row--btn"
       title={L.requestResult.latest}
       aria-label={`${screen.title} · ${L.requestResult.latest}`}
       onClick={() => onOpen(screen)}

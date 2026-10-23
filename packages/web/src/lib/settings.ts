@@ -76,6 +76,8 @@ export interface LayoutSettings {
   previewWidth: number | null;
   /** The project list's width; null = never dragged (CSS default wins). */
   sidebarWidth: number | null;
+  /** 기획서 자리의 트리 폭(2026-10-23 화면 전면 재설계 §3.2). */
+  plansSidebarWidth?: number | null;
   /** Folded to a 44px rail — narrow windows, or a planner who wants the room. */
   sidebarCollapsed: boolean;
 }
@@ -93,6 +95,7 @@ export const PREVIEW_WIDTH_BOUNDS = { min: 340, max: 1440 } as const;
  * still read; 420 shows about thirty Korean characters of a conversation title.
  */
 export const SIDEBAR_WIDTH_BOUNDS = { min: 220, max: 420 } as const;
+export const PLANS_SIDEBAR_WIDTH_BOUNDS = { min: 260, max: 480 } as const;
 
 /**
  * How the agent answers in this planner's conversations.
@@ -269,7 +272,12 @@ const DEFAULT_SETTINGS: Settings = {
   /** 기본은 "모든 턴 + 소리" — 완료를 놓치는 쪽이 잦은 울림보다 비싸다(2026-10-06 사용자 요청). */
   notifications: { done: "all", sound: true },
   chat: DEFAULT_CHAT_SETTINGS,
-  layout: { previewWidth: null, sidebarWidth: null, sidebarCollapsed: false },
+  layout: {
+    previewWidth: null,
+    sidebarWidth: null,
+    plansSidebarWidth: null,
+    sidebarCollapsed: false,
+  },
   sessionTitles: {},
 };
 
@@ -467,12 +475,18 @@ function loadByProvider(
  */
 function loadLayout(raw: unknown): LayoutSettings {
   if (!raw || typeof raw !== "object") {
-    return { previewWidth: null, sidebarWidth: null, sidebarCollapsed: false };
+    return {
+      previewWidth: null,
+      sidebarWidth: null,
+      plansSidebarWidth: null,
+      sidebarCollapsed: false,
+    };
   }
   const stored = raw as Record<string, unknown>;
   return {
     previewWidth: loadWidth(stored.previewWidth, PREVIEW_WIDTH_BOUNDS),
     sidebarWidth: loadWidth(stored.sidebarWidth, SIDEBAR_WIDTH_BOUNDS),
+    plansSidebarWidth: loadWidth(stored.plansSidebarWidth, PLANS_SIDEBAR_WIDTH_BOUNDS),
     sidebarCollapsed: stored.sidebarCollapsed === true,
   };
 }

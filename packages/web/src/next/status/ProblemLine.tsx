@@ -124,92 +124,102 @@ export function ProblemLine({
       ) : (
         <PlugIcon />
       );
+    // 띠의 톤 — 고치는 중은 호박, 알렸어요는 파랑, 손이 필요한 줄(막힘 · 다시 연결)은 빨강. 색만으로 말하지 않는다: 아이콘과 제목이 함께 선다.
+    const tone = line.kind === "fixing" ? "amber" : line.kind === "notified" ? "blue" : "red";
     return (
       <div className={`nx-problem-wrap${open ? "" : " nx-problem-wrap--closed"}`}>
-        {/* 손이 필요한 줄(다시 로그인 · 막힘)은 밀어 알리고 나머지는 공손히 알린다. */}
+        {/* 손이 필요한 줄(다시 로그인 · 막힘)은 밀어 알리고 나머지는 공손히 알린다. 모양은 앱 공통의 문제 띠다 —
+            아이콘 · 한 줄 · 단추(2026-10-23 화면 전면 재설계 §4 G). */}
         <div
-          className={`nx-problem nx-problem--${line.kind}`}
+          className={`nx-problem nx-problem--${line.kind} nx-banner nx-banner--${tone}`}
           role={line.kind === "blocked" || line.kind === "reconnect" ? "alert" : "status"}
         >
           {icon}
-          <b>{fixed ? L.problem.fixed : line.title}</b>
-          {/* 브라우저 로그인을 열고 난 뒤에는 무엇을 기다리는지 말한다 — 단추만 `다시 확인` 으로 바뀌던 것. */}
-          <span>
-            {line.action === "login" && login === "started" ? L.problem.loginWaiting : line.body}
-          </span>
-          {!fixed && line.action === "copy" && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm"
-              onClick={() => {
-                const project = daemon.projects.find((item) => item.slug === daemon.activeSlug);
-                copy(blockedHelpText(project?.name, line.body, daemon.repo?.submit?.lastError));
-              }}
-            >
-              {copied ? L.problem.copiedHelp : L.problem.copyHelp}
-            </button>
-          )}
-          {/* 복사했다는 답은 눈이 아니라 낭독으로도 한 번 말한다. */}
-          {line.action === "copy" && (
-            <span className="nx-sr" role="status">
-              {copied ? L.problem.copiedHelp : ""}
+          <div className="nx-banner-body">
+            <b>{fixed ? L.problem.fixed : line.title}</b>
+            {/* 브라우저 로그인을 열고 난 뒤에는 무엇을 기다리는지 말한다 — 단추만 `다시 확인` 으로 바뀌던 것. */}
+            <span>
+              {line.action === "login" && login === "started" ? L.problem.loginWaiting : line.body}
             </span>
-          )}
-          {!fixed && line.action === "invite" && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm nx-btn--pri"
-              onClick={() => requestInvitePicker()}
-            >
-              {L.problem.openInvite}
-            </button>
-          )}
-          {!fixed && line.action === "login" && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm nx-btn--pri"
-              disabled={login === "busy"}
-              onClick={() => {
-                // 처음은 브라우저 로그인을 몰고, 그 뒤는 다시 확인이다.
-                const first = login === "idle";
-                setLogin("busy");
-                void (first ? daemon.api.onboardingFix("login-claude") : daemon.api.refreshStatus())
-                  .then(() => setLogin("started"))
-                  .catch(() => setLogin(first ? "idle" : "started"));
-              }}
-            >
-              {login === "busy"
-                ? L.chat.checking
-                : login === "started"
-                  ? L.chat.recheck
-                  : L.problem.loginInBrowser}
-            </button>
-          )}
-          {!fixed && line.dismissId !== null && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm nx-btn--ghost nx-problem-close"
-              aria-label={L.problem.dismiss}
-              title={L.problem.dismiss}
-              onClick={() => {
-                const id = line.dismissId;
-                if (id === null) return;
-                setOpen(false);
-                later(240, () => {
-                  dismissProblem(id);
-                  setClosed((prev) => new Set(prev).add(id));
-                });
-              }}
-            >
-              <XIcon />
-            </button>
-          )}
-          {!fixed && hidden > 0 && (
-            // 누르지 않는 표시다 — 줄에 선 문제 외에 열린 문제의 수.
-            <span className="nx-problem-more" title={L.problem.moreCount(hidden)}>
-              {L.problem.more(hidden)}
-            </span>
-          )}
+          </div>
+          <div className="nx-banner-act">
+            {!fixed && line.action === "copy" && (
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                onClick={() => {
+                  const project = daemon.projects.find((item) => item.slug === daemon.activeSlug);
+                  copy(blockedHelpText(project?.name, line.body, daemon.repo?.submit?.lastError));
+                }}
+              >
+                {copied ? L.problem.copiedHelp : L.problem.copyHelp}
+              </button>
+            )}
+            {/* 복사했다는 답은 눈이 아니라 낭독으로도 한 번 말한다. */}
+            {line.action === "copy" && (
+              <span className="nx-sr" role="status">
+                {copied ? L.problem.copiedHelp : ""}
+              </span>
+            )}
+            {/* 다시 연결(초대 파일 · 로그인)이 이 줄의 으뜸이다 — 그동안 `제출` 은 잠겨 있어 으뜸이 둘로 서지 않는다. */}
+            {!fixed && line.action === "invite" && (
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm nx-btn--pri"
+                onClick={() => requestInvitePicker()}
+              >
+                {L.problem.openInvite}
+              </button>
+            )}
+            {!fixed && line.action === "login" && (
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm nx-btn--pri"
+                disabled={login === "busy"}
+                onClick={() => {
+                  // 처음은 브라우저 로그인을 몰고, 그 뒤는 다시 확인이다.
+                  const first = login === "idle";
+                  setLogin("busy");
+                  void (
+                    first ? daemon.api.onboardingFix("login-claude") : daemon.api.refreshStatus()
+                  )
+                    .then(() => setLogin("started"))
+                    .catch(() => setLogin(first ? "idle" : "started"));
+                }}
+              >
+                {login === "busy"
+                  ? L.chat.checking
+                  : login === "started"
+                    ? L.chat.recheck
+                    : L.problem.loginInBrowser}
+              </button>
+            )}
+            {!fixed && line.dismissId !== null && (
+              <button
+                type="button"
+                className="nx-ibtn nx-ibtn--sm nx-problem-close"
+                aria-label={L.problem.dismiss}
+                title={L.problem.dismiss}
+                onClick={() => {
+                  const id = line.dismissId;
+                  if (id === null) return;
+                  setOpen(false);
+                  later(240, () => {
+                    dismissProblem(id);
+                    setClosed((prev) => new Set(prev).add(id));
+                  });
+                }}
+              >
+                <XIcon />
+              </button>
+            )}
+            {!fixed && hidden > 0 && (
+              // 누르지 않는 표시다 — 줄에 선 문제 외에 열린 문제의 수.
+              <span className="nx-problem-more" title={L.problem.moreCount(hidden)}>
+                {L.problem.more(hidden)}
+              </span>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -222,35 +232,40 @@ export function ProblemLine({
   })();
   return (
     <div className={`nx-problem-wrap${open ? "" : " nx-problem-wrap--closed"}`}>
-      <div className="nx-problem nx-problem--notified" role="status">
+      <div className="nx-problem nx-problem--notified nx-banner nx-banner--blue" role="status">
         <AlertIcon />
-        <b>{L.inviteCleanup.title}</b>
-        <span>{L.inviteCleanup.body}</span>
-        {discardable && (
+        <div className="nx-banner-body">
+          <b>{L.inviteCleanup.title}</b>
+          <span>{L.inviteCleanup.body}</span>
+        </div>
+        <div className="nx-banner-act">
+          {discardable && (
+            // 알림일 뿐이라 으뜸이 아니다 — 화면의 으뜸은 `제출` 하나(2026-10-23 화면 전면 재설계 §4 G).
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm"
+              onClick={() => {
+                void discardable
+                  .discard(discardable.path)
+                  .then(() => onToast(L.inviteCleanup.removed))
+                  .catch(() => onToast(L.inviteCleanup.removeFailed))
+                  .finally(onClearInvite);
+              }}
+            >
+              {L.inviteCleanup.remove}
+            </button>
+          )}
           <button
             type="button"
-            className="nx-btn nx-btn--sm nx-btn--pri"
+            className="nx-btn nx-btn--sm nx-btn--ghost"
             onClick={() => {
-              void discardable
-                .discard(discardable.path)
-                .then(() => onToast(L.inviteCleanup.removed))
-                .catch(() => onToast(L.inviteCleanup.removeFailed))
-                .finally(onClearInvite);
+              setOpen(false);
+              later(240, onClearInvite);
             }}
           >
-            {L.inviteCleanup.remove}
+            {L.inviteCleanup.later}
           </button>
-        )}
-        <button
-          type="button"
-          className="nx-btn nx-btn--sm nx-btn--ghost"
-          onClick={() => {
-            setOpen(false);
-            later(240, onClearInvite);
-          }}
-        >
-          {L.inviteCleanup.later}
-        </button>
+        </div>
       </div>
     </div>
   );

@@ -119,29 +119,10 @@
   margin-top: 2px;
 }
 
+/* 몸통의 입력칸 — 공통 부품 nx-input(--area)의 옷을 입고, 오류의 테두리만 여기서
+   (aria-invalid 로 함께 선다 · 2026-10-23 화면 전면 재설계 §4 H 「입력 공통 부품」). */
 .nx-fb-field {
-  font: inherit;
-  line-height: 1.55;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line2);
-  border-radius: 10px;
-  padding: 9px 11px;
-  resize: vertical;
   min-height: 3em;
-}
-
-/* 초점 — 전역 `textarea:focus` 는 바탕을 어둡게 하고 키보드 초점의 2px 고리는 Claude 테마에서 오류의
-   붉은 테두리와 똑같이 읽혔다. 바탕은 그대로 두고 브랜드 색 테두리 + 옅은 띠로 말한다(초대 확인판의
-   이름 칸과 같은 모양). */
-.nx-fb-field:focus {
-  background-color: var(--bg);
-  border-color: var(--accent);
-}
-
-.nx-fb-field:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .nx-fb-field--err,
@@ -180,7 +161,7 @@
 
 .nx-fb-err {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--red);
 }
@@ -213,7 +194,7 @@
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--bg);
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -221,7 +202,7 @@
 
 .nx-fb-dest {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   font-weight: 500;
 }
 
@@ -257,14 +238,14 @@
 .nx-fb-notice-t > b {
   display: block;
   padding-top: 4px;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   font-weight: 700;
   line-height: 1.4;
 }
 
 .nx-fb-notice-t > p {
   margin: 3px 0 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.55;
   color: var(--ink2);
 }
@@ -272,7 +253,7 @@
 /* 접는 머리 — 확인 단계의 `함께 보내지 않는 것` · 브라우저 단계의 `열린 페이지가 비어 있나요?`. */
 .nx-fb-fold {
   margin-top: 6px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
@@ -298,7 +279,7 @@
   align-items: center;
   gap: 10px;
   margin: 8px 0 0;
-  font-size: 13.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
@@ -347,7 +328,7 @@
 
 .nx-fb-done > p {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
@@ -371,7 +352,7 @@
 /* ── 브라우저 · 거절 · 확인 불가 */
 .nx-fb-note {
   margin: 4px 0 0;
-  font-size: 13.5px;
+  font-size: var(--fs-sm);
   line-height: 1.6;
   color: var(--ink2);
 }
@@ -418,7 +399,7 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -434,7 +415,7 @@
   flex: 1 1 150px;
   min-width: 0;
   margin: 0 auto 0 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.45;
   color: var(--ink3);
 }

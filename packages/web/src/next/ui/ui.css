@@ -157,14 +157,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
   background: var(--accent);
   color: var(--bg);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-bold);
 }
 
 .nx-cnt--g {
@@ -194,8 +194,8 @@
 }
 
 .nx-ibtn {
-  width: 30px;
-  height: 30px;
+  width: var(--h-md);
+  height: var(--h-md);
   border-radius: var(--r);
   display: grid;
   place-items: center;
@@ -213,13 +213,13 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 12px;
+  height: var(--h-md);
+  padding: 0 var(--sp-3);
   border-radius: var(--r);
   border: 1px solid var(--line2);
   background: var(--card);
-  font-weight: 500;
-  font-size: 13px;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-ui);
   white-space: nowrap;
 }
 
@@ -228,8 +228,8 @@
 }
 
 .nx .nx-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .nx .nx-btn--pri {
@@ -282,7 +282,7 @@
 
 .nx-iconf-t {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   font-weight: 600;
   line-height: 1.45;
   overflow-wrap: anywhere;
@@ -290,7 +290,7 @@
 
 .nx-iconf-b {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.55;
   color: var(--ink2);
 }
@@ -325,14 +325,14 @@
 /* 소단추 — 앱 어디서나 28px. 설정 안은 한 칸 아래(settings.css 의 `.nx-set .nx-btn--sm`).
    예전에는 다섯 파일이 따로 선언해 마지막에 읽힌 설정의 26px 가 앱 전체의 소단추였다. */
 .nx .nx-btn--sm {
-  height: 28px;
+  height: var(--h-sm);
   padding: 0 10px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .nx .nx-ibtn--sm {
-  width: 24px;
-  height: 24px;
+  width: var(--h-sm);
+  height: var(--h-sm);
   border-radius: var(--r-sm);
 }
 
@@ -354,7 +354,7 @@
 /* 한 줄의 덧말 — 상자 · 단추 곁에서 조용히 상태를 말한다. 빨강은 실패(`role="alert"` 와 함께). */
 .nx-snote {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--fs-sm);
   color: var(--ink3);
   line-height: 1.5;
 }
@@ -374,8 +374,8 @@
   z-index: var(--nx-z-pop);
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: var(--pop);
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-2);
   padding: 6px;
   min-width: 210px;
   max-height: 70vh;
@@ -432,9 +432,10 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  min-height: var(--h-row);
+  padding: 6px 10px;
   border-radius: var(--r);
-  font-size: 13px;
+  font-size: var(--fs-ui);
   line-height: 1.35;
 }
 
@@ -474,7 +475,7 @@
   align-items: center;
   gap: 5px;
   color: var(--ink3);
-  font-size: 11.5px;
+  font-size: var(--fs-cap);
 }
 
 .nx-ck {
@@ -537,12 +538,12 @@
 .nx .nx-toast-act {
   position: relative;
   flex: none;
-  height: 26px;
-  padding: 0 11px;
-  border-radius: 8px;
+  height: var(--h-sm);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r);
   background: color-mix(in srgb, var(--bg) 16%, transparent);
   color: var(--bg);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   font-weight: 600;
   white-space: nowrap;
   transition-property: background-color;
@@ -772,4 +773,322 @@
   .nx-cnt--bump {
     animation: none;
   }
+}
+
+/* 링크로 선 단추 · 메뉴 줄 — 브라우저의 기본 링크색(파랑 · 방문한 보라)과 밑줄을 걷어 같은 꼴의 단추 · 줄과 같은 옷을 입힌다(2026-10-24 눈 확인 Q-3). */
+.nx a.nx-btn,
+.nx a.nx-mi,
+.nx a.nx-ibtn {
+  color: inherit;
+  text-decoration: none;
+}
+
+.nx a.nx-btn--pri {
+  color: var(--bg);
+}
+
+.nx a.nx-btn--dng {
+  color: var(--red);
+}
+
+.nx a.nx-btn--accent {
+  color: var(--bg);
+}
+
+.nx a.nx-btn--ghost {
+  color: var(--ink2);
+}
+
+/* ── 공통 부품(2026-10-23 화면 전면 재설계 §4 I · §5) ──────────────────────────────
+   손대는 자리의 같은 꼴 부품은 이것으로 옮기고 그 자리의 따로 선언을 걷는다. 색은 팔레트의 짝 이름만 쓴다. */
+
+/* 큰 단추 — 빈 화면 · 처음 한 번처럼 한 장에 단추가 하나뿐인 자리. */
+.nx .nx-btn--lg {
+  height: var(--h-lg);
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-read);
+  border-radius: var(--r-md);
+}
+
+/* 포인트 단추 — AI 에게 `보내기` 와 켜짐 상태에만. 으뜸(`--pri`)은 잉크다 — 한 화면에 하나. */
+.nx .nx-btn--accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.nx .nx-btn--accent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 86%, var(--ink));
+}
+
+/* 작은 아이콘 단추 — 32px 목록 줄 안의 `⋯` 처럼 자리가 빠듯한 곳. */
+.nx .nx-ibtn--xs {
+  width: var(--h-xs);
+  height: var(--h-xs);
+  border-radius: var(--r-sm);
+}
+
+/* 입력 — 한 줄 36px, 여러 줄은 `--area`. 초점에서 포인트 색 테두리와 옅은 고리. 오류는 aria-invalid 로. */
+.nx .nx-input {
+  width: 100%;
+  height: var(--h-input);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  background: var(--cmp);
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+  transition:
+    border-color var(--nx-t-touch) var(--drift),
+    box-shadow var(--nx-t-touch) var(--drift);
+}
+
+.nx .nx-input::placeholder {
+  color: var(--ink3);
+}
+
+.nx .nx-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.nx .nx-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.nx .nx-input[aria-invalid="true"] {
+  border-color: var(--red);
+}
+
+.nx .nx-input--area {
+  height: auto;
+  min-height: 84px;
+  padding: var(--sp-2) var(--sp-3);
+  resize: vertical;
+}
+
+/* 칸 — 이름 · 입력 · 도움말 · 오류를 한 줄기로 세운다. */
+.nx-field {
+  display: grid;
+  gap: var(--sp-1_5);
+}
+
+.nx-field-label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--ink);
+}
+
+.nx-field-help {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--ink3);
+}
+
+.nx-field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1_5);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--red);
+}
+
+/* 알약 — 상태 한 낱말. 색은 늘 글자와 함께 선다(색만으로 말하지 않는다 — 정본 §11). */
+.nx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 20px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  background: var(--nx-selected);
+  color: var(--ink2);
+}
+
+/* 파랑은 밝은 팔레트의 옅은 바탕 위에서 4.5:1 에 못 미친다(4.07–4.38) — 잉크를 조금 섞어 4.9 이상으로 올린다(2026-10-24 F 검토). */
+.nx-pill--blue {
+  background: var(--blue-soft);
+  color: color-mix(in srgb, var(--blue) 86%, var(--ink));
+}
+
+.nx-pill--amber {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.nx-pill--green {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.nx-pill--red {
+  background: var(--red-soft);
+  color: var(--red);
+}
+
+.nx-pill--accent {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 띠 — 문제 · 알림 한 줄(아이콘 · 글 · 단추). 문제 줄 · 결과 확인 필요 · 연결 만료가 같은 모양을 쓴다. */
+.nx-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+}
+
+.nx-banner > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.nx-banner-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: var(--sp-0_5);
+}
+
+.nx-banner-body small {
+  font-size: var(--fs-sm);
+  color: var(--ink2);
+}
+
+.nx-banner-act {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.nx-banner--blue {
+  background: var(--blue-soft);
+  border-color: color-mix(in srgb, var(--blue) 28%, transparent);
+}
+
+.nx-banner--amber {
+  background: var(--amber-soft);
+  border-color: color-mix(in srgb, var(--amber) 32%, transparent);
+}
+
+.nx-banner--red {
+  background: var(--red-soft);
+  border-color: color-mix(in srgb, var(--red) 30%, transparent);
+}
+
+.nx-banner--green {
+  background: var(--green-soft);
+  border-color: color-mix(in srgb, var(--green) 30%, transparent);
+}
+
+/* 빈 · 읽는 중 · 실패 — 한 장의 모양: 그림 하나 · 한 줄 · 설명 · 단추 하나. */
+.nx-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-2);
+  max-width: 420px;
+  margin: 0 auto;
+  padding: var(--sp-10) var(--sp-6);
+  text-align: center;
+}
+
+.nx-empty-mark {
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--sp-1);
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-lg);
+  background: var(--nx-hover);
+  color: var(--ink2);
+}
+
+.nx-empty-title {
+  font-size: var(--fs-read);
+  font-weight: var(--fw-semi);
+  line-height: var(--lh-tight);
+  color: var(--ink);
+}
+
+.nx-empty-desc {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--ink2);
+}
+
+.nx-empty-act {
+  margin-top: var(--sp-2);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+/* 머리 줄 — 모든 자리의 맨 위 52px · 같은 아래 선(§3.3). 왼쪽은 「어디」, 오른쪽은 「지금 할 일」. */
+.nx-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  min-width: 0;
+  height: var(--h-bar);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+/* 줄 해부 — 목록 · 편지함 · 팝의 한 줄: 앞 그림 · 제목(14) · 부제(13) · 끝(12). */
+.nx-li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--h-row);
+  padding: var(--sp-1_5) var(--sp-2);
+  border-radius: var(--r);
+}
+
+.nx-li-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.nx-li-title,
+.nx-li-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-li-title {
+  font-size: var(--fs-ui);
+  color: var(--ink);
+}
+
+.nx-li-sub {
+  font-size: var(--fs-sm);
+  color: var(--ink3);
+}
+
+.nx-li-end {
+  flex: none;
+  font-size: var(--fs-cap);
+  color: var(--ink3);
 }

@@ -107,6 +107,8 @@ Claude는 사용자·프로젝트·로컬 설정을 읽는다.
 | `~/.colonova-design/projects/<slug>/tsc.tsbuildinfo` | 증분 타입 검사(`tsc --noEmit --incremental`)의 빌드 정보 — 클론 밖에 두어 `git status` 를 깨끗하게 한다. 과거 내장 타입 검사에서 생성한 기록이며 새 요청에서는 만들지 않는다 |
 | `~/.colonova-design/projects/<slug>/cycle.json` | 사이클 원장 — 제출 의도 · 푸시 밀림 · 코멘트 장부 · 자동 검사 반영 장부(브리프한 head) · 예산 · 끝난 요청 · 반영된 일(`landed`, 최근 20건 — 사용자의 말(제목)이 담기는 곳이 이 원장이고 로그 · 통계에는 싣지 않는다). 어디서 끊겨도 다음 시작이 이어받는다 |
 | `~/.colonova-design/projects/<slug>/repo/` | 그 프로젝트의 연결 레포 클론 |
+| `~/.colonova-design/projects/<slug>/confluence/` | 기획서 사본 — 원장 `confluence.json` · 문서마다 `*.storage.xml`(정본) · `*.md`(파생). 클론 밖이라 보관 · 제출에 타지 않는다. 화면 세션에 함께 열려 읽힌다(2026-10-23 사본 이동 — 「기획서 동기화」 절) |
+| `~/.colonova-design/projects/<slug>/plans/` | 기획 작업 데이터 — 초안 · 변경안 · 기획 대화 · 발행 의도 · 근거 기록(`refs.jsonl`). 화면 세션에는 붙이지 않는다 |
 
 `<slug>` 는 프로젝트 이름에서 만든 폴더 이름이다(2026-10-07) — 영숫자와 `-` `_` `.` 만으로 된 이름은 읽히는
 그대로(`my-app`), 그 밖의 글자(한글 포함)가 하나라도 있으면 뒤에 이름의 해시 6자리가 붙는다(`결제-3f9a1c`).
@@ -172,8 +174,10 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 화면을 만드는 것과 고치는 것은 같은 턴이다. 새 대화는 사이드바의 `새 대화` · 팔레트 ·
 ⌘T 어디로든 열린다. 코멘트 핀은 ⌥+클릭으로 언제든 찍고, 보낸 핀은 턴이 끝나면 화면을
 떠난다. 사람이 누르는 배치 동작은 **제출** 하나다 — 보관(커밋)은 답을 낸 턴마다 도구가
-스스로 한다. 제출 버튼은 상태 줄에 언제나 그려지고, 잠겼을 때 누르면 이유가 버튼 아래
-한 줄로 선다(`journey.submit.reason`). 변경 건수는 클론 준비 · 화면 턴 종료 · 보관 완료
+스스로 한다. 제출 버튼은 화면 자리의 상태 줄에 언제나 그려진다. 잠긴 얼굴은 `nx-btn--pri`를 빼고
+공통 꺼진 단추(`nx-btn` 의 꺼짐 — 옅게 · `not-allowed`)로 그리며, `disabled` 대신 `aria-disabled`를 써 이유를 읽을 수 있게 한다. 다섯 얼굴(`submitFace` — idle · running · retrying · done · failed)은 한 줄에 나란히 서고 서 있지 않은 얼굴은 `0fr` 로 접혀, 단추 폭이 지금 글에 맞는다(2026-10-24 눈 확인 Q-7).
+`journey.submit.reason`은 툴팁으로 보이고, 누르거나 초점을 주면 버튼 아래 말풍선으로 선다. 말풍선이 열린 동안은
+툴팁을 빼고 `aria-describedby`로 이유를 연결한다(2026-10-24 화면 전면 재설계 §4 G). 변경 건수는 클론 준비 · 화면 턴 종료 · 보관 완료
 세 트리거로 갱신된다 — 폴링 없음.
 
 대화 칸 맨 아래의 진행 줄(`chat/RunLine.tsx`, `role="status"`)은 단계 말 · 시계를 싣는다(2026-10-06 UX 점검). 단계 말은 `lib/making.ts` 의
@@ -529,11 +533,13 @@ git 이 혼자 못 합치는 진짜 충돌만 AI 의 과제가 된다 — 2행�
 잘리지 않고, 우클릭 · 메뉴 키(`contextmenu`)도 같은 메뉴를 같은 자리에 연다. ↑ ↓ Home End 는
 줄과 `도구가 한 일` 머리를 오가고(닫힌 묶음 안의 줄은 건너뛴다), 열린 대화가 목록 밖에 있으면
 저절로 보이는 자리로 올라온다.
-사이드바 폭은 설정의 `layout.sidebarWidth`(null 은 끌어 본 적 없음 = 264px)에 남고
-`SIDEBAR_WIDTH_BOUNDS`(220~420)가 절대 한도다. `lib/shell-metrics.ts` 가 창 폭에 맞춘
-상한(대화 칸 320 + 미리보기 360 이 쓸 자리를 뺀 만큼)을 재고, `lib/use-sidebar-width.ts` 가
-끌기(놓을 때 한 번 저장) · 키보드 · 되돌림을 맡는다. 셸 뿌리의 `--nx-side-w` 가 열 폭과 사이드바
-폭을 정하고, 경계는 대화 · 미리보기 사이와 같은 `Splitter` 다. 좁은 창의 서랍은 284px 로 고정이다.
+사이드바 폭은 자리별로 남긴다. 홈 · 화면은 `layout.sidebarWidth`(null이면 264px)와
+`SIDEBAR_WIDTH_BOUNDS`(220~420px), 기획서는 선택 키 `layout.plansSidebarWidth`(없거나 null이면 320px)와
+`PLANS_SIDEBAR_WIDTH_BOUNDS`(260~480px)를 쓴다. `loadLayout`은 저장된 폭을 각각의 한도 안으로 읽는다.
+`lib/shell-metrics.ts`는 창 폭에서 홈 · 화면의 두 칸(320 + 360px), 기획서의 본문(360px)을 남겨 상한을 정한다.
+`lib/use-sidebar-width.ts`는 자리 전환 때 저장된 폭을 읽고 끌기 · 키보드 · 되돌림을 맡는다. 셸 뿌리의 `--nx-side-w`가
+열 폭과 사이드바 폭을 정하고 경계는 같은 `Splitter`다. 좁은 창의 서랍도 그 폭을 쓰되 창 폭에서 48px을 뺀 값이 상한이다.
+(2026-10-23 화면 전면 재설계 — [ux-redesign-2026-10-23.md](ux-redesign-2026-10-23.md))
 서랍의 스크림은 늘 마운트돼 `.nx--drawer` 에서만 보이며(`--scrim` + 흐림) 닫힐 때 불투명도로 걷힌다 — ✕ 가 있고
 설정을 열면 서랍이 먼저 닫힌다. `nav.switchProject` 는 옮겼는지(`Promise<boolean>`)를 돌려 줘 부르는
 줄(전환기 · 찾기 · 홈 칩)이 도는 표시를 세운다. 다른 프로젝트 줄은 `pickOthers` 가 급한 셋으로 거르고 나머지는
@@ -543,6 +549,18 @@ git 이 혼자 못 합치는 진짜 충돌만 AI 의 과제가 된다 — 2행�
 다음 글자의 초성으로 넘어가는 순간과 겹모음 · 겹받침이 자라는 순간까지) 홀로 선 자음은 초성으로 맞춘다
 (`ㄱㅈ` → 결제). 한글 낱자는 `labels.ts` 밖에 한글 리터럴을 둘 수 없어 코드 포인트 표로 적고, 맞은 자리는
 늘 글자 경계다.
+
+셸의 자리는 홈 · 기획서 · 화면이다. 사이드바의 프로젝트 전환기 아래에 세 자리와 찾기가 서고, 그 아래 목록이 바뀐다.
+홈 · 화면은 대화 목록, 기획서는 `PlansSidebar`의 문서 트리다. `Workspace`의 `plansOn`이 기획서 머리와 본문을 세우며,
+화면 대화 · 미리보기는 마운트된 채 숨는다. 기획서에서는 `StatusLine` 대신 `PlansHeader`가 서고 좁은 창 탭은 없다.
+`ProblemLine`은 남는다. `openPlans()`는 재선택해도 기획서에 머물고, `openScreen()`은 화면 자리로 간다.
+찾기는 현재 프로젝트의 문서 제목 · 폴더를 함께 찾으며 초성도 지원한다. 줄을 고르면 `openPlanTarget`으로 문서를 연다.
+
+홈은 인사와 프로젝트 한 줄 아래에 기다리는 일, 기획서 · 화면 카드, 처음인 프로젝트의 세 걸음, `HomeReady`, 나머지 묶음을 놓는다.
+`HomeInbox`는 필수 `part="waiting"`과 `part="rest"`로 나누어 두 번 부른다. 판정 · 셈 · 접힘은 그대로다.
+본문 폭 1000px 이상에서 두 카드는 같은 높이로 나란히 서고 그보다 좁으면 위아래다. 기획서 연결이 없으면 화면 카드만 선다.
+`화면 열기`는 화면 카드 머리에 있다.
+(2026-10-23 화면 전면 재설계 — [ux-redesign-2026-10-23.md](ux-redesign-2026-10-23.md))
 
 홈(`next/home/`)의 받은 편지함은 `lib/home-feed.ts` 의 `buildHomeFeed` 한 곳에서 나온다 — 활성
 프로젝트의 대화를 `visibleThreads`(지워 낸 대화를 데몬의 목록이 따라오기 전에도 거둔다)로 걸러
@@ -807,15 +825,18 @@ AI 가 일하는 몇 분 동안 사용자는 글만 보던 것을 미리보기�
 
 | 부품 | 맡은 일 |
 | --- | --- |
-| `next/ui/overlay.css` | 층 토큰(`--nx-z-pop` 60 · `modal` 70 · `palette` 75 · `toast` 95), 겹판의 길이(`--nx-t-in` 300ms · `--nx-t-out` 120ms — `onboarding/motion.ts` 의 `modalCloseMs` 와 같은 값), 스크림(`--scrim` + 흐림) · 판(테두리 · 반경 18 · `--shadow-float` · 떠오름) · 나가는 모션 · 겹판 뼈대(`.nx-modal--frame` — 머리 · 바닥은 서 있고 몸만 굴러가며 가장자리에 스크롤 그림자) |
-| `next/ui/ModalFrame.tsx` | 스크림 · `role="dialog"` · 이름(제목 연결) · 초점 가두기/복귀 · Esc(맨 위 층만) · 스크림 누름 · 닫는 모션을 한 곳에서. `ModalHead` · `ModalBody` · `ModalFoot` · `useModalClose`. 닫기의 길은 하나다 — Esc · 스크림 · ✕ 가 모두 `request()` 로 모이고 모션이 끝난 뒤 `onClose`. `locked` 면 셋 다 잠긴다. 설정만 제 껍데기(`useClosing` 만 쓴다) |
+| `next/ui/overlay.css` | 층 토큰(`--nx-z-pop` 60 · `modal` 70 · `palette` 75 · `toast` 95), 겹판의 길이(`--nx-t-in` 300ms · `--nx-t-out` 120ms — `onboarding/motion.ts` 의 `modalCloseMs` 와 같은 값), 스크림(`--scrim` + 흐림) · 판(테두리 · 반경 16px · `--shadow-float` · 떠오름) · 나가는 모션 · 겹판 뼈대(`.nx-modal--frame` — 머리 · 바닥은 서 있고 몸만 굴러가며 가장자리에 스크롤 그림자) |
+| `next/ui/ModalFrame.tsx` | 스크림 · `role="dialog"` · 이름(제목 연결) · 초점 가두기/복귀 · Esc(맨 위 층만) · 스크림 누름 · 닫는 모션을 한 곳에서. `ModalHead` · `ModalBody` · `ModalFoot` · `useModalClose`. 닫기의 길은 하나다 — Esc · 스크림 · ✕ 가 모두 `request()` 로 모이고 모션이 끝난 뒤 `onClose`. `locked` 면 셋 다 잠긴다. 설정만 제 껍데기(`useClosing` 만 쓴다). 공통 모달 머리는 제목 18px · 설명 13px다 |
 | `next/lib/use-closing.ts` | 닫는 모션 타이머 한 곳(`useClosing(finish)` → `{ closing, begin }`) |
 | `next/ui/Popover.tsx` | 연 방향의 모서리에서 펼침(`data-side`) · 사라질 때 복제 유령(`.nx-pop--leaving`)이 짧게 물러남 · `role="menu"` 의 ↑ ↓ Home End · 글자 건너뛰기(줄마다 `menuitem`/`menuitemradio` 는 부르는 쪽이 단다 — 체크된 줄이 첫 초점) · 키보드로 연 팝은 첫 초점 요소로 초점이 건너옴 · 닫히면 여는 요소로 초점 복귀 · 웹뷰(`<webview>`)로 초점이 가면 닫힘 · 한글 조합 중 Esc 무시 |
 | `next/ui/InlineConfirm.tsx` · `.nx-btn--dng` | 되돌릴 수 없는 일(대화 지우기 · 프로젝트 빼기 · 기록으로 되돌리기)의 인라인 확인 — 제목은 일을, 본문은 영향의 크기와 남는 것을 말하고, 초점은 `그만두기` 에, Esc 는 이 확인만 접는다 |
-| `next/ui/Toast.tsx` · `nav.toast` | 같은 문장이 연달아 와도 새 알림(`seq`), 손 · 초점이 얹히면 멈춤(막대도), ✕, 두 줄까지. 머무는 시간은 `Toast` 가 잰다 |
+| `next/ui/Toast.tsx` · `nav.toast` | 같은 문장이 연달아 와도 새 알림(`seq`), 손 · 초점이 얹히면 멈춤(막대도), ✕, 두 줄까지. 글자는 14px, 동작 단추는 28px다. 머무는 시간은 `Toast` 가 잰다 |
 | `hooks/use-modal-focus.ts` | `useModalFocus` · `useModalEscape` · `trapYields`(초점이 다른 `aria-modal` 안에 있으면 가두기가 물러남 — 서랍 위의 비교 · 말풍선) · `overlayOpen()`(열려 있는 겹판이 있나 — 단축키 · 뒤 칸의 Esc 가 물러서는 판정, 닫는 중 `…--out` 은 닫힌 것으로 친다) |
-| `next/ui/ui.css` | 공용 소단추 `.nx-btn--sm`(28px — 설정 안은 26px) · `.nx-snote` · `.nx-sr`/`.nx-vh`(낭독 전용) · `.nx-ibtn--sm` · 키캡 `.nx kbd.nx-kc` · `.nx-iconf`. 같은 이름을 다른 파일에서 다시 정의하지 않는다(예전에는 `.nx-btn--sm` 이 다섯 파일에 있어 마지막에 읽힌 설정의 26px 가 앱 전체의 소단추였다) |
+| `next/ui/ui.css` | 공용 소단추 `.nx-btn--sm`(설정 안도 28px) · `.nx-snote` · `.nx-sr`/`.nx-vh`(낭독 전용) · `.nx-ibtn--sm` · 키캡 `.nx kbd.nx-kc` · `.nx-iconf`. 같은 이름을 다른 파일에서 다시 정의하지 않는다(예전에는 `.nx-btn--sm` 이 다섯 파일에 있어 마지막에 읽힌 설정의 26px 가 앱 전체의 소단추였다) |
 | `styles.css` 의 `.nx-fs*` | 앱이 막힌 순간의 전체 화면 안내판(충돌 `CrashScreen` · 연결 `ConnectingScreen`) — 인라인에는 바탕 · 글자색만 두고 옷은 여기. 충돌은 직전 사고가 한 분 안이면(`src/lib/crash.ts` 의 `previous()` · `isRepeatCrash`) `같은 문제가 계속 생겨요` 로 바뀐다. 와치독(`public/boot-watchdog.js`)도 같은 얼굴이다 |
+
+모달 반경 · 머리와 토스트 크기는 `overlay.css`가 정한다. 토스트의 14px 글자와 28px 단추는 아직 `ui.css`의
+기본값 위에 덮는 규칙이다(2026-10-24 화면 전면 재설계 §4 H·I).
 
 계약 몇 가지: ① 뿌리 클래스 이름(`.nx-modal-back` · `.nx-set-back` · `.nx-pal`)은 `MODAL_ROOT_SELECTOR` 와
 `overlayOpen()` 이 기댄다 — 작업 기록 서랍의 스크림에 `.nx-modal-back` 를 쓰면 모든 단축키 · Esc 가 꺼진다 — 그래서
@@ -845,7 +866,9 @@ inert 조상 · hidden)을 가두지 않고, 초점을 옮겨 보고서야 Tab �
 선다: 동작을 줄인 창은 자식마다 `visibility` 0.01ms 전환이 있어 첫 프레임에는 제목이 아직 hidden 이다. (e) 날의 머리가
 위에 붙었는지(그늘 · 맨 위 날의 선)는 이름 붙은 스크롤 상태 컨테이너(`hday`)로 묻는다 — 막대의 폭 질의(`nxpv`)와 섞이지
 않게(`next-preview-bar` 시험이 두 이름만 허용한다). (f) 줄 하나는 단추 하나(`button.nx-hmain`)이고 화살표 키가 줄을
-훑는다(줄마다 따로 서던 비교 단추는 2026-10-20 사진 비교 축소 때 지웠다). 확인을 연 동안 사라질 구간은 **불투명도가 아니라 색으로** 흐린다(불투명도 .45 는 글자가 2.0~2.8:1 이었다) —
+훑는다(줄마다 따로 서던 비교 단추는 2026-10-20 사진 비교 축소 때 지웠다). 줄 안의 `여기로 되돌리기`는
+`span.nx-btn.nx-btn--sm.nx-hgo`로 28px 단추 모양만 입고 `aria-hidden`이다. 제목은 14px, 시각은 12px이며,
+점과 선의 기준은 제목 첫 줄 가운데인 18px에 맞춘다(2026-10-24 화면 전면 재설계 §4 F). 확인을 연 동안 사라질 구간은 **불투명도가 아니라 색으로** 흐린다(불투명도 .45 는 글자가 2.0~2.8:1 이었다) —
 선은 흐리지 않고 포인트색으로 이어 구분선 · 날의 머리와 어긋난 바늘땀이 서지 않는다. 서랍 안의 12px 글자색은
 `--hist-accent · --hist-green · --hist-amber · --hist-quiet`(잉크를 섞어 한 단 깊게)로 다섯 팔레트에서 4.5:1 을 넘는다
 (측정). (g) 결과 카드의 `방금 한 것 되돌리기`(`lib/undo-last.ts` 의 `undoTargetFor`)는 서랍을 `nx:history:open` 의
@@ -1530,22 +1553,44 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
 
 이 절은 현재 작업 트리의 읽기 구현을 설명한다. AI 기획 작성·Confluence 발행·CDP 데모 왕복의 목표와 인수 기준은 [최종 구현 계획](confluence-sync-plan-2026-10-18.md)을 따른다. 트리 걷기는 2026-10-23부터 종류 있는 계층(`direct-children`)으로 폴더 아래 문서까지 읽는다(계획 F0). 실제 SSOT에서 앱 자격으로 대조하는 일(G0)은 아직이다. 계획 확정과 기능 제공은 구분한다.
 
-기획 문서를 Confluence 에서 읽기 전용으로 클론 안 `docs/plans/` 에 내려놓는다. 정본은 저장
-포맷 XML(`*.storage.xml` — 원문 그대로), 마크다운은 파생물, 원장(`docs/plans/confluence.json`)
-은 한 벌이다. 커밋은 없다 — 폴더는 클론의 `.git/info/exclude` 로 빠지고 `saveable-paths`
-거름이 제출(풀 리퀘스트)에서도 막는다(D1).
+기획 문서를 Confluence 에서 읽기 전용으로 프로젝트 데이터의 사본 폴더 `~/.colonova-design/projects/<slug>/confluence/`
+에 내려놓는다(2026-10-23 사본 이동 — [이동 계획](plans-folder-relocation-plan-2026-10-23.md)). 정본은 저장 포맷 XML
+(`*.storage.xml` — 원문 그대로), 마크다운은 파생물, 원장(`confluence/confluence.json`)은 한 벌이다. 클론 밖이라 커밋도
+exclude 줄도 보관 거름도 없다. 자리는 `confluence-mirror.ts` 의 두 도우미(`confluenceMirrorRoot` · `confluenceMirrorLedger`)
+가 프로젝트 폴더(`registry.paths(slug).root` — 클론 뿌리가 아니다)에서 구한다. 기획 작업 데이터(`plans/`)와 형제로 두는
+이유는 화면 세션에 사본만 붙이기 위해서다 — 아래 「상호 탐색」. 2026-10-18 설계는 사본을 클론 안 `docs/plans/` 에 두었다.
+연결 레포가 자기 `docs/plans/` 에 문서를 추적할 수 있어서 그 자리는 보통 레포 폴더로 돌려준다.
 
 - **부품** — `confluence-client.ts`(REST — fetch 전송 주입, Basic 인증 한 곳, 401/403/409/429
   분류와 429 재시기 사다리, 트리는 다섯 종류의 `direct-children`), `confluence-markdown.ts`(저장 포맷 → 파생 마크다운 + 절 목록 —
   매크로 든 절은 `macro:true`), `confluence-ledger.ts`(원장 — parse 는 절대 안 던진다 · 원자
-  쓰기), `confluence-path.ts`(트리 → 폴더 경로 — 위험 문자 걷기 · 이름 충돌은 id 접미),
-  `confluence-sync.ts`(가져오기 루프 + 연결 국소 규칙), `dispatch.ts` 의
-  `confluence.connect · suggestRoots · importNow · doc.list · doc.read`.
-- **트리거** — 데몬 시작 · 10분 타이머 · `confluence.importNow`(뷰어 · 설정). 중복 부르기는
-  합류한다(차선 규칙 + 도는 바퀴의 in-flight 합류 — 취소는 없다). 타이머는 연결(사이트 · 뿌리)이 있고 클론이 선
-  프로젝트만 돈다 — 나머지는 경고 없이 건너뛴다. 클론 전(`.git` 없음)에는 `importNow` 도 쓰지 않고 거절한다 — 클론
-  전의 폴더에 파일을 두면 준비가 그 폴더를 잔해로 보고 통째로 지운다(`repo-bringup`). 쓰기는 각 프로젝트의
-  차선(`"confluence"`)에 선다.
+  쓰기 · 절대 경로이거나 `..` · `.` 조각이 낀 path 의 항목은 읽을 때 버린다 — 증분 쓰기와 거두기가 사본 밖을 만지지 않게,
+  2026-10-23), `confluence-path.ts`(트리 → 폴더 경로 — 위험 문자 걷기 · 이름 충돌은 id 접미 · 사본이 Claude Code 의 작업 폴더로
+  열리기 때문에 점이나 `~` 로 시작하는 이름(공간 키 포함)은 앞머리를 `-` 하나로 바꾸고, `CLAUDE` · `CLAUDE.local` · `AGENTS` 는
+  뒤에 페이지 id 를 붙인다, 2026-10-23),
+  `confluence-mirror.ts`(사본 자리), `confluence-sync.ts`(가져오기 루프 + 연결 국소 규칙),
+  `confluence-legacy.ts`(옛 클론 정리 — 아래), `dispatch.ts` 의 `confluence.connect · suggestRoots · importNow · doc.list · doc.read`.
+- **트리거** — 데몬 시작 · 10분 타이머 · `confluence.importNow`(뷰어 · 설정) · 문서 관리 뒤의 `walkNow`(아래 「문서 관리」). 중복 부르기는 프로젝트마다의
+  in-flight 약속 하나에 합류한다(취소는 없다). 타이머는 연결(사이트 · 뿌리)이 있는 프로젝트를 클론 여부와 상관없이 돈다 —
+  등록부에 없는 프로젝트만 건너뛴다. 사본은 클론에 쓰지 않으므로 git 차선에 서지 않는다(2026-10-23 — 예전의
+  `"confluence"` 차선과 「클론 전 거절」은 사본이 클론 안에 살던 때의 것이다).
+- **옛 클론 정리(2026-10-23)** — 사본이 클론 안에 살던 때의 흔적을 준비(`repo-bringup` 의 이미 클론된 갈래, 원격 최신화
+  앞 · `hygiene` 차선)가 한 번 걷는다. 흔적(exclude 의 `docs/plans/` 줄이나 옛 원장 `docs/plans/confluence.json`)이 없으면
+  `git ls-files` 도 부르지 않고 지나간다(`hasLegacyPlans`) — 사본을 둔 적 없는 레포의 미추적 파일은 사람이나 AI 의 것일 수 있다.
+  `cleanupLegacyPlans` 는 옛 원장이 아는 파일과 걸어서 찾은 `*.storage.xml` 짝, 옛 원장만 지운다. `docs/plans` 가 심볼릭 링크면
+  파일은 건드리지 않고 exclude 줄만 뺀다.
+  `git ls-files` 의 추적 파일은 절대 지우지 않는다 — 연결 레포가 자기 `docs/plans/` 에 문서를 둘 수 있다. 빈 폴더를 거둔 뒤
+  마지막에 exclude 의 `docs/plans/` 줄을 뺀다. 순서가 불변식이다 — 줄을 먼저 빼면 옛 사본이 미추적 파일로 보여 보관에 담긴다.
+  실패는 준비를 멈추지 않고(로그에 종류만) 다음 준비가 다시 한다. 멱등이다.
+- **상호 탐색(2026-10-23 사용자)** — 앱의 두 AI 가 서로의 폴더를 읽는다. 화면 세션은 사본 폴더가 있을 때만 그것을
+  `additionalDirectories` 로 함께 연다(`session-dirs.ts` 의 `screenSessionDirs` — 없는 폴더는 넣지 않는다, SDK 가 없는 경로를
+  어떻게 다루는지 적혀 있지 않다). 새 대화 · 재개 · 분기는 `dispatch.ts` 가, 자동 대화(게이트 · 리뷰 반영 · CI · 시작 복구)는
+  `project-fleet.ts` 의 `autoFixThreadFor` 가 같은 함수를 읽어 `auto-thread.ts` 요청에 싣는다. 쓰기 가드의 scope 에도 같은 뿌리가
+  `mirrorRoots` 로 실린다(거절 이유). 기획 AI 는
+  클론을 두 번째 읽기 뿌리로 받는다(위 「기획 AI」). 붙이는 것은 사본 뿌리뿐이다 — 같은 프로젝트 데이터의 `plans/`(초안 ·
+  기획 대화 · 발행 의도)는 화면 AI 에게 보이지 않는다(정본 269줄). 자유 탐색은 참고이고, 화면 작업의 기준은 근거 보내기의
+  불변 스냅샷이다(정본 234줄) — 사본은 10분마다 덮어쓰이고 미발행 초안은 없다. 공통 규칙의 문서 파일 불릿이 그 셋(근거가 기준 ·
+  사본은 참고 · 고치는 곳)을 말한다.
 - **걷기와 증분(2026-10-19 고침)** — 폴더 경로는 트리 걷기(`planPaths`) 한 곳에서만 계산한다. 걷기는 첫 가져오기 ·
   데몬 시작 뒤 첫 바퀴(`start()` — 꺼져 있던 사이의 이동은 판도 lastModified 도 안 올려 증분이 못 본다, 2026-10-18
   실측) · 빠짐없이 끝나지 못한 걷기의 다음 바퀴 · 증분이 처음 보는 문서나 제목이 바뀐 문서를 만난 바퀴에 돈다.
@@ -1559,6 +1604,12 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   시각 글자가 계정의 시간대로 읽혀도(가장 서쪽 UTC−12) 빠지는 변경이 없게 하는 몫이고, 다시 걸린 문서는 검색이
   싣는 판(`expand=content.version`)으로 걸러 본문을 읽지 않는다. 검색이나 뿌리를 못 읽은 바퀴는 원장의 시각을
   앞서지 않고 종류만 경고로 남긴다(`stage` · `reason`) — 앞서면 그 사이의 변경을 영영 놓친다.
+- **사본의 자가 복구와 원자 쓰기(2026-10-23)** — 화면 세션이 사본 폴더를 함께 열어 한 문서의 파일이 셸의 `rm` 으로 사라질 수
+  있다(셸 가드는 뻔한 파괴만 본다). 원장의 문서 가운데 `.storage.xml` 이나 `.md` 가 없는 것이 있으면 그 바퀴는 걷기로 돌고, 판도
+  자리도 같아도 파일이 없는 문서는 다시 쓴다 — 증분은 바뀐 문서만 겨눠 스스로 고치지 못한다. 문서 파일 두 벌은 원장과 같은
+  꼴(같은 폴더의 임시 파일 → 이름 바꾸기)으로 써서 읽는 쪽이 잘린 본문을 받지 않는다. 바퀴 한가운데에 뿌리를 바꾼 연결이 비운
+  원장을 그 바퀴의 마지막 쓰기가 되살리는 경합(원래 있던 것)은 다음 바퀴가 잡는다 — 원장의 뿌리가 연결의 뿌리가 아니면 빈 원장에서
+  처음 가져오기처럼 걷고 옛 뿌리의 파일을 거둔다. 연결은 도는 바퀴를 기다리지 않는다.
 - **종류 있는 걷기(2026-10-23 · 최종 구현 계획 F0)** — 아이 목록은
   `GET /wiki/api/v2/<pages|folders|whiteboards|databases|embeds>/{id}/direct-children?limit=250` 이다. 옛
   `pages/{id}/children` 은 페이지만 주고 폐기 예정이라, 폴더 아래 문서가 원장에 들어오지 못했는데도 걷기는
@@ -1589,11 +1640,12 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
 - **시험** — 전부 순수다: `confluence-client.test.ts`(판을 싣는 검색 포함) · `confluence-wire.test.ts`(선로 해석)
   · `confluence-connect.test.ts`(연결 처리기 — 슬러그 분리 · 자격 미반환 부포함) ·
   `confluence-markdown/ledger/path.test.ts`(순수 셋) · `confluence-sync.test.ts`(루프 — 첫 트리 · CQL 증분 · 429
-  사다리 · 401 만료 · 상한 · 합류 · 클론 없음 · 깊은 자리의 새 문서 · 제목 변경의 이동 · 시작 걷기의 이동과 거둠 ·
-  검색 실패의 시각 지킴 · 클론 전 거절 · 타이머의 걸러냄 · 다시 걷기의 상한 · 종류 있는 걷기의 폴더 아래 문서 ·
+  사다리 · 401 만료 · 상한 · 합류 · 클론 없이 가져오기 · 깊은 자리의 새 문서 · 제목 변경의 이동 · 시작 걷기의 이동과 거둠 ·
+  검색 실패의 시각 지킴 · 모르는 프로젝트의 거절 · 타이머의 걸러냄 · 다시 걷기의 상한 · 종류 있는 걷기의 폴더 아래 문서 ·
   빈 폴더 · 미지원 종류 · archived · 사라진 폴더, 2026-10-23) · `project-fleet-confluence.test.ts` ·
-  `saveable-paths.test.ts`(D1 거름), 웹은 `next-confluence-connect.test.ts` · `next-plans.test.ts`. 모두 CI 순수
-  시험 목록에 있다(2026-10-19). 기획서 폴더의 쓰기 가드는 `write-guard.test.ts` 가 센다. `pnpm test` 가 빌드를
+  `confluence-legacy.test.ts`(옛 클론 정리 — 흔적 관문 · 추적 파일 보호 · 링크 · 순서 · 멱등), 웹은 `next-confluence-connect.test.ts` ·
+  `next-plans.test.ts`. 모두 CI 순수 시험 목록에 있다(2026-10-19 · 2026-10-23). 준비가 정리를 부르는지는 진짜 git 을 띄우는
+  `confluence-legacy-bringup.test.ts` 가 본다 — 로컬 `pnpm test` 의 몫이다. 사본 뿌리 쓰기의 거절 이유는 `write-guard.test.ts` 가 센다. `pnpm test` 가 빌드를
   먼저 도니 src 만 고치고 바로 돌리지 않는다.
 - **눈으로 보는 확인(로컬)** — ① 사전 검증 1: 실사이트 Basic 인증과 CQL · readPage
   (`COLONOVA_DESIGN_CONFLUENCE_EMAIL/TOKEN` 을 env 로). ② 실제 루트 첫 가져오기 → 웹 뷰어에서
@@ -1601,8 +1653,8 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   서는지 본다. ④ 2026-10-19 에 더한 질의 모양 — `(id = 뿌리 OR ancestor = 뿌리)` 절과
   `expand=content.version` — 은 아직 실사이트 실측 전이다. 거절되면 증분이 바퀴마다 `기획서 가져오기 실패`
   (`stage: "search"`) 경고를 남기고 원장의 시각이 멈춘다 — 그 경고가 곧 실측의 실패 신호다.
-- **웹 뷰어(개선 패스 — 같은 날)** — 구조는 `packages/web/src/next/README.md` 의 「오른쪽 칸은 두 얼굴이다」.
-  지킬 것: ① 기획서 칸은 미리보기를 **내리지 않는다**(둘 다 마운트, 한쪽만 `.nx-offstage`) — 내리면 미리보기
+- **웹 뷰어(2026-10-18 개선 패스 · 2026-10-23 화면 전면 재설계 반영)** — 구조는 [셸 안내](../packages/web/src/next/README.md#틀)의 「세 자리」다.
+  지킬 것: ① 기획서 자리는 미리보기와 화면 대화를 **내리지 않는다**(마운트한 채 `.nx-offstage`) — 내리면 미리보기
   게스트의 스크롤 · 폼 · 핀이 사라진다. ② `doc.read` 는 Confluence 를 그 자리에서 읽어(문서 + 코멘트 + 작성자
   이름 조회) 몇 초 걸린다 — 칸이 목록의 제목 · 판으로 머리를 먼저 세우고, **늦게 온 답은 번호로 버린다**
   (문서 A 를 읽는 중 B 를 열면 A 의 답이 B 의 자리를 덮지 않게). ③ 파생 마크다운의 맨 위 머리말(`---` ·
@@ -1613,8 +1665,8 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   `useCallback([daemon])` 로 효과를 걸면 AI 가 답하는 동안(앱이 초당 여러 번 다시 그려진다) 목록 요청이 쏟아진다.
   ⑥ 눈으로 보는 견본: `dev/plans-fixture.html?case=…`(목록 · 문서 · 비었을 때 · 읽는 중 · 실패 · 만료),
   `dev/overlay-fixture.html?case=settings&state=conf-connected|conf-rooted|conf-imported|conf-expired|conf-roots|conf-fail`.
-  데몬 없이 안 보이는 것 — 미리보기가 정말 살아 있는지 · 좁은 창의 탭 이름 — 은 격리 데몬(`test/cold/smoke-daemon.sh`)에서
-  `기획서` 를 눌러 `.nx-preview` 가 마운트된 채 `nx-offstage` 인지 본다.
+  실제 셸의 상태 보존과 좁은 창의 자리 구분은 격리 데몬(`test/cold/smoke-daemon.sh`)에서
+  `기획서`를 눌러 `.nx-preview`와 화면 대화가 마운트된 채 숨는지, 화면 상태 줄과 탭이 없는지 본다.
 
 ## 기획 초안 · AI · 발행 — Confluence 쓰기(2026-10-23 · 최종 구현 계획 F1–F4)
 
@@ -1655,8 +1707,13 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   읽는 길(`open` · `get` · `list`)에서 그 초안을 `result-unknown` 으로, 의도를 `unknown` 으로 옮긴다 — 이 프로세스에서
   도는 발행(`#sending`)은 건드리지 않고, 다시 보내지 않는다(A5 · A9).
   발행 미리보기와 AI 변경안 저장도 문서 잠금 안에서 돈다.
-- **기획 AI(`draft-ai.ts`)** — Agent SDK `query`: 도구는 Read · Grep · Glob 뿐이고 PreToolUse 훅이 클론 `docs/plans/` 밖 ·
-  `..` · `~` 로 시작하는 경로 · 바깥을 가리키는 링크 · Glob 의 절대/`..`/`~` 패턴을 막는다. `settingSources: []` · `strictMcpConfig` ·
+- **기획 AI(`draft-ai.ts`)** — Agent SDK `query`: 도구는 Read · Grep · Glob 뿐이다. 읽기 뿌리는 둘이다 — 작업 폴더인 사본
+  뿌리(없으면 비어 있는 임시 폴더)와, 클론이 서 있으면 `additionalDirectories` 로 연 클론 뿌리(2026-10-23 사용자 — 화면에서
+  설계서를 끌어내는 흐름의 전제, 정본 340줄의 범위를 넓힌 결정). PreToolUse 훅은 입력의 경로 칸(`file_path` · `path` ·
+  `notebook_path`)을 모두 보고 하나라도 두 뿌리 밖 · `~` 로 시작 · 바깥을 가리키는 링크면 막는다. Glob 패턴과 Grep 의 `glob`
+  거름은 슬래시 · 중괄호 · 쉼표로 쪼갠 마디에 `..` 나 `~` 로 시작하는 마디가 있으면 막고(`{..,x}` 꼴의 우회 차단), 절대 Glob 은
+  실제 경로로 풀어 두 뿌리 안이어야 지난다(2026-10-23 검토 반영). 비밀 파일 읽기는 훅으로 막지 않는다 — 묻는 글의
+  규칙 한 줄로만 말한다(2026-10-23 사용자 「일단은」). `settingSources: []` · `strictMcpConfig` ·
   `managedSettings.allowedMcpServers: []` 로 사용자 MCP 와 계정 커넥터를 싣지 않고, 환경은 허용 목록(`draftAiEnv` — 앱
   비밀 · 과금 키가 없다)이다. 답은 `outputFormat` json_schema(`reply` · `summary` · `ops`)로 받고, `resume` 으로 대화가
   이어진다. 모델은 CLI 기본값이다. 서비스가 걸음을 다시 검사해 맞지 않는 것은 버리고(로그에는 수만), 채택 전에는 초안에
@@ -1687,15 +1744,16 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   미발행 · 개정 — 초안 본문은 싣지 않는다). 공통 규칙의 기획서 구절도 이에 맞췄다. 돌아가는 길(F3b): `draft.refs
   { sessionId }` 가 그 대화의 근거 기록을 최근 순 · 같은 근거 하나로 · 20개까지 돌려주고(`recentPlanRefs`), 화면 대화의
   입력창 위 `PlanRefStrip` 이 칩으로 보인다. 칩은 창 이벤트 `nx:plans:open`(`{ pageId }` 또는 `{ docKey }` — 초안이
-  앞선다)을 보내고 `nav.openPlans()` 로 오른쪽 칸을 바꾼다. `PlansColumn` 이 그 이벤트를 받아 문서나 초안 편집기를 연다
+  앞선다)을 보내고 `nav.openPlans()`로 기획서 자리로 간다. `PlansWorkspace`의 훅이 이벤트를 받아 문서나 초안 편집기를 연다
   (받으면 `preventDefault`). 대화가 바뀌거나 사람 말이 늘 때 다시 읽는다. 스냅샷의 절은 이름으로 찾되 양쪽을 같은
   정규화(`normalizeSectionName` — 굵게 · 기울임 · 코드 표지 · 이스케이프를 벗기고 링크는 글만, 매크로 · 첨부 자리 표시와
   토큰은 지우고 공백을 하나로)로 견주고, 하나라도 못 찾으면 문서 전체로 대신하지 않고 거절한다.
 - **문서 관리(`doc-ops.ts` · F2 휴지통 · F4)** — `doc.op.preview · trash · restore · copy · move · trashed`. 휴지통은 v2
   `DELETE /pages/{id}`(쿼리 없음 — **영구 삭제(purge) 길은 만들지 않는다**), 복제 · 이동은 v1 copy · move(append), 복구는
   휴지통 판을 `status: current` 로 갱신한다(G4 실측 전). 같은 commandId 는 한 번만 보내고, 적용 · 결과 불명 뒤에는 트리를 걷는다(`ConfluenceSync.walkNow` — 이동은
-  판을 올리지 않고 휴지통 문서는 증분에 안 잡혀서다. 걷기 표를 먼저 세우고, 도는 바퀴는 차선 밖에서 기다린 뒤 한 바퀴를
-  더 돈다 — 차선 작업 안에서 다른 바퀴를 기다리면 종류만 보는 합류 때문에 자기 자신을 기다려 차선이 멈춘다).
+  판을 올리지 않고 휴지통 문서는 증분에 안 잡혀서다. 걷기 표를 먼저 세우고, 같은 프로젝트에서 도는 바퀴가 있으면 그 in-flight
+  약속이 끝나길 기다린 뒤 한 바퀴를 더 돈다. 걷기 자신도 하나로 합류한다. 사본 이동(2026-10-23) 뒤로 가져오기는 git 차선에
+  서지 않는다 — 예전의 「차선 안에서 기다리면 자기 자신을 기다린다」 교착은 구조적으로 없다).
   로컬 초안은 지우지 않는다. 복구는 이 앱이 휴지통에 넣은 문서(`trash.json`)만 대상이다. 복제 · 이동의 들어갈 자리도
   원장의 문서 · 폴더나 뿌리여야 한다(아니면 `out-of-scope` — 원격을 두드리기 전에 막는다). 기록이 있는 commandId 가 다른
   종류 · 문서의 요청으로 오면 거절한다(코멘트도 같다).
@@ -1726,7 +1784,8 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   `dev/plans-fixture.html` — 문서를 열고 `고치기`(초안 · 대화 · 변경안), ⋯ 메뉴 · 휴지통 · 근거 보내기 · 코멘트,
   `?case=draft-conflict`(충돌 블록) · `publish-blocked` · `publish-closed` · `publish-unknown` · `op-blocked` ·
   `op-unknown` · `op-failed` · `comment-failed` · `comment-unknown`.
-- **기획자 화면 손질(2026-10-23 · [분석과 개선](planner-ux-2026-10-23.md))** — ① 오른쪽 칸의 두 얼굴: `PreviewColumn` 의
+- **기획자 화면 손질의 당시 기록(2026-10-23 · [분석과 개선](planner-ux-2026-10-23.md))** — 아래는 전면 재설계 전의 결정 기록이다. 현재 배치는 다음 항목을 따른다.
+  ① 오른쪽 칸의 두 얼굴: `PreviewColumn` 의
   뿌리가 숨을 때 `nx-offstage` 를 입는다(989ef22 에서 빠져 넓은 창의 기획서 칸이 대화 칸 아래 둘째 줄로 떨어졌다). 숨은
   미리보기는 단축키(⌘⇧P · ⌘L · Esc)도 받지 않는다. 화면을 앞에 세우는 손(화면 열기 · 찍기 켜기 · 작업 기록 열기)은 기획서가
   서 있어도 `showPane("preview")` 로 미리보기를 세운다. ② 집중 배치: 기획서 칸이 초안 편집기를 열고 닫을 때
@@ -1736,7 +1795,7 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   돌아오면 같은 모습이고, 열려 있던 팝은 접힌다(U5). 그동안 `thread` 이동(사이드바 · ⌘T · 찾기 · 알림)은 오른쪽 칸을 미리보기로 돌린다 — 비켜선 칸에 대화가
   열리지 않게. 편집기와 기획 대화는 칸 폭 820px 이상에서 나란히 서고(기획 대화는 `minmax(280px, min(34%, 400px))`)(`@container nxpl`), `.nx-pl-view--draft` 안에서 따로
   구른다 — 초안 머리는 위에 붙고(sticky) 기획 대화의 기록은 새 말을 따라 바닥으로 간다. 820px 보다 좁은 칸에서는 기획 대화가
-  칸 바닥에 붙는 판(`position: sticky; bottom: 0` · 높이 `min(40vh, 400px)`)이 된다(U3). 초안에서 근거를 담으면
+  칸 바닥에 붙는 판(`position: sticky; bottom: 0` · 높이 `min(56vh, 520px)` — 판 머리의 펼치기 단추로 문서 칸의 대부분까지)이 된다(U3 · 2026-10-24 눈 확인 Q-2 — 기록 칸이 39–79px 라 변경안을 읽을 수 없었다). 초안에서 근거를 담으면
   (`SendToScreen` 의 `onSent`) 미리보기와 화면 대화가 앞에 서고 `nx:composer:focus` 로 입력창이 초점을 받는다. ③ 처음
   `고치기`: 초안이 없는 문서는 열쇠(`draft.get` — 없는 열쇠는 거절)가 아니라 문서(`draft.open` — 그때 초안이 생긴다)로 연다.
   초안이 이미 있으면 그 열쇠로 연다(문서가 Confluence 에서 사라져도 열린다). 견본의 가짜 데몬은 아무 열쇠에나 초안을 돌려줘
@@ -1755,6 +1814,28 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   `project-fleet-confluence.test.ts`(게이트 방송 · 조립 줄)다.
   견본: `dev/plans-fixture.html`(대화 칸 자리 400px — 초안을 열면 비켜선다 · 게이트는 기본 꺼짐, `?writable=1` 은 켜짐 · 가짜
   데몬의 `draftGet` 은 없는 열쇠를 거절한다), `dev/home-fixture.html?case=plans,plans-empty`, `dev/sidebar-fixture.html?case=p`.
+- **기획서의 현재 배치(2026-10-23 화면 전면 재설계 — [ux-redesign-2026-10-23.md](ux-redesign-2026-10-23.md))** —
+  `PlansWorkspace.tsx`의 `usePlansWorkspace` · `PlansContext`가 트리 · 본문 · 팔레트의 상태를 공유한다.
+  연결한 프로젝트에서 기획서나 팔레트를 처음 열 때 목록을 읽고, 프로젝트가 바뀌면 방문 상태와 선택을 초기화한다.
+  `PlansSidebar`는 찾기 · 작성 중인 초안 다섯 개 · 트리 · 가져온 때를 놓는다. 목록 머리의 `⋯`에 가져오기 · 휴지통 ·
+  기준 문서의 외부 링크가 있다. 메뉴는 자리 이탈이나 사이드바 숨김 때 닫히고, 초점은 보이는 자리로 옮긴다.
+  접기 · 서랍 닫기는 머리의 펴기 단추로 초점을 돌린다. `PlansHeader`는 길 표시와 문서 동작을 놓고 `PlansEmpty`는 본문의 상태 안내를 그린다.
+  `initialPlanPage`는 마지막 문서 → 원장의 기준 페이지(`roots`) → 목록 첫 문서 순서로 고른다.
+  목록에 없거나 방금 휴지통에 넣은 문서는 제외하며, 목록 메뉴의 외부 링크도 같은 기준 페이지를 쓴다.
+  `selectedPlanPage`는 본문 문서나 기존 초안의 문서 줄을 선택하고, 새 문서 초안이면 트리 선택을 비운다.
+  새 초안은 작성 중인 초안 묶음의 해당 줄만 선택한다. 읽기의 Esc는 문서를 닫지 않고 트리로 초점을 옮긴다.
+  (2026-10-24 화면 전면 재설계 · S 후속 수정 2–4)
+  초안 여부와 창 폭에 관계없이 기획서 자리에는 화면 대화와 화면 상태 줄이 없다. `planDraft` · `setPlanDraft` ·
+  `StatusLine.docFocus`는 호환 계약으로 남지만 셸 배치는 이 값들로 가르지 않는다.
+  초안의 820px 기준 나란히 보기와 좁은 칸의 기획 대화 바닥 판(U1 · U3)은 그대로다.
+  문서 보기의 `PlansHeader`와 초안의 `DraftEditor`는 모두 `SendToScreen.onSent`에서 `showPane("preview")`를 부른다.
+  근거를 입력창에 붙인 뒤 `showTab("chat")`으로 대화 탭을 열고, 자리 전환 다음 프레임에 `nx:composer:focus`로
+  입력창에 초점을 준다(2026-10-24 화면 전면 재설계 · S 후속 수정 1).
+  초안 머리는 `화면에서 확인` · `발행` · `⋯`이며 `닫기` · `초안 버리기`는 더보기 안에 있다.
+  블록 손잡이는 이름이 붙은 아이콘 단추다. 변경안은 걸음별 전후 내용을 펼쳐 보이고 아래 단추 줄에서 채택한다.
+  화면 대화는 빈 화면에서 화면 작업만 안내한다. 답 안의 화면 링크는 칩이고, 근거 칩에는 문서 아이콘과 판 또는 미발행 알약이 선다.
+  홈의 `introPlans`는 삭제했고 세 걸음은 유지한다. 현재 견본은 `dev/plans-fixture.html`의 320px 트리와 본문이며,
+  `?workspace=1`은 실제 `Workspace`를 그린다. 발행 게이트의 판정과 문장은 바꾸지 않았다.
 - **화면 AI 의 Confluence 쓰기(2026-10-23 사용자 결정)** — 화면 세션은 사용자 설정(`settingSources` 의 `user`)을 싣는다.
   사용자가 스스로 설정한 Atlassian MCP · 계정 커넥터로 화면 AI 가 Confluence 에 쓰는 것은 막지 않고, 그 변경은 외부 편집으로
   가져오기 · 비교가 다룬다. 앱은 그 MCP 를 주입하지 않고 자격도 넘기지 않으며, 그 쓰기에 앱 발행의 확인 · 판 검사 · 원격 초안
@@ -1767,12 +1848,12 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   `next-doc-actions` · `next-doc-comments` · `next-plan-refs`, 데몬 `draft-refs` · `wire-error-ko`(그리고
   `confluence-sync` 의 걷기 교착 회귀 — 진짜 `GitLane` 으로 걷기와 가져오기를 엇갈려 줄 세운다) · `storage-report` · `scope-report`. 모두 순수 시험이라 CI 목록에 있다. 실사이트 · 진짜 Claude 를 부르는 시험은 없다.
 - **실측 도구(이 컴퓨터에서만 돈다 — 실제 문서를 어떤 AI 에도 보내지 않는다)** — G2 읽기 판정:
-  `pnpm build` 뒤 `node scripts/plans-g2-check.mjs <클론 또는 docs/plans> [--titles] [--json <파일>] [--only <id,…>]`.
+  `pnpm build` 뒤 `node scripts/plans-g2-check.mjs <프로젝트 폴더 또는 그 안의 confluence 폴더> [--titles] [--json <파일>] [--only <id,…>]`.
   원장의 문서마다 저장 포맷(`.storage.xml`)을 블록 엔진에 돌려 블록 종류 · 보존 전용 사유(`table:merged` · `table:nested` ·
   `list:nested` · `macro:<이름>` …) · 토큰 라벨 · 매크로 수와 세 검사(바이트 왕복 · 투영 그대로의 렌더 · 한 블록만 고친
   편집의 격리)를 숫자로만 낸다(`storage-report.ts`). 본문 글은 출력에 없고, 제목은 `--titles` 일 때만.
   G0 범위 대조: `COLONOVA_DESIGN_CONFLUENCE_EMAIL=… COLONOVA_DESIGN_CONFLUENCE_TOKEN=… node scripts/plans-g0-check.mjs
-  --site <사이트> --root <뿌리 id> [--ledger <클론>] [--json <파일>]`. 데몬과 같은 direct-children 걷기 · 뿌리로 좁힌 CQL
+  --site <사이트> --root <뿌리 id> [--ledger <프로젝트 폴더 또는 그 안의 confluence 폴더>] [--json <파일>]`. 데몬과 같은 direct-children 걷기 · 뿌리로 좁힌 CQL
   (전부를 받는 꼴) · 원장을 견주어 종류별 수, **폴더 아래 문서가 CQL 에 빠지는지**, CQL 에만 · 원장에만 있는 id, 걷기 ·
   페이지네이션의 끝을 낸다(`scope-report.ts`). 전송은 `getOnlyTransport` 로 감싸 GET 이 아닌 요청은 보내기 전에 던진다 —
   읽기만 한다. 자격은 환경 변수로만 받는다(셸 기록에 남지 않게).
@@ -1800,7 +1881,7 @@ flowchart LR
 | --- | --- |
 | `packages/protocol` | v19 선로 계약(zod 로 검증되는 클라이언트 메시지), 공유 업데이트 확인 로직(자동 확인과 설정의 버튼이 함께 쓴다), 기계가 쓴 턴을 카드로 그리게 하는 턴 마커. |
 | `packages/daemon` | 프로젝트 레지스트리, 세션, 레포 워크스페이스(clone · 턴마다의 자동 보관 · 제출의 네 단계), 감독자(`cycle-supervisor` — 관찰 → 판정 → 조치, `cycle.json` 원장과 예산을 곁들임), git 차선(`git-lane` — 쓰기 git 을 한 줄로 세움), AI 의 가드(PreToolUse 훅 — git 쓰기 · 클론 밖 파일 쓰기 · 뻔한 파괴 명령(`git-guard` · `write-guard`) — 과 `core.hooksPath` 두 겹), 개발자 알림(`developer-notice` — GitHub PR 코멘트 · 이슈가 먼저고 슬랙은 보조), 온보딩 검사와 에이전트 로그인 몰기, 자격 증명 저장, 데스크톱을 위한 정적 웹 서빙. |
-| `packages/web` | 사용자(비개발자) UI — 셸은 `src/next/`(PLAN-UI): 처음 한 번 체크리스트, 사이드바(전환기 · 다른 프로젝트 줄), 홈(큰 입력창 + 시작점 칩 + 받은 편지함), 상태 줄(여정 · 제출 확인 · 이번 작업) · 문제 문장, 대화, 미리보기(주소창 · 찍기 · 말풍선 · 작업 기록 서랍), 설정(왼쪽 목록 + 오른쪽 여섯 쪽 — 테마 포함). 사용자 문장은 `next/labels.ts` 한 곳에(아래). |
+| `packages/web` | 사용자(비개발자) UI — 셸은 `src/next/`(PLAN-UI): 처음 한 번 체크리스트, 사이드바(전환기 · 홈/기획서/화면 · 자리별 목록), 홈(기다리는 일 · 두 시작 카드 · 받은 편지함), 기획서(트리 · 문서/초안 · 기획 대화), 화면(상태 줄 · 대화 · 미리보기), 문제 문장, 설정(왼쪽 목록 + 오른쪽 여섯 쪽 — 테마 포함). 사용자 문장은 `next/labels.ts` 한 곳에(아래). |
 | `packages/desktop` | Electron 메인(데몬 in-process, safeStorage 저장소, 동반 런타임, 업데이트 브리지) + electron-builder 구성. |
 
 데몬의 클라이언트 요청은 `dispatch.ts`의 `RequestRouter`가 조립한다(2026-10-20 사용자 요청, 구조 단순화).
@@ -1863,12 +1944,12 @@ git 쓰기 하나뿐이었다. 지금의 강제는 아래가 전부다.
   그대로), 클론 안과 임시 폴더 · `..` 로 나갔다 들어온 경로 · heredoc 본문 · 따옴표 안의 `>` 는 지난다.
 - **판정은 한 함수다.** 훅과 코어의 `decidePermission`(기본 쓰기 정책 · `repoWritePolicy` · Bash 판정)이 같은
   `write-guard.ts` 를 읽는다. `repoWritePolicy` 는 클론 밖에 더는 `ask` 가 아니라 `deny` 를 돌려준다.
-- **클론 안의 예외 하나 — 기획서 폴더(2026-10-19).** 파일 쓰기 도구가 클론의 `docs/plans/`(앱이 Confluence 에서
-  가져온 읽기 전용 사본 — 「기획서 동기화」 절)를 겨누면 `PLANS_WRITE_REFUSAL` 로 거절한다. 판정은
-  `plansFolderTarget` 하나를 훅(`fileWriteVerdict`)과 코어의 편집 판정이 같이 읽는다. 셸 도구의 쓰기는 이 폴더를
-  보지 않는다 — 공통 규칙의 문서 파일 불릿 끝 구절(「Confluence 에서 가져온 기획서도 읽기만 한다」)이 그 몫이고,
-  Codex 도 그 구절뿐이다. 막는 이유: 폴더는 보관 · 제출에서 빠지므로 AI 가 고친 글은 아무 데도 가지 않고, 다음
-  세션의 AI 가 그것을 Confluence 의 글로 읽는다.
+- **기획서 사본의 거절 이유(2026-10-23).** 사본은 클론 밖(`projects/<slug>/confluence/`)이라 쓰기는 일반 규칙(클론 밖
+  거절)이 막는다. 화면 세션은 그 폴더를 `additionalDirectories` 로 함께 열어 읽으므로, 훅의 scope 에 실린 사본 뿌리
+  (`WriteScope.mirrorRoots`) 안을 겨눈 쓰기는 판정은 같고 이유만 `PLANS_WRITE_REFUSAL`(기획서 칸 · Confluence 로 안내)이다.
+  셸 쓰기 가운데 가드가 보지 않는 것은 공통 규칙의 문서 파일 불릿(「함께 열린 기획서 폴더는 … 참고로만 읽고 고치지 않는다」)
+  이 맡는다. 2026-10-19 의 「클론 안의 예외」(클론의 `docs/plans/` 쓰기 거절 · `plansFolderTarget`)는 사본 이동으로 지웠다 —
+  연결 레포의 `docs/plans/` 는 보통 레포 폴더다.
 - **예외 하나 — Claude 의 자동 메모 폴더.** 훅 입력의 `transcript_path` 옆 `memory/`(그 프로젝트의 것만)는 쓰게
   둔다. 자동 메모는 CLI 가 기본으로 켜 둔 기능이고(개발 PC 의 앱 프로젝트에 빈 폴더가 만들어져 있다) 막으면
   이유 없이 도구 줄이 `실패` 로 뜬다. 끄려면 세션 환경에 `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` — 제품 결정이라
@@ -2120,7 +2201,7 @@ pnpm bench compare bench-results/<앞>.json bench-results/<뒤>.json
 
 데몬 없이 칸 하나만 눈으로 볼 때는 `packages/web/dev/` 의 견본 페이지를 쓴다(`vite build` 에
 실리지 않는다). 상태 줄 견본은 상태(제출 전 · 만드는 중 · 개발자 확인 · 승인과 자동 검사 · 반영됨 ·
-막힘 · 중간 폭 · 좁은 창)를 한 장에 그린다 — `?sweep=1` 은 같은 상태를 막대 폭 아홉 가지로,
+막힘 · 중간 폭 · 좁은 창)를 한 장에 그린다 — `?sweep=1`은 같은 상태를 여러 막대 폭으로,
 `?theme=dark` 는 테마를 바꾼다.
 
 ```bash
@@ -2132,6 +2213,14 @@ pnpm --filter @colonova-design/web exec vite --port 29187 --strictPort
 `flex: 1 1 0` 으로 둬야 한다. `container-type: inline-size` 는 내용이 정하는 폭을 0 으로
 만들어, 내용에 맡기면 질의가 늘 가장 좁음으로 읽히고 `만드는 중` 과 앞으로 올 점의 글자가
 오류 없이 사라진다(2026-10-06 — 앞선 변경이 이렇게 나갔다). `next-status-css` 시험이 지킨다.
+
+오른쪽 범위 표시는 프로젝트 이름만 그린다. `L.journey.projectWork`와 `projectScope`의 전체 작업 문구는 `title`에 남는다.
+접힘은 이름 → 지금이 아닌 점의 글자 → 받아오기 순이며, 만드는 중에는 이름이 처음부터 없다.
+만드는 중의 넓은 창은 지금 점 글자가 받아오기보다 먼저 접힌다(`--base`일 때 오른쪽 묶음 폭 585 → 395px).
+좁은 창은 받아오기 → 지금 점 글자 순서다(550 → 455px). 시계는 좁은 창에서 숨고, 넓은 창은 묶음 폭 296px에서 접힌다.
+받아오기가 서면 `nx-project-work--base`로 이름과 점 글자의 접힘 기준을 높인다. 받아오기를 숨기는 질의는
+`.nx .nx-base-pull`로 공통 단추의 표시 규칙보다 강하게 쓴다.
+(2026-10-24 화면 전면 재설계 §4 G · RP 검토의 넓은 창 예외 반영)
 
 사이드바 견본(`dev/sidebar-fixture.html`)은 사이드바를 여덟 상태(스크린샷 그대로 · 대화 열여섯과 날짜
 묶음 · 프로젝트 여럿 · 빈 상태 · 도구의 대화만 · 홈 보기와 긴 이름 · 서랍 · 너비 조절)로 한 장에 그린다.
@@ -2161,9 +2250,15 @@ pnpm --filter @colonova-design/web exec vite --port 29187 --strictPort
 무대는 연결 서비스의 화면을 흉내 낸 것이다 — 막대와 무대가 만나는 모습만 본다. 사례 q–v(2026-10-08)는 라이브감(위 「라이브감」 절)의
 하네스(`LiveRow`)다 — 진짜 `useLiveFollow` 와 `LiveLayer` 를 마운트하고 모의 신호를 먹인다. 사례 w 는 진짜 칸(`ColumnRow`)이다.
 
+막대는 이동(`nx-pvg`) · 화면 고르기(`nx-addrwrap`) · 보기 도구(`nx-pvg--tools`) 세 묶음이다.
+조절 높이는 32px이고 기기 마디의 안쪽 단추만 28px다. 묶음 사이는 12px, 안쪽은 4px 간격이다.
+찍기는 보통 `nx-btn`이며 켜졌을 때만 `nx-btn--accent`와 눌림 상태를 쓰고, 담긴 수는 배지로 보인다.
+작업 기록은 글과 시계 아이콘이 함께 선다(2026-10-24 화면 전면 재설계 §4 F).
+
 막대는 폭(`.nx-preview` 가 `nxpv` 컨테이너다)에 따라 덜 급한 것부터 접힌다: 780px 에서 `작업 기록`의
 글자와 주소 알약의 단축키, 700 에서 배율 알약, 560 에서 찍기의 글자(숫자는 단추 모서리의 배지로 옮겨
-앉는다), 480 에서 앞으로 단추와 손의 크기, 400 에서 주소 알약의 점. 칸은 360px(`PREVIEW_MIN`)까지
+앉는다), 480에서 앞으로 단추, 400에서 주소 알약의 점이 숨는다. 조절 높이는 줄이지 않고,
+400px 이하에서 묶음 사이 간격만 8px로 줄인다(2026-10-24 화면 전면 재설계 §4 F). 칸은 360px(`PREVIEW_MIN`)까지
 좁아지므로 가장 나쁜 경우(찍기 켜짐 열두 곳 + 기록 열림 + 배율 80%)를 360–1000px 로 쓸어 넘침이
 없는지 본다. 질의 안의 선택자는 `.nx ` 로 시작해 위 규칙보다 얇지 않게 쓴다 — 얇으면 `.nx .nx-seg
 { display: flex }` 에 져서 접힘이 오류 없이 일어나지 않는다(옛 `.nx-seg { display: none }` 이 이렇게
@@ -2171,6 +2266,11 @@ pnpm --filter @colonova-design/web exec vite --port 29187 --strictPort
 질의의 이름 · 선택자 두께 · 기준 폭의 순서와 풍선의 단축키 열쇠(`APP_SHORTCUTS` 의 id)를 지킨다.
 무대가 150ms 를 넘겨 불러오면 `PreviewHost` 가 `onBusy` 로 알려 새로 고침 그림이 돈다 — 무대 가장자리의
 흐르는 선과 같은 신호다.
+
+준비 실패는 `PrepareCard`의 `nx-banner--red`와 `role="alert"`로 그린다. `ProblemLine`도 공통 `nx-banner`를 쓰며
+고치는 중은 호박색, 알렸다는 소식은 파랑, 막힘 · 다시 연결은 빨강이다. 좁은 창에서는 제목과 본문을 나누고
+본문만 두 줄 말줄임하며, 단추 줄은 아래로 내리고 비었으면 숨긴다.
+(2026-10-24 화면 전면 재설계 §4 F·G)
 
 겹판(팝업 · 모달)은 `dev/overlay-fixture.html?case=` 한 장에서 본다(위 「겹판」 절의 목록). 그 밖에 상태
 줄 견본은 `?case=` · `?submit=ready|loading|fail|changed|sendfail`(제출 확인) · `?ledger=`(이번 작업, `hook-*`

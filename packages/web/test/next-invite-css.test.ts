@@ -93,8 +93,13 @@ test("초대 확인판: 이 파일의 모든 선택자는 판의 뿌리(.nx-inv)
 });
 
 test("초대 확인판: 글자는 12px 이상이다", () => {
+  // 토큰(var(--fs-*))과 낱 px 선언을 함께 센다 — 토큰은 모두 12px 이상(2026-10-23 화면 전면 재설계 §5).
   const sizes = [...invite.matchAll(/font-size:\s*([\d.]+)px/g)].map((match) => Number(match[1]));
-  assert.ok(sizes.length > 10, `글자 크기 선언이 너무 적다: ${sizes.length}`);
+  const tokens = [...invite.matchAll(/font-size:\s*var\(--fs-[\w-]+\)/g)];
+  assert.ok(
+    sizes.length + tokens.length > 10,
+    `글자 크기 선언이 너무 적다: ${sizes.length + tokens.length}`,
+  );
   assert.deepEqual(
     sizes.filter((size) => size < 12),
     [],

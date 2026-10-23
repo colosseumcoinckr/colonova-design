@@ -229,7 +229,11 @@ export function InviteConfirm({
         <ul className="nx-inv-list">
           {copy.rows.map((row) => (
             <li key={row.repoUrl} className={`nx-inv-row nx-inv-row--${row.action}`}>
-              <span className={`nx-inv-chip nx-inv-chip--${row.action}`}>{row.chip}</span>
+              <span
+                className={`nx-pill nx-inv-chip${row.action === "add" ? " nx-pill--accent" : row.action === "update" ? " nx-pill--amber" : ""}`}
+              >
+                {row.chip}
+              </span>
               <div className="nx-inv-main">
                 <b>{row.name}</b>
                 {(row.detail ?? row.sub) && <small>{row.detail ?? row.sub}</small>}
@@ -262,6 +266,7 @@ export function InviteConfirm({
             <label htmlFor="nx-invite-author">{L.invite.authorLabel}</label>
             <input
               id="nx-invite-author"
+              className="nx-input"
               value={authorDraft}
               maxLength={80}
               onChange={(event) => setAuthorDraft(event.target.value)}

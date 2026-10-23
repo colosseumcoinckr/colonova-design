@@ -18,8 +18,8 @@
   /* 겹판의 길이 — 올라올 때는 한 박자 길게(튕김), 내려갈 때는 짧게(물러남). */
   --nx-t-in: 300ms;
   --nx-t-out: 120ms;
-  /* 판의 모양. */
-  --nx-r-panel: 14px;
+  /* 판의 모양 — 반경은 토큰(--r-xl = 16 · 2026-10-23 화면 전면 재설계 §4 I 「모달」). */
+  --nx-r-panel: var(--r-xl);
   --nx-blur: 3px;
 }
 
@@ -122,6 +122,15 @@
   outline: none;
 }
 
+/* 프로그램이 판을 열며 제목에 옮긴 초점(`tabindex="-1"` — 초대 확인판의 단계 제목) — 제목은 누르는
+   것이 아니니 고리를 그리지 않는다(2026-10-24 QA 14). 키보드로 닿는 단추 · 입력의 고리는 그대로다:
+   제목은 탭 순서에 없어(`tabindex="-1"`) 키보드가 밟을 길이 애초에 없다. */
+.nx-modal :is(h1, h2, h3)[tabindex="-1"]:focus-visible,
+.nx-set :is(h1, h2, h3)[tabindex="-1"]:focus-visible,
+.nx-pal-panel :is(h1, h2, h3)[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 .nx-modal--frame > .nx-mhd {
   position: relative;
   flex: none;
@@ -148,7 +157,7 @@
 }
 
 .nx-modal--frame .nx-mhd h2 {
-  font-size: 17px;
+  font-size: var(--fs-h3);
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.4;
@@ -156,7 +165,7 @@
 
 .nx-mhd-t p {
   margin: 3px 0 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--ink3);
 }
@@ -175,6 +184,7 @@
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 2px 24px 22px;
+  font-size: var(--fs-ui);
   background-color: var(--card);
   background-image:
     linear-gradient(var(--card) 30%, transparent), linear-gradient(transparent, var(--card) 70%),
@@ -205,6 +215,17 @@
   align-items: center;
   border-top: 1px solid var(--line);
   background: var(--card);
+}
+
+/* ── 토스트의 글자 · 단추 크기(2026-10-23 화면 전면 재설계 §4 H) — 토스트의 바탕 · 모션은 ui.css 가
+   정하고 크기만 여기서 덮는다(글 14px · 단추 28px). 이 파일이 ui.css 다음에 읽혀 같은 이름이 이긴다. */
+.nx-toast {
+  font-size: var(--fs-ui);
+}
+
+.nx .nx-toast-act {
+  height: var(--h-sm);
+  font-size: var(--fs-sm);
 }
 
 /* 동작 줄이기 — 흐림 · 떠오름 모두 곧바로 선다(next.css 의 `.nx *` 규칙이 시간을 0 으로 만들고,

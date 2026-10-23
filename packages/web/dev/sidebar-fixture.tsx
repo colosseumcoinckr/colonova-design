@@ -21,6 +21,8 @@ import type { Daemon } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
 import { L } from "../src/next/labels";
 import { useSidebarWidth } from "../src/next/lib/use-sidebar-width";
+import { PlansSidebar } from "../src/next/plans/PlansSidebar";
+import { PlansContext, usePlansWorkspace } from "../src/next/plans/PlansWorkspace";
 import { Sidebar } from "../src/next/sidebar/Sidebar";
 import type { ShellNav } from "../src/next/slots";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
@@ -173,9 +175,29 @@ interface Case {
   shell?: boolean;
   /** `기획서` 줄 끝의 작성 중인 초안 수(2026-10-23 기획자 화면 손질 D5). */
   planDrafts?: number;
+  plans?: boolean;
 }
 
 const CASES: Case[] = [
+  {
+    id: "plans",
+    label: "기획서 자리 · 트리와 작성 중인 초안",
+    plans: true,
+    projects: [
+      project("plans", "ColoNova", rowsOf(SCREENSHOT), {
+        confluence: {
+          site: "https://example.atlassian.net",
+          rootTitle: "8.8 ColoNova",
+          lastImportAt: ago(3),
+          pages: 3,
+          expired: false,
+        } as ProjectSummary["confluence"],
+      }),
+    ],
+    activeSlug: "plans",
+    rows: SCREENSHOT,
+    planDrafts: 1,
+  },
   {
     id: "a",
     label: "a · 스크린샷 그대로 — 프로젝트 하나 · 여섯 대화 · 켜진 줄 하나",
@@ -319,7 +341,7 @@ function Frame({ spec }: { spec: Case }) {
   const [activeId, setActiveId] = useState<string | null>(ACTIVE ?? spec.activeId ?? null);
   const [view, setView] = useState<"home" | "thread">(spec.view ?? "thread");
   // 기획서 줄(2026-10-18) — 오른쪽 칸이 기획서인가. 누르면 열고 한 번 더 누르면 닫으며, 홈으로 가면 닫힌다.
-  const [plansOn, setPlansOn] = useState(false);
+  const [plansOn, setPlansOn] = useState(spec.plans ?? false);
   const [slug, setSlug] = useState(spec.activeSlug);
   const [log, setLog] = useState("—");
   // 너비 조절(h) — 저장은 이 견본의 상태가 맡는다(앱에서는 설정의 layout.sidebarWidth).
@@ -372,10 +394,40 @@ function Frame({ spec }: { spec: Case }) {
       connection: "closed",
       api: {
         history: async () => [],
+        docList: async () => ({
+          docs: [
+            { pageId: "1000", title: "8.8 ColoNova", version: 12, path: "COLO/8.8 ColoNova" },
+            {
+              pageId: "1001",
+              title: "주문 취소 정책",
+              version: 3,
+              path: "COLO/8.8 ColoNova/주문 취소 정책",
+            },
+            {
+              pageId: "1002",
+              title: "주문 목록과 검색",
+              version: 7,
+              path: "COLO/8.8 ColoNova/주문 목록과 검색",
+            },
+          ],
+        }),
+        docRead: async () => ({ markdown: "# 기획서", sections: [], comments: [] }),
+        draftList: async () => [
+          {
+            docKey: "p-1001",
+            pageId: "1001",
+            title: "주문 취소 정책",
+            state: "editing",
+            changedBlocks: 2,
+            updatedAt: ago(1),
+          },
+        ],
+        confluenceImportNow: async () => ({ imported: 0, capped: false }),
         deleteSession: async () => {},
         projectUpdate: async () => {},
         projectRemove: async () => {},
       },
+      onDraftEvent: () => () => {},
       hydrate: () => {},
       ensureSession: () => {},
       hideThread: (_slug: string, id: string) => setLog(`hide ${id}`),
@@ -385,9 +437,15 @@ function Frame({ spec }: { spec: Case }) {
 
   const nav = {
     newThread: () => {
+      setPlansOn(false);
       setActiveId(null);
       setView("thread");
       setLog("새 대화");
+    },
+    openScreen: () => {
+      setView("thread");
+      setPlansOn(false);
+      setLog("화면");
     },
     goHome: () => {
       setView("home");
@@ -404,6 +462,7 @@ function Frame({ spec }: { spec: Case }) {
       setLog(`오른쪽 칸 → ${pane}`);
     },
     openThread: (_slug: string, id: string) => {
+      setPlansOn(false);
       setActiveId(id);
       setView("thread");
       setLog(`열기 ${id}`);
@@ -434,8 +493,13 @@ function Frame({ spec }: { spec: Case }) {
     setDiscardableInvitePath: () => {},
   } as unknown as ShellNav;
 
+  const plans = usePlansWorkspace({
+    daemon,
+    project: spec.projects.find((one) => one.slug === slug) ?? null,
+    active: plansOn,
+  });
   const titles = new Map(spec.rows.map((row) => [row.id, row.title]));
-  const width = spec.drawer ? 284 : spec.shell ? side.width : SIDE_W || 264;
+  const width = spec.shell ? side.width : SIDE_W || (spec.drawer ? 284 : plansOn ? 320 : 264);
   const sidebar = (
     <Sidebar
       daemon={daemon}
@@ -444,6 +508,8 @@ function Frame({ spec }: { spec: Case }) {
       view={view}
       plansOn={view === "thread" && plansOn}
       planDrafts={spec.planDrafts ?? 0}
+      running={spec.rows.some((row) => row.state === "running")}
+      plansContent={<PlansSidebar nav={nav} hidden={!plansOn} />}
       titleFor={(thread) => titles.get(thread.id) ?? thread.title}
       nav={nav}
       onPalette={() => setLog("찾기")}
@@ -455,66 +521,66 @@ function Frame({ spec }: { spec: Case }) {
   );
   const frameWidth = spec.shell ? 900 : spec.pane ? 520 : width + 2;
   return (
-    <div id={`fixture-${spec.id}`} style={{ width: frameWidth }}>
-      <div
-        style={{ font: "11.5px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}
-      >
-        {spec.label}
-        <br />→ {log}
+    <PlansContext.Provider value={plans}>
+      <div id={`fixture-${spec.id}`} style={{ width: frameWidth }}>
+        <div
+          style={{ font: "12px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}
+        >
+          {spec.label}
+          <br />→ {log}
+        </div>
+        <div
+          className={`nx${spec.drawer ? " nx--narrow nx--drawer" : ""}${side.dragging ? " nx--resizing" : ""}`}
+          style={{
+            display: "grid",
+            gridTemplateColumns: spec.shell ? undefined : "minmax(0, 1fr)",
+            height: FRAME_H,
+            width: frameWidth,
+            overflow: "hidden",
+            border: "1px dashed #8884",
+            ...({ "--nx-side-w": `${width}px` } as object),
+          }}
+        >
+          {sidebar}
+          {spec.pane && (
+            <>
+              <button
+                type="button"
+                className="nx-scrim"
+                aria-label={L.shell.closeMenu}
+                onClick={() => setLog("스크림 · 서랍 닫기")}
+              />
+              {/* 서랍이 열려 있는 동안 뒷화면은 눌리지도 초점을 받지도 않는다(셸의 `inert`). */}
+              <main
+                className="nx-main"
+                inert
+                style={{ padding: 24, font: "12px monospace", color: "#888" }}
+              >
+                본문 자리 — 서랍 뒤의 화면
+              </main>
+            </>
+          )}
+          {spec.shell && (
+            <>
+              <Splitter
+                side="left"
+                width={side.width}
+                bounds={side.bounds}
+                label={L.shell.sidebarWidth}
+                active={side.dragging}
+                {...side.split}
+              />
+              <main
+                className="nx-main"
+                style={{ padding: 24, font: "12px monospace", color: "#888" }}
+              >
+                본문 자리 — 사이드바 {side.width}px (한도 {side.bounds.min}~{side.bounds.max})
+              </main>
+            </>
+          )}
+        </div>
       </div>
-      <div
-        className={`nx${spec.drawer ? " nx--narrow nx--drawer" : ""}${side.dragging ? " nx--resizing" : ""}`}
-        style={{
-          display: "grid",
-          gridTemplateColumns: spec.shell ? undefined : "minmax(0, 1fr)",
-          height: FRAME_H,
-          width: frameWidth,
-          overflow: "hidden",
-          border: "1px dashed #8884",
-          ...(spec.shell || (SIDE_W && !spec.drawer)
-            ? ({ "--nx-side-w": `${spec.shell ? side.width : SIDE_W}px` } as object)
-            : {}),
-        }}
-      >
-        {sidebar}
-        {spec.pane && (
-          <>
-            <button
-              type="button"
-              className="nx-scrim"
-              aria-label={L.shell.closeMenu}
-              onClick={() => setLog("스크림 · 서랍 닫기")}
-            />
-            {/* 서랍이 열려 있는 동안 뒷화면은 눌리지도 초점을 받지도 않는다(셸의 `inert`). */}
-            <main
-              className="nx-main"
-              inert
-              style={{ padding: 24, font: "12px monospace", color: "#888" }}
-            >
-              본문 자리 — 서랍 뒤의 화면
-            </main>
-          </>
-        )}
-        {spec.shell && (
-          <>
-            <Splitter
-              side="left"
-              width={side.width}
-              bounds={side.bounds}
-              label={L.shell.sidebarWidth}
-              active={side.dragging}
-              {...side.split}
-            />
-            <main
-              className="nx-main"
-              style={{ padding: 24, font: "12px monospace", color: "#888" }}
-            >
-              본문 자리 — 사이드바 {side.width}px (한도 {side.bounds.min}~{side.bounds.max})
-            </main>
-          </>
-        )}
-      </div>
-    </div>
+    </PlansContext.Provider>
   );
 }
 

@@ -747,7 +747,7 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("confluence.importNow"),
   }),
   /**
-   * 기획서 목록 — 원장의 트리와 판 단계. 아직 가져온 것이 없으면 docs 가 null 이다.
+   * 기획서 목록 — 원장의 트리와 판 단계. 연결이 없으면 null, 연결됐지만 아직 가져온 것이 없으면 빈 목록이다.
    */
   z.object({
     ...withId,

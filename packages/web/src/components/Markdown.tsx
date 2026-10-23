@@ -67,6 +67,8 @@ function ChatLink({
   // 마크다운은 memo 라 칸의 등록보다 먼저 그려질 수 있고, 판정의 진짜 답은
   // 클릭 순간의 openScreenLink 가 한다(칸이 없으면 원래 길로 연다).
   const screen = href ? looksLikeScreenLink(href) : false;
+  // 화면 칩은 한 줄이라 이름을 말린다 — 전체 이름은 title 이 보태 준다(2026-10-23 화면 전면 재설계 §4 E).
+  const name = screen && typeof children === "string" ? children : null;
   return (
     <a
       href={href}
@@ -76,7 +78,7 @@ function ChatLink({
       className={
         [className, screen ? "md__screenlink" : null].filter(Boolean).join(" ") || undefined
       }
-      title={screen ? "미리보기에서 열어요" : undefined}
+      title={screen ? (name ?? "미리보기에서 열어요") : undefined}
       onClick={(event) => {
         const plain =
           event.button === 0 &&

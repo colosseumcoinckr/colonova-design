@@ -115,6 +115,7 @@ jobs:
           packages/daemon/test/submit-sent-wire.test.ts
           packages/daemon/test/github-pr-since.test.ts
           packages/daemon/test/screen-map-checked.test.ts
+          packages/daemon/test/session-dirs.test.ts
           packages/daemon/test/session-identity.test.ts
           packages/daemon/test/session-manager-close.test.ts
           packages/daemon/test/log-sanitize.test.ts
@@ -166,6 +167,7 @@ jobs:
           packages/daemon/test/confluence-client.test.ts
           packages/daemon/test/confluence-connect.test.ts
           packages/daemon/test/confluence-ledger.test.ts
+          packages/daemon/test/confluence-legacy.test.ts
           packages/daemon/test/confluence-markdown.test.ts
           packages/daemon/test/confluence-path.test.ts
           packages/daemon/test/confluence-sync.test.ts
@@ -241,6 +243,9 @@ jobs:
           packages/web/test/next-invite-css.test.ts
           packages/web/test/next-sidebar-css.test.ts
           packages/web/test/next-status-css.test.ts
+          packages/web/test/next-tokens.test.ts
+          packages/web/test/next-band-frame.test.ts
+          packages/web/test/next-empty-pin.test.ts
           packages/web/test/palette-match.test.ts
           packages/web/test/next-account-line.test.ts
           packages/web/test/next-ask-preview.test.ts

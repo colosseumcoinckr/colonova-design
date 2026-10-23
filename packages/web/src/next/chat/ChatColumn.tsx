@@ -55,6 +55,8 @@ export function ChatColumn({
   project,
   nav,
   narrow,
+  offstage = false,
+  pane = "preview",
 }: ChatColumnProps) {
   const { api, pending, resolvePending } = daemon;
   const { active, activeId } = sessions;
@@ -493,7 +495,8 @@ export function ChatColumn({
     // biome-ignore lint/a11y/noStaticElementInteractions: 칸 전체가 파일을 놓는 자리다 — 드롭은 포인터의 일이고, 키보드는 입력창의 첨부 단추로 닿는다.
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 위와 같다.
     <section
-      className={`nx-chat${dragDepth > 0 ? " nx-chat--drop" : ""}`}
+      // 비켜선 동안(집중 배치)은 `nx-offstage` 의 visibility 가 낭독과 초점에서도 칸을 뺀다.
+      className={`nx-chat${dragDepth > 0 ? " nx-chat--drop" : ""}${offstage ? " nx-offstage" : ""}`}
       onDragOver={(event) => event.preventDefault()}
       onDragEnter={(event) => {
         event.preventDefault();
@@ -526,9 +529,12 @@ export function ChatColumn({
               <p>
                 {preparing
                   ? L.transcript.emptyPreparing(project.name)
-                  : narrow
-                    ? L.transcript.emptyBodyNarrow(project.name)
-                    : L.transcript.emptyBody(project.name)}
+                  : pane === "plans"
+                    ? // 오른쪽이 기획서일 때는 그렇게 말한다 — 「실제 화면이에요」 는 틀린 말이 된다(2026-10-23 기획자 화면 손질 D7).
+                      L.transcript.emptyBodyPlans(project.name)
+                    : narrow
+                      ? L.transcript.emptyBodyNarrow(project.name)
+                      : L.transcript.emptyBody(project.name)}
               </p>
             )}
             {project && !preparing && (
@@ -536,6 +542,8 @@ export function ChatColumn({
                 type="button"
                 className="nx-btn nx-empty-pin"
                 onClick={() => {
+                  // 찍기는 미리보기 위의 일이다 — 기획서가 서 있으면 미리보기를 먼저 앞에 세운다.
+                  if (pane === "plans") nav.showPane("preview");
                   if (narrow) nav.showTab("preview");
                   window.dispatchEvent(new CustomEvent("nx:pins:toggle"));
                 }}

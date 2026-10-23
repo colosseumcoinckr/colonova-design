@@ -1,4 +1,4 @@
-import type { ThreadSummary } from "@colonova-design/protocol";
+import type { DraftSummary, ThreadSummary } from "@colonova-design/protocol";
 import { useCallback, useRef, useState } from "react";
 import type { Sessions } from "../../hooks/useSessions";
 import type { Daemon } from "../../lib/daemon-client";
@@ -9,6 +9,7 @@ import { ChevronRightIcon } from "../ui/icons";
 import { ProjectMark } from "../ui/ProjectMark";
 import { HomeComposer } from "./HomeComposer";
 import { HomeInbox } from "./HomeInbox";
+import { HomePlans } from "./HomePlans";
 import { HomeReady } from "./HomeReady";
 
 /** 끌고 온 것에 파일이 들었는가 — 글이나 링크를 끄는 손에는 덮개를 펴지 않는다. */
@@ -29,6 +30,7 @@ export function HomeView({
   nav,
   titleFor,
   ready = [],
+  drafts = null,
 }: {
   daemon: Daemon;
   sessions: Sessions;
@@ -37,6 +39,8 @@ export function HomeView({
   titleFor?: (thread: ThreadSummary) => string;
   /** 첫 준비가 끝났는데 아직 그 화면을 보지 않은 프로젝트 — `서비스가 떴어요` 줄이 선다(2026-10-07). */
   ready?: readonly string[];
+  /** 지금 프로젝트의 초안 요약 — 기획서 묶음이 읽는다. 연결 전 · 읽기 전이면 null(2026-10-23 기획자 화면 손질 D4). */
+  drafts?: DraftSummary[] | null;
 }) {
   const active = daemon.projects.find((project) => project.slug === daemon.activeSlug) ?? null;
   const author = daemon.status?.authorName?.trim();
@@ -46,6 +50,19 @@ export function HomeView({
   }, []);
   // 들어온 · 나간 짝을 세어 덮개를 편다 — 자식 위를 지날 때마다 enter/leave 가 번갈아 오므로 깊이로 센다.
   const [dragDepth, setDragDepth] = useState(0);
+  // 기획서를 연결한 프로젝트 — 안내 문장과 세 걸음이 기획의 한 바퀴를 말한다(2026-10-23 기획자 화면 손질 U4).
+  const planning = active?.confluence !== undefined;
+  const guide = planning
+    ? [
+        [L.home.guidePlan, L.home.guidePlanBody],
+        [L.home.guideBuild, L.home.guideBuildBody],
+        [L.home.guideShip, L.home.guideShipBody],
+      ]
+    : [
+        [L.home.guideAsk, L.home.guideAskBody],
+        [L.home.guideCheck, L.home.guideCheckBody],
+        [L.home.guideSubmit, L.home.guideSubmitBody],
+      ];
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: 홈 전체가 파일을 놓는 자리다 — 드롭은 포인터의 일이고, 키보드는 입력창의 첨부 단추로 닿는다.
@@ -93,7 +110,7 @@ export function HomeView({
           <h1 className="nx-greet">
             <span>{author ? L.home.greet(author) : L.transcript.emptyTitle}</span>
           </h1>
-          <p className="nx-home-sub">{L.home.intro}</p>
+          <p className="nx-home-sub">{planning ? L.home.introPlans : L.home.intro}</p>
         </div>
         <HomeComposer
           daemon={daemon}
@@ -106,32 +123,22 @@ export function HomeView({
           onOpened={nav.showThread}
           onToast={nav.toast}
         />
+        {/* 기획서를 연결한 프로젝트의 두 번째 입구 — 작성 중인 초안 · 새 문서(2026-10-23 기획자 화면 손질 D4). */}
+        {active && <HomePlans project={active} drafts={drafts} nav={nav} />}
         {active &&
           (active.threads?.length ?? 0) === 0 &&
           !active.working &&
           active.pendingCount === 0 && (
             <ol className="nx-home-guide" aria-label={L.home.guideLabel}>
-              <li>
-                <span aria-hidden="true">1</span>
-                <div>
-                  <b>{L.home.guideAsk}</b>
-                  <p>{L.home.guideAskBody}</p>
-                </div>
-              </li>
-              <li>
-                <span aria-hidden="true">2</span>
-                <div>
-                  <b>{L.home.guideCheck}</b>
-                  <p>{L.home.guideCheckBody}</p>
-                </div>
-              </li>
-              <li>
-                <span aria-hidden="true">3</span>
-                <div>
-                  <b>{L.home.guideSubmit}</b>
-                  <p>{L.home.guideSubmitBody}</p>
-                </div>
-              </li>
+              {guide.map(([head, body], at) => (
+                <li key={head}>
+                  <span aria-hidden="true">{at + 1}</span>
+                  <div>
+                    <b>{head}</b>
+                    <p>{body}</p>
+                  </div>
+                </li>
+              ))}
             </ol>
           )}
         <HomeReady

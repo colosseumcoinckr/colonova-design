@@ -21,7 +21,9 @@ import { useToday } from "./lib/use-today";
 import { daysSince } from "./lib/waiting";
 import { commentCount, outsideChanges } from "./lib/work-ledger";
 import type { NextShellProps } from "./NextShell";
+import { draftsInProgress } from "./plans/home-drafts";
 import { PlansColumn } from "./plans/PlansColumn";
+import { useDraftSummaries } from "./plans/use-draft-summaries";
 import { PreviewColumn } from "./preview/PreviewColumn";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -183,6 +185,15 @@ export function Workspace({
   // 열기 전에는 짓지 않는다: 지으면 기획서를 쓰지 않는 프로젝트도 앱을 켤 때마다 목록을 읽는다.
   const [plansMounted, setPlansMounted] = useState(false);
   if (state.pane === "plans" && !plansMounted) setPlansMounted(true);
+  // 기획서 칸이 초안 편집기를 열고 닫을 때 알리는 손 — 이동 상태(`planDraft`)에 남긴다. 칸에 건네는 손은 렌더마다 같은
+  // 것이어야 칸의 알림 효과가 매번 다시 돌지 않는다.
+  const navRef = useRef(nav);
+  navRef.current = nav;
+  const setPlanDraft = useCallback((open: boolean) => navRef.current.setPlanDraft(open), []);
+  // 지금 프로젝트의 초안 요약 — 홈의 기획서 묶음과 사이드바의 `기획서` 줄이 함께 읽는다(2026-10-23 기획자 화면 손질 D4 · D5).
+  // 기획서를 연결하지 않은 프로젝트는 읽지 않는다(null).
+  const draftSummaries = useDraftSummaries(daemon);
+  const draftsInWork = draftSummaries === null ? 0 : draftsInProgress(draftSummaries).length;
   // ⌘/ 단축키 시트(2026-10-04 ux-plan PR 2) — 팔레트 · 설정과 같은 창 문이다.
   const [sheetOpen, setSheetOpen] = useState(false);
   const keys = useRef({
@@ -295,6 +306,10 @@ export function Workspace({
     .join(" ");
   const home = state.view === "home";
   const pinCount = pins.list.length;
+  // 기획서 집중 배치(2026-10-23 기획자 화면 손질 D2) — 넓은 창에서 초안을 고치는 동안 화면 대화 칸이 비켜서고(마운트한 채
+  // 숨는다) 오른쪽 칸이 본문 폭을 다 쓴다. 문서와 기획 대화가 나란히 서고, AI 입력창은 기획 대화의 것 하나만 보인다.
+  // 기획 대화는 기획서 칸 안에 그대로 있다(정본 §12 의 2026-10-23 결정). 좁은 창은 두 탭이 같은 일을 한다.
+  const planFocus = !narrow && !home && state.pane === "plans" && state.planDraft;
 
   // 넓은 창으로 다녀오면 서랍은 닫는다 — 열어 둔 채 넓혔다 다시 좁히면 서랍이 저절로 열려 있던 것을
   // 막는다(2026-10-06 겹판 조사).
@@ -354,6 +369,7 @@ export function Workspace({
           activeSessionId={activeId}
           view={state.view}
           plansOn={state.view === "thread" && state.pane === "plans"}
+          planDrafts={draftsInWork}
           titleFor={titleForThread}
           nav={nav}
           onPalette={() => setPalette(true)}
@@ -420,6 +436,7 @@ export function Workspace({
                 nav={nav}
                 titleFor={titleForThread}
                 ready={ready}
+                drafts={draftSummaries}
               />
             </div>
           )}
@@ -428,8 +445,14 @@ export function Workspace({
               daemon={daemon}
               sessions={sessions}
               project={project}
-              title={title}
-              onRename={activeId ? (name) => onRenameSession(activeId, name) : undefined}
+              // 집중 배치에서는 화면 대화가 비켜서 있다 — 숨은 대화의 이름 대신 지금 칸의 이름을 읽기만 한다.
+              // 문서 상태와 화면 제출의 상태를 한 줄에 합치지 않는다(정본 §11) — 그동안 화면 작업 묶음은 접힌다(아래 docFocus).
+              title={planFocus ? L.plans.listHeading : title}
+              onRename={
+                !planFocus && activeId ? (name) => onRenameSession(activeId, name) : undefined
+              }
+              // 집중 배치 동안은 여정 · 받아오기 · 제출을 접는다(2026-10-23 기획자 화면 손질 U5 — 사용자 위임 · 권고 채택).
+              docFocus={planFocus}
               journey={journey}
               turnStartedAt={turnStartedAt}
               makingPhase={phase}
@@ -482,11 +505,17 @@ export function Workspace({
               className={`nx-body${drag ? " planner__body--resizing" : ""}`}
               data-tab={narrow ? state.tab : undefined}
               style={
-                narrow ? undefined : { gridTemplateColumns: `${shownChatWidth}px minmax(0, 1fr)` }
+                narrow
+                  ? undefined
+                  : {
+                      gridTemplateColumns: planFocus
+                        ? "minmax(0, 1fr)"
+                        : `${shownChatWidth}px minmax(0, 1fr)`,
+                    }
               }
             >
-              <ChatColumn {...slot} />
-              {!narrow && (
+              <ChatColumn {...slot} offstage={planFocus} pane={state.pane} />
+              {!narrow && !planFocus && (
                 <Splitter
                   side="left"
                   width={shownChatWidth}
@@ -536,6 +565,7 @@ export function Workspace({
                   project={project}
                   nav={nav}
                   offstage={home || (narrow && state.tab === "chat") || state.pane !== "plans"}
+                  onDraftOpen={setPlanDraft}
                 />
               )}
             </div>

@@ -14,7 +14,12 @@
  * 떴어요` 의 전이(토스트 · 홈 줄 · 첫 화면 사진 · 칩 이름)를 본다(2026-10-07 베타 준비 분석 · 첫 5분).
  */
 
-import type { LandedWork, ProjectSummary, ThreadSummary } from "@colonova-design/protocol";
+import type {
+  DraftSummary,
+  LandedWork,
+  ProjectSummary,
+  ThreadSummary,
+} from "@colonova-design/protocol";
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { ChipTarget, Sessions } from "../src/hooks/useSessions";
@@ -175,6 +180,8 @@ interface Case {
   look?: "ok" | "none" | "broken";
   /** 활성 프로젝트의 반영된 일(2026-10-08 · A2b) — 데몬이 `RepoStatus.landed` 로 싣는 최근 것부터의 목록. */
   landed?: LandedWork[];
+  /** 지금 프로젝트의 초안 요약 — 기획서 묶음이 읽는다(셸의 `useDraftSummaries` 자리 · 2026-10-23 D4). */
+  drafts?: DraftSummary[];
   /** 활성 프로젝트 상태(`daemon.repo`)에 얹을 것 — 승인 · 자동 검사의 신호(`handoff.approved` · `handoff.ci`)와 주의(`attention`). */
   repoExtra?: Record<string, unknown>;
 }
@@ -204,6 +211,36 @@ const requestOpen = (
   branch: "colonova-design/20261001-1",
   reviewers: ["kim"],
   ...(daysAgo === null ? {} : { since: new Date(Date.now() - daysAgo * 86_400_000).toISOString() }),
+});
+
+/** 기획서를 연결한 프로젝트의 요약(2026-10-23 기획자 화면 손질 D4) — 홈의 기획서 묶음 머리가 읽는다. */
+const CONFLUENCE: NonNullable<ProjectSummary["confluence"]> = {
+  site: "colosseum.atlassian.net",
+  connected: true,
+  expired: false,
+  rootTitle: "8.8 ColoNova",
+  lastImportAt: ago(3),
+  pages: 27,
+};
+
+/** 초안 요약 한 줄 — `min` 분 전에 고쳤다. */
+const draftOf = (
+  docKey: string,
+  pageId: string | null,
+  title: string,
+  changedBlocks: number,
+  state: DraftSummary["state"],
+  min: number,
+): DraftSummary => ({
+  docKey,
+  pageId,
+  title,
+  revision: changedBlocks + 1,
+  state,
+  changedBlocks,
+  baseVersion: pageId === null ? null : 7,
+  observedVersion: null,
+  updatedAt: ago(min),
 });
 
 /** 반영된 일 한 줄 — `daysAgo` 일 전에 병합됐다(소수 가능). */
@@ -568,6 +605,37 @@ const CASES: Case[] = [
       attention: { kind: "developer-notified", since: ago(30), via: "pr", key: "ci:12:rounds" },
     },
   },
+  {
+    id: "plans",
+    label:
+      "plans · 기획서를 연결한 프로젝트 — 기획서 묶음: 작성 중인 초안 넷(결과 확인 필요 · 새 문서 · 바뀐 곳 · 충돌)과 끝 줄, 발행을 마친 초안 · 열기만 한 초안은 서지 않는다(2026-10-23 기획자 화면 손질 D4)",
+    projects: [
+      project("colonova-cdp", "colonova-cdp", rowsOf(HISTORY.slice(0, 3)), {
+        confluence: CONFLUENCE,
+      }),
+    ],
+    activeSlug: "colonova-cdp",
+    drafts: [
+      draftOf("p-3001", "3001", "[기능설계서] 주문 목록 · 검색", 6, "result-unknown", 30),
+      draftOf("n-1", null, "[정책서] 반품 · 교환 접수", 0, "editing", 60 * 3),
+      draftOf("p-2001", "2001", "[정책서] 주문 접수", 4, "editing", 60 * 26),
+      draftOf("p-2003", "2003", "[정책서] 재고 차감과 예약", 2, "conflict", 60 * 50),
+      draftOf("p-2002", "2002", "[정책서] 주문 취소 · 부분 취소", 0, "published", 10),
+      draftOf("p-3002", "3002", "[기능설계서] 주문 상세", 0, "editing", 5),
+    ],
+  },
+  {
+    id: "plans-empty",
+    label:
+      "plans-empty · 기획서를 연결한 새 프로젝트 — 기획의 안내 문장 · 세 걸음(기획서 쓰기 → 화면 만들기 → 발행 · 제출하기), 작성 중인 초안이 없다는 한 줄(2026-10-23 U4)",
+    projects: [
+      project("colonova-cdp", "colonova-cdp", [], {
+        confluence: CONFLUENCE,
+      }),
+    ],
+    activeSlug: "colonova-cdp",
+    drafts: [],
+  },
 ];
 
 const CLAUDE_MODELS = [
@@ -667,6 +735,7 @@ function Frame({ spec }: { spec: Case }) {
     },
     showThread: () => setLog("대화 보기로 넘어감"),
     showScreen: () => setLog("작업 화면(미리보기 · 준비 진행)으로 넘어감"),
+    openPlans: () => setLog("기획서 칸으로 넘어감"),
     openProjectScreen: (next: string) => {
       setReady((list) => list.filter((entry) => entry !== next));
       setLog(`서비스 화면으로 넘어감 ${next}`);
@@ -699,7 +768,13 @@ function Frame({ spec }: { spec: Case }) {
       >
         <main className="nx-main">
           <div className="nx-view">
-            <HomeView daemon={daemon} sessions={sessions} nav={nav} ready={ready} />
+            <HomeView
+              daemon={daemon}
+              sessions={sessions}
+              nav={nav}
+              ready={ready}
+              drafts={spec.drafts ?? null}
+            />
           </div>
         </main>
       </div>

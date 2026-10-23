@@ -108,6 +108,8 @@ test("셸 이동 — 대화를 열면 서랍이 닫히고, 프로젝트가 바�
     tab: "chat",
     // 기획서 칸도 전환과 함께 닫힌다(2026-10-18 동기화 1단계 · M4).
     pane: "preview",
+    // 초안 편집기의 알림도 처음으로 — 칸이 편집기를 거두며 다시 알린다(2026-10-23 기획자 화면 손질 D2).
+    planDraft: false,
     drawer: false,
     collapsed: false,
     discardableInvitePath: null,

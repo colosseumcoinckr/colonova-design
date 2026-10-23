@@ -89,7 +89,7 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 │           초대 파일 가져오기의 컨트롤러 하나 + onboarding/InviteConfirm(확인판)
 └ Workspace ─ useSessions · usePins · useShellNav 를 한 번만 부른다
   ├ sidebar/Sidebar     새 대화 · 홈 · 기획서 · 찾기 / 전환기 / 다른 프로젝트 줄 / 대화 목록 · 도구가 한 일 / 설정
-  ├ home/HomeView       인사 · 큰 입력창(HomeComposer) + 시작점 칩(HomeStarters) · 서비스가 떴어요 줄(HomeReady) · 받은 편지함(HomeInbox) — 파일은 홈 어디에 놓아도 첨부
+  ├ home/HomeView       인사 · 큰 입력창(HomeComposer) + 시작점 칩(HomeStarters) · 기획서 묶음(HomePlans — 연결한 프로젝트만 · 작성 중인 초안 · 새 문서) · 서비스가 떴어요 줄(HomeReady) · 받은 편지함(HomeInbox) — 파일은 홈 어디에 놓아도 첨부
   └ 작업 보기(홈에서도 마운트된 채 `nx-offstage` 로 숨는다 — 미리보기 게스트가 살게)
     ├ status/StatusLine  제목 · 만드는 중 · 여정 세 점 · 제출(SubmitPopover) · 이번 작업(WorkPopover)
     ├ status/ProblemLine 문제 문장 셋 · 초대 파일 휴지통에 넣기 줄 — 대화와 미리보기에 걸친 한 줄
@@ -105,7 +105,18 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 접은 폴더가 미리보기로 갔다 와도 그대로고, 기획서를 안 쓰는 프로젝트는 앱을 켤 때 목록을 읽지 않는다. 격자(`.nx-body`)의
 직계가 숨을 때는 `.nx-body > .nx-offstage`(shell.css)가 이긴다 — 칸 자신의 규칙(`.nx-preview` 의 `position: relative`)이
 뒤에서 읽혀 숨은 칸이 격자 칸을 차지하지 않게. 칸 안의 색은 `.nx` 의 토큰(`--ink2` · `--ink3` · `--nx-hover` …)만 읽는다
-(앱에 없는 이름은 var() 의 대체 색으로 조용히 떨어져 어두운 테마에서 글자가 흐려진다).
+(앱에 없는 이름은 var() 의 대체 색으로 조용히 떨어져 어두운 테마에서 글자가 흐려진다). 숨는 칸은 **제 뿌리에** `nx-offstage` 를
+단다 — `PreviewColumn` 이 prop 만 받고 클래스를 달지 않아 넓은 창의 기획서 칸이 대화 칸 아래 둘째 줄로 떨어졌다(2026-10-23 고침).
+
+**기획서 집중 배치**(2026-10-23 기획자 화면 손질 · `docs/planner-ux-2026-10-23.md`) — 기획서 칸이 초안 편집기를 열면
+`nav.setPlanDraft(true)` 로 알린다(이동 상태 `planDraft`). 넓은 창 · 작업 보기 · `pane === "plans"` · 초안이면 `Workspace` 가
+대화 칸에 `offstage` 를 주고(마운트 유지 — 입력창 · 대화록 · 근거 첨부 받기가 산다) 격자를 한 칸(`minmax(0, 1fr)`)으로 쓰며 경계를
+거둔다. 상태 줄의 제목은 `기획서`(읽기만)이고 `docFocus` 가 화면 작업 묶음(여정 · 받아오기 · 제출)을 접는다 — 훅과 상태는
+그대로라 미리보기로 돌아오면 같은 모습이다(U5 — `제출` 이 초안 곁에서 `발행` 과 헷갈리지 않게). 칸이 820px 보다 좁으면 기획
+대화는 칸 바닥에 붙는 판이다(`draft.css` 의 sticky — U3). 그동안의 `thread` 이동은 `pane` 을 `preview` 로 돌린다
+(`lib/nav.ts` — 비켜선 칸에 대화가 열리지 않게). 문서를 읽는 중(초안 없음)이면 대화 칸은 문서 곁에 그대로 선다. 좁은 창은 두 탭이
+같은 일을 하므로 배치는 그대로다 — 다만 이동 상태는 창 폭을 모르므로, 초안이 열린 채 대화를 열면 좁은 창에서도 둘째 탭이 미리보기로
+돌아온다(초안은 `기획서` 로 다시 연다).
 
 첫 가져오기(프로젝트 0개)의 행이 모두 `새로` 면 확인판 없이 곧바로 적용하고, 첫
 프로젝트의 문제 문장 자리에 `초대 파일을 가져왔어요 — 휴지통에 넣기 · 나중에` 가 선다.

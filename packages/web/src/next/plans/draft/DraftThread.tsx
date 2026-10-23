@@ -472,6 +472,22 @@ export function DraftThread({
   // 대화의 말 — 다시 요청의 근거 찾기가 앞뒤 말을 본다(2026-10-23 화면 확인 · R2 검토 6).
   const messages = thread.thread?.messages ?? [];
 
+  // 기록이 따로 구르는 넓은 칸(집중 배치)에서는 새 말 · 도는 글이 오면 바닥을 따라간다 — 사람이 위로 굴려 읽는
+  // 중이면 붙잡지 않는다(2026-10-23 기획자 화면 손질 D2). 좁은 칸은 기록이 구르지 않아 아무 일도 없다.
+  const logRef = useRef<HTMLDivElement | null>(null);
+  const stick = useRef(true);
+  const onLogScroll = () => {
+    const log = logRef.current;
+    if (log === null) return;
+    stick.current = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+  };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 말 수 · 도는 글이 바뀔 때만 따라간다
+  useEffect(() => {
+    const log = logRef.current;
+    if (log === null || !stick.current) return;
+    log.scrollTop = log.scrollHeight;
+  }, [messages.length, thread.running, thread.streamText]);
+
   // 대화 칸의 Esc — 근거 고르기 판이 열려 있으면 그것을 접고, 아니면 아무것도 닫지 않고 제 자리에서
   // 멈춘다(칸 · 편집기의 Esc 가 물러서게). 치던 글은 남는다(2026-10-23 화면 확인 · R2 검토 8).
   const onColumnKey = (event: ReactKeyboardEvent<HTMLElement>) => {
@@ -493,6 +509,8 @@ export function DraftThread({
       <header className="nx-dr-thread-hd">
         <h3 className="nx-dr-thread-title">{L.drafts.threadTitle}</h3>
         {draft.view !== null && <span className="nx-dr-thread-target">{draft.view.title}</span>}
+        {/* 이 AI 가 무엇을 바꾸는지 입력 곁에서 말한다 — 화면 AI 와 헷갈리지 않게(정본 §6 실행 경계 · §11 첫 줄). */}
+        <p className="nx-dr-thread-scope">{L.drafts.threadScope}</p>
       </header>
       {thread.phase === "failed" ? (
         <p className="nx-dr-fail" role="alert">
@@ -508,7 +526,7 @@ export function DraftThread({
               {thread.error}
             </p>
           )}
-          <div className="nx-dr-thread-log">
+          <div className="nx-dr-thread-log" ref={logRef} onScroll={onLogScroll}>
             {thread.phase === "loading" ? (
               <p className="nx-dr-thread-empty">
                 <Spin /> {L.plans.reading}
@@ -628,7 +646,7 @@ export function DraftThread({
                 </button>
                 <button
                   type="submit"
-                  className="nx-btn nx-btn--sm"
+                  className="nx-btn nx-btn--sm nx-btn--pri"
                   disabled={thread.running || inputText.trim() === ""}
                 >
                   <SendIcon />

@@ -2,14 +2,9 @@ import type { DraftPlanRef, DraftRefEntry } from "@colonova-design/protocol";
 import { useEffect, useState } from "react";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
+import { openPlanTarget } from "../plans/open-plan";
 import type { ShellNav } from "../slots";
-import {
-  PLANS_OPEN_EVENT,
-  refChipParts,
-  refOpenTarget,
-  stashPlanOpen,
-  stripRows,
-} from "./plan-ref-strip";
+import { refChipParts, refOpenTarget, stripRows } from "./plan-ref-strip";
 import "./plan-ref-strip.css";
 
 /** 접힌 줄에 보이는 칩 수 — 나머지는 `+n` 이 펼친다. */
@@ -22,9 +17,8 @@ const chipKey = (ref: DraftPlanRef): string =>
 /**
  * 대화의 기획 근거 줄(2026-10-23 · 최종 구현 계획 F3 · 작업 F3b) — 화면 대화의 입력창 바로
  * 위(RunPlan 과 같은 층)에 이번 대화가 삼은 근거가 한 줄로 선다. 근거가 없으면 아무것도 서지
- * 않는다. 칩을 누르면 기획서 칸이 그 문서 · 초안으로 돌아간다 — 칸이 받으면(preventDefault)
- * 오른쪽 칸을 기획서로 바꾸고, 칸이 없으면(아직 마운트 전) 열기 요청을 맡겨 두고 칸을 연다
- * (2026-10-23 · R3 발견 4).
+ * 않는다. 칩을 누르면 기획서 칸이 그 문서 · 초안으로 돌아간다 — 칸이 받든(preventDefault) 칸이 없어
+ * 요청을 맡기든(아직 마운트 전 · 2026-10-23 · R3 발견 4) 오른쪽 칸을 기획서로 바꾼다(`openPlanTarget`).
  */
 export function PlanRefStrip({
   daemon,
@@ -76,18 +70,9 @@ export function PlanRefStrip({
   const { shown } = stripRows(entries, open ? entries.length : CHIPS_SHOWN);
   const foldable = entries.length - CHIPS_SHOWN;
 
-  const openRef = (ref: DraftPlanRef) => {
-    const target = refOpenTarget(ref);
-    const offer = new CustomEvent(PLANS_OPEN_EVENT, {
-      cancelable: true,
-      detail: target,
-    });
-    if (!window.dispatchEvent(offer)) return;
-    // 듣는 칸이 없다(이벤트가 취소되지 않음 — 칸은 이 세션에서 한 번 열기 전엔 마운트되지 않는다,
-    // 2026-10-23 · R3 발견 4) — 열기 요청을 맡겨 두고 칸을 연다. 칸이 마운트하며 꺼낸다.
-    stashPlanOpen(target);
-    nav.openPlans();
-  };
+  // 듣는 칸이 없으면(아직 마운트 전 — 2026-10-23 · R3 발견 4) 열기 요청을 맡겨 두고, 받았든 맡겼든 칸을 앞에 세운다.
+  // 받은 칸이 숨은 채로 남던 틈은 2026-10-23 기획자 화면 손질에서 닫았다(`openPlanTarget`).
+  const openRef = (ref: DraftPlanRef) => openPlanTarget(refOpenTarget(ref), nav);
 
   return (
     <div className="nx-pref">

@@ -171,6 +171,8 @@ interface Case {
   pane?: boolean;
   /** 사이드바 옆에 끌 수 있는 경계(Splitter)와 빈 본문을 함께 — 너비 조절을 눌러 본다. */
   shell?: boolean;
+  /** `기획서` 줄 끝의 작성 중인 초안 수(2026-10-23 기획자 화면 손질 D5). */
+  planDrafts?: number;
 }
 
 const CASES: Case[] = [
@@ -181,6 +183,15 @@ const CASES: Case[] = [
     activeSlug: "colonova-cdp",
     rows: SCREENSHOT,
     activeId: "t1",
+  },
+  {
+    id: "p",
+    label: "p · 기획서를 연결한 프로젝트 — `기획서` 줄 끝에 작성 중인 초안 수가 흐리게(초안 3)",
+    projects: [project("colonova-cdp", "colonova-cdp", rowsOf(SCREENSHOT))],
+    activeSlug: "colonova-cdp",
+    rows: SCREENSHOT,
+    activeId: "t1",
+    planDrafts: 3,
   },
   {
     id: "b",
@@ -432,6 +443,7 @@ function Frame({ spec }: { spec: Case }) {
       activeSessionId={activeId}
       view={view}
       plansOn={view === "thread" && plansOn}
+      planDrafts={spec.planDrafts ?? 0}
       titleFor={(thread) => titles.get(thread.id) ?? thread.title}
       nav={nav}
       onPalette={() => setLog("찾기")}

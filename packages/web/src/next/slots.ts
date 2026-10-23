@@ -31,6 +31,11 @@ export interface ShellNav {
   /** 기획서 칸의 돌아오는 길 — 오른쪽 칸의 얼굴을 바꾼다. */
   showPane: (pane: "preview" | "plans") => void;
   /**
+   * 기획서 칸의 초안 편집기가 열리고 닫혔다고 알린다(2026-10-23 기획자 화면 손질 D2) — 넓은 창의 집중 배치를 고르고, 그동안
+   * 대화를 열면 화면 쪽으로 돌아오게 한다(`nav.ts` 의 `planDraft`).
+   */
+  setPlanDraft: (open: boolean) => void;
+  /**
    * 프로젝트의 서비스 화면으로 — 활성이 아니면 옮긴 뒤 그 작업 화면을 연다. 첫 준비가 끝났다는 소식(토스트 · 홈 줄 · OS
    * 알림)이 부른다. 그 프로젝트의 `떴어요` 줄은 이때 거둔다.
    */
@@ -79,7 +84,15 @@ export interface SlotProps {
 }
 
 /** 대화 칸(단계 2) — 입력창 · 대화록 · 카드. 문제 문장은 셸이 상태 줄 아래에 그린다. */
-export type ChatColumnProps = SlotProps;
+export type ChatColumnProps = SlotProps & {
+  /**
+   * 기획서 집중 배치(2026-10-23 기획자 화면 손질 D2) — 넓은 창에서 초안을 고치는 동안 이 칸은 마운트한 채 비켜선다.
+   * 입력창 · 대화록의 상태는 그대로 남고, 근거 보내기의 첨부도 받는다.
+   */
+  offstage?: boolean;
+  /** 오른쪽 칸의 얼굴 — 빈 대화의 안내가 오른쪽에 무엇이 서 있는지 말한다(미리보기 · 기획서). */
+  pane?: "preview" | "plans";
+};
 
 /**
  * 미리보기 칸(단계 3 이 채운다). `onScreenName` 은 지금 화면의 제목을 셸에
@@ -117,4 +130,9 @@ export interface StatusLineProps {
   nav: ShellNav;
   /** 열린 제출 버튼을 눌렀다 — 단계 4 가 확인 팝오버로 바꾼다. 지금은 자리만. */
   onSubmit: () => void;
+  /**
+   * 기획서 집중 배치(2026-10-23 기획자 화면 손질 U5) — 초안을 고치는 동안 오른쪽의 화면 작업 묶음(여정 · 받아오기 · 제출)을
+   * 접고 제목만 남긴다. `제출` 이 초안 곁에 서면 `발행` 과 헷갈린다. 미리보기로 돌아오면 그대로 선다(상태는 살아 있다).
+   */
+  docFocus?: boolean;
 }

@@ -6,7 +6,7 @@ import { timeAgo } from "../../lib/format";
 import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
 import type { ShellNav } from "../slots";
-import { ExternalIcon, InfoIcon, Spin } from "../ui/icons";
+import { ExternalIcon, InfoIcon, PencilIcon, Spin } from "../ui/icons";
 import { DocComments } from "./comments/DocComments";
 import { DocActions } from "./doc-actions/DocActions";
 import { SendToScreen } from "./doc-actions/SendToScreen";
@@ -40,6 +40,7 @@ export function PlanDocView({
   onEdit,
   onApplied,
   onRefresh,
+  writable,
 }: {
   pageId: string;
   /** 목록이 아는 이 문서의 줄 — 목록이 아직 없으면 null. */
@@ -62,6 +63,8 @@ export function PlanDocView({
   onApplied: (result: DocOpResult) => void;
   /** 문서를 조용히 다시 읽기 — 코멘트 쓰기가 마친 뒤 답만 바꾼다(2026-10-23 · 최종 구현 계획 F4). */
   onRefresh: (pageId: string) => void;
+  /** 이 앱이 Confluence 에 쓸 수 있는가(발행 게이트) — 코멘트 절이 쓰기 전에 꺼짐을 말한다(2026-10-23 U2). */
+  writable?: boolean;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
   // 본문 덩어리 — 인라인 코멘트의 닻 단추가 듣는 자리다(2026-10-23 · 최종 구현 계획 F4).
@@ -112,11 +115,17 @@ export function PlanDocView({
               <ExternalIcon />
             </a>
           )}
-          <button type="button" className="nx-btn nx-btn--sm" onClick={() => onEdit(pageId)}>
-            {draft !== null ? L.drafts.resume : L.drafts.edit}
-          </button>
           <button type="button" className="nx-btn nx-btn--sm" onClick={() => setSendOpen(true)}>
             {L.drafts.sendToScreen}
+          </button>
+          {/* 기획자의 다음 손은 고치기다 — 으뜸 단추로 세운다(2026-10-23 기획자 화면 손질 D6). */}
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm nx-btn--pri"
+            onClick={() => onEdit(pageId)}
+          >
+            <PencilIcon />
+            {draft !== null ? L.drafts.resume : L.drafts.edit}
           </button>
           <DocActions daemon={daemon} pageId={pageId} rows={rows} onApplied={onApplied} />
         </div>
@@ -191,6 +200,7 @@ export function PlanDocView({
             comments={doc.comments}
             body={body}
             onRefresh={onRefresh}
+            writable={writable}
           />
         </>
       )}

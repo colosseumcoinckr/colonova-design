@@ -450,7 +450,8 @@ function BlockCard({
           <ConflictSide label={L.drafts.conflictTheirs} view={theirs} tokens={block.tokens} />
         </div>
       ) : (
-        <div className="nx-dr-read">
+        // 배지가 서는 블록은 글이 배지 밑으로 들어가지 않게 오른쪽을 비운다(`nx-dr-read--badged`).
+        <div className={`nx-dr-read${block.status !== "same" ? " nx-dr-read--badged" : ""}`}>
           <Markdown text={viewToMarkdown(block.view, block.tokens)} />
         </div>
       )}
@@ -591,6 +592,8 @@ export function DraftEditorSurface({
   nav,
   onClose,
   startWithAi,
+  pendingChanges,
+  writable,
 }: {
   daemon: Daemon;
   draft: DraftHand;
@@ -600,6 +603,10 @@ export function DraftEditorSurface({
   onClose: () => void;
   /** 빈 초안의 `AI 와 시작하기` — 대화 칸의 입력 칸으로 초점을 옮긴다. 대화 칸이 없으면 없다. */
   startWithAi?: () => void;
+  /** 초안 요약의 바뀐 블록 수(지움 포함) — 머리의 `아직 발행 전` 이 함께 본다. 모르면 없다. */
+  pendingChanges?: number;
+  /** 이 앱이 Confluence 에 쓸 수 있는가(발행 게이트) — 발행 단추가 누르기 전에 꺼짐을 말한다. 모르면 없다. */
+  writable?: boolean;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [addingFor, setAddingFor] = useState<string | null>(null);
@@ -738,9 +745,23 @@ export function DraftEditorSurface({
   const blocks = view.blocks;
   const locked = view.state === "publishing" || view.state === "result-unknown";
   const viewLink = site !== null && view.pageId !== null ? docUrl(site, view.pageId) : null;
+  // 머리의 한 줄 상태 — 기계의 개정 번호 대신 어디서 시작했고 무엇이 바뀌었는지를 말한다(2026-10-23 기획자
+  // 화면 손질 D3). 개정 번호는 툴팁에 남는다 — 기획 근거 칩의 `개정 N` 과 맞춰 볼 때 쓴다.
+  const changed = blocks.filter((block) => block.status === "changed").length;
+  const inserted = blocks.filter((block) => block.status === "new").length;
+  // 지운 블록은 초안에 보이지 않는다 — 요약의 수(지움 포함)와 견주어 큰 쪽으로 바뀐 곳이 있는지 본다.
+  const pending = Math.max(
+    changed + inserted + blocks.filter((block) => block.status === "conflict").length,
+    pendingChanges ?? 0,
+  );
+  const unpublished =
+    (view.state === "editing" || view.state === "conflict") &&
+    (pending > 0 || view.baseVersion === null);
   return (
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 편집기의 Esc 는 읽는 화면으로 돌아오는 길이다
     <article className="nx-dr" aria-busy={applying} onKeyDown={onEscape}>
+      {/* 머리는 두 줄이다 — 제목이 첫 줄을 다 쓰고, 상태와 단추가 둘째 줄에 선다. 단추가 제목과 한 줄을 나누면
+          제목이 낱말마다 꺾였다(2026-10-23 기획자 화면 손질 F4). */}
       <header className="nx-dr-hd">
         <div className="nx-dr-heading">
           <TitleField
@@ -749,8 +770,11 @@ export function DraftEditorSurface({
             busy={applying}
             onApply={(title) => void applyEdits([{ type: "title", title }])}
           />
-          <div className="nx-dr-meta">
-            <span>{L.drafts.meta(view.revision, view.baseVersion)}</span>
+        </div>
+        <div className="nx-dr-hd-row">
+          <div className="nx-dr-meta" title={L.drafts.meta(view.revision, view.baseVersion)}>
+            <span>{L.drafts.metaLine(view.baseVersion, changed, inserted)}</span>
+            {unpublished && <span className="nx-dr-unpub">{L.drafts.unpublished}</span>}
             {view.stage.notation !== null && (
               <span className="nx-dr-stage" title={L.drafts.stageClosed}>
                 v{view.stage.notation}
@@ -760,38 +784,43 @@ export function DraftEditorSurface({
               </span>
             )}
           </div>
-        </div>
-        <div className="nx-dr-acts-hd">
-          <button type="button" className="nx-btn nx-btn--sm" onClick={() => setSendOpen(true)}>
-            {L.drafts.sendToScreen}
-          </button>
-          <button
-            type="button"
-            className="nx-btn nx-btn--sm nx-btn--pri"
-            disabled={locked || applying}
-            onClick={() => setPublishOpen(true)}
-          >
-            {L.drafts.publish}
-          </button>
-          <button type="button" className="nx-btn nx-btn--sm" onClick={onClose}>
-            <CloseIcon />
-            {L.drafts.close}
-          </button>
-          <button
-            type="button"
-            className="nx-btn nx-btn--sm nx-btn--ghost"
-            // 결과 확인 필요 중에 버리면 남은 발행 의도를 화면에서 정리할 길이 없어진다 — 다른
-            // 손잡이와 같은 잠금이다(2026-10-23 화면 확인 · R2 검토 4).
-            disabled={locked}
-            title={locked ? L.drafts.locked : undefined}
-            onClick={() => setConfirmDiscard(true)}
-          >
-            <TrashIcon />
-            {L.drafts.discard}
-          </button>
+          <div className="nx-dr-acts-hd">
+            <button type="button" className="nx-btn nx-btn--sm" onClick={() => setSendOpen(true)}>
+              {L.drafts.sendToScreen}
+            </button>
+            {/* 발행이 꺼져 있으면(게이트) 누르기 전에 말한다 — 으뜸 단추의 옷을 벗고 `꺼짐` 이 붙는다. 눌러서 반영할
+                내용은 그대로 미리 본다(확인 창이 막는 이유를 말한다 · 2026-10-23 기획자 화면 손질 U2). */}
+            <button
+              type="button"
+              className={`nx-btn nx-btn--sm${writable === false ? "" : " nx-btn--pri"}`}
+              disabled={locked || applying}
+              title={writable === false ? L.drafts.publishOffHint : undefined}
+              onClick={() => setPublishOpen(true)}
+            >
+              {L.drafts.publish}
+              {writable === false && <span className="nx-dr-off">{L.drafts.publishOff}</span>}
+            </button>
+            <button type="button" className="nx-btn nx-btn--sm" onClick={onClose}>
+              <CloseIcon />
+              {L.drafts.close}
+            </button>
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm nx-btn--ghost"
+              // 결과 확인 필요 중에 버리면 남은 발행 의도를 화면에서 정리할 길이 없어진다 — 다른
+              // 손잡이와 같은 잠금이다(2026-10-23 화면 확인 · R2 검토 4).
+              disabled={locked}
+              title={locked ? L.drafts.locked : undefined}
+              onClick={() => setConfirmDiscard(true)}
+            >
+              <TrashIcon />
+              {L.drafts.discard}
+            </button>
+          </div>
         </div>
       </header>
-      {locked && (
+      {/* 잠금의 한 줄 — 결과 확인 필요 띠가 서면 그 띠가 함께 말한다(띠 둘이 겹쳐 서지 않게 · 2026-10-23 기획자 화면 손질). */}
+      {locked && !(view.state === "result-unknown" && view.pendingCommandId !== null) && (
         <p className="nx-dr-lock" role="status">
           {L.drafts.locked}
         </p>
@@ -803,6 +832,7 @@ export function DraftEditorSurface({
           <p className="nx-dr-band nx-dr-band--warn nx-dr-band--stack" role="status">
             <b>{L.drafts.resultUnknownTitle}</b>
             <span className="nx-dr-band-s">{L.drafts.resultUnknownBody}</span>
+            <span className="nx-dr-band-s">{L.drafts.locked}</span>
           </p>
           <div className="nx-dr-band-act">
             <button
@@ -959,6 +989,9 @@ export function DraftEditorSurface({
           target={{ docKey: view.docKey }}
           sections={headingSections(blocks)}
           isDraft
+          // 초안을 고치는 동안 화면 대화 칸은 비켜서 있다(집중 배치) — 담았으면 미리보기와 화면 대화를 앞에 세워
+          // 말을 붙여 보낼 자리를 연다(2026-10-23 기획자 화면 손질 D2). 초안은 기획서 칸에 열린 채 남는다.
+          onSent={() => nav.showPane("preview")}
           onClose={() => setSendOpen(false)}
         />
       )}
@@ -974,6 +1007,8 @@ export function DraftEditor({
   site,
   nav,
   onClose,
+  pendingChanges,
+  writable,
 }: {
   daemon: Daemon;
   /** 기존 문서 — 문서 보기의 고치기 · 이어 쓰기로 열 때. */
@@ -984,21 +1019,31 @@ export function DraftEditor({
   site: string | null;
   nav: ShellNav;
   onClose: () => void;
+  /** 초안 요약의 바뀐 블록 수(지움 포함) — 머리의 `아직 발행 전` 이 함께 본다. */
+  pendingChanges?: number;
+  /** 이 앱이 Confluence 에 쓸 수 있는가(발행 게이트 · 2026-10-23 U2). */
+  writable?: boolean;
 }) {
   const draft = useDraft(daemon, pageId !== undefined ? { pageId } : { docKey });
   // 기획 대화(2026-10-23 · 최종 구현 계획 F1) — 편집기 곁의 대화 칸. 빈 초안의 `AI 와 시작하기` 가
   // 이 입력 칸으로 초점을 옮긴다.
   const threadInputRef = useRef<HTMLTextAreaElement | null>(null);
   return (
+    // 넓은 칸에서는 문서와 기획 대화가 나란히 서서 따로 구른다 — 문서를 내려 읽어도 AI 의 입력이 바닥에 남는다
+    // (2026-10-23 기획자 화면 손질 D2 · @container nxpl). 좁은 칸에서는 위아래로 서고 칸 하나가 구른다.
     <div className="nx-dr-with">
-      <DraftEditorSurface
-        draft={draft}
-        daemon={daemon}
-        site={site}
-        nav={nav}
-        onClose={onClose}
-        startWithAi={() => threadInputRef.current?.focus()}
-      />
+      <div className="nx-dr-main">
+        <DraftEditorSurface
+          draft={draft}
+          daemon={daemon}
+          site={site}
+          nav={nav}
+          onClose={onClose}
+          startWithAi={() => threadInputRef.current?.focus()}
+          pendingChanges={pendingChanges}
+          writable={writable}
+        />
+      </div>
       <DraftThread
         daemon={daemon}
         docKey={draft.view?.docKey ?? null}

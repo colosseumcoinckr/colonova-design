@@ -1726,6 +1726,35 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   `dev/plans-fixture.html` — 문서를 열고 `고치기`(초안 · 대화 · 변경안), ⋯ 메뉴 · 휴지통 · 근거 보내기 · 코멘트,
   `?case=draft-conflict`(충돌 블록) · `publish-blocked` · `publish-closed` · `publish-unknown` · `op-blocked` ·
   `op-unknown` · `op-failed` · `comment-failed` · `comment-unknown`.
+- **기획자 화면 손질(2026-10-23 · [분석과 개선](planner-ux-2026-10-23.md))** — ① 오른쪽 칸의 두 얼굴: `PreviewColumn` 의
+  뿌리가 숨을 때 `nx-offstage` 를 입는다(989ef22 에서 빠져 넓은 창의 기획서 칸이 대화 칸 아래 둘째 줄로 떨어졌다). 숨은
+  미리보기는 단축키(⌘⇧P · ⌘L · Esc)도 받지 않는다. 화면을 앞에 세우는 손(화면 열기 · 찍기 켜기 · 작업 기록 열기)은 기획서가
+  서 있어도 `showPane("preview")` 로 미리보기를 세운다. ② 집중 배치: 기획서 칸이 초안 편집기를 열고 닫을 때
+  `nav.setPlanDraft`(이동 상태 `planDraft` · `lib/nav.ts`)로 알리고, `Workspace` 는 넓은 창 · 작업 보기 · 기획서 칸 · 초안이면
+  화면 대화 칸을 `offstage`(마운트 유지)로 비켜 세우고 격자를 한 칸으로 쓴다. 상태 줄의 제목은 `기획서` 로 읽기만 하고,
+  `StatusLine` 의 `docFocus` 가 화면 작업 묶음(여정 · 받아오기 · 제출 · 이번 작업)을 그리지 않는다 — 훅 · 상태는 살아 있어
+  돌아오면 같은 모습이고, 열려 있던 팝은 접힌다(U5). 그동안 `thread` 이동(사이드바 · ⌘T · 찾기 · 알림)은 오른쪽 칸을 미리보기로 돌린다 — 비켜선 칸에 대화가
+  열리지 않게. 편집기와 기획 대화는 칸 폭 820px 이상에서 나란히 서고(기획 대화는 `minmax(280px, min(34%, 400px))`)(`@container nxpl`), `.nx-pl-view--draft` 안에서 따로
+  구른다 — 초안 머리는 위에 붙고(sticky) 기획 대화의 기록은 새 말을 따라 바닥으로 간다. 820px 보다 좁은 칸에서는 기획 대화가
+  칸 바닥에 붙는 판(`position: sticky; bottom: 0` · 높이 `min(40vh, 400px)`)이 된다(U3). 초안에서 근거를 담으면
+  (`SendToScreen` 의 `onSent`) 미리보기와 화면 대화가 앞에 서고 `nx:composer:focus` 로 입력창이 초점을 받는다. ③ 처음
+  `고치기`: 초안이 없는 문서는 열쇠(`draft.get` — 없는 열쇠는 거절)가 아니라 문서(`draft.open` — 그때 초안이 생긴다)로 연다.
+  초안이 이미 있으면 그 열쇠로 연다(문서가 Confluence 에서 사라져도 열린다). 견본의 가짜 데몬은 아무 열쇠에나 초안을 돌려줘
+  이 틈을 가렸다. ④ 기획서 칸의 한 자리 열기는 `plans/open-plan.ts` 의 `openPlanTarget` 한 길이다(근거 칩 · 홈의 초안 줄 ·
+  홈의 `새 문서` = `{ newDoc: true }`) — 칸이 받든 맡기든 칸을 앞에 세운다(예전에는 받으면 세우지 않았다). 칸의 「프로젝트가
+  바뀌면 처음으로」 효과는 마운트 때 돌지 않는다 — StrictMode 의 두 번 실행이 맡겨 둔 열기로 막 연 자리를 지웠다. ⑤ 홈 ·
+  사이드바: `plans/use-draft-summaries.ts` 가 기획서를 연결한 프로젝트의 `draft.list`(이 컴퓨터의 초안 저장소 — Confluence 를
+  부르지 않는다)를 셸에서 한 번 읽고 `draft.changed` 에 다시 읽는다. `plans/home-drafts.ts`(순수)가 손이 더 갈 초안(새 문서 ·
+  바뀐 곳 · 충돌 · 결과 확인 필요 …, 발행을 마친 초안과 열기만 한 초안은 뺀다)을 세고, 홈의 `HomePlans` 와 사이드바 `기획서`
+  줄 끝의 `초안 N` 이 읽는다. 기획서를 연결한 프로젝트의 홈은 안내 문장 · 세 걸음도 기획의 한 바퀴로 바뀐다(`L.home.introPlans`
+  · `guidePlan` …, U4). ⑥ 발행 게이트의 방송(U2): `ProjectSummary.confluence.writable`(선택 필드 — 없으면 모른다)을
+  `ProjectFleet` 의 `confluenceWritable` 손(서버 조립이 쓰기 경로와 같은 `COLONOVA_DESIGN_CONFLUENCE_PUBLISH === "1"` 을 넘긴다)이
+  채운다. 꺼져 있으면 초안 머리의 발행 단추가 으뜸 옷을 벗고 `꺼짐` 을 달며(눌러서 반영할 내용은 그대로 미리 본다), 문서 보기의
+  코멘트 절은 「바로 남아요」 대신 쓰기 꺼짐(`L.comments.reason["publish-disabled"]`)을 쓰기 전에 말한다. 막는 것은 여전히 데몬의
+  각 쓰기 경로다. 시험은 `next-planner-ux.test.ts`(판정 · 상태 줄 · 열기 길)와 `next-plans.test.ts`(이동 상태), 데몬
+  `project-fleet-confluence.test.ts`(게이트 방송 · 조립 줄)다.
+  견본: `dev/plans-fixture.html`(대화 칸 자리 400px — 초안을 열면 비켜선다 · 게이트는 기본 꺼짐, `?writable=1` 은 켜짐 · 가짜
+  데몬의 `draftGet` 은 없는 열쇠를 거절한다), `dev/home-fixture.html?case=plans,plans-empty`, `dev/sidebar-fixture.html?case=p`.
 - **화면 AI 의 Confluence 쓰기(2026-10-23 사용자 결정)** — 화면 세션은 사용자 설정(`settingSources` 의 `user`)을 싣는다.
   사용자가 스스로 설정한 Atlassian MCP · 계정 커넥터로 화면 AI 가 Confluence 에 쓰는 것은 막지 않고, 그 변경은 외부 편집으로
   가져오기 · 비교가 다룬다. 앱은 그 MCP 를 주입하지 않고 자격도 넘기지 않으며, 그 쓰기에 앱 발행의 확인 · 판 검사 · 원격 초안

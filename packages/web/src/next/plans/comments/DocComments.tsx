@@ -58,6 +58,7 @@ export function DocComments({
   comments,
   body,
   onRefresh,
+  writable,
 }: {
   daemon: Daemon;
   pageId: string;
@@ -67,6 +68,8 @@ export function DocComments({
   body: RefObject<HTMLDivElement | null>;
   /** 조용한 다시 읽기 — 적용됨 · 모름의 다시 읽기가 부른다. */
   onRefresh: (pageId: string) => void;
+  /** 이 앱이 Confluence 에 쓸 수 있는가(발행 게이트) — 모르면 없다. 막는 것은 데몬이다. */
+  writable?: boolean;
 }) {
   const apiRef = useRef(daemon.api);
   apiRef.current = daemon.api;
@@ -338,7 +341,10 @@ export function DocComments({
         />
       )}
       {shown > 0 && <h4 className="nx-pl-comments-t">{L.plans.commentHeading(shown)}</h4>}
-      <p className="nx-pl-note">{L.plans.commentNote}</p>
+      {/* 쓰기가 꺼져 있으면(발행 게이트) 「바로 남아요」 대신 그 사실을 쓰기 전에 말한다(2026-10-23 기획자 화면 손질 U2). */}
+      <p className="nx-pl-note">
+        {writable === false ? L.comments.reason["publish-disabled"] : L.plans.commentNote}
+      </p>
       {threads.map((thread) => (
         <ul className="nx-pl-comment-list" key={thread.top.key}>
           {rowNode(thread.top, true)}

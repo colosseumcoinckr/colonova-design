@@ -15,13 +15,22 @@
   background: var(--card);
 }
 
-/* ---------- 머리 — 제목 · 한 줄 상태 · 닫기 · 버리기 ---------- */
+/* ---------- 머리 — 제목 한 줄, 그 아래 한 줄 상태와 단추(2026-10-23 기획자 화면 손질 D3) ----------
+   단추가 제목과 한 줄을 나누면 제목이 낱말마다 꺾였다 — 제목은 첫 줄을 다 쓴다. */
 .nx-dr-hd {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  display: grid;
+  gap: 8px;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--line-soft);
+}
+
+.nx-dr-hd-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+  min-width: 0;
 }
 
 .nx-dr-heading {
@@ -97,10 +106,33 @@
   color: var(--ink2);
 }
 
+/* `아직 발행 전` — 이 컴퓨터의 보관과 팀의 공식본을 가르는 조용한 알약(경고가 아니라 처지다). */
+.nx-dr-unpub {
+  padding: 1px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--bg-2);
+  color: var(--ink2);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
 .nx-dr-acts-hd {
-  flex: none;
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  margin-inline-start: auto;
+}
+
+/* 발행 단추 안의 `꺼짐` — 게이트가 꺼진 동안 누르기 전에 말한다(2026-10-23 기획자 화면 손질 U2). */
+.nx-dr-off {
+  margin-inline-start: 6px;
+  padding: 0 6px;
+  border-radius: var(--r-pill);
+  background: var(--bg-2);
+  color: var(--ink3);
+  font-size: 11.5px;
+  font-weight: 600;
 }
 
 /* 이어 보기 막대의 `초안` 표시 — 지금 문서가 아니라 그 초안을 본다는 말이다. */
@@ -445,6 +477,24 @@
   font-size: 14px;
 }
 
+/* 배지가 선 블록은 글이 배지 밑으로 들어가지 않게 오른쪽을 비운다 — 좁은 칸에서 `…따른다고침` 처럼 겹쳤다
+   (2026-10-23 기획자 화면 손질). 바뀐 블록은 왼쪽 띠로도 갈린다 — 긴 문서를 내려 훑을 때 고친 곳이 먼저 보인다. */
+.nx-dr-read--badged {
+  padding-inline-end: 52px;
+}
+
+.nx-dr-block[data-status="changed"] {
+  box-shadow: inset 3px 0 0 var(--blue);
+}
+
+.nx-dr-block[data-status="new"] {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.nx-dr-block[data-status="conflict"] {
+  box-shadow: inset 3px 0 0 var(--red);
+}
+
 /* 읽기 칸의 첫 · 끝 요소 바깥 여백을 걷는다 — 블록 사이가 블록의 여백만큼만 벌어지게(2026-10-23 화면 확인). */
 .nx-dr-read > :first-child {
   margin-top: 0;
@@ -785,9 +835,82 @@
   margin: 0;
 }
 
-@container nxpl (min-width: 1040px) {
+/*
+ * 나란히 서는 문턱은 820px 이다(2026-10-23 기획자 화면 손질 D2). 1040px 일 때는 1440 창의 오른쪽 칸(776px)에서도
+ * 기획 대화가 문서 전체 아래로 갔다. 집중 배치(화면 대화 칸이 비켜선다)와 함께 1280 창까지 나란히 선다. 기획 대화는 칸의
+ * 34%(280–400px)를 쓴다 — 문턱에서도 문서 쪽이 480px 를 넘는다(380px 고정이던 첫 판은 문턱의 문서가 354px 라 머리가 네 줄로
+ * 꺾이고 블록 손잡이가 글을 덮었다). 이때 두 쪽은 따로 구른다 — 문서를 내려 읽어도 기획 대화의 입력이 바닥에 남고, 초안
+ * 머리(제목 · 발행)가 위에 붙는다.
+ */
+@container nxpl (min-width: 820px) {
   .nx-dr-with {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+    grid-template-columns: minmax(0, 1fr) minmax(280px, min(34%, 400px));
+  }
+
+  .nx-pl-view--draft {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .nx-pl-view--draft > .nx-dr-with {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .nx-pl-view--draft .nx-dr-main {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: var(--r-lg);
+  }
+
+  .nx-pl-view--draft .nx-dr-hd {
+    position: sticky;
+    top: -12px;
+    z-index: 4;
+    margin: -22px -28px 0;
+    padding: 22px 28px 12px;
+    border-radius: var(--r-lg) var(--r-lg) 0 0;
+    background: var(--card);
+  }
+
+  .nx-pl-view--draft .nx-dr-thread {
+    min-height: 0;
+  }
+
+  .nx-pl-view--draft .nx-dr-thread-log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/*
+ * 좁은 칸(820px 미만) — 문서와 기획 대화가 위아래로 서는 동안 기획 대화는 칸 바닥에 붙는 판이 된다(2026-10-23 기획자
+ * 화면 손질 U3). 문서를 내려 읽어도 AI 의 입력이 늘 보이고, 기록은 판 안에서 구른다. 판은 칸 높이의 절반을 넘지 않는다.
+ * 문서 끝에 닿으면 판은 제 자리(문서 아래)에 앉는다.
+ */
+@container nxpl (max-width: 819px) {
+  .nx-pl-view--draft .nx-dr-thread {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    max-height: min(40vh, 400px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-shadow: 0 -10px 28px rgb(0 0 0 / 12%);
+  }
+
+  .nx-pl-view--draft .nx-dr-thread-log {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 }
 
@@ -824,6 +947,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 이 AI 가 바꾸는 것 — 머리 아래 한 줄(줄바꿈 상자의 새 줄). */
+.nx-dr-thread-scope {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ink3);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .nx-dr-thread-log {

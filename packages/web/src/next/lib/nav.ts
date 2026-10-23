@@ -13,6 +13,12 @@ export interface NavState {
    * 기획서. 기획서는 뷰어일 뿐 고치는 곳이 아니므로 셸의 한 칸으로 산다.
    */
   pane: "preview" | "plans";
+  /**
+   * 기획서 칸에 초안 편집기가 열려 있는가(2026-10-23 기획자 화면 손질 D2) — 칸이 알린다. 넓은 창에서 기획서가 앞에 서
+   * 있으면 집중 배치(화면 대화 칸이 비켜선다)다. 그동안 대화를 열면(사이드바 · ⌘T · 찾기 · 알림) 화면 쪽으로 돌아온다 —
+   * 비켜선 칸에 대화가 열리면 누른 손에 아무 일도 없어 보인다. 초안은 기획서 칸에 열린 채 남는다.
+   */
+  planDraft: boolean;
   /** 좁은 창의 사이드바 서랍이 열려 있는가(`≡` · 스크림). */
   drawer: boolean;
   /** 넓은 창의 사이드바가 접혀 있는가 — 설정에 남는 값이 씨앗이다. */
@@ -43,6 +49,8 @@ export type NavAction =
   | { type: "plans" }
   /** 오른쪽 칸의 얼굴을 바꾼다 — 기획서 칸의 돌아오는 길이 쓴다. */
   | { type: "pane"; pane: NavState["pane"] }
+  /** 기획서 칸의 초안 편집기가 열리고 닫혔다 — 칸이 알린다(2026-10-23 D2). */
+  | { type: "plan-draft"; open: boolean }
   | { type: "tab"; tab: NavState["tab"] }
   | { type: "drawer"; open: boolean }
   | { type: "collapse"; collapsed: boolean }
@@ -59,6 +67,7 @@ export function initialNav(
     view: "home",
     tab: "chat",
     pane: "preview",
+    planDraft: false,
     drawer: false,
     collapsed,
     discardableInvitePath,
@@ -72,8 +81,15 @@ export function navReducer(state: NavState, action: NavAction): NavState {
       // (미리보기)이 앞에 서야 한다. 열어 둔 문서의 기억은 기획서 칸이 쥐고 있어 다시 열면 그 자리다.
       return { ...state, view: "home", pane: "preview", drawer: false };
     case "thread":
-      // 대화를 여는 손은 서랍을 닫는다 — 좁은 창에서 고른 행이 스크림 뒤에 숨지 않게.
-      return { ...state, view: "thread", drawer: false };
+      // 대화를 여는 손은 서랍을 닫는다 — 좁은 창에서 고른 행이 스크림 뒤에 숨지 않게. 초안을 고치는 중(집중 배치)이면
+      // 화면 쪽으로 돌아온다 — 대화 칸이 비켜서 있어 연 대화가 보이지 않는다(2026-10-23 기획자 화면 손질 D2). 문서를 읽는
+      // 중이면 그대로다 — 대화 칸이 문서 곁에 서 있다.
+      return {
+        ...state,
+        view: "thread",
+        pane: state.pane === "plans" && state.planDraft ? "preview" : state.pane,
+        drawer: false,
+      };
     case "screen":
       return { ...state, view: "thread", tab: "preview", pane: "preview", drawer: false };
     case "plans":
@@ -81,6 +97,8 @@ export function navReducer(state: NavState, action: NavAction): NavState {
       return { ...state, view: "thread", tab: "preview", pane: "plans", drawer: false };
     case "pane":
       return state.pane === action.pane ? state : { ...state, pane: action.pane };
+    case "plan-draft":
+      return state.planDraft === action.open ? state : { ...state, planDraft: action.open };
     case "tab":
       return state.tab === action.tab ? state : { ...state, tab: action.tab };
     case "drawer":
@@ -94,7 +112,14 @@ export function navReducer(state: NavState, action: NavAction): NavState {
         ? state
         : { ...state, discardableInvitePath: action.path };
     case "project-changed":
-      // 기획서 칸도 닫는다 — 마지막으로 본 문서의 기억은 각 프로젝트의 몫이다.
-      return { ...state, view: "home", tab: "chat", pane: "preview", drawer: false };
+      // 기획서 칸도 닫는다 — 마지막으로 본 문서의 기억은 각 프로젝트의 몫이다(칸이 초안 편집기를 거두며 다시 알린다).
+      return {
+        ...state,
+        view: "home",
+        tab: "chat",
+        pane: "preview",
+        planDraft: false,
+        drawer: false,
+      };
   }
 }

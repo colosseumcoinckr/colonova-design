@@ -211,6 +211,7 @@ export function useShellNav({
     showScreen: () => dispatch({ type: "screen" }),
     openPlans: () => dispatch({ type: "plans" }),
     showPane: (pane) => dispatch({ type: "pane", pane }),
+    setPlanDraft: (open) => dispatch({ type: "plan-draft", open }),
     openProjectScreen: (slug) => {
       dropReady(slug);
       if (slug === daemon.activeSlug) dispatch({ type: "screen" });

@@ -69,6 +69,7 @@ export function StatusLine({
   submitCopy,
   sidebarHidden,
   onOpenSidebar,
+  docFocus = false,
 }: StatusLineProps & {
   /** 셸이 한 번 부른 `useWorkLedger` — 코멘트 · 작업 기록 · 영수증의 시각. */
   ledger: WorkLedger;
@@ -368,6 +369,13 @@ export function StatusLine({
       .finally(() => setSending(false));
   };
 
+  // 집중 배치로 들어서면 열려 있던 `이번 작업` · 제출 확인은 접는다 — 묶음이 그려지지 않는 동안 열린 채 남지 않게.
+  useEffect(() => {
+    if (!docFocus) return;
+    setWorkOpen(false);
+    setConfirmOpen(false);
+  }, [docFocus]);
+
   return (
     <header
       className={`nx-statusbar nx-cycle--${journey.cycle}${journey.blocked ? " nx-blocked" : ""}`}
@@ -384,247 +392,256 @@ export function StatusLine({
         </button>
       )}
       {!narrow && <ConvTitle key={sessions.activeId ?? "new"} title={title} onRename={onRename} />}
-      <div
-        className={`nx-anchor nx-project-work${makingState === "on" ? " nx-project-work--making" : ""}`}
-      >
-        <span className="nx-work-scope" title={L.journey.projectWork(scopeName)}>
-          <b>{scopeName}</b>
-          <span className="nx-work-scope-rest">{` · ${L.journey.projectScope}`}</span>
-        </span>
-        <button
-          ref={journeyRef}
-          type="button"
-          className={`nx-journey${makingState === "on" ? " nx-journey--making" : ""}`}
-          title={`${L.journey.projectWork(scopeName)} · ${L.journey.openWork}`}
-          aria-haspopup="dialog"
-          aria-expanded={workOpen}
-          aria-label={workName}
-          onClick={() => {
-            if (!workOpen) ledger.refresh();
-            setConfirmOpen(false);
-            setWorkOpen((open) => !open);
-          }}
-        >
-          <span
-            className={`nx-making${makingState === "off" ? " nx-making--off" : ""}`}
-            aria-hidden="true"
+      {/* 집중 배치(초안을 고치는 동안)에는 화면 작업 묶음을 접는다 — `제출` 이 초안 곁에서 `발행` 과 헷갈리지 않게
+          (2026-10-23 기획자 화면 손질 U5). 훅과 상태는 그대로라 돌아오면 같은 모습이다. */}
+      {!docFocus && (
+        <>
+          <div
+            className={`nx-anchor nx-project-work${makingState === "on" ? " nx-project-work--making" : ""}`}
           >
-            <span className="nx-making-in">
-              {makingState === "check" ? (
-                <span className="nx-making-check">
-                  <SentIcon />
-                </span>
-              ) : makingState === "on" ? (
-                <Spin />
-              ) : null}
-              <RollingWord text={makingText} />
-              {makingState === "on" && turnStartedAt !== null && !narrow && (
-                <Elapsed
-                  startedAt={turnStartedAt}
-                  hintAfterMs={firstTurn ? FIRST_TURN_HINT_MS : undefined}
-                  hint={firstTurn ? L.journey.firstTurnHint : undefined}
-                />
-              )}
+            <span className="nx-work-scope" title={L.journey.projectWork(scopeName)}>
+              <b>{scopeName}</b>
+              <span className="nx-work-scope-rest">{` · ${L.journey.projectScope}`}</span>
             </span>
-          </span>
-          {journey.points.map((point, index) => {
-            // 성공 이야기의 둘째 점 — 지금 점이 되기 전에 잠깐 켜진다.
-            const storyLit = story === "point" && index === 1;
-            const pulsing = index === (pulseAt ?? -1) || storyLit;
-            return (
-              // biome-ignore lint/suspicious/noArrayIndexKey: 점의 자리가 곧 정체다 — 글자를 key 로 쓰면 국면이 바뀔 때 점이 버려져 전환이 끊긴다.
-              <span key={index} className="nx-jwrap" aria-hidden="true">
-                {index > 0 && (
-                  <span
-                    className={`nx-jbar${
-                      journey.points[index - 1]?.state === "done" || (story !== null && index === 1)
-                        ? " nx-jbar--full"
-                        : ""
-                    }`}
-                  />
-                )}
-                <span
-                  className={`nx-jstep nx-jstep--${point.state}${storyLit ? " nx-jstep--lit" : ""}${pulsing ? " nx-jstep--pulse" : ""}${narrow && index !== journey.current ? " nx-jstep--bare" : ""}`}
-                >
-                  {/* 지난 점은 채움 차이에 그치지 않게 점 안에 체크를 새긴다 —
-                      저대비 테마에서도 모양으로 남는다(2026-10-04 ux-review). */}
-                  <i aria-hidden="true">{point.state === "done" && <SentIcon />}</i>
-                  {(!narrow || index === journey.current) && (
-                    <span className="nx-jl" key={point.label}>
-                      {point.label}
+            <button
+              ref={journeyRef}
+              type="button"
+              className={`nx-journey${makingState === "on" ? " nx-journey--making" : ""}`}
+              title={`${L.journey.projectWork(scopeName)} · ${L.journey.openWork}`}
+              aria-haspopup="dialog"
+              aria-expanded={workOpen}
+              aria-label={workName}
+              onClick={() => {
+                if (!workOpen) ledger.refresh();
+                setConfirmOpen(false);
+                setWorkOpen((open) => !open);
+              }}
+            >
+              <span
+                className={`nx-making${makingState === "off" ? " nx-making--off" : ""}`}
+                aria-hidden="true"
+              >
+                <span className="nx-making-in">
+                  {makingState === "check" ? (
+                    <span className="nx-making-check">
+                      <SentIcon />
                     </span>
+                  ) : makingState === "on" ? (
+                    <Spin />
+                  ) : null}
+                  <RollingWord text={makingText} />
+                  {makingState === "on" && turnStartedAt !== null && !narrow && (
+                    <Elapsed
+                      startedAt={turnStartedAt}
+                      hintAfterMs={firstTurn ? FIRST_TURN_HINT_MS : undefined}
+                      hint={firstTurn ? L.journey.firstTurnHint : undefined}
+                    />
                   )}
                 </span>
               </span>
-            );
-          })}
-        </button>
-        {(baseRow.kind === "ready" || baseRow.kind === "pulling" || baseRow.kind === "waiting") && (
-          <button
-            type="button"
-            className="nx-btn nx-btn--sm nx-base-pull"
-            title={
-              baseRow.kind === "ready"
-                ? L.work.baseChipTitle(baseRow.behind)
-                : baseRow.kind === "waiting"
-                  ? L.work.baseWaiting
-                  : L.work.basePulling
-            }
-            disabled={baseRow.kind !== "ready" || baseAsking}
-            onClick={refreshBase}
-          >
-            {baseRow.kind === "ready" ? (
-              L.work.basePullCount(baseRow.behind)
-            ) : (
-              <>
-                <Spin />
-                {baseRow.kind === "waiting" ? L.work.basePull : L.work.basePulling}
-              </>
+              {journey.points.map((point, index) => {
+                // 성공 이야기의 둘째 점 — 지금 점이 되기 전에 잠깐 켜진다.
+                const storyLit = story === "point" && index === 1;
+                const pulsing = index === (pulseAt ?? -1) || storyLit;
+                return (
+                  // biome-ignore lint/suspicious/noArrayIndexKey: 점의 자리가 곧 정체다 — 글자를 key 로 쓰면 국면이 바뀔 때 점이 버려져 전환이 끊긴다.
+                  <span key={index} className="nx-jwrap" aria-hidden="true">
+                    {index > 0 && (
+                      <span
+                        className={`nx-jbar${
+                          journey.points[index - 1]?.state === "done" ||
+                          (story !== null && index === 1)
+                            ? " nx-jbar--full"
+                            : ""
+                        }`}
+                      />
+                    )}
+                    <span
+                      className={`nx-jstep nx-jstep--${point.state}${storyLit ? " nx-jstep--lit" : ""}${pulsing ? " nx-jstep--pulse" : ""}${narrow && index !== journey.current ? " nx-jstep--bare" : ""}`}
+                    >
+                      {/* 지난 점은 채움 차이에 그치지 않게 점 안에 체크를 새긴다 —
+                      저대비 테마에서도 모양으로 남는다(2026-10-04 ux-review). */}
+                      <i aria-hidden="true">{point.state === "done" && <SentIcon />}</i>
+                      {(!narrow || index === journey.current) && (
+                        <span className="nx-jl" key={point.label}>
+                          {point.label}
+                        </span>
+                      )}
+                    </span>
+                  </span>
+                );
+              })}
+            </button>
+            {(baseRow.kind === "ready" ||
+              baseRow.kind === "pulling" ||
+              baseRow.kind === "waiting") && (
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm nx-base-pull"
+                title={
+                  baseRow.kind === "ready"
+                    ? L.work.baseChipTitle(baseRow.behind)
+                    : baseRow.kind === "waiting"
+                      ? L.work.baseWaiting
+                      : L.work.basePulling
+                }
+                disabled={baseRow.kind !== "ready" || baseAsking}
+                onClick={refreshBase}
+              >
+                {baseRow.kind === "ready" ? (
+                  L.work.basePullCount(baseRow.behind)
+                ) : (
+                  <>
+                    <Spin />
+                    {baseRow.kind === "waiting" ? L.work.basePull : L.work.basePulling}
+                  </>
+                )}
+              </button>
             )}
-          </button>
-        )}
-        {/* 보이지 않는 낭독 칸 — 점의 글자가 바뀔 때만 소리를 낸다. */}
-        <span className="nx-sr" role="status">
-          {announce}
-        </span>
-        {workOpen && (
-          <WorkPopover
-            anchor={journeyRef}
-            journey={journey}
-            project={project}
-            repo={daemon.repo}
-            ledger={ledger}
-            author={daemon.status?.authorName ?? null}
-            since={submitCopy.lastAt}
-            noteDraft={workNote}
-            onNoteDraft={setWorkNote}
-            onNote={async (text) => {
-              await daemon.api.noteToDeveloper(text);
-            }}
-            onWithdraw={async () => {
-              await daemon.api.withdrawSubmission();
-            }}
-            baseRow={baseRow}
-            baseAsking={baseAsking}
-            onRefreshBase={refreshBase}
-            onOpenScreen={openScreen}
-            onToast={nav.toast}
-            onClose={() => setWorkOpen(false)}
-          />
-        )}
-      </div>
-      <div className="nx-anchor">
-        <button
-          ref={submitRef}
-          type="button"
-          className={`nx-submit${
-            flash === "done"
-              ? " nx-submit--sent"
-              : flash === "failed"
-                ? redOn
-                  ? " nx-submit--failed"
-                  : " nx-submit--shaking"
-                : busy
-                  ? " nx-submit--busy"
-                  : submit.enabled
-                    ? ""
-                    : " nx-submit--locked"
-          }`}
-          // 말풍선이 떠 있는 동안은 같은 문장이 툴팁으로 또 뜨지 않게 뺀다.
-          title={why ? undefined : submit.reason}
-          aria-disabled={!submit.enabled || busy !== null}
-          aria-describedby={why ? "nx-submit-why" : undefined}
-          aria-haspopup="dialog"
-          aria-expanded={confirmOpen}
-          aria-busy={busy !== null || undefined}
-          aria-live="polite"
-          onFocus={() => {
-            // 제출이 막 끝났다면 닫히는 판이 돌려주는 초점이다 — 잠긴 이유를 `제출됐어요` 위에 띄우지 않는다.
-            if (Date.now() < quietUntil.current) return;
-            // 잠긴 채로 닿아도 이유가 서고, 포커스가 머무는 동안 사라지지 않는다.
-            if (!submit.enabled) {
-              setWhyHeld(true);
-              setWhyLive(false);
-              setWhy(submit.reason);
-            }
-          }}
-          onBlur={() => setWhyHeld(false)}
-          onClick={() => {
-            if (busy || flash === "done") return;
-            if (!submit.enabled) {
-              setConfirmOpen(false);
-              setWhyLive(true);
-              setWhy(submit.reason);
-              return;
-            }
-            setWhy(null);
-            setWorkOpen(false);
-            if (!confirmOpen) loadSubmission();
-            setConfirmOpen((open) => !open);
-          }}
-        >
-          {/* 다섯 얼굴을 한 자리에 겹쳐 둔다 — 단추 폭이 가장 넓은 얼굴에 맞아
+            {/* 보이지 않는 낭독 칸 — 점의 글자가 바뀔 때만 소리를 낸다. */}
+            <span className="nx-sr" role="status">
+              {announce}
+            </span>
+            {workOpen && (
+              <WorkPopover
+                anchor={journeyRef}
+                journey={journey}
+                project={project}
+                repo={daemon.repo}
+                ledger={ledger}
+                author={daemon.status?.authorName ?? null}
+                since={submitCopy.lastAt}
+                noteDraft={workNote}
+                onNoteDraft={setWorkNote}
+                onNote={async (text) => {
+                  await daemon.api.noteToDeveloper(text);
+                }}
+                onWithdraw={async () => {
+                  await daemon.api.withdrawSubmission();
+                }}
+                baseRow={baseRow}
+                baseAsking={baseAsking}
+                onRefreshBase={refreshBase}
+                onOpenScreen={openScreen}
+                onToast={nav.toast}
+                onClose={() => setWorkOpen(false)}
+              />
+            )}
+          </div>
+          <div className="nx-anchor">
+            <button
+              ref={submitRef}
+              type="button"
+              className={`nx-submit${
+                flash === "done"
+                  ? " nx-submit--sent"
+                  : flash === "failed"
+                    ? redOn
+                      ? " nx-submit--failed"
+                      : " nx-submit--shaking"
+                    : busy
+                      ? " nx-submit--busy"
+                      : submit.enabled
+                        ? ""
+                        : " nx-submit--locked"
+              }`}
+              // 말풍선이 떠 있는 동안은 같은 문장이 툴팁으로 또 뜨지 않게 뺀다.
+              title={why ? undefined : submit.reason}
+              aria-disabled={!submit.enabled || busy !== null}
+              aria-describedby={why ? "nx-submit-why" : undefined}
+              aria-haspopup="dialog"
+              aria-expanded={confirmOpen}
+              aria-busy={busy !== null || undefined}
+              aria-live="polite"
+              onFocus={() => {
+                // 제출이 막 끝났다면 닫히는 판이 돌려주는 초점이다 — 잠긴 이유를 `제출됐어요` 위에 띄우지 않는다.
+                if (Date.now() < quietUntil.current) return;
+                // 잠긴 채로 닿아도 이유가 서고, 포커스가 머무는 동안 사라지지 않는다.
+                if (!submit.enabled) {
+                  setWhyHeld(true);
+                  setWhyLive(false);
+                  setWhy(submit.reason);
+                }
+              }}
+              onBlur={() => setWhyHeld(false)}
+              onClick={() => {
+                if (busy || flash === "done") return;
+                if (!submit.enabled) {
+                  setConfirmOpen(false);
+                  setWhyLive(true);
+                  setWhy(submit.reason);
+                  return;
+                }
+                setWhy(null);
+                setWorkOpen(false);
+                if (!confirmOpen) loadSubmission();
+                setConfirmOpen((open) => !open);
+              }}
+            >
+              {/* 다섯 얼굴을 한 자리에 겹쳐 둔다 — 단추 폭이 가장 넓은 얼굴에 맞아
               고정되고, 얼굴은 150ms 교차 페이드로 갈아입는다(왼쪽 여정이 밀리지
               않게). 잠긴 얼굴은 쉬는 얼굴과 같은 글자다. 갈아입은 결판은 살아있는 영역이 소리로도 흐른다. */}
-          <span className="nx-submit-face" aria-hidden={busy !== null || flash !== null}>
-            {L.submit.idle}
-          </span>
-          <span className="nx-submit-face" aria-hidden={busy !== "running"}>
-            <Spin />
-            {L.submit.running}
-          </span>
-          <span className="nx-submit-face" aria-hidden={busy !== "retrying"}>
-            <Spin />
-            {L.submit.retrying}
-          </span>
-          <span className="nx-submit-face" aria-hidden={flash !== "done"}>
-            <DrawnCheck />
-            {L.submit.done}
-          </span>
-          <span className="nx-submit-face" aria-hidden={flash !== "failed"}>
-            <FailIcon />
-            {submitCopy.label}
-          </span>
-        </button>
-        {confirmOpen && (
-          <SubmitPopover
-            anchor={submitRef}
-            journey={journey}
-            snapshot={snapshot}
-            projectName={project?.name ?? L.sidebar.brand}
-            loading={reviewLoading}
-            readFailed={readFailed}
-            sendFailed={sendError === "failed"}
-            busy={sending}
-            changed={reviewChanged}
-            lockReason={submit.enabled ? null : submit.reason}
-            since={submitCopy.lastAt}
-            loadDraft={() => daemon.api.handoffDraft()}
-            openTitle={daemon.repo?.handoff?.title ?? null}
-            leaveToken={leaveToken}
-            onRefresh={loadSubmission}
-            reviewers={reviewers}
-            onClose={() => {
-              setConfirmOpen(false);
-              // 스크림을 눌러 닫으면 누름의 기본 동작이 초점을 허공으로 옮긴다 — 열었던 단추로 되돌린다.
-              if (document.activeElement === document.body) submitRef.current?.focus();
-            }}
-            onConfirm={send}
-            note={noteDraft.key === noteKey ? noteDraft.text : ""}
-            onNote={setNote}
-            onPreview={(screen) => {
-              setConfirmOpen(false);
-              openScreen(screen);
-            }}
-          />
-        )}
-        {why && (
-          <div id="nx-submit-why" className="nx-why" role={whyLive ? "status" : undefined}>
-            <LockIcon />
-            <span>{why}</span>
+              <span className="nx-submit-face" aria-hidden={busy !== null || flash !== null}>
+                {L.submit.idle}
+              </span>
+              <span className="nx-submit-face" aria-hidden={busy !== "running"}>
+                <Spin />
+                {L.submit.running}
+              </span>
+              <span className="nx-submit-face" aria-hidden={busy !== "retrying"}>
+                <Spin />
+                {L.submit.retrying}
+              </span>
+              <span className="nx-submit-face" aria-hidden={flash !== "done"}>
+                <DrawnCheck />
+                {L.submit.done}
+              </span>
+              <span className="nx-submit-face" aria-hidden={flash !== "failed"}>
+                <FailIcon />
+                {submitCopy.label}
+              </span>
+            </button>
+            {confirmOpen && (
+              <SubmitPopover
+                anchor={submitRef}
+                journey={journey}
+                snapshot={snapshot}
+                projectName={project?.name ?? L.sidebar.brand}
+                loading={reviewLoading}
+                readFailed={readFailed}
+                sendFailed={sendError === "failed"}
+                busy={sending}
+                changed={reviewChanged}
+                lockReason={submit.enabled ? null : submit.reason}
+                since={submitCopy.lastAt}
+                loadDraft={() => daemon.api.handoffDraft()}
+                openTitle={daemon.repo?.handoff?.title ?? null}
+                leaveToken={leaveToken}
+                onRefresh={loadSubmission}
+                reviewers={reviewers}
+                onClose={() => {
+                  setConfirmOpen(false);
+                  // 스크림을 눌러 닫으면 누름의 기본 동작이 초점을 허공으로 옮긴다 — 열었던 단추로 되돌린다.
+                  if (document.activeElement === document.body) submitRef.current?.focus();
+                }}
+                onConfirm={send}
+                note={noteDraft.key === noteKey ? noteDraft.text : ""}
+                onNote={setNote}
+                onPreview={(screen) => {
+                  setConfirmOpen(false);
+                  openScreen(screen);
+                }}
+              />
+            )}
+            {why && (
+              <div id="nx-submit-why" className="nx-why" role={whyLive ? "status" : undefined}>
+                <LockIcon />
+                <span>{why}</span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
+        </>
+      )}
     </header>
   );
 }

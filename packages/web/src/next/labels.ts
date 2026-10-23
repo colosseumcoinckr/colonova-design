@@ -168,6 +168,12 @@ export const L = {
     moreProjects: (n: number) => `프로젝트 ${n}개 더 보기`,
     /** 맨 위 `새 대화 · 홈 · 찾기` 줄들의 이름 — 대화 목록(`convs`)과 갈리는 내비게이션이다. */
     nav: "바로 가기",
+    /**
+     * `기획서` 줄 끝의 흐린 글 — 작성 중인 초안 수(2026-10-23 기획자 화면 손질 D5). 답을 기다리는 수(배지)와 달리 급한 일이
+     * 아니라 이어 쓸 일이라 배지로 세우지 않는다. 낭독은 `plansDraftsAria` 가 한다.
+     */
+    plansDrafts: (n: number) => `초안 ${n}`,
+    plansDraftsAria: (n: number) => `기획서 · 작성 중인 초안 ${n}개`,
   },
   /** 사이클 상태의 한 단어 — 사이드바 · 전환기 · 팔레트가 함께 쓴다. */
   cycle: {
@@ -179,6 +185,17 @@ export const L = {
     workspace: "현재 프로젝트",
     openScreen: "화면 열기",
     intro: "원하는 변경을 말하고, 실제 화면에서 확인하세요.",
+    /**
+     * 기획서를 연결한 프로젝트의 홈(2026-10-23 기획자 화면 손질 U4 · 사용자 위임 · 권고 채택) — 화면 작업과 함께 기획서를
+     * 부른다. 세 걸음도 기획의 한 바퀴(정본 §1)다. 연결하지 않은 프로젝트는 위의 화면 작업 문장 그대로다.
+     */
+    introPlans: "원하는 변경을 말하고 실제 화면에서 확인하세요. 기획서는 아래에서 AI 와 함께 써요.",
+    guidePlan: "기획서 쓰기",
+    guidePlanBody: "AI 와 정책 · 기능을 정해요",
+    guideBuild: "화면 만들기",
+    guideBuildBody: "기획서를 근거로 실제 화면을 고쳐요",
+    guideShip: "발행 · 제출하기",
+    guideShipBody: "문서는 Confluence 에, 화면은 개발자에게",
     guideLabel: "작업 순서",
     guideAsk: "원하는 변경 말하기",
     guideAskBody: "말·그림·문서로 요청해요",
@@ -240,6 +257,19 @@ export const L = {
     },
     /** 파일을 끌어 홈 위에 올렸을 때 입력창을 덮는 한 줄. */
     dropHere: "여기에 놓으면 첨부돼요",
+    // ── 홈의 기획서 묶음(2026-10-23 기획자 화면 손질 D4) — 기획서를 연결한 프로젝트의 홈에만 선다. 작성 중인 초안으로
+    // 곧장 돌아가고, 새 문서를 연다. 화면 제작만 쓰는 프로젝트의 홈은 예전과 같다.
+    plansTitle: "기획서",
+    /** 묶음 머리의 한 줄 — 기준 페이지와 가져온 문서 수(설정의 연결 상태와 같은 숫자). */
+    plansScope: (root: string | null, pages: number) =>
+      typeof root === "string" && root !== "" ? `${root} · 문서 ${pages}개` : `문서 ${pages}개`,
+    plansInProgress: "작성 중인 초안",
+    plansNone: "작성 중인 초안이 없어요 — ‘새 문서’ 로 AI 와 함께 기획서를 시작해 보세요",
+    /** 셋보다 많을 때의 끝 줄 — 누르면 기획서 목록이 열린다. */
+    plansMore: (count: number) => `초안 ${count}개 더 · 기획서에서 보기`,
+    draftNewDoc: "새 문서 초안",
+    draftChanged: (count: number) => `바뀐 곳 ${count}`,
+    draftConflict: "충돌을 골라 주세요",
   },
   narrow: {
     chatTab: "대화",
@@ -468,6 +498,12 @@ export const L = {
     /** 좁은 창(900px 미만)에서는 미리보기가 오른쪽이 아니라 탭이다. */
     emptyBodyNarrow: (name: string) =>
       `${name}의 실제 화면은 화면 탭에서 봐요.\n원하는 변경을 입력하거나, 수정할 곳을 선택해 주세요.\n그림·기획 문서도 첨부할 수 있어요.`,
+    /**
+     * 오른쪽 칸이 기획서일 때(2026-10-23 기획자 화면 손질 D7) — 이 대화는 화면을 고치는 대화이고, 문서는 근거로 담아 보낸다는
+     * 것과 문서를 고치는 곳(기획서의 `고치기`)을 말한다.
+     */
+    emptyBodyPlans: (name: string) =>
+      `이 대화는 ${name}의 화면을 고쳐요.\n기획서의 ‘화면 작업에 근거로 보내기’ 로 문서를 담아 말해 보세요.\n문서를 고치려면 기획서에서 ‘고치기’ 를 눌러요.`,
     emptyPreparing: (name: string) =>
       `${name} · 처음 켜는 중이에요.\n먼저 말해 두면 준비가 끝나는 대로 시작해요.`,
     queued: "준비가 끝나면 바로 보낼게요",
@@ -1604,7 +1640,7 @@ export const L = {
   plans: {
     // 연결(설정 → 연결의 기획서 상자)
     title: "기획서 연결",
-    titleSub: "기획서를 이 앱에서 바로 읽어요",
+    titleSub: "기획서를 이 앱에서 바로 읽고 초안으로 고쳐요",
     site: "사이트 주소",
     sitePlaceholder: "예) colosseum.atlassian.net",
     email: "이메일",
@@ -1671,9 +1707,10 @@ export const L = {
           : type === "embed"
             ? "Confluence 전용 · 임베드"
             : "Confluence 전용 · 이 앱이 모르는 종류",
-    emptyNoneTitle: "기획서를 이 앱에서 읽어요",
+    emptyNoneTitle: "기획서를 이 앱에서 읽고 써요",
+    // 2026-10-23 기획자 화면 손질 D7 — 초안(F1) 이후 「여기서 읽기만 한다」 는 틀린 말이 됐다.
     emptyNoneBody:
-      "Confluence 에 한 번만 연결하면 기획 문서를 화면 옆에서 바로 볼 수 있어요. 문서는 여기서 읽기만 하고, 고치는 곳은 Confluence 예요.",
+      "Confluence 에 한 번만 연결하면 기획 문서를 화면 옆에서 읽고, 이 컴퓨터의 초안으로 AI 와 함께 고칠 수 있어요. Confluence 에서 직접 고치는 길도 그대로예요.",
     connectNow: "설정에서 연결하기",
     emptyListTitle: "아직 가져온 기획서가 없어요",
     emptyListRooted: "기준 페이지 아래의 문서를 가져오면 여기에 나타나요.",
@@ -1717,10 +1754,26 @@ export const L = {
     discardBody: "이 컴퓨터에 보관한 초안을 지워요. Confluence 의 문서는 그대로 남아요.",
     discardConfirm: "버리기",
     cancel: "그만두기",
+    /** 머리 상태의 툴팁 — 개정 번호는 기획 근거 칩의 `개정 N` 과 맞춰 볼 때 쓴다. */
     meta: (revision: number, baseVersion: number | null) =>
       baseVersion === null
         ? `새 초안 · 개정 ${revision}`
         : `초안 · 개정 ${revision} · 기준 판 ${baseVersion}`,
+    /**
+     * 머리의 한 줄 상태(2026-10-23 기획자 화면 손질 D3) — 어디서 시작했고 무엇이 바뀌었는지를 블록 배지와 같은 말로 센다.
+     * 지운 블록은 초안에 보이지 않아 여기서 세지 않는다 — 발행 확인 창이 모두 센다.
+     */
+    metaLine: (baseVersion: number | null, changed: number, inserted: number) => {
+      const parts = [baseVersion === null ? "새 문서 초안" : `Confluence 판 ${baseVersion} 에서 시작`];
+      if (changed > 0) parts.push(`고침 ${changed}`);
+      if (inserted > 0) parts.push(`새로 ${inserted}`);
+      return parts.join(" · ");
+    },
+    /**
+     * 아직 Confluence 에 올리지 않은 바뀐 곳이 있는 초안의 알약 — 이 컴퓨터의 보관과 팀의 공식본을 가른다(정본 §11). 지운 블록도
+     * 바뀐 곳이다 — 초안 요약의 수(`changedBlocks`)로 함께 본다.
+     */
+    unpublished: "아직 발행 전",
     /** 제목의 단계 표기가 1.0 이후일 때 배지 옆에 선다 — 발행이 새 판을 만든다는 안내다. */
     stageClosed: "발행하면 새 판이 돼요",
     locked: "발행을 확인하는 동안은 고칠 수 없어요 — 끝나면 다시 고칠 수 있어요.",
@@ -1818,6 +1871,8 @@ export const L = {
     },
     // ── 기획 대화 — 초안 편집기 안에서 AI 와 문서를 다듬는 칸(2026-10-23 · 최종 구현 계획 F1)
     threadTitle: "기획 대화",
+    /** 기획 대화 머리의 한 줄 — 이 AI 가 바꾸는 것과 바꾸지 않는 것(2026-10-23 기획자 화면 손질 · 정본 §6 실행 경계). */
+    threadScope: "이 AI 는 문서의 변경안만 만들어요 — 화면과 Confluence 는 바꾸지 않아요",
     threadEmpty: "무엇을 어떻게 고칠지 물어보세요 — AI 가 변경안을 만들어 보여줄게요.",
     send: "보내기",
     inputHint: "예: 둘째 절에 목표를 더하고 문단을 나눠 줘",
@@ -1874,6 +1929,9 @@ export const L = {
     startWithAi: "AI 와 시작하기",
     // ── 발행(2026-10-23 · 최종 구현 계획 F2) — Confluence 에 반영하기 전에 무엇이 반영되는지 보인다
     publish: "Confluence 에 발행",
+    /** 발행 게이트가 꺼져 있을 때 단추 안의 작은 표시와 그 풀이(2026-10-23 기획자 화면 손질 U2). */
+    publishOff: "꺼짐",
+    publishOffHint: "발행이 아직 꺼져 있어요 — 눌러서 반영할 내용은 미리 볼 수 있어요",
     publishTitle: "Confluence 에 발행",
     publishSub: "반영되는 내용과 막힌 것이 있으면 미리 알려요.",
     publishConfirm: "발행",

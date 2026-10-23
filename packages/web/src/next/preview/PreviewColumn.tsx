@@ -119,6 +119,9 @@ export function PreviewColumn({
   navRef.current = nav;
   const toast = useCallback((text: string) => navRef.current.toast(text), []);
   const showTab = useCallback((tab: "chat" | "preview") => navRef.current.showTab(tab), []);
+  // 화면을 앞에 세우는 손들(화면 열기 · 찍기 켜기 · 작업 기록 열기)은 오른쪽 칸이 기획서여도 미리보기로 돌린다 — 숨은
+  // 칸에서 찍기 · 서랍이 열리면 보이지 않는다(2026-10-23 기획자 화면 손질 D1 뒤). 이미 미리보기면 아무 일도 없다.
+  const showScreenPane = useCallback(() => navRef.current.showPane("preview"), []);
   // 사용자가 미리보기를 직접 만진 시각 — 라이브 따라가기가 「이번 턴에 방해받지 않았는가」를 가리는 재료다(2026-10-08).
   // AI 가 하는 이동(턴 끝의 도착 · 따라가기 · 자동 새로 고침)은 남기지 않는다 — 사람의 손만.
   const touchedAt = useRef<number | null>(null);
@@ -205,10 +208,11 @@ export function PreviewColumn({
       open: (path) => {
         noteUser();
         go(path);
+        showScreenPane();
         if (narrowRef.current) showTab("preview");
       },
     });
-  }, [previewUrl, showTab, go, noteUser]);
+  }, [previewUrl, showTab, showScreenPane, go, noteUser]);
 
   // 지나온 화면 — 주소 목록의 `다른 화면` 이 읽는다.
   const [recent, setRecent] = useState<string[]>([]);
@@ -508,9 +512,10 @@ export function PreviewColumn({
       setFrozen(null);
       const next = on ?? !commentsRef.current;
       setCommentsOn(next);
+      if (next) showScreenPane();
       if (next && narrowRef.current) showTab("preview");
     },
-    [pinLocked, toast, showTab, noteUser],
+    [pinLocked, toast, showTab, showScreenPane, noteUser],
   );
 
   const sync = useMemo(() => pinsSync(pins.ghosts, pins.list), [pins.ghosts, pins.list]);
@@ -713,11 +718,12 @@ export function PreviewColumn({
           : null,
       );
       setHistoryOpen(true);
+      showScreenPane();
       if (narrowRef.current) showTab("preview");
     };
     window.addEventListener(HISTORY_OPEN_EVENT, onOpen);
     return () => window.removeEventListener(HISTORY_OPEN_EVENT, onOpen);
-  }, [showTab]);
+  }, [showTab, showScreenPane]);
 
   // 입력창의 보내기(⌘↵ 포함)와 좁은 창의 `찍기` 단추가 부르는 두 이음매.
   useEffect(() => {
@@ -853,7 +859,13 @@ export function PreviewColumn({
   });
 
   return (
-    <section ref={sectionRef} className={`nx-preview${historyOpen ? " nx-preview--hist" : ""}`}>
+    // 숨는 동안은 뿌리가 `nx-offstage` 를 입는다 — 오른쪽 칸의 다른 얼굴(기획서)이 같은 격자 칸에 서야 한다.
+    // 빠지면 기획서 칸이 둘째 줄로 밀려 대화 칸 아래에 선다(2026-10-23 기획자 화면 손질 · 989ef22 에서 생긴 틈).
+    <section
+      ref={sectionRef}
+      className={`nx-preview${historyOpen ? " nx-preview--hist" : ""}${offstage ? " nx-offstage" : ""}`}
+      aria-hidden={offstage || undefined}
+    >
       <PreviewBar
         canBack={native ? location?.canGoBack === true : trail.at > 0}
         canForward={native ? location?.canGoForward === true : trail.at < trail.list.length - 1}

@@ -8,7 +8,9 @@
  *
  * 주소 끝의 `?case=list` 처럼 보일 상태를(쉼표로 이으면 나란히), `?theme=dark` 로 테마를, `?w=1000&h=760`
  * 으로 틀의 크기를, `?narrow=1` 로 좁은 창(900px 아래 — 대화 칸이 숨는다)을 고른다. 상태는 눌러 볼 수 있다 —
- * 문서 행을 누르면 본문이 서고, `새로 가져오기` 는 1.2초 뒤 끝난다. 새 상태는 여기에 더한다.
+ * 문서 행을 누르면 본문이 서고, `새로 가져오기` 는 1.2초 뒤 끝난다. 새 상태는 여기에 더한다. 틀은 사이드바를 뺀
+ * 본문이다 — 1440 창(사이드바 264px)은 `w=1176`. 대화 칸 자리는 400px 이고 초안이 열리면 비켜선다(셸의 집중 배치).
+ * 발행 게이트는 데몬처럼 기본 꺼짐이고(발행 단추의 `꺼짐` · 코멘트 절의 안내), `?writable=1` 이면 켜진 모습이다.
  *   · none        — 아직 연결하지 않은 프로젝트(원장 없음)
  *   · empty       — 연결했지만 가져온 문서가 없다
  *   · list        — 가져온 문서 28개(중첩 경로 · 판 번호)
@@ -425,7 +427,9 @@ function projectFor(id: string): ProjectSummary {
               lastImportAt: ago(3),
               pages: DOCS.length,
             };
-  return { ...base, confluence } as unknown as ProjectSummary;
+  // 발행 게이트 — 기본은 데몬처럼 꺼짐이다(발행 단추의 `꺼짐` · 코멘트 절의 안내). `?writable=1` 이면 켜진 모습.
+  const writable = query.get("writable") === "1";
+  return { ...base, confluence: { ...confluence, writable } } as unknown as ProjectSummary;
 }
 
 /**
@@ -626,7 +630,18 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
       const view = openDraft(`p-${pageId}`);
       return view === null ? failLater(150) : later(300, view);
     },
+    // 데몬의 `draft.get` 처럼 이미 있는 초안의 열쇠만 연다(목록의 둘 · 이번에 열거나 만든 것) — 없는 열쇠는 데몬의 말로
+    // 거절한다. 아무 열쇠에나 초안을 돌려주던 흉내가 처음 `고치기` 의 틈(문서로 열어야 초안이 생긴다)을 가렸다(2026-10-23).
     draftGet: (docKey: string) => {
+      const known = docKey === "p-2001" || docKey === "p-3001" || draftKey === docKey;
+      if (!known) {
+        return new Promise<DraftView>((_resolve, reject) =>
+          window.setTimeout(
+            () => reject(new Error("열려 있는 초안이 없습니다 — 목록에서 다시 열어 주세요.")),
+            120,
+          ),
+        );
+      }
       const view = openDraft(docKey);
       return view === null ? failLater(120) : later(120, view);
     },
@@ -1099,7 +1114,11 @@ function Frame({ id }: { id: string }) {
     openPlans: () => setLine("기획서 열기"),
     toast: (text: string) => setLine(`토스트: ${text}`),
   } as unknown as ShellNav;
-  const columns = NARROW ? "minmax(0, 1fr)" : "340px minmax(0, 1fr)";
+  // 셸의 집중 배치를 따른다(2026-10-23 기획자 화면 손질 D2) — 초안 편집기가 열리면 대화 칸 자리가 비켜서고 기획서 칸이 본문
+  // 폭을 다 쓴다. 대화 칸의 폭은 셸의 처음 값(400px · `Workspace` 의 CHAT_DEFAULT)이다.
+  const [draftOpen, setDraftOpen] = useState(false);
+  const focus = !NARROW && draftOpen;
+  const columns = NARROW || focus ? "minmax(0, 1fr)" : "400px minmax(0, 1fr)";
   return (
     <div id={`fixture-${id}`} style={{ width: FRAME_W }}>
       <div
@@ -1124,13 +1143,13 @@ function Frame({ id }: { id: string }) {
             <div className="nx-body" style={{ gridTemplateColumns: columns }}>
               {!NARROW && (
                 <section
-                  className="nx-chat"
+                  className={`nx-chat${focus ? " nx-offstage" : ""}`}
                   style={{ padding: 24, font: "12px monospace", color: "#888" }}
                 >
                   대화 칸 자리
                 </section>
               )}
-              <PlansColumn daemon={daemon} project={project} nav={nav} />
+              <PlansColumn daemon={daemon} project={project} nav={nav} onDraftOpen={setDraftOpen} />
             </div>
           </div>
         </main>

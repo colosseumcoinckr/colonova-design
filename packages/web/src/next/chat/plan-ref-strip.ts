@@ -9,8 +9,11 @@ import { L } from "../labels.ts";
 /** 기획서 칸이 듣는 창 이벤트 — 근거 칩이 그 문서 · 초안으로 돌아가 달라고 청한다. `detail` 에 pageId 나 docKey 를 싣는다. */
 export const PLANS_OPEN_EVENT = "nx:plans:open";
 
-/** 칩이 돌아가는 곳 — 가져온 문서는 pageId, 초안은 docKey 다(초안이 앞선다). */
-export type PlanOpenTarget = { pageId: string } | { docKey: string };
+/**
+ * 칩이 돌아가는 곳 — 가져온 문서는 pageId, 초안은 docKey 다(초안이 앞선다). `newDoc` 은 홈의 기획서 묶음이 청하는
+ * 새 문서 창이다(2026-10-23 기획자 화면 손질 D4).
+ */
+export type PlanOpenTarget = { pageId: string } | { docKey: string } | { newDoc: true };
 
 /**
  * 마운트 전 기획서 칸에 맡겨 둔 열기 요청(2026-10-23 · R3 발견 4) — 근거 칩을 눌렀는데 듣는 칸이

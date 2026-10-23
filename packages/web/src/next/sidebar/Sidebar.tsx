@@ -33,6 +33,7 @@ export function Sidebar({
   activeSessionId,
   view,
   plansOn = false,
+  planDrafts = 0,
   titleFor,
   nav,
   onPalette,
@@ -50,6 +51,8 @@ export function Sidebar({
   view: "home" | "thread";
   /** 오른쪽 칸이 기획서 보기인가 — 항목의 뜬 자리 표시가 읽는다(2026-10-18 · M4). */
   plansOn?: boolean;
+  /** 지금 프로젝트의 작성 중인 초안 수 — `기획서` 줄 끝에 흐리게 선다(2026-10-23 기획자 화면 손질 D5). */
+  planDrafts?: number;
   titleFor: (thread: ThreadSummary) => string;
   nav: ShellNav;
   /** ⌘K 팔레트를 연다. */
@@ -121,17 +124,24 @@ export function Sidebar({
           {L.sidebar.home}
           {waiting > 0 && <Count n={waiting} className="nx-r" />}
         </button>
-        {/* 기획서(2026-10-18 동기화 1단계) — 읽기만 하는 칸으로, 누르면 오른쪽 칸이 기획서 보기로 바뀐다.
-            이미 열려 있으면 다시 누르는 것이 닫는 길이다(미리보기로 돌아간다). */}
+        {/* 기획서(2026-10-18 동기화 1단계 · 2026-10-23 초안) — 누르면 오른쪽 칸이 기획서로 바뀐다. 이미 열려 있으면 다시
+            누르는 것이 닫는 길이다(미리보기로 돌아간다). 작성 중인 초안이 있으면 줄 끝에 그 수가 흐리게 선다 — 이어 쓸
+            일이 있다는 말이다(2026-10-23 기획자 화면 손질 D5). */}
         <button
           type="button"
           className={`nx-side-row${plansOn ? " nx-side-row--on" : ""}`}
           aria-current={plansOn ? "page" : undefined}
+          aria-label={planDrafts > 0 ? L.sidebar.plansDraftsAria(planDrafts) : undefined}
           title={plansOn ? L.plans.backToScreen : L.plans.open}
           onClick={plansOn ? () => nav.showPane("preview") : nav.openPlans}
         >
           <PlansDocIcon />
           {L.plans.sidebar}
+          {planDrafts > 0 && (
+            <span className="nx-side-note" aria-hidden="true">
+              {L.sidebar.plansDrafts(planDrafts)}
+            </span>
+          )}
         </button>
         <button type="button" className="nx-side-row" onClick={onPalette}>
           <SearchIcon />

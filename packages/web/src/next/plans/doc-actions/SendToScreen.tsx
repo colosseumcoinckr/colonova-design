@@ -19,6 +19,7 @@ export function SendToScreen({
   target,
   sections,
   isDraft = false,
+  onSent,
   onClose,
 }: {
   daemon: Daemon;
@@ -29,6 +30,11 @@ export function SendToScreen({
   sections: string[];
   /** 초안의 근거 — 아직 발행하지 않았다는 안내를 더한다. */
   isDraft?: boolean;
+  /**
+   * 입력창이 받은 뒤의 한 손 — 초안 편집기는 비켜선 화면 대화를 앞에 세운다(2026-10-23 기획자 화면 손질 D2). 그다음
+   * 입력창에 초점을 다시 청한다 — 받을 때는 숨어 있어 초점이 앉지 못했다.
+   */
+  onSent?: () => void;
   onClose: () => void;
 }) {
   const apiRef = useRef(daemon.api);
@@ -59,6 +65,11 @@ export function SendToScreen({
       nav.toast(L.drafts.sentToComposer);
       // 좁은 창은 대화 칸이 뒤에 숨어 있다 — 담았으니 앞에 세운다(넓은 창에서는 아무 일도 없다).
       nav.showTab("chat");
+      if (onSent !== undefined) {
+        onSent();
+        // 칸이 앞에 선 다음 박자에 입력창이 초점을 받는다(`nx:composer:focus` — 홈에서 대화로 넘어올 때와 같은 길).
+        requestAnimationFrame(() => window.dispatchEvent(new Event("nx:composer:focus")));
+      }
       onClose();
     } catch (err: unknown) {
       // 데몬이 말해 준 문장(절을 찾지 못한 것 등)을 그대로 보인다 — 받은 문장이 없을 때만

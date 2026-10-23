@@ -459,6 +459,29 @@ test("오른쪽 칸 전환 — 홈으로 가면 기획서 읽기는 끝나고, �
   assert.equal(s.pane, "preview");
 });
 
+test("오른쪽 칸 전환 — 초안을 고치는 중(집중 배치)에 대화를 열면 화면 쪽으로 돌아온다(2026-10-23 기획자 화면 손질 D2)", () => {
+  let s = navReducer(initialNav(false), { type: "plans" });
+  s = navReducer(s, { type: "plan-draft", open: true });
+  assert.equal(s.planDraft, true);
+  // 같은 값은 같은 상태다 — 칸의 알림이 거듭 와도 셸이 다시 그려지지 않는다.
+  assert.equal(navReducer(s, { type: "plan-draft", open: true }), s);
+  // 대화를 연다(사이드바 · ⌘T · 찾기 · 알림) — 화면 대화 칸이 비켜서 있으니 미리보기 쪽으로 돌아온다. 초안은 칸에 남는다.
+  s = navReducer(s, { type: "thread" });
+  assert.equal(s.view, "thread");
+  assert.equal(s.pane, "preview");
+  assert.equal(s.planDraft, true);
+  // 기획서로 돌아가면 다시 집중 배치다(초안이 열린 채다).
+  s = navReducer(s, { type: "plans" });
+  assert.equal(s.pane, "plans");
+  // 초안을 닫고 문서를 읽는 중이면 대화를 열어도 문서가 남는다(위의 시험과 같은 약속).
+  s = navReducer(s, { type: "plan-draft", open: false });
+  s = navReducer(s, { type: "thread" });
+  assert.equal(s.pane, "plans");
+  // 프로젝트가 바뀌면 처음으로.
+  s = navReducer(navReducer(s, { type: "plan-draft", open: true }), { type: "project-changed" });
+  assert.equal(s.planDraft, false);
+});
+
 test("오른쪽 칸 전환 — 기획서 항목은 대화 틀 위에 서고, 프로젝트가 바뀌면 닫힌다", () => {
   let s = initialNav(false);
   s = navReducer(s, { type: "plans" });

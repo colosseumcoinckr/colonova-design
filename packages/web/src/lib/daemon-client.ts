@@ -1360,7 +1360,7 @@ export function useDaemon(url: string | null): Daemon {
         /** 같은 id 로 두 번 부른 둘째 호출자가 함께 기다리는 약속. */
         promise: Promise<unknown>;
         /** 응답 지연의 시계 — 정산·연결 끊김에 함께 거둔다(고아 타이머 방지). */
-        timer: ReturnType<typeof setTimeout> | null;
+        timer: ReturnType<typeof setTimeout> | undefined;
       }
     >(),
   );
@@ -1473,7 +1473,7 @@ export function useDaemon(url: string | null): Daemon {
 
     const flushPending = () => {
       for (const call of pendingCalls.current.values()) {
-        if (call.timer) clearTimeout(call.timer);
+        clearTimeout(call.timer);
         call.reject(new Error("연결이 끊어졌습니다 — 잠시 뒤 대화나 화면을 다시 확인해 주세요"));
       }
       pendingCalls.current.clear();
@@ -1600,10 +1600,11 @@ export function useDaemon(url: string | null): Daemon {
       if (message.type !== "session.event") flushEvents();
 
       if (message.type === "ok" || message.type === "error") {
-        const call = pendingCalls.current.get(message.id ?? "");
+        const id = message.id ?? "";
+        const call = pendingCalls.current.get(id);
         if (call) {
-          if (call.timer) clearTimeout(call.timer);
-          pendingCalls.current.delete(message.id!);
+          clearTimeout(call.timer);
+          pendingCalls.current.delete(id);
           if (message.type === "ok") call.resolve(message.data);
           // 오류 코드가 있으면 오류 객체에 싣는다 — 초안의 `draft.stale` 이 다시 읽기로 갈라진다.
           else
@@ -1850,8 +1851,8 @@ export function useDaemon(url: string | null): Daemon {
         resolve: (v: unknown) => void;
         reject: (e: Error) => void;
         promise: Promise<unknown>;
-        timer: ReturnType<typeof setTimeout> | null;
-      } = { resolve: resolve as (v: unknown) => void, reject, promise, timer: null };
+        timer: ReturnType<typeof setTimeout> | undefined;
+      } = { resolve: resolve as (v: unknown) => void, reject, promise, timer: undefined };
       pendingCalls.current.set(id, entry);
       // The correlation id rides LAST: a payload carrying its own `id` must
       // never overwrite the return address the reply is matched by.
@@ -1872,7 +1873,7 @@ export function useDaemon(url: string | null): Daemon {
         // and answers the remembered reply instead of running twice.
         if (pendingCalls.current.get(id) === entry) {
           pendingCalls.current.delete(id);
-          entry.timer = null;
+          entry.timer = undefined;
           reject(new Error("응답이 늦어졌습니다 — 잠시 뒤 대화나 화면을 다시 확인해 주세요."));
         }
       }, timeoutMs);

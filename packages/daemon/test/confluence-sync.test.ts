@@ -417,8 +417,8 @@ test("문서 수의 상한 — 닿으면 멈추고 lastSyncAt 을 앞서지 않�
     };
     // 상한에 닿은 바퀴는 lastSyncAt 을 앞서지 않는다 — 다음 바퀴가 남은 문서를 이어받는다.
     assert.equal(ledger.lastSyncAt, NOW.toISOString());
-    assert.equal(ledger.pages["p0000"]?.version, 2);
-    assert.equal(ledger.pages["p0500"]?.version, 1, "상한 너머의 문서는 다음 바퀴의 몫이다");
+    assert.equal(ledger.pages.p0000?.version, 2);
+    assert.equal(ledger.pages.p0500?.version, 1, "상한 너머의 문서는 다음 바퀴의 몫이다");
   } finally {
     rig6.cleanup();
   }

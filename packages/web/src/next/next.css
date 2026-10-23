@@ -189,13 +189,17 @@ html[data-theme="claude"] .nx {
   .nx *,
   .nx *::before,
   .nx *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: 움직임 줄이기 — 어떤 특이도의 애니메이션이라도 확실히 이겨야 한다. */
     animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 움직임 줄이기 — 어떤 특이도의 애니메이션이라도 확실히 이겨야 한다. */
     animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 움직임 줄이기 — 어떤 특이도의 전환이라도 확실히 이겨야 한다. */
     transition-duration: 0.01ms !important;
   }
 
   .nx .nx-spin,
   .nx .nx-reload--busy .nx-i {
+    /* biome-ignore lint/complexity/noImportantStyles: 도는 표시는 멈추면 깨진 것처럼 보이므로 천천히 깜빡이게 강제한다. */
     animation: nx-breathe 1.8s ease-in-out infinite !important;
   }
 
@@ -205,11 +209,13 @@ html[data-theme="claude"] .nx {
   }
 
   .nx .nx-bar > i {
+    /* biome-ignore lint/complexity/noImportantStyles: 끝없는 진행 막대의 움직임을 확실히 멈추기 위해 필요하다. */
     animation: none !important;
     transform: none;
   }
 
   .nx .nx-upd-bar::after {
+    /* biome-ignore lint/complexity/noImportantStyles: 진행 막대의 움직임을 확실히 멈추고 멈춘 모양을 얻기 위해 필요하다. */
     animation: none !important;
     left: 33%;
   }

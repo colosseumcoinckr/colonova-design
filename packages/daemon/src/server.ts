@@ -632,13 +632,17 @@ export class DaemonServer {
       signal: this.closing.signal,
       onChanged: () =>
         void this.status().then((status) => this.broadcast({ type: "status", status })),
-      catalogSources: this.agentDrivers
-        .all()
-        .filter((driver) => typeof driver.listModels === "function")
-        .map((driver) => ({
-          provider: driver.id,
-          read: () => driver.listModels!({ cwd: probeCwd(), signal: this.closing.signal }),
-        })),
+      catalogSources: this.agentDrivers.all().flatMap((driver) => {
+        const listModels = driver.listModels;
+        return typeof listModels === "function"
+          ? [
+              {
+                provider: driver.id,
+                read: () => listModels({ cwd: probeCwd(), signal: this.closing.signal }),
+              },
+            ]
+          : [];
+      }),
     });
     this.drivers = new PreviewDrivers({
       factory: () => this.config.previewDriverFactory,

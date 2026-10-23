@@ -38,7 +38,7 @@ test("지침 블록은 제목·설명·한 줄 불릿으로만 쓰고 사용자�
     assert.ok(row === "" || row.startsWith("- ") || row.startsWith("이 규칙은"));
   }
   assert.equal(
-    stripCommonInstructions(COMMON_INSTRUCTIONS + "\n검색창을 넣어 줘"),
+    stripCommonInstructions(`${COMMON_INSTRUCTIONS}\n검색창을 넣어 줘`),
     "검색창을 넣어 줘",
   );
 });

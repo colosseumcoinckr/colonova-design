@@ -589,6 +589,7 @@ select {
 
 /* ---------------------------------------------------------------- layout */
 
+/* biome-ignore lint/style/noDescendingSpecificity: connect 화면의 h1 글자 규칙(.connect h1 .brand-name)이 의도적으로 이기는 순서다 — 특이도를 올리면 연결 화면 글자가 깨진다. */
 .brand-name {
   display: inline-flex;
   align-items: center;
@@ -695,7 +696,7 @@ select {
   pointer-events: none;
 }
 
-.empty {
+.scroll .empty {
   /* The only thing on screen for a new conversation: the product signs its
      name once (the colonova mark the brand row and onboarding wear),
      then gets out of the way. Auto margins center it in the scroll's flex
@@ -1014,7 +1015,7 @@ select {
 .thinking[open] .thinking__peek {
   display: none;
 }
-.thinking pre {
+.nx .thinking pre {
   white-space: pre-wrap;
   font-family: var(--mono);
   font-size: var(--font-code-115);
@@ -1223,8 +1224,8 @@ select {
 .tool__label:first-child {
   margin-top: 0;
 }
-.tool pre,
-.card pre {
+.nx .tool pre,
+.nx .card pre {
   font-family: var(--mono);
   font-size: var(--font-code-115);
   line-height: 1.55;
@@ -1238,7 +1239,7 @@ select {
 
 /* notices ------------------------------------------------------------------*/
 
-.notice {
+.connect .notice {
   border-radius: var(--r-lg);
   padding: 8px 12px;
   font-size: var(--font-ui-125);
@@ -1293,7 +1294,7 @@ select {
 
 /* human-in-the-loop cards --------------------------------------------------*/
 
-.card {
+.scroll .card {
   border: 1px solid var(--line);
   border-radius: var(--r-float);
   background: var(--panel);
@@ -1732,6 +1733,7 @@ select {
    cannot fit, so the fold is the window's decision, not a setting. */
 @media (max-width: 1100px) {
   .planner {
+    /* biome-ignore lint/complexity/noImportantStyles: 좁은 창에서는 인라인 style 의 드래그 너비를 이겨야 하므로 !important 가 필요하다. */
     grid-template-columns: 44px minmax(0, 1fr) !important;
   }
 }
@@ -2035,13 +2037,17 @@ select {
 :root.theme-swap *,
 :root.theme-swap *::before,
 :root.theme-swap *::after {
+  /* biome-ignore lint/complexity/noImportantStyles: 테마 교환 중 그려지는 모든 전환을 확실히 끄기 위해 필요하다. */
   transition: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
   * {
+    /* biome-ignore lint/complexity/noImportantStyles: 움직임 줄이기 — 모든 요소의 애니메이션을 확실히 멈추기 위해 필요하다. */
     animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 움직임 줄이기 — 모든 요소의 애니메이션을 확실히 멈추기 위해 필요하다. */
     animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: 움직임 줄이기 — 모든 요소의 전환을 확실히 멈추기 위해 필요하다. */
     transition-duration: 0.01ms !important;
   }
 }
@@ -2254,6 +2260,7 @@ select {
 }
 
 /* A button's glyph never wraps alone or steals width from its label. */
+/* biome-ignore lint/style/noDescendingSpecificity: 단추 글리프의 전역 규칙이다 — 화면 링크의 svg 규칙과 선언이 겹치지 않으므로 특이도를 올릴 필요가 없다. */
 button svg,
 button .ic {
   flex: none;

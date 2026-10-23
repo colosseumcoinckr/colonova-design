@@ -352,7 +352,7 @@
   justify-content: center;
 }
 
-.nx-jstep--done .nx-i {
+.nx .nx-jstep.nx-jstep--done .nx-i {
   width: 8px;
   height: 8px;
   color: var(--card);
@@ -846,7 +846,7 @@
 }
 
 /* 코멘트의 반영 상태 — `nx-pill`(글자와 함께 서는 상태 알약)이다. 고치는 중은 도는 그림이 함께 선다. */
-.nx-wp-state--fixing .nx-i {
+.nx .nx-pill.nx-wp-state--fixing .nx-i {
   animation: nx-spin 1.4s linear infinite;
 }
 
@@ -949,7 +949,7 @@
   gap: var(--sp-1_5);
 }
 
-.nx-wp-icon .nx-i {
+.nx .nx-wp-empty.nx-wp-icon .nx-i {
   margin-top: 3px;
   flex: none;
 }
@@ -986,13 +986,13 @@
   flex-wrap: wrap;
 }
 
-.nx-wp-receipt > span {
+.nx .nx-work-pop .nx-wp-receipt > span {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1_5);
 }
 
-.nx-wp-receipt > span .nx-i {
+.nx .nx-work-pop .nx-wp-receipt > :where(span) .nx-i {
   color: var(--green);
 }
 
@@ -1269,8 +1269,8 @@
   transform: rotate(90deg);
 }
 
-.nx-sub-scope > p,
-.nx-sub-fold > p {
+.nx .nx-sub-scope > p,
+.nx .nx-sub-fold > p {
   margin: var(--sp-1) 0 0 var(--sp-4);
   color: var(--ink3);
   line-height: 1.6;
@@ -1305,7 +1305,7 @@
   align-items: center;
 }
 
-.nx-st-bn > .nx-i {
+.nx .nx-banner.nx-st-bn > .nx-i {
   margin-top: 0;
 }
 
@@ -1315,11 +1315,11 @@
 }
 
 /* 앞 그림의 색 — 실패는 빨강, 바뀜은 호박. 글이 함께 서므로 색만으로 말하지 않는다. */
-.nx-st-bn.nx-banner--red > .nx-i {
+.nx .nx-st-bn.nx-banner--red > .nx-i {
   color: var(--red);
 }
 
-.nx-st-bn.nx-banner--amber > .nx-i {
+.nx .nx-st-bn.nx-banner--amber > .nx-i {
   color: var(--amber);
 }
 

@@ -320,6 +320,7 @@ export function ChatColumn({
   // --- 고쳐서 다시 보내기(U15) · 여기서 새 대화 ----------------------------
   const [editHint, setEditHint] = useState(false);
   const editTarget = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 대화 전환 시 되보내기 힌트를 초기화하는 의도된 의존성입니다.
   useEffect(() => {
     setEditHint(editTarget.current);
     editTarget.current = false;

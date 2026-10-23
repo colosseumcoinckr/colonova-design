@@ -166,6 +166,7 @@ export function StatusLine({
         if (version === reviewRead.current && slug === projectSlug.current) setReviewLoading(false);
       });
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 활성 프로젝트가 바뀔 때 제출 상태를 초기화하는 의도된 의존성입니다.
   useEffect(() => {
     ++reviewRead.current;
     setConfirmOpen(false);

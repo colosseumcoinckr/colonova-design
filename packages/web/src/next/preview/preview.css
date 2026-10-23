@@ -949,7 +949,7 @@
   animation: nx-pop 0.15s;
 }
 
-.nx-pinstrip b {
+.nx .nx-pinstrip b {
   font-weight: 600;
 }
 

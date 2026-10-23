@@ -40,6 +40,7 @@ export function ConnectScreen({
         <div className="connect__inputrow">
           <input
             className="nx-input"
+            /* biome-ignore lint/a11y/noAutofocus: 연결 화면의 첫 입력은 곧바로 토큰을 붙여 넣는 자리다 */
             autoFocus
             value={value}
             placeholder="ws://127.0.0.1:7823?token=…"

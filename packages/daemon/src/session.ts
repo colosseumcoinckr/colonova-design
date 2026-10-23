@@ -1908,7 +1908,7 @@ export class Session {
 
 function describeSuggestions(suggestions: unknown[]): PermissionSuggestion[] {
   return suggestions.map((raw) => {
-    const s = raw as Record<string, any>;
+    const s = raw as Record<string, unknown>;
     const destination = String(s?.destination ?? "session");
     const persisted = destination === "localSettings" || destination === "projectSettings";
     // 이 문장은 사용자가 읽는 권한 카드에 그대로 붙는다 — 기계 말이 아니라
@@ -1924,8 +1924,10 @@ function describeSuggestions(suggestions: unknown[]): PermissionSuggestion[] {
     }
     if (Array.isArray(s?.rules) && s.rules.length > 0) {
       const rules = s.rules
-        .map((r: Record<string, any>) =>
-          r?.ruleContent ? `${r.toolName}(${r.ruleContent})` : String(r?.toolName ?? ""),
+        .map((r) =>
+          r?.ruleContent
+            ? `${String(r.toolName)}(${String(r.ruleContent)})`
+            : String(r?.toolName ?? ""),
         )
         .filter(Boolean)
         .join(", ");
@@ -1943,13 +1945,13 @@ function normalizeQuestions(input: Record<string, unknown>): AskQuestion[] {
   const questions = (input as { questions?: unknown }).questions;
   if (!Array.isArray(questions)) return [];
   return questions.map((raw) => {
-    const q = raw as Record<string, any>;
+    const q = raw as Record<string, unknown>;
     return {
       question: String(q?.question ?? ""),
       header: String(q?.header ?? ""),
       multiSelect: Boolean(q?.multiSelect),
       options: Array.isArray(q?.options)
-        ? q.options.map((opt: Record<string, any>) => ({
+        ? q.options.map((opt) => ({
             label: String(opt?.label ?? ""),
             description: String(opt?.description ?? ""),
             ...(opt?.preview ? { preview: String(opt.preview) } : {}),

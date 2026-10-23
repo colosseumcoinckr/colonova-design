@@ -974,14 +974,14 @@
   z-index: var(--nx-z-modal);
 }
 
-.nx.nx-modal-host .nx-modal-back {
-  pointer-events: auto;
-}
-
 /* 스크림 · 판의 옷(그림자 · 반경 · 들어옴/나감)은 ui/overlay.css 가 정한다 — 여기는 배치만. */
 .nx-modal-back {
   display: grid;
   place-items: center;
+}
+
+.nx.nx-modal-host .nx-modal-back {
+  pointer-events: auto;
 }
 
 .nx-modal {

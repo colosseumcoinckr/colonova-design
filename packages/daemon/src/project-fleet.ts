@@ -533,8 +533,7 @@ export class ProjectFleet {
     const active = this.activeOrNull();
     // Project skills ride the clone's cwd; with no clone yet the user-level
     // set is still worth having, and the home dir is a cwd that exists.
-    const cwd =
-      active && active.repo.isCloned() ? realpathBestEffort(active.paths.repoRoot) : homedir();
+    const cwd = active?.repo.isCloned() ? realpathBestEffort(active.paths.repoRoot) : homedir();
     const cached = this.cliCommandsCache.get(cwd);
     if (cached) return cached;
     // The single-flight is keyed by cwd like the cache: a probe started for

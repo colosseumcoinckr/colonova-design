@@ -26,6 +26,9 @@ test("절반만 적힌 원장 — 아는 것부터 이어받는다", () => {
   assert.equal(parsed.site, "https://colosseum.atlassian.net");
   assert.deepEqual(parsed.roots, ["933068815"]);
   assert.equal(parsed.lastSyncAt, null);
+  // 두 맵이 없는 옛 원장 — 빈 맵으로 내려앉는다(2026-10-23 최종 구현 계획 F0).
+  assert.deepEqual(parsed.folders, {});
+  assert.deepEqual(parsed.unsupported, {});
   assert.deepEqual(parsed.pages, {
     "1818591273": {
       path: "COLO/8.8-ColoNova/SSoT",
@@ -59,6 +62,19 @@ test("잘못된 타입 필드 — 깨진 값은 버리고 나머지는 산다", 
       모양아님: "그냥 문자열",
       길없음: { version: 4 },
     },
+    // 폴더 · 미지원 종류 — 경로 · 종류가 빈 글이거나 모양이 아니면 버린다(2026-10-23 최종 구현 계획 F0).
+    folders: {
+      살아남은: { path: "COLO/루트/화면 목록", title: "화면 목록" },
+      길없는: { title: "제목만" },
+      빈길: { path: "", title: "빈 길" },
+      모양아님: "문자열",
+    },
+    unsupported: {
+      살아남은보드: { path: "COLO/루트/보드", title: "보드", type: "whiteboard" },
+      종류없는: { path: "COLO/루트/몰라", title: "몰라" },
+      빈종류: { path: "COLO/루트/몰라", title: "몰라", type: "" },
+      모양아님: 7,
+    },
   });
   assert.equal(parsed.site, "");
   assert.deepEqual(parsed.roots, ["933068815"]);
@@ -71,6 +87,12 @@ test("잘못된 타입 필드 — 깨진 값은 버리고 나머지는 산다", 
       sections: [{ heading: "절", macro: false }],
       comments: { unresolved: 2 },
     },
+  });
+  assert.deepEqual(parsed.folders, {
+    살아남은: { path: "COLO/루트/화면 목록", title: "화면 목록" },
+  });
+  assert.deepEqual(parsed.unsupported, {
+    살아남은보드: { path: "COLO/루트/보드", title: "보드", type: "whiteboard" },
   });
 });
 
@@ -106,6 +128,13 @@ test("왕복 — 쓴 원장을 그대로 읽는다(깊은 폴더도 만든다)",
           sections: [{ heading: "도메인 지도", macro: false }],
           comments: { unresolved: 2 },
         },
+      },
+      // 폴더 · 미지원 종류도 원장의 한 몸이다(2026-10-23 최종 구현 계획 F0).
+      folders: {
+        F: { path: "COLO/8.8-ColoNova/화면 목록", title: "화면 목록" },
+      },
+      unsupported: {
+        B: { path: "COLO/8.8-ColoNova/보드", title: "흐름 보드", type: "whiteboard" },
       },
     };
     writeConfluenceLedger(file, ledger);

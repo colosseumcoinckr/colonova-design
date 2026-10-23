@@ -2042,6 +2042,8 @@ export class CycleSupervisor {
   private async submitToolBlock(version: SubmitVersion, note?: string): Promise<string> {
     return await this.deps.workspace.handoffToolBlock({
       commentsFile: this.deps.commentsFile(),
+      // 근거 기록 — 코멘트 저장소와 같은 프로젝트 데이터 뿌리의 plans/refs.jsonl(2026-10-23 작업 C3).
+      planRefsFile: join(dirname(this.deps.commentsFile()), "plans", "refs.jsonl"),
       version,
       ...(note ? { note } : {}),
     });

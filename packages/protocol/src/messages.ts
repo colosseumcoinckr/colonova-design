@@ -1,4 +1,8 @@
 import { z } from "zod";
+import { docCommentClientMessageSchemas } from "./doc-comments.js";
+import { docOpClientMessageSchemas } from "./doc-ops.js";
+import type { DraftAiMessage, DraftChangedMessage } from "./draft.js";
+import { draftClientMessageSchemas } from "./draft.js";
 import { featureRequestInputSchema } from "./feedback.js";
 import type { AgentInstallKind, DaemonStatus, ProjectSummary } from "./project.js";
 import type { DiffStatus, RepoStatus } from "./repo.js";
@@ -878,6 +882,20 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     ...withId,
     type: z.literal("feedback.submit"),
   }),
+  /**
+   * 기획 초안의 요청(2026-10-23 · 최종 구현 계획 F1) — 스키마와 한계값은 draft.ts 의 한 곳에 둔다.
+   */
+  ...draftClientMessageSchemas,
+  /**
+   * 문서 관리의 요청(2026-10-23 · 최종 구현 계획 F4 · 작업 D1a) — 스키마와 한계값은
+   * doc-ops.ts 의 한 곳에 둔다.
+   */
+  ...docOpClientMessageSchemas,
+  /**
+   * 문서 코멘트의 요청(2026-10-23 · 최종 구현 계획 F4 · 작업 D2a) — 스키마와 한계값은
+   * doc-comments.ts 의 한 곳에 둔다.
+   */
+  ...docCommentClientMessageSchemas,
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -1005,7 +1023,10 @@ export type ServerMessage =
       type: "browser.driving";
       sessionId: string;
       on: boolean;
-    };
+    }
+  /** 기획서 초안이 바뀌었다 · AI 가 초안을 위해 생성 중이다(2026-10-23 · 최종 구현 계획 F1). */
+  | DraftChangedMessage
+  | DraftAiMessage;
 
 // ---------------------------------------------------------------------------
 // Helpers

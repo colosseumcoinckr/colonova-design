@@ -7,6 +7,13 @@ test("공통 지침은 레포의 개발 규칙을 우선하고 앱의 역할만 
   assert.match(COMMON_INSTRUCTIONS, /보관·되돌리기·푸시·제출은 앱이 맡는다/);
   assert.match(COMMON_INSTRUCTIONS, /제출 버튼을 안내/);
   assert.match(COMMON_INSTRUCTIONS, /확인했다고 말하지 않는다/);
+  // 기획서 구절(2026-10-23 작업 C3): 가져온 기획서는 읽기만 하고, 고치는 곳은 앱의
+  // 기획서 칸(초안)이나 Confluence 다. 사용자가 보낸 근거 첨부는 이번 요청의 기준이다.
+  assert.match(
+    COMMON_INSTRUCTIONS,
+    /가져온 기획서\(`docs\/plans\/`\)도 읽기만 한다 — 기획서를 고치는 곳은 앱의 기획서 칸\(초안\)이나 Confluence 다/,
+  );
+  assert.match(COMMON_INSTRUCTIONS, /기획서 근거\(첨부\)는 이번 요청의 기준으로 따른다/);
   // 할 일 · 보조 작업의 글은 입력창 위 알약에 그대로 보인다(2026-10-20 사용자 요청).
   assert.match(
     COMMON_INSTRUCTIONS,

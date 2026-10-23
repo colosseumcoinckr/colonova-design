@@ -9,6 +9,10 @@
 export interface PlanNode {
   id: string;
   title: string;
+  /** 종류 — 폴더도 이름 한 걸음이고, 경로 계산은 페이지와 같다(2026-10-23 최종 구현 계획 F0). */
+  kind: "page" | "folder" | "unsupported";
+  /** 원래 종류 — unsupported 가 Confluence 의 말을 그대로 실는다. */
+  type?: string;
   children: PlanNode[];
 }
 

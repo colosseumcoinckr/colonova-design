@@ -30,6 +30,7 @@ import type { ChatColumnProps } from "../slots";
 import { Composer, type ComposerHandle } from "./Composer";
 import { AskCard } from "./cards";
 import { ChevIcon, SparkIcon } from "./icons";
+import { PlanRefStrip } from "./PlanRefStrip";
 import { RunLine } from "./RunLine";
 import { RunPlan } from "./RunPlan";
 import { Thread } from "./Thread";
@@ -58,6 +59,11 @@ export function ChatColumn({
   const { api, pending, resolvePending } = daemon;
   const { active, activeId } = sessions;
   const blocks = active?.blocks ?? [];
+
+  // 이 대화의 사람 말 수 — 근거 줄이 다시 읽는 셈(보내기 중인 말도 센다 — 보낸 직후에 늘고,
+  // 기록이 남는 때와 마친다). 대화가 바뀌면 0부터 다시 센다.
+  const sentCount =
+    blocks.filter((block) => block.type === "user").length + sessions.outgoing.length;
   const chat = settings.chat;
   const preparing = project !== null && isPreparing(project);
 
@@ -659,6 +665,7 @@ export function ChatColumn({
           </button>
         )}
         {runningPlan && <RunPlan plan={runningPlan} />}
+        <PlanRefStrip daemon={daemon} sessionId={activeId} sentCount={sentCount} nav={nav} />
         {editHint && (
           <div className="nx-cmp-hint" role="status">
             {L.transcript.editScreenHint}

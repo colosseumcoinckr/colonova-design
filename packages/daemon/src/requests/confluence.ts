@@ -1,3 +1,4 @@
+import { commentIsPlain, commentText, mentionIds } from "../comment-text.js";
 import {
   ConfluenceClient,
   createConfluenceTransport,
@@ -19,7 +20,11 @@ type ConfluenceDeps = Pick<
   "registry" | "machineSetting" | "fleet" | "credentials" | "confluence"
 >;
 
-type ConfluenceRequest = Extract<keyof RequestHandlers, `confluence.${string}` | `doc.${string}`>;
+// doc.* 의 나머지(휴지통 · 복구 · 복제 · 위치 변경)는 requests/doc-ops.ts 의 몫이다(2026-10-23 작업 D1a).
+type ConfluenceRequest = Extract<
+  keyof RequestHandlers,
+  `confluence.${string}` | "doc.list" | "doc.read"
+>;
 
 /** 기획서(Confluence) 연결 · 찾기 · 가져오기와 문서 읽기를 맡는다(2026-10-18 동기화 1단계). */
 export function confluenceHandlers(deps: ConfluenceDeps): RequestHandlers<ConfluenceRequest> {
@@ -134,10 +139,13 @@ async function confluenceSuggestRoots(
 
 /**
  * 기획서 목록 — 원장이 아는 트리와 판. 연결이 없거나 아직 가져온 것이 없으면
- * docs 가 null 이다(읽지 못함이 아니라 「아직 없다」).
+ * docs 가 null 이다(읽지 못함이 아니라 「아직 없다」). docs 가 있으면 폴더와 미지원
+ * 종류의 계층도 늘 실는다(2026-10-23 최종 구현 계획 F0 — 둘 다 파일이 없는 원장 항목이다).
  */
 function docList(deps: ConfluenceDeps): {
   docs: Array<{ pageId: string; title: string; version: number; path: string }> | null;
+  folders?: Array<{ folderId: string; title: string; path: string }>;
+  unsupported?: Array<{ contentId: string; title: string; path: string; type: string }>;
 } {
   const slug = deps.registry.activeSlug();
   const site = slug === null ? null : deps.machineSetting.get(confluenceSiteKey(slug));
@@ -152,12 +160,42 @@ function docList(deps: ConfluenceDeps): {
       version: page.version,
       path: page.path,
     })),
+    folders: Object.entries(ledger.folders).map(([folderId, folder]) => ({
+      folderId,
+      title: folder.title,
+      path: folder.path,
+    })),
+    unsupported: Object.entries(ledger.unsupported).map(([contentId, row]) => ({
+      contentId,
+      title: row.title,
+      path: row.path,
+      type: row.type,
+    })),
   };
+}
+
+/** 문서 읽기 답의 코멘트 한 줄 — 본문은 사람이 읽는 맨 글이다(저장 포맷은 선로에 싣지 않는다). */
+interface DocReadComment {
+  author: string;
+  body: string;
+  createdAt: string | null;
+  anchorText: string | null;
+  /** 코멘트의 id · 종류 · 판 · 부모 · 해결 — 고치기 · 답글 · 해결의 재료다(2026-10-23 작업 D2a). */
+  id?: string;
+  kind?: "footer" | "inline";
+  version?: number | null;
+  parentId?: string | null;
+  resolved?: boolean;
+  /** 연결한 계정이 쓴 코멘트인가(2026-10-23 오케스트레이터 검토). */
+  mine?: boolean;
+  /** 앱에서 고쳐도 잃는 것이 없는가 — 내 코멘트이고 문단 · 줄바꿈 · 글뿐일 때다. */
+  editable?: boolean;
 }
 
 /**
  * 기획서 한 문서 — 파생 마크다운과 절(매크로 표식). 코멘트는 정본인 Confluence 에서
  * 그 자리에 읽어 실는다(안 풀린 것만 · 읽기 실패면 null — 원장의 수가 대신한다).
+ * 코멘트 본문은 맨 글로 풀어 싣고(멘션은 `@이름`), 고치기의 재료(내 것 · 고칠 수 있음)를 붙인다.
  * 자격은 이 답의 어디에도 실리지 않는다.
  */
 async function docRead(
@@ -166,12 +204,7 @@ async function docRead(
 ): Promise<{
   markdown: string;
   sections: Array<{ heading: string; macro: boolean }>;
-  comments: Array<{
-    author: string;
-    body: string;
-    createdAt: string | null;
-    anchorText: string | null;
-  }> | null;
+  comments: DocReadComment[] | null;
 }> {
   const slug = deps.registry.activeSlug();
   const site = slug === null ? null : deps.machineSetting.get(confluenceSiteKey(slug));
@@ -191,32 +224,45 @@ async function docRead(
   });
   const footer = await client.listFooterComments(pageId);
   const inline = await client.listInlineComments(pageId);
-  let comments: Array<{
-    author: string;
-    body: string;
-    createdAt: string | null;
-    anchorText: string | null;
-  }> | null = null;
+  let comments: DocReadComment[] | null = null;
   if (footer.readable && inline.readable) {
     const names = new Map<string, string>();
+    const nameOf = async (accountId: string): Promise<string> => {
+      const cached = names.get(accountId);
+      if (cached !== undefined) return cached;
+      const name = (await client.userName(accountId)) ?? "";
+      names.set(accountId, name);
+      return name;
+    };
+    // 내 코멘트를 가리려고 연결한 계정을 한 번 묻는다 — 못 물으면 아무것도 내 것이 아니다(고치기가 안 선다).
+    const me = await client.whoAmI();
+    const myId = me.ok && me.accountId !== "" ? me.accountId : null;
     comments = [];
-    for (const row of [...footer.value, ...inline.value]) {
-      if (row.resolved) continue;
-      let author = "";
-      if (row.authorId !== null) {
-        const cached = names.get(row.authorId);
-        if (cached === undefined) {
-          const name = await client.userName(row.authorId);
-          names.set(row.authorId, name ?? "");
-        }
-        author = names.get(row.authorId) ?? "";
+    const groups = [
+      { rows: footer.value, kind: "footer" as const },
+      { rows: inline.value, kind: "inline" as const },
+    ];
+    for (const group of groups) {
+      for (const row of group.rows) {
+        if (row.resolved) continue;
+        const author = row.authorId === null ? "" : await nameOf(row.authorId);
+        const mentioned = new Map<string, string>();
+        for (const id of mentionIds(row.body)) mentioned.set(id, await nameOf(id));
+        const mine = myId !== null && row.authorId === myId;
+        comments.push({
+          author,
+          body: commentText(row.body, mentioned),
+          createdAt: row.createdAt,
+          anchorText: row.anchorText,
+          id: row.id,
+          kind: group.kind,
+          version: row.version,
+          parentId: row.parentId,
+          resolved: row.resolved,
+          mine,
+          editable: mine && row.version !== null && commentIsPlain(row.body),
+        });
       }
-      comments.push({
-        author,
-        body: row.body,
-        createdAt: row.createdAt,
-        anchorText: row.anchorText,
-      });
     }
   }
   return { markdown: derived.markdown, sections: derived.sections, comments };

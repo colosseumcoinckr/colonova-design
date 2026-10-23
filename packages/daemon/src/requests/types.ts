@@ -5,6 +5,9 @@ import type { AgentUpdates } from "../agent-update.js";
 import type { ConfluenceSync } from "../confluence-sync.js";
 import type { CredentialStore } from "../credentials.js";
 import type { DeveloperNotice } from "../developer-notice.js";
+import type { DocComments } from "../doc-comments.js";
+import type { DocOps } from "../doc-ops.js";
+import type { DraftService } from "../draft-service.js";
 import type { Escalation } from "../escalation.js";
 import type { GitHubBridge } from "../github-bridge.js";
 import type { HandoffPreviews } from "../handoff-preview.js";
@@ -46,6 +49,12 @@ export interface RouterDeps {
   credentials: CredentialStore;
   /** 기획서 가져오기의 몸 — importNow 의 합류와 만료 판정은 이 모듈의 것이다. */
   confluence: ConfluenceSync;
+  /** 기획 초안의 몸 — draft.* 요청이 잇는다(2026-10-23 최종 구현 계획 F1). */
+  drafts: DraftService;
+  /** 문서 관리의 몸 — doc.trash · doc.restore · doc.copy · doc.move 가 잇는다(2026-10-23 작업 D1a). */
+  docOps: DocOps;
+  /** 문서 코멘트의 몸 — doc.comment.* 가 잇는다(2026-10-23 작업 D2a). */
+  docComments: DocComments;
   /** 담당의 캐시 — 설정이 바뀌면 지운다(invalidate). */
   machineTurns: { invalidate(): void };
   notice(notice: DaemonNotice): void;

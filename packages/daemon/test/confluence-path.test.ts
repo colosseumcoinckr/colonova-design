@@ -7,11 +7,12 @@ import { type PlanNode, planPaths } from "../dist/confluence-path.js";
  * 걷기 · 이름 충돌(id 접미) · 깊은 계층 · 이동(같은 id 새 경로)을 못 박는 순수 시험이다.
  */
 
-const node = (id: string, title: string, children: PlanNode[] = []): PlanNode => ({
-  id,
-  title,
-  children,
-});
+const node = (
+  id: string,
+  title: string,
+  children: PlanNode[] = [],
+  kind: PlanNode["kind"] = "page",
+): PlanNode => ({ id, title, kind, children });
 
 test("한글 제목 — 그대로 살고 뿌리 자신의 경로는 <공간>/<뿌리 제목> 이다", () => {
   const root = node("933068815", "8.8 콜로노바", [
@@ -51,6 +52,27 @@ test("이름 충돌 — 둘째부터 페이지 id 를 붙이고 잘려도 같은
   assert.equal(paths.get("12"), "COLO/뿌리/정책-12");
   assert.equal(paths.get("13"), "COLO/뿌리/정책-13");
   assert.equal(paths.get("14"), "COLO/뿌리/정책-14");
+});
+
+test("폴더 노드 — 페이지와 같은 이름 한 걸음으로 아이의 경로를 만든다(2026-10-23 최종 구현 계획 F0)", () => {
+  const root = node("r", "뿌리", [
+    node("f", "화면 목록", [node("1", "정책서", [node("2", "부록")])], "folder"),
+  ]);
+  const paths = planPaths(root, "COLO");
+  assert.equal(paths.get("f"), "COLO/뿌리/화면 목록");
+  assert.equal(paths.get("1"), "COLO/뿌리/화면 목록/정책서");
+  assert.equal(paths.get("2"), "COLO/뿌리/화면 목록/정책서/부록");
+});
+
+test("형제 폴더와 페이지의 같은 이름 — 둘째부터 id 를 붙여 구별한다", () => {
+  const root = node("r", "뿌리", [
+    node("11", "정책", [node("21", "본문")], "folder"),
+    node("12", "정책"),
+  ]);
+  const paths = planPaths(root, "COLO");
+  assert.equal(paths.get("11"), "COLO/뿌리/정책");
+  assert.equal(paths.get("21"), "COLO/뿌리/정책/본문");
+  assert.equal(paths.get("12"), "COLO/뿌리/정책-12");
 });
 
 test("깊은 계층 — 다섯 층도 폴더 사슬로 내려간다", () => {

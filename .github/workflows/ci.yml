@@ -126,6 +126,7 @@ jobs:
           packages/daemon/test/github-reviewers.test.ts
           packages/daemon/test/feedback.test.ts
           packages/daemon/test/agent-attachments.test.ts
+          packages/daemon/test/agent-env.test.ts
           packages/daemon/test/ai-review.test.ts
           packages/daemon/test/app-comment.test.ts
           packages/daemon/test/child-hide.test.ts
@@ -169,6 +170,24 @@ jobs:
           packages/daemon/test/confluence-path.test.ts
           packages/daemon/test/confluence-sync.test.ts
           packages/daemon/test/confluence-wire.test.ts
+          packages/daemon/test/draft-wire.test.ts
+          packages/daemon/test/draft-store.test.ts
+          packages/daemon/test/draft-ai.test.ts
+          packages/daemon/test/storage-blocks.test.ts
+          packages/daemon/test/draft-service.test.ts
+          packages/daemon/test/draft-publish.test.ts
+          packages/daemon/test/doc-ops.test.ts
+          packages/daemon/test/doc-ops-wire.test.ts
+          packages/daemon/test/plan-refs.test.ts
+          packages/daemon/test/doc-comments.test.ts
+          packages/daemon/test/doc-comments-wire.test.ts
+          packages/daemon/test/draft-flow.test.ts
+          packages/daemon/test/comment-text.test.ts
+          packages/daemon/test/doc-read-comments.test.ts
+          packages/daemon/test/draft-refs.test.ts
+          packages/daemon/test/wire-error-ko.test.ts
+          packages/daemon/test/storage-report.test.ts
+          packages/daemon/test/scope-report.test.ts
           packages/daemon/test/project-fleet-confluence.test.ts
           packages/daemon/test/saveable-paths.test.ts
           packages/web/test/chat-options.test.ts
@@ -240,6 +259,12 @@ jobs:
           packages/web/test/next-secret-scrub.test.ts
           packages/web/test/next-confluence-connect.test.ts
           packages/web/test/next-plans.test.ts
+          packages/web/test/next-drafts.test.ts
+          packages/web/test/next-draft-thread.test.ts
+          packages/web/test/next-draft-publish.test.ts
+          packages/web/test/next-doc-actions.test.ts
+          packages/web/test/next-doc-comments.test.ts
+          packages/web/test/next-plan-refs.test.ts
           packages/desktop/test/app-reset.test.ts
           packages/desktop/test/notices.test.ts
           packages/desktop/test/pin-envelope.test.ts
@@ -251,3 +276,4 @@ jobs:
           packages/desktop/test/menu.test.ts
           packages/desktop/test/notify-policy.test.ts
           scripts/bench/lib.test.mjs
+          scripts/bench/plans-blocks.test.mjs

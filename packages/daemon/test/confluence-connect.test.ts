@@ -272,6 +272,8 @@ test("뿌리를 바꿔 다시 연결하면 원장이 비워진다 — 새 뿌리
       pages: {
         "111": { path: "COLO/옛문서", title: "옛문서", version: 1, sections: [], comments: null },
       },
+      folders: {},
+      unsupported: {},
     });
     // 같은 뿌리로 다시 연결 — 원장은 그대로다.
     await rig4.router.dispatch(connect({ email: undefined, token: undefined }));

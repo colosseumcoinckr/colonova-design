@@ -1,15 +1,18 @@
 /**
  * 기획서 가져오기(2026-10-18 기획서 동기화 1단계 · 계획 A1) — 연결이 쓰는 국소 규칙과
- * 가져오기 루프가 여기 산다. 트리거는 셋이다: 데몬 시작 · 10분 타이머 ·
+ * 가져오기 루프가 여기 산다. 트리거는 넷이다: 데몬 시작 · 10분 타이머 ·
  * `confluence.importNow`(뷰어 · 설정의 새로 가져오기 단추 — 중복 눌림은 차선의 합류로
- * 한 번만 돈다, 취소는 없다). 저장 포맷은 원문 그대로, 마크다운은 파생물, 원장은 한 벌이다.
+ * 한 번만 돈다, 취소는 없다) · 문서 관리 뒤의 `walkNow`(2026-10-23 · 최종 구현 계획 F2 ·
+ * 작업 B5 — 휴지통 · 이동 · 복구 · 복제는 증분이 못 본다). 저장 포맷은 원문 그대로,
+ * 마크다운은 파생물, 원장은 한 벌이다.
  * 커밋은 없다(D1) — 쓰기는 각 프로젝트의 차선("confluence")에 서서 stash · checkout 경합을 피한다.
  * 가져오기 중 401 을 만나면 만료 상태로 적고 다시 connect 전까지 조용히 건너뛴다.
  *
  * 걷기와 증분(2026-10-19 고침) — 폴더 경로는 트리 걷기(planPaths) 한 곳에서만 계산한다. 걷기는
- * 첫 가져오기 · 데몬 시작 뒤 첫 바퀴 · 빠짐없이 끝나지 못한 걷기의 다음 바퀴 · 증분이 처음 보는 문서나
- * 제목이 바뀐 문서를 만난 바퀴에 돈다. 이동은 판도 lastModified 도 올리지 않아(2026-10-18 실측) 증분이
- * 못 보므로 시작 걷기가 잡는다. 그 사이의 바퀴는 뿌리 아래로 좁힌 CQL 증분이다. 걷기는 경로가 바뀐 문서를
+ * 첫 가져오기 · 데몬 시작 뒤 첫 바퀴 · 빠짐없이 끝나지 못한 걷기의 다음 바퀴 · 증분이 처음 보는
+ * 문서나 제목이 바뀐 문서를 만난 바퀴 · 문서 관리 뒤의 walkNow(2026-10-23 · 작업 B5)에 돈다.
+ * 이동은 판도 lastModified 도 올리지 않아(2026-10-18 실측) 증분이 못 보므로 시작 걷기가 잡는다.
+ * 그 사이의 바퀴는 뿌리 아래로 좁힌 CQL 증분이다. 걷기는 경로가 바뀐 문서를
  * 새 자리로 옮기고, 빠짐없이 끝난 걷기는 트리에 없는 문서(지워졌거나 뿌리 밖으로 옮겨 간 것)를 거둔다.
  */
 
@@ -161,6 +164,10 @@ interface ConfluenceLink {
 /** 이번 바퀴가 손볼 문서들 — 걷기든 증분이든 같은 모양으로 루프에 들어간다. */
 interface ImportTargets {
   pages: Array<{ id: string; path: string }>;
+  /** 폴더 — 본문 없는 계층. 걷기만 채운다(2026-10-23 최종 구현 계획 F0). */
+  folders: Array<{ id: string; path: string; title: string }>;
+  /** 본문을 읽지 않는 종류 — 화이트보드 · 데이터베이스 · 임베드 · 모르는 종류. 걷기만 채운다. */
+  unsupported: Array<{ id: string; path: string; title: string; type: string }>;
   /** 이미 읽은 문서 — 루프가 다시 묻지 않는다. */
   reads: Map<string, ConfluencePage>;
   /** 트리 걷기였는가 — 자리를 옮기고 트리에 없는 문서를 거두는 것은 걷기만 한다. */
@@ -266,6 +273,47 @@ export class ConfluenceSync {
         this.inFlight.delete(slug);
       });
     this.inFlight.set(slug, promise);
+    return promise;
+  }
+
+  /** 걷기를 청하는 손의 합류 — 여러 손이 동시에 불러도 걷는 바퀴는 하나다(2026-10-23 · 작업 B5). */
+  private readonly walkInFlight = new Map<string, Promise<ConfluenceImportResult>>();
+
+  /**
+   * 문서 관리(휴지통 · 이동 · 복구 · 복제) 뒤의 걷기(2026-10-23 · 최종 구현 계획 F2 · 작업 B5) —
+   * 이동은 판도 lastModified 도 올리지 않고 휴지통으로 간 문서는 검색에서 빠질 뿐이라 증분이 못 본다.
+   * 먼저 walkDue 에 넣는다 — 이 뒤에 걷기 판정을 하는 바퀴는 모두 걷는다(증분 바퀴는 표를 지우지 않고,
+   * 빠짐없이 끝난 걷기만 지운다). 이미 도는 바퀴는 판정을 마쳤을 수 있으니 끝나길 기다린 뒤 한 바퀴를 더
+   * 돈다(importNow — 줄에 선 바퀴에 합류해도 그 바퀴는 아직 판정 전이라 걷는다).
+   * 기다림은 차선 밖에서 한다 — 차선 작업 안에서 다른 바퀴를 기다리면, 합류(join)가 종류만 보고 줄에 선
+   * 작업에 붙는 탓에 자기 자신을 기다려 차선(보관 · 제출과 같은 줄)이 멈춘다(2026-10-23 오케스트레이터 검토).
+   * 클론이 서기 전의 거절은 importNow 와 같다.
+   */
+  walkNow(slug: string): Promise<ConfluenceImportResult> {
+    const walking = this.walkInFlight.get(slug);
+    if (walking !== undefined) return walking;
+    const workspace = this.deps.workspaceOf(slug);
+    // 클론이 서기 전에는 쓰지 않는다 — importNow 의 거절과 같은 문장이다(2026-10-23 · 작업 B5).
+    if (workspace === null || !cloned(workspace.root)) {
+      return Promise.reject(
+        new Error(
+          "기획서를 가져올 클론이 아직 없어요 — 프로젝트 준비가 끝난 뒤 다시 가져와 주세요.",
+        ),
+      );
+    }
+    this.walkDue.add(slug);
+    const running = this.inFlight.get(slug);
+    const promise = (async () => {
+      // 도는 바퀴가 끝나길 기다린다 — 그 바퀴가 실패해도 우리 걷기는 돈다.
+      if (running !== undefined) await running.catch(() => undefined);
+      // 기다린 바퀴가 걷기로 끝났으면 표를 지웠다 — 그 바퀴의 트리는 문서 관리 전에 찍혔을 수 있으니 다시 세운다
+      // (2026-10-23 2차 검토 R3 — 증분으로 흘러 휴지통 · 이동을 놓치던 것).
+      this.walkDue.add(slug);
+      return await this.importNow(slug);
+    })().finally(() => {
+      this.walkInFlight.delete(slug);
+    });
+    this.walkInFlight.set(slug, promise);
     return promise;
   }
 
@@ -396,6 +444,28 @@ export class ConfluenceSync {
         delete ledger.pages[id];
       }
     }
+    // 폴더 · 미지원 종류는 걷기의 몫이다 — 빠짐없이 끝난 걷기는 통째로 바꾸고, 아니면 아는 것만 덮어 넣는다
+    // (지우지 않는다 — 못 읽은 갈래의 옛 항목이 다음 바퀴의 몫이다 · 2026-10-23 최종 구현 계획 F0).
+    if (targets.walked) {
+      if (targets.complete) {
+        ledger.folders = Object.fromEntries(
+          targets.folders.map((folder) => [folder.id, { path: folder.path, title: folder.title }]),
+        );
+        ledger.unsupported = Object.fromEntries(
+          targets.unsupported.map((row) => [
+            row.id,
+            { path: row.path, title: row.title, type: row.type },
+          ]),
+        );
+      } else {
+        for (const folder of targets.folders) {
+          ledger.folders[folder.id] = { path: folder.path, title: folder.title };
+        }
+        for (const row of targets.unsupported) {
+          ledger.unsupported[row.id] = { path: row.path, title: row.title, type: row.type };
+        }
+      }
+    }
     const live = new Set(Object.values(ledger.pages).map((page) => page.path));
     for (const path of stale) {
       if (!live.has(path)) removeDoc(workspace.root, path);
@@ -478,58 +548,117 @@ export class ConfluenceSync {
         ? { kind: "unauthorized" }
         : { kind: "failed", stage: "root", reason: rootRead.reason };
     }
-    const walk = await this.walkChildren(link, link.rootId, reads);
+    const walk = await this.walkChildren(link, link.rootId, "page", reads);
     if (walk.unauthorized) return { kind: "unauthorized" };
     const root: PlanNode = {
       id: rootRead.value.id,
       title: rootRead.value.title,
+      kind: "page",
       children: walk.nodes,
     };
     const spaceKey =
       rootRead.value.spaceId === null ? null : await link.client.spaceKey(rootRead.value.spaceId);
     const paths = planPaths(root, spaceKey ?? "plans");
     const pages: Array<{ id: string; path: string }> = [];
-    for (const [id, path] of paths) {
-      // 뿌리 자신도 문서다 — 폴더 경로의 마지막 걸음에 제목을 얹어 파일로 만든다.
-      pages.push({
-        id,
-        path: id === root.id ? `${path}/${planName(rootRead.value.title, root.id)}` : path,
-      });
-    }
+    const folders: Array<{ id: string; path: string; title: string }> = [];
+    const unsupported: Array<{ id: string; path: string; title: string; type: string }> = [];
+    // 종류별로 나눈다 — 경로는 planPaths 의 계산을 그대로 쓴다(2026-10-23 최종 구현 계획 F0).
+    const collect = (node: PlanNode): void => {
+      const path = paths.get(node.id);
+      if (path !== undefined) {
+        if (node.kind === "page") {
+          // 뿌리 자신도 문서다 — 폴더 경로의 마지막 걸음에 제목을 얹어 파일로 만든다.
+          const file =
+            node.id === root.id ? `${path}/${planName(rootRead.value.title, root.id)}` : path;
+          pages.push({ id: node.id, path: file });
+        } else if (node.kind === "folder") {
+          folders.push({ id: node.id, path, title: node.title });
+        } else {
+          unsupported.push({ id: node.id, path, title: node.title, type: node.type ?? "unknown" });
+        }
+      }
+      for (const child of node.children) collect(child);
+    };
+    collect(root);
     return {
       kind: "ok",
-      targets: { pages, reads, walked: true, complete: walk.complete, skipped: 0 },
+      targets: {
+        pages,
+        folders,
+        unsupported,
+        reads,
+        walked: true,
+        complete: walk.complete,
+        skipped: 0,
+      },
     };
   }
 
   /**
-   * 트리 걷기 — 자식의 자식까지. 읽은 문서는 reads 에 쌓인다. 못 읽힌 갈래는 두 갈래다:
-   * 만료(401)면 걷기 전체가 만료다 — 원장을 앞서지 않고 다시 connect 를 기다린다(루프의
-   * 401 손과 같은 칸). 그 밖의 실패는 그 문서만 이번 바퀴의 건너뜀이고 걷기는 멈추지 않되,
-   * 걷기는 빠짐없이 끝나지 못한 것으로 적힌다(complete: false — 거두지 않고 다음 바퀴가 다시 걷는다).
+   * 트리 걷기 — 자식의 자식까지. 폴더 · 화이트보드 등은 본문 없이 종류만 내려간다(2026-10-23 최종
+   * 구현 계획 F0). 못 읽힌 갈래는 두 갈래다: 만료(401)면 걷기 전체가 만료다 — 원장을 앞서지 않고
+   * 다시 connect 를 기다린다(루프의 401 손과 같은 칸). 그 밖의 실패는 그 문서만 이번 바퀴의 건너뜀이고
+   * 걷기는 멈추지 않되, 걷기는 빠짐없이 끝나지 못한 것으로 적힌다(complete: false — 거두지 않고 다음 바퀴가 다시 걷는다).
    */
   private async walkChildren(
     link: ConfluenceLink,
-    pageId: string,
+    parentId: string,
+    parentType: string,
     reads: Map<string, ConfluencePage>,
   ): Promise<{ nodes: PlanNode[]; unauthorized: boolean; complete: boolean }> {
-    const listed = await link.client.listChildren(pageId);
+    const listed = await link.client.listDirectChildren(parentId, parentType);
     if (!listed.readable) {
       return { nodes: [], unauthorized: listed.reason === "unauthorized", complete: false };
     }
     const nodes: PlanNode[] = [];
     let complete = true;
     for (const child of listed.value) {
-      const read = await this.readCached(link, child.id, reads);
-      if (!read.readable) {
-        if (read.reason === "unauthorized") return { nodes: [], unauthorized: true, complete };
+      // 아직 사는 아이만 걷는다 — archived 는 기록도 걷기도 아니고 그냥 없는 것이다(2026-10-23 최종 구현 계획 F0).
+      if (child.status !== null && child.status !== "current") continue;
+      if (child.type === "page") {
+        const read = await this.readCached(link, child.id, reads);
+        if (!read.readable) {
+          if (read.reason === "unauthorized") return { nodes: [], unauthorized: true, complete };
+          complete = false;
+          continue;
+        }
+        const grand = await this.walkChildren(link, child.id, "page", reads);
+        if (grand.unauthorized) return { nodes: [], unauthorized: true, complete };
+        if (!grand.complete) complete = false;
+        nodes.push({ id: child.id, title: read.value.title, kind: "page", children: grand.nodes });
+      } else if (child.type === "folder") {
+        // 폴더는 본문이 없다 — 목록의 제목이 곧 이름이다.
+        const grand = await this.walkChildren(link, child.id, "folder", reads);
+        if (grand.unauthorized) return { nodes: [], unauthorized: true, complete };
+        if (!grand.complete) complete = false;
+        nodes.push({ id: child.id, title: child.title, kind: "folder", children: grand.nodes });
+      } else if (
+        child.type === "whiteboard" ||
+        child.type === "database" ||
+        child.type === "embed"
+      ) {
+        // 본문을 읽지 않는 종류 — 아래는 읽되 파일은 만들지 않는다.
+        const grand = await this.walkChildren(link, child.id, child.type, reads);
+        if (grand.unauthorized) return { nodes: [], unauthorized: true, complete };
+        if (!grand.complete) complete = false;
+        nodes.push({
+          id: child.id,
+          title: child.title,
+          kind: "unsupported",
+          type: child.type,
+          children: grand.nodes,
+        });
+      } else {
+        // 모르는 종류 — 아래를 읽을 길이 없으니 빠짐없이 걸었다 하지 않는다(2026-10-23 최종 구현 계획 F0).
+        nodes.push({
+          id: child.id,
+          title: child.title,
+          kind: "unsupported",
+          type: child.type,
+          children: [],
+        });
         complete = false;
-        continue;
       }
-      const grand = await this.walkChildren(link, child.id, reads);
-      if (grand.unauthorized) return { nodes: [], unauthorized: true, complete };
-      if (!grand.complete) complete = false;
-      nodes.push({ id: child.id, title: read.value.title, children: grand.nodes });
     }
     return { nodes, unauthorized: false, complete };
   }
@@ -578,7 +707,16 @@ export class ConfluenceSync {
     }
     return {
       kind: "ok",
-      targets: { pages, reads, walked: false, complete: false, skipped },
+      // 증분 바퀴는 폴더 · 미지원 종류의 원장을 건드리지 않는다(2026-10-23 최종 구현 계획 F0).
+      targets: {
+        pages,
+        folders: [],
+        unsupported: [],
+        reads,
+        walked: false,
+        complete: false,
+        skipped,
+      },
     };
   }
 

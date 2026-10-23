@@ -32,6 +32,11 @@ import { screensOfTurn } from "./cycle-screens.js";
 import { DeveloperNotice, describeProblem } from "./developer-notice.js";
 import { startupLogFields } from "./diagnostics.js";
 import { RequestRouter } from "./dispatch.js";
+import { DocComments } from "./doc-comments.js";
+import { DocOps } from "./doc-ops.js";
+import { createDraftAiRunner } from "./draft-ai.js";
+import { DraftPublisher } from "./draft-publish.js";
+import { DraftService } from "./draft-service.js";
 import { EditAnnouncer } from "./edit-screens.js";
 import { buildStatus, resolveClaudeExecutable } from "./environment.js";
 import { Escalation } from "./escalation.js";
@@ -188,6 +193,8 @@ export class DaemonServer {
   private router!: RequestRouter;
   /** 기획서(Confluence) 가져오기의 몸 — start() 가 만들고 stop() 이 내려놓는다. */
   private confluence!: ConfluenceSync;
+  /** 기획 초안의 몸 — start() 가 만들고 stop() 이 도는 생성을 끊는다(2026-10-23 작업 B2). */
+  private drafts: DraftService | null = null;
   /** 커미티 B1 (2026-09-15): 열린 넘김 폴링 타이머 — stop() 이 끊는다. */
   private handoffTimer: NodeJS.Timeout | null = null;
   /**
@@ -776,6 +783,39 @@ export class DaemonServer {
       logger: this.logger,
     });
     this.confluence.start();
+    // 기획 초안 — ConfluenceSync 바로 뒤에서 만든다(2026-10-23 작업 B2). 저장소는 슬러그마다
+    // 한 벌씩 서비스 안에서 살고, 도는 생성은 stop() 이 끊는다.
+    this.drafts = new DraftService({
+      registry: this.registry,
+      machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      workspaceRoot: (slug) => this.fleet?.workspaces.get(slug)?.repo.root ?? null,
+      claudeExecutable: () => this.claudeExecutable,
+      broadcast: (m) => this.broadcast(m),
+      logger: this.logger,
+      ai: createDraftAiRunner(),
+      publisher: new DraftPublisher(),
+    });
+    // 문서 관리 — 기획 초안 바로 옆에서 만든다(2026-10-23 작업 D1a). 적용 · 결과 불명 뒤에는 트리를
+    // 걷게 한다 — 이동 · 휴지통은 증분이 못 본다(2026-10-23 · 최종 구현 계획 F2 · 작업 B5).
+    const docOps = new DocOps({
+      registry: this.registry,
+      machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      workspaceRoot: (slug) => this.fleet?.workspaces.get(slug)?.repo.root ?? null,
+      broadcast: (m) => this.broadcast(m),
+      logger: this.logger,
+      walkNow: (slug) => this.confluence.walkNow(slug),
+    });
+    // 문서 코멘트 — 문서 관리 바로 옆에서 만든다(2026-10-23 작업 D2a). 기록은 활성
+    // 프로젝트 데이터의 plans/comment-ops 에 산다.
+    const docComments = new DocComments({
+      registry: this.registry,
+      machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      workspaceRoot: (slug) => this.fleet?.workspaces.get(slug)?.repo.root ?? null,
+      logger: this.logger,
+    });
     this.router = new RequestRouter({
       manager: this.manager,
       fleet: this.fleet,
@@ -798,6 +838,9 @@ export class DaemonServer {
       machineSetting: this.machineSetting,
       credentials: this.credentials,
       confluence: this.confluence,
+      drafts: this.drafts,
+      docOps,
+      docComments,
       machineTurns: this.machineTurns,
       agentLogin: this.agentLogin,
       agentInstall: this.agentInstall,
@@ -1053,6 +1096,8 @@ export class DaemonServer {
     clearInterval(this.handoffTimer ?? undefined);
     this.handoffTimer = null;
     this.confluence?.stop();
+    // 도는 기획 AI 생성도 이 데몬의 자식 — 내려갈 때 함께 끊는다(2026-10-23 작업 B2).
+    this.drafts?.stop();
     this.logger.info("데몬 종료");
     await this.manager.closeAll();
     // Every project the daemon touched this run, not just the active one: an
@@ -1555,10 +1600,14 @@ export class DaemonServer {
   private async onMessage(ws: WebSocket, raw: string): Promise<void> {
     const parsed = parseClientMessage(raw);
     if (!parsed.ok) {
+      // 선로 해석 실패의 답은 사람의 말이다 — zod 의 영어 문장이 화면에 오르지 않게
+      // 한다(2026-10-23 · 웹 검토 R2 의 3). 로그는 필드 경로의 검사 문장만 —
+      // 사용자의 글은 남지 않는다.
+      this.logger.info("선로 해석 실패", { issues: parsed.error });
       this.send(ws, {
         type: "error",
         id: parsed.id,
-        message: parsed.error,
+        message: "요청을 읽지 못했어요 — 글이 너무 길거나 고른 것이 너무 많을 수 있어요",
         code: "bad_request",
       });
       return;
@@ -1588,10 +1637,20 @@ export class DaemonServer {
       // response received" once rode the wire to the chat banner — is logged
       // here verbatim and replaced by the recovery sentence.
       this.logger.error("요청 실패", { type: message.type, err: error });
+      // 오류가 실은 기계 코드(draft.stale 같은)는 답에 함께 나른다 — 화면이 처지를 가린다(2026-10-23 작업 B2).
+      const code =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "string" &&
+        error.code.startsWith("draft.")
+          ? error.code
+          : undefined;
       return {
         type: "error",
         id: message.id,
         message: asPlannerFacingError(error).message,
+        ...(code !== undefined ? { code } : {}),
       };
     }
   }

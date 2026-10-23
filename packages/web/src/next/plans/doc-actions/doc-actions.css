@@ -1,0 +1,209 @@
+/* 문서 관리 · 근거 보내기(2026-10-23 · 최종 구현 계획 F3 · F4) — 복제 · 위치 옮기기 · 휴지통 · 복구의
+   확인 창과 근거 보내기 판. 발행 확인 창(`.nx-pb`)과 새 문서 창(`.nx-nd`)의 옷을 입는다 — 색은 `.nx`
+   뿌리의 토큰만 읽고, 단추는 `.nx button` 의 초기화를 이기도록 `.nx` 를 앞에 단다. */
+
+.nx-da {
+  width: min(480px, calc(100vw - 48px));
+}
+
+/* 스냅샷을 만드는 동안 · 막는 이유가 없음을 알리는 한 줄 */
+.nx-da-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--ink3);
+  font-size: 13px;
+}
+
+/* 초안 근거의 안내 — 아직 발행하지 않았다는 말은 주황으로 눈에 뜬다. */
+.nx-da-note--draft {
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--amber-soft);
+  color: var(--ink2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.nx-da-fail {
+  margin: 10px 0 0;
+  color: var(--red);
+  font-size: 12.5px;
+}
+
+.nx-da-facts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.nx-da-fact {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 10px;
+}
+
+.nx-da-fact dt {
+  color: var(--ink3);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.nx-da-fact dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13.5px;
+}
+
+/* 휴지통 이동의 아래 문서 — 영향 범위를 본문 위의 한 줄로 알린다. */
+.nx-da-children {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: var(--r-md);
+  background: var(--amber-soft);
+  color: var(--ink2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.nx .nx-da-field {
+  display: grid;
+  gap: 5px;
+  margin: 14px 0 0;
+  color: var(--ink2);
+  font-size: 12.5px;
+}
+
+.nx .nx-da-field input,
+.nx .nx-da-field select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 13.5px;
+}
+
+/* 막는 이유 — 발행 확인 창의 목록과 같은 줄 모양이다. */
+.nx-da-blockers {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.nx-da-blockers li {
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  background: var(--bg-2);
+  color: var(--ink2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.nx-da-result {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  border-radius: var(--r-md);
+  background: var(--amber-soft);
+  color: var(--ink2);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+/* 문서 보기 머리의 더보기 — 곁의 단추들과 같은 줄에 선다. */
+.nx-da-menu {
+  display: inline-flex;
+  flex: none;
+}
+
+/* 기획서 목록 머리의 휴지통 — 곁의 단추들과 같은 막대에 선다(그림만, 이름은 말풍선이 맡는다). */
+.nx .nx-pl-trash {
+  flex: none;
+}
+
+/* ---------- 휴지통 창 ---------- */
+.nx-da-trash .nx-mbody {
+  min-height: 180px;
+}
+
+.nx-da-empty {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  padding: 26px 12px;
+  text-align: center;
+  color: var(--ink3);
+  font-size: 13px;
+}
+
+.nx-da-empty b {
+  color: var(--ink2);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nx-da-empty-ic {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--nx-hover);
+  color: var(--ink3);
+}
+
+.nx-da-trash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.nx-da-trash-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  padding: 3px 6px;
+  border-radius: var(--r);
+  font-size: 13.5px;
+}
+
+.nx-da-trash-row:hover {
+  background: var(--nx-hover);
+}
+
+.nx-da-trash-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-da-trash-when {
+  flex: none;
+  color: var(--ink3);
+  font-size: 12px;
+}
+
+/* 읽기 실패 — 이유 한 줄과 다시 시도. */
+.nx-da-failed {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--red);
+  font-size: 12.5px;
+}
+
+.nx-da-failed p {
+  margin: 0;
+}

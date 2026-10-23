@@ -41,6 +41,8 @@ function rig(opts: { site?: string; expired?: boolean; ledger?: boolean }): Rig 
           comments: { unresolved: 2 },
         },
       },
+      folders: {},
+      unsupported: {},
     });
   }
   const fleet = new ProjectFleet({

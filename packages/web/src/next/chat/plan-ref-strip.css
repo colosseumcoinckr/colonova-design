@@ -1,0 +1,83 @@
+/*
+ * 기획 근거 줄(2026-10-23 · 최종 구현 계획 F3 · 작업 F3b) — 화면 대화의 입력창 바로 위에
+ * 이번 대화가 삼은 근거가 한 줄로 선다. 칩을 누르면 기획서 칸이 그 문서 · 초안으로 돌아간다.
+ * 칩이 늘어나도 줄은 하나 — 옆으로 굴러가며 입력창을 밀어 올리지 않는다.
+ */
+
+.nx-pref {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px 4px;
+  min-width: 0;
+  animation: nx-fade 0.2s;
+}
+
+.nx-pref-label {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--ink3);
+  white-space: nowrap;
+}
+
+/* 칩의 줄 — 한 줄을 지킨다. 펼쳐진 칩은 옆으로 굴러간다(막대는 숨긴다 — 두 줄이 되는 것보다 낫다). */
+.nx-pref-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nx-pref-chips::-webkit-scrollbar {
+  display: none;
+}
+
+/* 근거 칩 — 입력창 위 알약(.nx-plan-pill)과 같은 몸값. 제목이 길면 칩 안에서 말린다. */
+.nx .nx-pref-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex: none;
+  max-width: 260px;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--line2);
+  background: var(--card);
+  color: var(--ink2);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+/* 제목만 말린다 — 판 · 초안 여부와 절은 끝까지 보인다. */
+.nx-pref-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nx-pref-meta {
+  flex: none;
+  color: var(--ink3);
+}
+
+.nx .nx-pref-chip:hover {
+  background: var(--nx-hover);
+  color: var(--ink);
+}
+
+/* 펼침 — 남은 근거의 수를 세는 조용한 글자 단추. 펼쳐져도 같은 자리에서 접는 길이 된다. */
+.nx .nx-pref-more {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink3);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.nx .nx-pref-more:hover {
+  color: var(--ink);
+}

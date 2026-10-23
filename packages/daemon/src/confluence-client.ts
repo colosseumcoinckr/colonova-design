@@ -1,6 +1,6 @@
 /**
- * Confluence REST client — 기획서 동기화 1단계의 읽기 전용 클라이언트
- * (docs/confluence-sync-plan-2026-10-18.md · docs/confluence-sync-design-2026-10-18.md, 2026-10-18).
+ * Confluence REST client — 기획서 동기화 1단계의 읽기 클라이언트에 쓰기 손잡이를 얹었다
+ * (2026-10-23 최종 구현 계획 F2 · 읽기는 docs/confluence-sync-plan-2026-10-18.md 의 1단계).
  * 자격(이메일 + API 토큰)과 주입된 RestTransport 만 안다 — 이 파일의 어떤 길도
  * 주어진 전송 밖으로 나가지 않고, 토큰은 헤더로만 탄다(github.ts 와 같은 약속).
  * 기본 인증은 이메일과 토큰이 한 몸이다 — 헤더 조립은 `headers()` 한 곳뿐이다.
@@ -10,15 +10,32 @@
  * 409 는 판 충돌, 429 는 한도(`BUDGETS.limitRetry` 사다리 — 한 분에서 두 배, 최대
  * 10분 · 2026-10-08 F14 선례), 그 밖은 unavailable 이다.
  *
+ * 쓰기도 던지지 않는다 — `written: false` 와 한 단어 분류다(2026-10-23 최종 구현 계획 F2).
+ * 쓰기는 자동으로 다시 보내지 않는다 — 다시 보내면 같은 문서가 둘 생긴다. 429 만 거절이
+ * 확실하므로 읽기와 같은 사다리를 탄다. `unknown` 은 「적용됐는지 모른다」 다 — 네트워크
+ * 실패 · 5xx · 2xx 인데 응답을 못 읽음이며, 부르는 쪽이 원격을 다시 읽어 대조한다.
+ *
  * Endpoints used (실측 2026-10-18 — docs/confluence-sync-plan-2026-10-18.md · cite in every fixture):
  *   GET /wiki/api/v2/pages/{id}?body-format=storage  — 정본 한 문서(저장 포맷 원문)
- *   GET /wiki/api/v2/pages/{id}/children             — 트리 걷기(직접 아이 · `_links.next`)
+ *   GET /wiki/api/v2/{pages|folders|whiteboards|databases|embeds}/{id}/direct-children
+ *                                                    — 트리 걷기(종류 있는 직접 아이 · `_links.next` · 2026-10-23 최종 구현 계획 F0)
  *   GET /wiki/rest/api/search?cql=…                  — CQL 증분(`type=page` 를 묶는 건 호출자 — 코멘트가 섞인다 · 실측)
- *   GET /wiki/api/v2/pages/{id}/footer-comments      — 바닥글 · 답글(부모 id)
- *   GET /wiki/api/v2/pages/{id}/inline-comments      — 인라인 · 해결 상태(REST 해결 읽기는 아직 미실측 — 사전 검증 2)
+ *   GET /wiki/api/v2/pages/{id}/footer-comments?body-format=storage — 바닥글 · 답글(부모 id)
+ *   GET /wiki/api/v2/pages/{id}/inline-comments?body-format=storage — 인라인 · 해결 상태(REST 해결 읽기는 아직 미실측 — 사전 검증 2)
+ *     본문 형식을 밝혀야 본문이 온다 — 해결 · 고치기가 본문을 다시 싣기 때문이다(2026-10-23 오케스트레이터 검토).
  *   GET /wiki/api/v2/users/{accountId}               — 코멘트 작성자 이름(뷰어의 「작성자」 · 캐시로 끊는다)
  *   GET /wiki/rest/api/user/current                  — 인증 검증(사전 검증 1 · 실측 2026-10-18 — v2 의 users/me 는
  *                                                      이 게이트웨이에서 400 이라 v1 current 로 간다)
+ *   POST /wiki/api/v2/pages                          — 기획 문서 새 페이지(발행의 새 문서 · 2026-10-23 최종 구현 계획 F2)
+ *   PUT /wiki/api/v2/pages/{id}                      — 기존 문서를 새 판으로(판이 어긋나면 409 · F2)
+ *   DELETE /wiki/api/v2/pages/{id}                   — 문서를 휴지통으로(빈 몸 204 · F2)
+ *   POST /wiki/api/v2/footer-comments                — 바닥글 코멘트 · 답글(2026-10-23 최종 구현 계획 F4 · 작업 D2a)
+ *   POST /wiki/api/v2/inline-comments                — 인라인 코멘트 · 답글(문장 닻 · 작업 D2a)
+ *   PUT /wiki/api/v2/{footer|inline}-comments/{id}   — 코멘트 고치기 · 해결(판 + 1 · 작업 D2a)
+ *   GET /wiki/api/v2/pages/{id}?get-draft=true&body-format=storage — 임시 저장 초안(F2)
+ *   GET /wiki/api/v2/pages/{id}/operations           — 문서에 걸린 동작(F2)
+ *   GET /wiki/api/v2/pages/{id}/ancestors?limit=250  — 윗문서 줄(id 들 · F2)
+ *   GET /wiki/api/v2/pages?space-id=…&title=…&status=current&limit=25 — 제목으로 문서 찾기(F2)
  */
 
 import { BUDGETS, backoffDelay } from "./budgets.js";
@@ -50,6 +67,11 @@ export interface ConfluencePage {
   parentId: string | null;
   /** 이 판이 만들어진 시각(version.createdAt) — 파생 마크다운 frontmatter 의 updatedAt. */
   updatedAt: string | null;
+  /**
+   * 이 판을 쓴 계정(version.authorId) — 발행 결과를 모를 때 "내가 쓴 판인가"를 대 보는 재료다
+   * (2026-10-23 · 최종 구현 계획 F2). 응답이 안 주면 없다.
+   */
+  authorId?: string | null;
 }
 
 /** 목록 한 줄 — id 와 제목만. 본문은 `readPage` 로 따로 읽는다. */
@@ -61,6 +83,16 @@ export interface ConfluenceChild {
    * 판과 대어 본문 읽기를 건너뛰는 재료다. 응답이 안 주면 없다 — 부르는 쪽은 readPage 의 판으로 돌아간다.
    */
   version?: number;
+}
+
+/** 트리 한 줄 — 폴더 · 화이트보드 등 종류가 실린다. 본문은 페이지만 readPage 로 읽는다(2026-10-23 최종 구현 계획 F0). */
+export interface ConfluenceTreeChild {
+  id: string;
+  title: string;
+  /** page | folder | whiteboard | database | embed — 응답이 안 주면 모르는 종류다. */
+  type: string;
+  /** current · archived — 응답이 안 주면 없는 것이고, 아는 아이만 걷는다. */
+  status: string | null;
 }
 
 /** 코멘트 한 줄 — 바닥글 · 인라인 공용 모양. 본문 사본은 만들지 않는다(원칙 1 — doc.read 가 읽을 때 실는다). */
@@ -78,6 +110,11 @@ export interface ConfluenceComment {
   resolved: boolean;
   /** 인라인 닻 — 본문 텍스트 선택(2026-10-18 실측). 응답이 안 주면 없는 것이다. */
   anchorText: string | null;
+  /**
+   * 코멘트의 판(version.number) — 고치기 · 해결의 낙관적 잠금 잣대다(2026-10-23 작업 D2a).
+   * 응답이 안 주면 모른다 — 부르는 쪽은 고치기를 거절한다.
+   */
+  version: number | null;
 }
 
 /** 인증 검증의 답 — github.ts 의 whoAmI 선례. 실패 문장은 재연결의 길을 가리킨다. */
@@ -98,11 +135,40 @@ export type ConfluenceRead<T> =
   | { readable: true; value: T }
   | { readable: false; reason: ConfluenceReadFailure; detail: string };
 
+/** 쓰기 실패의 한 단어 — 읽기의 분류에 쓰기의 사정(not-found · invalid · too-large)을 더한다(2026-10-23 최종 구현 계획 F2). */
+export type ConfluenceWriteFailure =
+  | "unauthorized"
+  | "forbidden"
+  | "conflict"
+  | "not-found"
+  | "invalid"
+  | "too-large"
+  | "limit"
+  | "unknown";
+
+/**
+ * 쓰기의 약속 — 던지지 않는다. `unknown` 은 「적용됐는지 모른다」 다: 네트워크 실패 · 5xx ·
+ * 2xx 인데 응답을 못 읽음. 부르는 쪽이 원격을 다시 읽어 대조한다. 쓰기는 자동으로 다시
+ * 보내지 않는다 — 다시 보내면 같은 문서가 둘 생긴다(429 만 거절이 확실하니 사다리를 탄다).
+ */
+export type ConfluenceWrite<T> =
+  | { written: true; value: T }
+  | { written: false; reason: ConfluenceWriteFailure; detail: string };
+
 /** 한도 사다리 — 429 를 이만큼 오른 뒤에도 막히면 한도로 분류하고 돌아온다. 시간은 BUDGETS.limitRetry 의 몫이다. */
 const LIMIT_ATTEMPTS = 3;
 
 /** 목록이 따라가는 쪽 상한 — github.ts 의 COMMENT_PAGE_CAP 과 같은 감각. 그 너머는 사람의 몫이다. */
 const PAGE_CAP = 10;
+
+/** direct-children 경로의 복수형 — v2 가 아래를 읽어 주는 다섯 종류다(2026-10-23 최종 구현 계획 F0). */
+const TREE_PARENT_SEGMENTS: Record<string, string> = {
+  page: "pages",
+  folder: "folders",
+  whiteboard: "whiteboards",
+  database: "databases",
+  embed: "embeds",
+};
 
 /**
  * 사이트 이름의 관용 — 사용자가 `https://…` 나 끝의 `/wiki` 를 붙여 넣어도 한 벌로 만든다
@@ -195,37 +261,44 @@ export class ConfluenceClient {
       "문서 읽기",
     );
     if (read.readable === false) return read;
-    const row = read.value;
-    const id = asString(row.id);
-    const storage = asString(asRecord(asRecord(row.body)?.storage)?.value);
-    if (!id || storage === null) {
+    const page = pageOf(read.value);
+    if (page === null) {
       return {
         readable: false,
         reason: "unavailable",
         detail: "문서 읽기에 실패했습니다 — 응답에 본문이 없습니다.",
       };
     }
-    return {
-      readable: true,
-      value: {
-        id,
-        title: asString(row.title) ?? "",
-        spaceId: asString(row.spaceId),
-        version: asNumber(asRecord(row.version)?.number) ?? 0,
-        storage,
-        parentId: asString(row.parentId),
-        updatedAt: asString(asRecord(row.version)?.createdAt),
-      },
-    };
+    return { readable: true, value: page };
   }
 
-  /** 한 문서의 직접 아이 — 트리 걷기는 호출자(가져오기 루프)가 재귀로 한다. */
-  async listChildren(pageId: string): Promise<ConfluenceRead<ConfluenceChild[]>> {
-    const first = `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/children?limit=100`;
-    return await this.listRows(first, "트리 읽기", (row) => {
+  /**
+   * 한 부모의 직접 아이 — 폴더가 응답에 오르는 v2 계약(2026-10-23 최종 구현 계획 F0). 폐기 예정인
+   * children 은 페이지만 돌려주었으므로 폴더 아래 문서가 원장에 들어오지 못했다. 트리 걷기는
+   * 호출자(가져오기 루프)가 재귀로 한다.
+   */
+  async listDirectChildren(
+    parentId: string,
+    parentType: string,
+  ): Promise<ConfluenceRead<ConfluenceTreeChild[]>> {
+    const segment = TREE_PARENT_SEGMENTS[parentType];
+    if (segment === undefined) {
+      return {
+        readable: false,
+        reason: "unavailable",
+        detail: "트리 읽기에 실패했습니다 — 이 종류의 아래는 읽지 못합니다.",
+      };
+    }
+    const first = `/wiki/api/v2/${segment}/${encodeURIComponent(parentId)}/direct-children?limit=250`;
+    return await this.listRows(first, "트리 읽기", { requireComplete: true }, (row) => {
       const id = asString(row.id);
       if (!id) return null;
-      return { id, title: asString(row.title) ?? "" };
+      return {
+        id,
+        title: asString(row.title) ?? "",
+        type: asString(row.type) ?? "unknown",
+        status: asString(row.status),
+      };
     });
   }
 
@@ -239,7 +312,7 @@ export class ConfluenceClient {
   ): Promise<ConfluenceRead<ConfluenceChild[]>> {
     const expand = opts.withVersion === true ? "&expand=content.version" : "";
     const first = `/wiki/rest/api/search?cql=${encodeURIComponent(cql)}&limit=100${expand}`;
-    return await this.listRows(first, "문서 찾기", (row) => {
+    return await this.listRows(first, "문서 찾기", {}, (row) => {
       const content = asRecord(row.content);
       const id = asString(content?.id);
       if (!id) return null;
@@ -251,14 +324,14 @@ export class ConfluenceClient {
 
   /** 바닥글 코멘트 — 답글은 부모 id 로 온다(실측). 읽지 못하면 읽지 못함이고, 뷰어는 수만 잃는다. */
   async listFooterComments(pageId: string): Promise<ConfluenceRead<ConfluenceComment[]>> {
-    const first = `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/footer-comments?limit=100`;
-    return await this.listRows(first, "코멘트 읽기", commentOf);
+    const first = `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/footer-comments?body-format=storage&limit=100`;
+    return await this.listRows(first, "코멘트 읽기", {}, commentOf);
   }
 
   /** 인라인 코멘트 — 닻(본문 선택)과 해결 상태. 해결의 REST 모양은 사전 검증 2 의 입력이다. */
   async listInlineComments(pageId: string): Promise<ConfluenceRead<ConfluenceComment[]>> {
-    const first = `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/inline-comments?limit=100`;
-    return await this.listRows(first, "코멘트 읽기", commentOf);
+    const first = `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/inline-comments?body-format=storage&limit=100`;
+    return await this.listRows(first, "코멘트 읽기", {}, commentOf);
   }
 
   /** 코멘트 작성자의 이름 — v2 는 id 만 주므로 따로 읽는다. 캐시가 같은 사람을 두 번 묻지 않게 하고, 실패는 이름 없음으로 흘린다. */
@@ -295,13 +368,405 @@ export class ConfluenceClient {
   private readonly spaceKeys = new Map<string, string | null>();
 
   /**
+   * 기획 문서를 새 페이지로 만든다 — 발행의 「새 문서」 갈래(2026-10-23 최종 구현 계획 F2).
+   * 부모가 없으면 본문에서 뺀다 — 공간 뿌리에 오른다. 새 판은 Confluence 가 1 로 연다.
+   */
+  async createPage(input: {
+    spaceId: string;
+    parentId: string | null;
+    title: string;
+    storage: string;
+  }): Promise<ConfluenceWrite<{ id: string; version: number; title: string }>> {
+    const body: Record<string, unknown> = {
+      spaceId: input.spaceId,
+      status: "current",
+      title: input.title,
+      body: { representation: "storage", value: input.storage },
+    };
+    if (input.parentId !== null) body.parentId = input.parentId;
+    const write = await this.requestWrite("POST", "/wiki/api/v2/pages", "문서 만들기", body);
+    if (write.written === false) return write;
+    const row = asRecord(write.value);
+    const id = row === null ? null : asString(row.id);
+    if (row === null || id === null) {
+      return {
+        written: false,
+        reason: "unknown",
+        detail: "문서 만들기의 결과를 알 수 없습니다 — Confluence 응답을 읽지 못했습니다.",
+      };
+    }
+    return {
+      written: true,
+      value: {
+        id,
+        version: asNumber(asRecord(row.version)?.number) ?? 1,
+        title: asString(row.title) ?? input.title,
+      },
+    };
+  }
+
+  /**
+   * 기존 문서를 새 판으로 쓴다 — 발행의 「고친 문서」 갈래(2026-10-23 최종 구현 계획 F2).
+   * `version` 은 새 판 번호(기준 + 1)다. 판이 어긋나면 Confluence 의 409 가 곧 충돌 신호다.
+   */
+  async updatePage(input: {
+    pageId: string;
+    title: string;
+    storage: string;
+    version: number;
+    message?: string;
+  }): Promise<ConfluenceWrite<{ id: string; version: number }>> {
+    const version: Record<string, unknown> = { number: input.version };
+    if (input.message !== undefined) version.message = input.message;
+    const write = await this.requestWrite(
+      "PUT",
+      `/wiki/api/v2/pages/${encodeURIComponent(input.pageId)}`,
+      "문서 갱신",
+      {
+        id: input.pageId,
+        status: "current",
+        title: input.title,
+        body: { representation: "storage", value: input.storage },
+        version,
+      },
+    );
+    if (write.written === false) return write;
+    const row = asRecord(write.value);
+    const id = row === null ? null : asString(row.id);
+    if (row === null || id === null) {
+      return {
+        written: false,
+        reason: "unknown",
+        detail: "문서 갱신의 결과를 알 수 없습니다 — Confluence 응답을 읽지 못했습니다.",
+      };
+    }
+    return {
+      written: true,
+      value: { id, version: asNumber(asRecord(row.version)?.number) ?? input.version },
+    };
+  }
+
+  /** 문서를 휴지통으로 옮긴다 — DELETE 의 204 는 빈 몸이다(2026-10-23 최종 구현 계획 F2). */
+  async trashPage(pageId: string): Promise<ConfluenceWrite<{ id: string }>> {
+    const write = await this.requestWrite(
+      "DELETE",
+      `/wiki/api/v2/pages/${encodeURIComponent(pageId)}`,
+      "문서 버리기",
+    );
+    if (write.written === false) return write;
+    return { written: true, value: { id: pageId } };
+  }
+
+  /**
+   * 문서를 다른 부모 아래 복제한다 — v1 copy 길(2026-10-23 최종 구현 계획 F4 · 작업 D1a).
+   * 첨부 · 라벨 · 속성까지 따라온다(정본 계획 §9 — 첨부 있는 복제는 첨부까지 확인한다).
+   * 권한은 대상 부모의 것이라 미리보기가 pageOperations 로 본다. 새 문서의 id 만 꺼낸다.
+   */
+  async copyPage(input: {
+    pageId: string;
+    parentId: string;
+    title: string;
+  }): Promise<ConfluenceWrite<{ id: string }>> {
+    const write = await this.requestWrite(
+      "POST",
+      `/wiki/rest/api/content/${encodeURIComponent(input.pageId)}/copy`,
+      "문서 복제",
+      {
+        destination: { type: "parent_page", value: input.parentId },
+        pageTitle: input.title,
+        copyAttachments: true,
+        copyLabels: true,
+        copyProperties: true,
+        copyPermissions: false,
+        copyCustomContents: true,
+      },
+    );
+    if (write.written === false) return write;
+    const id = asString(asRecord(write.value)?.id);
+    if (id === null) {
+      return {
+        written: false,
+        reason: "unknown",
+        detail: "문서 복제의 결과를 알 수 없습니다 — Confluence 응답을 읽지 못했습니다.",
+      };
+    }
+    return { written: true, value: { id } };
+  }
+
+  /**
+   * 문서의 위치를 옮긴다 — v1 move 의 append 길(2026-10-23 최종 구현 계획 F4 · 작업 D1a).
+   * 문서의 id 는 유지된다(G4 의 확인 항목). 응답을 읽을 것이 없어도 옮겨진 것이므로
+   * 본래의 id 로 답한다.
+   */
+  async movePage(input: {
+    pageId: string;
+    parentId: string;
+  }): Promise<ConfluenceWrite<{ id: string }>> {
+    const write = await this.requestWrite(
+      "PUT",
+      `/wiki/rest/api/content/${encodeURIComponent(input.pageId)}/move/append/${encodeURIComponent(input.parentId)}`,
+      "문서 옮기기",
+    );
+    if (write.written === false) return write;
+    return { written: true, value: { id: input.pageId } };
+  }
+
+  /**
+   * 휴지통의 문서를 읽는다 — 복구에 옮길 본문과 판이 필요하다(2026-10-23 작업 D1a).
+   * 읽는 해석은 readPage 와 같다.
+   */
+  async readTrashedPage(pageId: string): Promise<ConfluenceRead<ConfluencePage>> {
+    const read = await this.requestRead(
+      `/wiki/api/v2/pages/${encodeURIComponent(pageId)}?status=trashed&body-format=storage`,
+      "휴지통 문서 읽기",
+    );
+    if (read.readable === false) return read;
+    const page = pageOf(read.value);
+    if (page === null) {
+      return {
+        readable: false,
+        reason: "unavailable",
+        detail: "휴지통 문서 읽기에 실패했습니다 — 응답에 본문이 없습니다.",
+      };
+    }
+    return { readable: true, value: page };
+  }
+
+  /**
+   * 휴지통의 문서를 되살린다 — v2 페이지 갱신의 status current 길이다(2026-10-23 작업 D1a).
+   * 공식 문서가 복구를 명시하지 않아 G4 실측 전이다(최종 구현 계획 G4). `version` 은
+   * 휴지통 판 + 1 이다.
+   */
+  async restorePage(input: {
+    pageId: string;
+    title: string;
+    storage: string;
+    version: number;
+  }): Promise<ConfluenceWrite<{ id: string; version: number }>> {
+    const write = await this.requestWrite(
+      "PUT",
+      `/wiki/api/v2/pages/${encodeURIComponent(input.pageId)}`,
+      "문서 복구",
+      {
+        id: input.pageId,
+        status: "current",
+        title: input.title,
+        body: { representation: "storage", value: input.storage },
+        version: { number: input.version },
+      },
+    );
+    if (write.written === false) return write;
+    const row = asRecord(write.value);
+    const id = row === null ? null : asString(row.id);
+    if (row === null || id === null) {
+      return {
+        written: false,
+        reason: "unknown",
+        detail: "문서 복구의 결과를 알 수 없습니다 — Confluence 응답을 읽지 못했습니다.",
+      };
+    }
+    return {
+      written: true,
+      value: { id, version: asNumber(asRecord(row.version)?.number) ?? input.version },
+    };
+  }
+
+  /**
+   * 바닥글 코멘트를 만든다 — 문서에 곧장이거나 답글(부모 코멘트 아래)이다(2026-10-23 작업 D2a).
+   * v2 의 본문은 문서와 부모 중 하나다 — 답글의 자리는 부모가 안다.
+   */
+  async createFooterComment(input: {
+    pageId?: string;
+    parentCommentId?: string;
+    storage: string;
+  }): Promise<ConfluenceWrite<{ id: string }>> {
+    const body: Record<string, unknown> = {
+      body: { representation: "storage", value: input.storage },
+    };
+    if (input.pageId !== undefined) body.pageId = input.pageId;
+    if (input.parentCommentId !== undefined) body.parentCommentId = input.parentCommentId;
+    return await this.#writeForId("POST", "/wiki/api/v2/footer-comments", "코멘트 만들기", body);
+  }
+
+  /**
+   * 인라인 코멘트를 만든다 — 문장 닻(textSelection 과 그 몇 번째 일치인가)이 실린다
+   * (2026-10-23 작업 D2a). 답글이면 닻을 빼고 부모만 싣는다 — 스레드의 자리는 부모의 몫이다.
+   */
+  async createInlineComment(input: {
+    pageId?: string;
+    parentCommentId?: string;
+    storage: string;
+    selection?: string;
+    matchCount?: number;
+    matchIndex?: number;
+  }): Promise<ConfluenceWrite<{ id: string }>> {
+    const body: Record<string, unknown> = {
+      body: { representation: "storage", value: input.storage },
+    };
+    if (input.pageId !== undefined) body.pageId = input.pageId;
+    if (input.parentCommentId !== undefined) body.parentCommentId = input.parentCommentId;
+    if (input.selection !== undefined) {
+      body.inlineCommentProperties = {
+        textSelection: input.selection,
+        textSelectionMatchCount: input.matchCount,
+        textSelectionMatchIndex: input.matchIndex,
+      };
+    }
+    return await this.#writeForId("POST", "/wiki/api/v2/inline-comments", "코멘트 만들기", body);
+  }
+
+  /**
+   * 코멘트를 고치거나 해결한다 — 바닥글 · 인라인이 주소를 가른다(2026-10-23 작업 D2a).
+   * 판은 요청의 현재 판 + 1 이다. 해결 표시는 인라인의 몫이다 — 바닥글의 본문에는
+   * 아예 싣지 않는다.
+   */
+  async updateComment(input: {
+    kind: "footer" | "inline";
+    commentId: string;
+    storage: string;
+    version: number;
+    resolved?: boolean;
+  }): Promise<ConfluenceWrite<{ id: string }>> {
+    const segment = input.kind === "inline" ? "inline-comments" : "footer-comments";
+    const body: Record<string, unknown> = {
+      version: { number: input.version + 1 },
+      body: { representation: "storage", value: input.storage },
+    };
+    if (input.kind === "inline" && input.resolved !== undefined) {
+      body.resolved = input.resolved;
+    }
+    return await this.#writeForId(
+      "PUT",
+      `/wiki/api/v2/${segment}/${encodeURIComponent(input.commentId)}`,
+      "코멘트 갱신",
+      body,
+    );
+  }
+
+  /**
+   * 임시 저장 판 읽기 — 공동 편집이 아직 내놓지 않은 초안이 실린다(2026-10-23 최종 구현 계획 F2).
+   * 초안이 없으면(최신 판만 있으면) 값들이 없는 것이고, 그것은 읽지 못함이 아니다.
+   */
+  async readDraft(
+    pageId: string,
+  ): Promise<
+    ConfluenceRead<{ status: string | null; version: number | null; storage: string | null }>
+  > {
+    const read = await this.requestRead(
+      `/wiki/api/v2/pages/${encodeURIComponent(pageId)}?get-draft=true&body-format=storage`,
+      "초안 읽기",
+    );
+    if (read.readable === false) return read;
+    const row = read.value;
+    return {
+      readable: true,
+      value: {
+        status: asString(row.status),
+        version: asNumber(asRecord(row.version)?.number),
+        storage: asString(asRecord(asRecord(row.body)?.storage)?.value),
+      },
+    };
+  }
+
+  /** 문서에 걸린 동작 읽기 — 응답의 `operations` 배열이다(2026-10-23 최종 구현 계획 F2). */
+  async pageOperations(
+    pageId: string,
+  ): Promise<ConfluenceRead<Array<{ operation: string; targetType: string }>>> {
+    const read = await this.requestRead(
+      `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/operations`,
+      "문서 동작 읽기",
+    );
+    if (read.readable === false) return read;
+    const list = read.value.operations;
+    const operations: Array<{ operation: string; targetType: string }> = [];
+    if (Array.isArray(list)) {
+      for (const row of list) {
+        const record = asRecord(row);
+        const operation = asString(record?.operation);
+        if (record === null || operation === null) continue;
+        operations.push({ operation, targetType: asString(record.targetType) ?? "" });
+      }
+    }
+    return { readable: true, value: operations };
+  }
+
+  /** 윗문서 줄 읽기 — 응답 순서 그대로 id 만 꺼낸다(2026-10-23 최종 구현 계획 F2). */
+  async pageAncestors(pageId: string): Promise<ConfluenceRead<string[]>> {
+    const read = await this.requestRead(
+      `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/ancestors?limit=250`,
+      "문서 윗줄 읽기",
+    );
+    if (read.readable === false) return read;
+    const list = read.value.results;
+    const ids: string[] = [];
+    if (Array.isArray(list)) {
+      for (const row of list) {
+        const id = asString(asRecord(row)?.id);
+        if (id !== null) ids.push(id);
+      }
+    }
+    return { readable: true, value: ids };
+  }
+
+  /**
+   * 제목으로 문서 찾기 — 같은 이름이 이미 공간에 오르는지 보는 길(2026-10-23 최종 구현 계획 F2).
+   * 판과 만들어진 시각은 응답이 줄 때만 실린다 — 시각은 version 의 것이 먼저다.
+   */
+  async findPagesByTitle(
+    spaceId: string,
+    title: string,
+  ): Promise<
+    ConfluenceRead<
+      Array<{
+        id: string;
+        title: string;
+        parentId: string | null;
+        version: number | null;
+        createdAt: string | null;
+      }>
+    >
+  > {
+    const read = await this.requestRead(
+      `/wiki/api/v2/pages?space-id=${encodeURIComponent(spaceId)}&title=${encodeURIComponent(title)}&status=current&limit=25`,
+      "제목으로 문서 찾기",
+    );
+    if (read.readable === false) return read;
+    const list = read.value.results;
+    const pages: Array<{
+      id: string;
+      title: string;
+      parentId: string | null;
+      version: number | null;
+      createdAt: string | null;
+    }> = [];
+    if (Array.isArray(list)) {
+      for (const row of list) {
+        const record = asRecord(row);
+        const id = asString(record?.id);
+        if (record === null || id === null) continue;
+        const version = asRecord(record.version);
+        pages.push({
+          id,
+          title: asString(record.title) ?? "",
+          parentId: asString(record.parentId),
+          version: asNumber(version?.number),
+          createdAt: asString(version?.createdAt) ?? asString(record.createdAt),
+        });
+      }
+    }
+    return { readable: true, value: pages };
+  }
+
+  /**
    * 목록 한 끝까지 — 첫 주소에서 시작해 다음 쪽 표지(v2 는 `_links.next`, v1 CQL 은 Link 헤더)를 상한(PAGE_CAP)까지
    * 따라간다. 모양을 다르게 읽는 것은 `pick` 이고, 아이가 없는 줄은 거른다. 실패는 전체의 실패로 돌아온다 —
-   * 빈 목록은 「읽었는데 없다」 일 때만 나온다(github-ci 선례).
+   * 빈 목록은 「읽었는데 없다」 일 때만 나온다(github-ci 선례). `requireComplete` 는 상한에서 끊긴 목록을
+   * 실패로 돌려보낸다 — 트리 걷기는 끝까지 읽었을 때만 빠짐없이 걸었다 말한다(2026-10-23 최종 구현 계획 F0).
    */
   private async listRows<T>(
     first: string,
     label: string,
+    opts: { requireComplete?: boolean } = {},
     pick: (row: Record<string, unknown>) => T | null,
   ): Promise<ConfluenceRead<T[]>> {
     const rows: T[] = [];
@@ -330,11 +795,119 @@ export class ConfluenceClient {
         }
       }
     }
+    if (opts.requireComplete === true && next !== null) {
+      return {
+        readable: false,
+        reason: "unavailable",
+        detail: `${label}에 실패했습니다 — 목록이 너무 길어 끝까지 읽지 못했습니다.`,
+      };
+    }
     return { readable: true, value: rows };
   }
 
   private isCql(url: string): boolean {
     return url.startsWith("/wiki/rest/api/search");
+  }
+
+  /**
+   * id 하나인 쓰기의 한 끗 — 만들기 · 고치기의 공통 꼴(2026-10-23 작업 D2a). 응답을 읽지
+   * 못하면 적용 여부를 모르는 것이다 — 자동으로 다시 보내지 않는다(requestWrite 의 약속).
+   */
+  async #writeForId(
+    method: "POST" | "PUT",
+    url: string,
+    label: string,
+    json: unknown,
+  ): Promise<ConfluenceWrite<{ id: string }>> {
+    const write = await this.requestWrite(method, url, label, json);
+    if (write.written === false) return write;
+    const id = asString(asRecord(write.value)?.id);
+    if (id === null) {
+      return {
+        written: false,
+        reason: "unknown",
+        detail: `${label}의 결과를 알 수 없습니다 — Confluence 응답을 읽지 못했습니다.`,
+      };
+    }
+    return { written: true, value: { id } };
+  }
+
+  /**
+   * 쓰기의 한 끗 — 읽기의 requestRead 와 나란히, 약속만 다르다(2026-10-23 최종 구현 계획 F2).
+   * 자동으로 다시 보내지 않는다 — 다시 보내면 같은 문서가 둘 생긴다. 429 만 거절이 확실하므로
+   * 읽기와 같은 `BUDGETS.limitRetry` 사다리를 탄다(최대 LIMIT_ATTEMPTS). 네트워크 실패 · 5xx ·
+   * 2xx 인데 응답을 못 읽은 것은 `unknown` 으로 돌아온다 — 적용됐는지 모르니 부르는 쪽이 원격을
+   * 다시 읽어 대조한다. 실패 문장은 API 의 말뿐이다 — 토큰은 헤더로만 탄다.
+   */
+  private async requestWrite(
+    method: "POST" | "PUT" | "DELETE",
+    url: string,
+    label: string,
+    json?: unknown,
+  ): Promise<
+    | { written: true; status: number; value: unknown }
+    | { written: false; reason: ConfluenceWriteFailure; detail: string }
+  > {
+    const bytes = json === undefined ? undefined : new TextEncoder().encode(JSON.stringify(json));
+    for (let attempt = 1; ; attempt += 1) {
+      let status: number;
+      let body: Uint8Array;
+      try {
+        ({ status, body } = await this.transport.request({
+          method,
+          url,
+          headers: this.headers(),
+          ...(bytes === undefined ? {} : { body: bytes }),
+        }));
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        return {
+          written: false,
+          reason: "unknown",
+          detail: `${label}의 결과를 알 수 없습니다 — Confluence에 닿지 못했습니다 (${firstLine(reason)})`,
+        };
+      }
+      if (status === 429 && attempt < LIMIT_ATTEMPTS) {
+        await this.sleep(
+          backoffDelay(attempt, BUDGETS.limitRetry.baseMs, BUDGETS.limitRetry.capMs),
+        );
+        continue;
+      }
+      if (status < 200 || status >= 300) {
+        const reason: ConfluenceWriteFailure =
+          status === 400
+            ? "invalid"
+            : status === 401
+              ? "unauthorized"
+              : status === 403
+                ? "forbidden"
+                : status === 404
+                  ? "not-found"
+                  : status === 409
+                    ? "conflict"
+                    : status === 413
+                      ? "too-large"
+                      : status === 429
+                        ? "limit"
+                        : // 그 밖의 4xx 는 거절이 확실하다 — 적용 여부를 모르는 것은 5xx 뿐이다.
+                          status >= 400 && status < 500
+                          ? "invalid"
+                          : "unknown";
+        return { written: false, reason, detail: httpError(label, status, body) };
+      }
+      // 2xx — 빈 몸(DELETE 의 204)은 읽을 것이 없고, 글자가 있으면 JSON 이어야 읽은 것이다.
+      const text = new TextDecoder().decode(body).trim();
+      if (text === "") return { written: true, status, value: null };
+      try {
+        return { written: true, status, value: JSON.parse(text) as unknown };
+      } catch {
+        return {
+          written: false,
+          reason: "unknown",
+          detail: `${label}의 결과를 알 수 없습니다 — Confluence 응답을 읽지 못했습니다.`,
+        };
+      }
+    }
   }
 
   /**
@@ -420,10 +993,17 @@ export class ConfluenceClient {
     }
   }
 
-  /** 자격의 한 몸 — 이메일:토큰 짝을 기본 인증으로. 조립은 이 한 곳뿐이다. */
+  /**
+   * 자격의 한 몸 — 이메일:토큰 짝을 기본 인증으로. 조립은 이 한 곳뿐이다. 쓰기의 JSON 본문에는
+   * content-type 이 필요하다(2026-10-23 최종 구현 계획 F2).
+   */
   private headers(): Record<string, string> {
     const pair = Buffer.from(`${this.creds.email}:${this.creds.token}`, "utf8").toString("base64");
-    return { authorization: `Basic ${pair}`, accept: "application/json" };
+    return {
+      authorization: `Basic ${pair}`,
+      accept: "application/json",
+      "content-type": "application/json",
+    };
   }
 }
 
@@ -438,6 +1018,23 @@ function bodyNext(data: unknown): string | null {
   } catch {
     return next;
   }
+}
+
+/** 문서 한 줄 읽기 — v2 페이지 응답을 정본 모양으로. 본문이 없으면 없는 것이다(readPage · readTrashedPage 공용). */
+function pageOf(row: Record<string, unknown>): ConfluencePage | null {
+  const id = asString(row.id);
+  const storage = asString(asRecord(asRecord(row.body)?.storage)?.value);
+  if (!id || storage === null) return null;
+  return {
+    id,
+    title: asString(row.title) ?? "",
+    spaceId: asString(row.spaceId),
+    version: asNumber(asRecord(row.version)?.number) ?? 0,
+    storage,
+    parentId: asString(row.parentId),
+    updatedAt: asString(asRecord(row.version)?.createdAt),
+    authorId: asString(asRecord(row.version)?.authorId),
+  };
 }
 
 /** 코멘트 한 줄 읽기 — 모양이 갈리는 것(바닥글 · 인라인 · 옛 필드)을 한데 읽고 모르면 빈 값으로 흘린다. */
@@ -457,6 +1054,7 @@ function commentOf(row: Record<string, unknown>): ConfluenceComment | null {
       asRecord(asRecord(row.status))?.resolution === "resolved" ||
       asRecord(row.resolution)?.status === "resolved",
     anchorText: asString(inlineProps?.selection),
+    version: asNumber(asRecord(row.version)?.number),
   };
 }
 

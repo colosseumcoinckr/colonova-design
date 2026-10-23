@@ -20,7 +20,7 @@ import { join } from "node:path";
 /** Fetch-shaped: one request in, one structured response out. */
 export interface RestTransport {
   request(input: {
-    method: "GET" | "POST" | "PUT" | "PATCH";
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     /** Path with query, e.g. "/wiki/api/v2/pages/1?body-format=storage". */
     url: string;
     headers: Record<string, string>;
@@ -76,7 +76,7 @@ export class FixtureTransport implements RestTransport {
   }
 
   async request(input: {
-    method: "GET" | "POST" | "PUT" | "PATCH";
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     url: string;
     headers: Record<string, string>;
     body?: Uint8Array;
@@ -147,7 +147,7 @@ export class FetchRestTransport implements RestTransport {
   constructor(private readonly apiUrl: string) {}
 
   async request(input: {
-    method: "GET" | "POST" | "PUT" | "PATCH";
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     url: string;
     headers: Record<string, string>;
     body?: Uint8Array;

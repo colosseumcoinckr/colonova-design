@@ -15,7 +15,7 @@ import type {
   SessionCommand,
   SessionModelInfo,
 } from "@colonova-design/protocol";
-import { withoutSelfUpdate } from "../../../agent-env.js";
+import { withoutAppSecrets, withoutSelfUpdate } from "../../../agent-env.js";
 import { sanitizeRepoAgentSettings } from "../../../claude-trust.js";
 import { ensureGitGuardHooks, gitGuardEnv } from "../../../git-guard.js";
 import {
@@ -222,7 +222,10 @@ export class ClaudeAgentSession implements AgentSession {
           ],
         },
         // 자기 업데이트를 끈다(PLAN-UI U12) — 업데이트는 앱의 `업데이트` 줄 하나다.
-        env: withoutSelfUpdate(gitGuardEnv({ ...process.env }, ensureGitGuardHooks())),
+        // 앱의 자격 재정의는 화면 AI 의 셸까지 새지 않게 거른다(2026-10-23 · 최종 구현 계획 F0).
+        env: withoutSelfUpdate(
+          gitGuardEnv(withoutAppSecrets({ ...process.env }), ensureGitGuardHooks()),
+        ),
         includePartialMessages: true,
         // Load the same user/project configuration the terminal would, so
         // CLAUDE.md, skills, and permission rules behave identically. (The
@@ -546,6 +549,9 @@ function probeQuery(cwd: string, executable: string): Query {
       // The same user/project configuration a session loads, so a probe's
       // answer is the one the first session will actually agree with.
       settingSources: ["user", "project", "local"],
+      // 세션과 마찬가지로 프로브도 데몬이 띄우는 Claude 자식이다 — 자기
+      // 업데이트를 끄고(PLAN-UI U12) 앱의 자격을 거른다(2026-10-23 · 최종 구현 계획 F0).
+      env: withoutSelfUpdate(withoutAppSecrets(process.env)),
     },
   });
 }

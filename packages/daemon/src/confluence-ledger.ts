@@ -20,16 +20,33 @@ export interface ConfluenceLedgerPage {
   comments: { unresolved: number } | null;
 }
 
+/** Confluence 폴더 — 본문 없는 계층. 경로와 제목만 산다(2026-10-23 최종 구현 계획 F0). */
+export interface ConfluenceLedgerFolder {
+  path: string;
+  title: string;
+}
+
+/** 앱이 본문을 읽지 않는 종류 — 화이트보드 · 데이터베이스 · 임베드 · 모르는 종류(2026-10-23 최종 구현 계획 F0). */
+export interface ConfluenceLedgerUnsupported {
+  path: string;
+  title: string;
+  type: string;
+}
+
 export interface ConfluenceLedger {
   site: string;
   roots: string[];
   lastSyncAt: string | null;
   pages: Record<string, ConfluenceLedgerPage>;
+  /** Confluence 폴더 — 본문 없는 계층(2026-10-23 최종 구현 계획 F0). */
+  folders: Record<string, ConfluenceLedgerFolder>;
+  /** 본문을 읽지 않는 종류 — 화이트보드 · 데이터베이스 · 임베드 · 모르는 종류. */
+  unsupported: Record<string, ConfluenceLedgerUnsupported>;
 }
 
 /** 빈 원장 — 사이트를 아직 모르면 빈 문자열이다. */
 export function emptyConfluenceLedger(site?: string): ConfluenceLedger {
-  return { site: site ?? "", roots: [], lastSyncAt: null, pages: {} };
+  return { site: site ?? "", roots: [], lastSyncAt: null, pages: {}, folders: {}, unsupported: {} };
 }
 
 // ————— 관용 읽기 도우미 — 깨진 값은 버리고, 절대 던지지 않는다 —————
@@ -82,6 +99,25 @@ function parsePage(raw: unknown): ConfluenceLedgerPage | null {
   };
 }
 
+/** 폴더 한 항목 — 경로가 신원이다. 경로가 빈 글이면 버린다(2026-10-23 최종 구현 계획 F0). */
+function parseFolder(raw: unknown): ConfluenceLedgerFolder | null {
+  const record = asRecord(raw);
+  if (record === null) return null;
+  const path = asString(record.path);
+  if (path === null || path === "") return null;
+  return { path, title: asString(record.title) ?? "" };
+}
+
+/** 미지원 종류 한 항목 — 경로와 종류가 신원이다. 하나라도 빈 글이면 버린다. */
+function parseUnsupported(raw: unknown): ConfluenceLedgerUnsupported | null {
+  const record = asRecord(raw);
+  if (record === null) return null;
+  const path = asString(record.path);
+  const type = asString(record.type);
+  if (path === null || path === "" || type === null || type === "") return null;
+  return { path, title: asString(record.title) ?? "", type };
+}
+
 /** 모르는 모양 · 깨진 필드는 버리고 나머지를 살린다 — 절대 던지지 않는다. */
 export function parseConfluenceLedger(raw: unknown): ConfluenceLedger {
   const record = asRecord(raw);
@@ -95,6 +131,18 @@ export function parseConfluenceLedger(raw: unknown): ConfluenceLedger {
       if (page !== null) pages[id] = page;
     }
   }
+  // 옛 원장은 두 맵이 없다 — 없거나 깨져도 빈 맵으로 내려앉는다(2026-10-23 최종 구현 계획 F0).
+  const parseEntries = <T>(raw: unknown, pick: (value: unknown) => T | null) => {
+    const entries: Record<string, T> = {};
+    const source = asRecord(raw);
+    if (source === null) return entries;
+    for (const [id, value] of Object.entries(source)) {
+      if (id === "") continue;
+      const entry = pick(value);
+      if (entry !== null) entries[id] = entry;
+    }
+    return entries;
+  };
   const lastSyncAt = asString(record.lastSyncAt);
   return {
     site: asString(record.site) ?? "",
@@ -103,6 +151,8 @@ export function parseConfluenceLedger(raw: unknown): ConfluenceLedger {
       : [],
     lastSyncAt: lastSyncAt !== null && lastSyncAt !== "" ? lastSyncAt : null,
     pages,
+    folders: parseEntries(record.folders, parseFolder),
+    unsupported: parseEntries(record.unsupported, parseUnsupported),
   };
 }
 

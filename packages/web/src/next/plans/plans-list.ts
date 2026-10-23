@@ -14,13 +14,33 @@ export interface PlanDoc {
   path: string;
 }
 
-/** 목록의 한 행 — 폴더 계층이 곧 들여쓰기고, 아래에 문서가 달린 줄은 접을 수 있다. */
+/** 원장이 아는 Confluence 폴더 한 행 — doc.list 의 folders 와 같은 모양. */
+export interface PlanFolder {
+  folderId: string;
+  title: string;
+  path: string;
+}
+
+/** 이 앱이 열지 못하는 Confluence 전용 항목 한 행 — doc.list 의 unsupported 와 같은 모양. */
+export interface PlanUnsupported {
+  contentId: string;
+  title: string;
+  path: string;
+  type: string;
+}
+
+/** 목록의 한 행 — 폴더 계층이 곧 들여쓰기고, 아래에 줄이 달린 줄은 접을 수 있다. */
 export interface PlanListRow {
+  /** 줄의 열쇠 — 문서는 pageId, 폴더는 folderId, 전용 항목은 contentId 다. */
   pageId: string;
   title: string;
   version: number;
+  /** 줄의 종류 — 문서 · 폴더 · 이 앱이 열지 못하는 Confluence 전용 항목. */
+  kind: "doc" | "folder" | "unsupported";
+  /** 전용 항목의 Confluence 종류(화이트보드 등) — 문서 · 폴더는 null 이다. */
+  type: string | null;
   depth: number;
-  /** 아래에 문서가 달려 있는가 — 접는 단추가 서는 줄. */
+  /** 바로 아래에 줄이 달려 있는가 — 접는 단추가 서는 줄(폴더 줄도 아래 줄이 있으면 참이다). */
   hasChildren: boolean;
   /** 바로 위 폴더의 이름 — 찾기 결과의 둘째 줄이 된다(뿌리는 빈 글). */
   folder: string;
@@ -45,28 +65,66 @@ function comparePaths(a: string, b: string): number {
 }
 
 /**
- * 목록 조립 — 경로의 걸음 순서로 세우고(폴더 아래가 이어서 선다) 깊이를 잰다. 깊이는 가장 짧은 경로(공간과
- * 뿌리 문서가 같은 자리다)를 0 으로 한 걸음 수 차이다.
+ * 목록 조립 — 문서 · 폴더 · Confluence 전용 항목을 한 목록으로 세운다. 경로의 걸음 순서로 서고(폴더 아래가
+ * 이어서 선다) 깊이를 잰다. 깊이는 가장 짧은 경로(공간과 뿌리 문서가 같은 자리다)를 0 으로 한 걸음 수 차이다.
+ * 폴더 줄은 folders 에서만 만든다 — 문서 경로에서 폴더를 추리지 않는다(2026-10-23 최종 구현 계획 F0).
+ * 그래서 아래 문서가 없는 폴더도 줄로 선다.
  */
-export function planRows(docs: PlanDoc[]): PlanListRow[] {
-  const sorted = [...docs].sort((a, b) => comparePaths(a.path, b.path));
-  const steps = (path: string) => path.split("/").length;
-  const shallowest = sorted.reduce((least, doc) => Math.min(least, steps(doc.path)), Infinity);
-  // 아래에 문서가 달린 경로들 — 문서의 경로에서 마지막 걸음을 뗀 것.
+export function planRows(
+  docs: PlanDoc[],
+  folders: PlanFolder[] = [],
+  unsupported: PlanUnsupported[] = [],
+): PlanListRow[] {
+  // 깊이 · 아래 달림은 모든 줄을 모은 뒤에 재는 것 — 줄 모양에서 열쇠와 경로만 먼저 모은다.
+  type Entry = Pick<PlanListRow, "pageId" | "title" | "version" | "kind" | "type"> & {
+    path: string;
+  };
+  const entries: Entry[] = [
+    ...docs.map((doc): Entry => ({ ...doc, kind: "doc", type: null })),
+    ...folders.map(
+      (folder): Entry => ({
+        pageId: folder.folderId,
+        title: folder.title,
+        version: 0,
+        kind: "folder",
+        type: null,
+        path: folder.path,
+      }),
+    ),
+    ...unsupported.map(
+      (item): Entry => ({
+        pageId: item.contentId,
+        title: item.title,
+        version: 0,
+        kind: "unsupported",
+        type: item.type,
+        path: item.path,
+      }),
+    ),
+  ];
+  const sorted = [...entries].sort((a, b) => comparePaths(a.path, b.path));
+  const shallowest = sorted.reduce(
+    (least, entry) => Math.min(least, entry.path.split("/").length),
+    Infinity,
+  );
+  // 바로 위 경로의 집합 — 모든 줄의 경로에서 마지막 걸음을 떼고 모은다. 폴더 줄도 그 자리에
+  // 아래 줄이 서면 접는 단추가 필요하다.
   const parents = new Set<string>();
-  for (const doc of sorted) {
-    const cut = doc.path.lastIndexOf("/");
-    if (cut > 0) parents.add(doc.path.slice(0, cut));
+  for (const entry of sorted) {
+    const cut = entry.path.lastIndexOf("/");
+    if (cut > 0) parents.add(entry.path.slice(0, cut));
   }
-  return sorted.map((doc) => {
-    const parts = doc.path.split("/");
+  return sorted.map((entry) => {
+    const parts = entry.path.split("/");
     const depth = Math.max(parts.length - shallowest, 0);
     return {
-      pageId: doc.pageId,
-      title: doc.title,
-      version: doc.version,
+      pageId: entry.pageId,
+      title: entry.title,
+      version: entry.version,
+      kind: entry.kind,
+      type: entry.type,
       depth,
-      hasChildren: parents.has(doc.path),
+      hasChildren: parents.has(entry.path),
       folder: depth === 0 ? "" : (parts[parts.length - 2] ?? ""),
     };
   });
@@ -98,11 +156,15 @@ function searchTokens(query: string): string[] {
   return query.normalize("NFC").toLowerCase().split(/\s+/u).filter(Boolean);
 }
 
-/** 찾기 — 제목과 바로 위 폴더 이름에서 찾고, 순서는 목록의 순서를 지킨다. 찾는 말이 비면 그대로다. */
+/**
+ * 찾기 — 제목과 바로 위 폴더 이름에서 찾고, 순서는 목록의 순서를 지킨다. 찾는 말이 비면 그대로다.
+ * 폴더 줄은 결과에서 뺀다 — 찾는 것은 문서와 Confluence 전용 항목뿐이다(2026-10-23 최종 구현 계획 F0).
+ */
 export function filterPlanRows(rows: PlanListRow[], query: string): PlanListRow[] {
   const tokens = searchTokens(query);
   if (tokens.length === 0) return rows;
   return rows.filter((row) => {
+    if (row.kind === "folder") return false;
     const haystack = `${row.title} ${row.folder}`.normalize("NFC").toLowerCase();
     return tokens.every((token) => haystack.includes(token));
   });
@@ -239,12 +301,19 @@ export function planBodyBlocks(body: string): PlanBodyBlock[] {
 
 /** doc.read 의 코멘트 한 행 — 화면이 바로 그리는 모양으로 세운다. */
 export interface PlanCommentRow {
-  /** 목록의 자리 — 안 풀린 코멘트는 순서가 곧 자리므로 열쇠도 이 순서다. */
+  /** 줄의 열쇠 — id 가 있으면 `c-<id>`, 없을 때만 자리 번호다(2026-10-23 · R3 의심 1). */
   key: string;
   author: string;
   anchor: string | null;
   when: string | null;
   body: string;
+  /** 코멘트 쓰기의 재료(2026-10-23 · 최종 구현 계획 F4) — id 나 version 이 없는 줄은 옛 데몬의 것이다. */
+  id: string | null;
+  kind: "footer" | "inline" | null;
+  version: number | null;
+  parentId: string | null;
+  /** 앱에서 고쳐도 잃는 것이 없는가 — 내 코멘트이고 문단 · 줄바꿈 · 글뿐일 때다. */
+  editable: boolean;
 }
 
 /** 코멘트 줄 조립 — 작성자의 이름이 없으면 `이름 없음` 으로, 시각은 문장으로 잰다. */
@@ -254,14 +323,26 @@ export function planCommentRows(
     body: string;
     createdAt: string | null;
     anchorText: string | null;
+    id?: string;
+    kind?: "footer" | "inline" | null;
+    version?: number | null;
+    parentId?: string | null;
+    editable?: boolean;
   }>,
 ): PlanCommentRow[] {
   return comments.map((comment, index) => ({
-    key: String(index),
+    // id 있으면 그것 — 조용한 다시 읽기로 줄이 끼어들어도 열려 있는 답글 · 고치기 입력이 다른
+    // 코멘트 아래로 옮겨 붙지 않게(2026-10-23 · R3 의심 1). id 없는 옛 줄만 자리 번호다.
+    key: comment.id === undefined ? String(index) : `c-${comment.id}`,
     author: comment.author === "" ? L.plans.commentNoAuthor : comment.author,
     anchor: comment.anchorText === null ? null : L.plans.commentAnchor(comment.anchorText),
     when: comment.createdAt === null ? null : timeAgo(Date.parse(comment.createdAt)),
     body: comment.body,
+    id: comment.id ?? null,
+    kind: comment.kind ?? null,
+    version: comment.version ?? null,
+    parentId: comment.parentId ?? null,
+    editable: comment.editable === true,
   }));
 }
 

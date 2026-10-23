@@ -18,6 +18,9 @@
 
 export * from "./attention.js";
 export * from "./diagnostics.js";
+export * from "./doc-comments.js";
+export * from "./doc-ops.js";
+export * from "./draft.js";
 export * from "./feedback.js";
 export * from "./invite.js";
 export * from "./messages.js";

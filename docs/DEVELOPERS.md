@@ -3,8 +3,8 @@
 > 소스를 고치거나 배포하는 사람, 그리고 팀의 서비스를 ColoNova Design 에 연결하려는 개발자를 위한
 > 안내다. 사용자 안내는 [README](../README.md) 와 [사용 설명서](GUIDE.md) 에 있다.
 
-MVP의 지원 범위와 안정화 순서는 [MVP 범위와 안정화 계획](MVP.md)을 따른다(2026-10-20 사용자 요청).
-그 문서의 합격 기준은 목표 동작이며, 이 안내는 현재 구현을 설명한다. 동작을 바꿀 때 함께 갱신한다.
+MVP의 지원 범위·유지할 합격 기준·완료 상태는 [MVP 범위와 안정화 기록](MVP.md)을 따른다.
+후속 기능의 범위와 순서는 [최종 구현 계획](confluence-sync-plan-2026-10-18.md), 현재 구현은 이 안내를 따른다. 동작을 바꿀 때 관련 문서를 함께 갱신한다.
 
 ## 개발자라면 — 팀에 들이는 데 필요한 것
 
@@ -154,13 +154,14 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 | `COLONOVA_DESIGN_GIT_BIN` | 자동 탐지 | git 바이너리를 이 경로로 고정한다 — 탐색을 통째로 건너뛴다(테스트는 스텁을 겨눈다) |
 | `COLONOVA_DESIGN_GIT_GUARD_DIR` | `~/.colonova-design/tools/git-guard` | git 쓰기 가드(hooks)의 설치 자리 — AI 의 git 쓰기를 막는다 |
 | `COLONOVA_DESIGN_LANE_STRICT` | unset(경고) | `1` 이면 차선 밖 git 쓰기를 경고 대신 던진다(시험·개발) |
-| `COLONOVA_DESIGN_REPO_PAT` | OS 저장소 | 기계 전체의 GitHub 토큰 — 자격 증명 저장소보다 앞선다 |
+| `COLONOVA_DESIGN_REPO_PAT` | OS 저장소 | 기계 전체의 GitHub 토큰 — 자격 증명 저장소보다 앞선다. AI 자식 · 레포 명령에는 물려주지 않는다(2026-10-23) |
 | `COLONOVA_DESIGN_GITHUB_API` | `https://api.github.com` | GitHub REST 주소(테스트는 로컬 서버로) — `scripts/make-invite.mjs` 의 사전 점검도 읽는다 |
 | `COLONOVA_DESIGN_READY_TIMEOUT_MS` | `120000` | 미리보기가 준비될 때까지 기다리는 벽시계 상한 |
 | `COLONOVA_DESIGN_LOG_DIR` | `~/.colonova-design/logs` | 하루 로그와 턴 통계가 적히는 폴더 |
 | `COLONOVA_DESIGN_PIN_EFFORT` | unset(끔) | 핀으로 시작하는 턴의 첫 노력 자세 — 턴 통계가 재는 실험줄. 없으면 아무 일도 일어나지 않는다 |
-| `COLONOVA_DESIGN_CONFLUENCE_EMAIL` · `…_TOKEN` | unset | 기획서(Confluence) 연결 자격의 환경 재정의 — 저장소 값보다 앞선다(2026-10-18). 시험이 쓴다 |
+| `COLONOVA_DESIGN_CONFLUENCE_EMAIL` · `…_TOKEN` | unset | 기획서(Confluence) 연결 자격의 환경 재정의 — 저장소 값보다 앞선다(2026-10-18). 시험이 쓴다. AI 자식 · 레포 명령에는 물려주지 않는다(2026-10-23) |
 | `COLONOVA_DESIGN_CONFLUENCE_API` | `https://<사이트>` | 기획서 동기화 REST 주소 재지정 — 기록된 fixture 전송을 쓰는 시험의 몫 |
+| `COLONOVA_DESIGN_CONFLUENCE_PUBLISH` | unset(꺼짐) | `1` 이면 기획서 초안 발행 · 문서 관리 · 코멘트의 실제 Confluence 쓰기를 연다 — G1–G3 실측 전이라 기본은 꺼짐(2026-10-23) |
 | `COLONOVA_DESIGN_CONFLUENCE_FIXTURE` | unset | 기록된 전송 기록(fixtures.json)의 폴더 — Confluence 시험 전반이 이 전송으로 돈다 |
 | `COLONOVA_DESIGN_REPO_SETTINGS` · `…_NPMRC` · `…_RUN_DIR` · `…_UNDO_LOG` · `…_PERMISSION_LOG` · `…_PLAN_USAGE` | 기본 자리 | 각 저장 파일(repo.json · 사용자 `.npmrc` · run · undo · 권한 반복 · 계획 사용량)의 자리 — 테스트가 일회용 파일로 가리킨다 |
 
@@ -1264,7 +1265,7 @@ mac 알림에는 서명이 필수다. Electron 44 의 알림은 UNNotification �
 테스터로 검증한다. Windows 설치 파일은 한 번도 실행된 적이 없다(`electron-builder.yml`). 아래는 **코드를 읽고 Node ·
 Windows 의 문서화된 동작과 맞대어 고친 것**이지 Windows 에서 돌려 본 것이 아니다 — 그래서 `코드로 확실` 과 `추정` 을
 가른다. 실기 검증은 진행자가 동석한 첫 Windows 베타 세션이 맡아 2026-10-19 에 실시했다(대본은 2026-10-20 문서 정리 때
-지웠다 — 결과와 수리는 아래 표). 설치본 검증의 합격 기준은 [MVP 범위와 안정화 계획](MVP.md)의 P4 가 이어 받는다.
+지웠다 — 결과와 수리는 아래 표). 설치본 검증의 합격 기준은 [MVP 범위와 안정화 기록](MVP.md)의 P4 에 기록했다.
 
 **코드로 확실한 것(고쳤다)**
 
@@ -1527,13 +1528,15 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
 
 ## 기획서 동기화 — Confluence(2026-10-18 1단계)
 
+이 절은 현재 작업 트리의 읽기 구현을 설명한다. AI 기획 작성·Confluence 발행·CDP 데모 왕복의 목표와 인수 기준은 [최종 구현 계획](confluence-sync-plan-2026-10-18.md)을 따른다. 트리 걷기는 2026-10-23부터 종류 있는 계층(`direct-children`)으로 폴더 아래 문서까지 읽는다(계획 F0). 실제 SSOT에서 앱 자격으로 대조하는 일(G0)은 아직이다. 계획 확정과 기능 제공은 구분한다.
+
 기획 문서를 Confluence 에서 읽기 전용으로 클론 안 `docs/plans/` 에 내려놓는다. 정본은 저장
 포맷 XML(`*.storage.xml` — 원문 그대로), 마크다운은 파생물, 원장(`docs/plans/confluence.json`)
 은 한 벌이다. 커밋은 없다 — 폴더는 클론의 `.git/info/exclude` 로 빠지고 `saveable-paths`
 거름이 제출(풀 리퀘스트)에서도 막는다(D1).
 
 - **부품** — `confluence-client.ts`(REST — fetch 전송 주입, Basic 인증 한 곳, 401/403/409/429
-  분류와 429 재시기 사다리), `confluence-markdown.ts`(저장 포맷 → 파생 마크다운 + 절 목록 —
+  분류와 429 재시기 사다리, 트리는 다섯 종류의 `direct-children`), `confluence-markdown.ts`(저장 포맷 → 파생 마크다운 + 절 목록 —
   매크로 든 절은 `macro:true`), `confluence-ledger.ts`(원장 — parse 는 절대 안 던진다 · 원자
   쓰기), `confluence-path.ts`(트리 → 폴더 경로 — 위험 문자 걷기 · 이름 충돌은 id 접미),
   `confluence-sync.ts`(가져오기 루프 + 연결 국소 규칙), `dispatch.ts` 의
@@ -1556,20 +1559,39 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   시각 글자가 계정의 시간대로 읽혀도(가장 서쪽 UTC−12) 빠지는 변경이 없게 하는 몫이고, 다시 걸린 문서는 검색이
   싣는 판(`expand=content.version`)으로 걸러 본문을 읽지 않는다. 검색이나 뿌리를 못 읽은 바퀴는 원장의 시각을
   앞서지 않고 종류만 경고로 남긴다(`stage` · `reason`) — 앞서면 그 사이의 변경을 영영 놓친다.
+- **종류 있는 걷기(2026-10-23 · 최종 구현 계획 F0)** — 아이 목록은
+  `GET /wiki/api/v2/<pages|folders|whiteboards|databases|embeds>/{id}/direct-children?limit=250` 이다. 옛
+  `pages/{id}/children` 은 페이지만 주고 폐기 예정이라, 폴더 아래 문서가 원장에 들어오지 못했는데도 걷기는
+  빠짐없이 끝났다고 적었다(실제 SSOT 는 페이지 223 중 94 가 폴더 아래 — 2026-10-22 관찰). 페이지는 본문을
+  읽고 내려간다. 폴더는 본문 없이 내려가 원장 `folders` 에 선다. 화이트보드 · 데이터베이스 · 임베드는 본문
+  없이 내려가 `unsupported` 에 선다. 모르는 종류는 `unsupported` 에 서되 아래를 읽을 길이 없으니 그 걷기는
+  빠짐없이 끝나지 않은 것으로 적는다. `archived` 는 걷지 않는다. 목록이 쪽 상한(`PAGE_CAP`)에서 끊기면
+  읽지 못함이다. 빠짐없이 끝난 걷기는 `folders` · `unsupported` 를 통째로 바꾸고, 아니면 덮어 넣기만 한다.
+  증분 바퀴는 두 맵을 건드리지 않는다. 폴더 · 미지원 항목은 파일을 만들지 않는다. `doc.list` 는 두 맵을
+  선택 필드 `folders` · `unsupported` 로 함께 싣는다(프로토콜 판은 그대로). 남은 것 — CQL `ancestor` 가 폴더를
+  지나 그 아래 문서를 잡는지는 실사이트 실측(G0) 전이다. 못 잡으면 폴더 아래 문서의 본문 변경은 다음
+  걷기까지 늦는다. 폴더의 이름 바꿈 · 이동도 걷기만 본다. 수동 · 정기 가져오기의 걷기(계획 §8)는 아직이다 —
+  걷기는 모든 문서 본문을 다시 읽어 웹의 가져오기 기다림(2분)을 넘길 수 있다.
 - **연결** — 프로젝트별이다. machine.json 의 슬러그 키 미러(`confluenceSite:<slug>`,
   `confluenceRootId:<slug>`, `confluenceRootTitle:<slug>`), 자격은 OS 저장소의
   `confluence-pat` 한 항목(`email\ntoken` 두 줄 — 이메일·토큰은 응답 · 로그 · 상태 방송에
   다시 나오지 않는다). 가져오기 중 401 이면 만료 상태로 적고 다시 connect 전까지 건너뛴다.
-  한 기계 한 Atlassian 계정 — 사이트가 갈리면 2단계에서 `confluence-pat:<slug>` 스코프화.
+  현재는 한 기계 한 Atlassian 계정이다. 자격 경로의 확장 여부는 [최종 구현 계획](confluence-sync-plan-2026-10-18.md)을 따르며, 별도 사이트 자격을 이미 지원하는 것으로 표시하지 않는다.
 - **상한** — 문서 수 상한 500(`MAX_IMPORT_PAGES`; 정책서 87쪽 + 기능설계서 73쪽 규모면
   충분). 상한에 닿은 바퀴는 lastSyncAt 을 앞서지 않아 다음 바퀴가 이어받는다.
-- **토큰/이메일이 가는 곳** — 데몬만 안다. 화면 쪽 코드 · AI 세션 환경에 싣지 않는다. 로그의
+- **토큰/이메일이 가는 곳** — 데몬만 안다. 화면 쪽 코드 · AI 세션 환경에 싣지 않는다. 환경 재정의
+  (`COLONOVA_DESIGN_CONFLUENCE_EMAIL/TOKEN` · `COLONOVA_DESIGN_REPO_PAT`)로 준 값도 AI 자식(세션 · 단답 · 프로브 ·
+  로그인 · 설치)과 레포 명령(설치 · 미리보기)의 환경에서는 `withoutAppSecrets`(`agent-env.ts`)가 거른다. 그 전에는
+  재정의 모드에서 셸을 쓰는 화면 AI 와 AI 가 쓴 코드를 돌리는 미리보기가 이 값을 읽을 수 있었다(2026-10-23 · 최종
+  구현 계획 F0). 데몬 자신의 git(`repo-core.ts`)은 그대로다. 시험은 `agent-env.test.ts`(거름 · 소스 쓸기)와
+  `repo-command-env.test.ts` 다. 로그의
   값 걷기(log-sanitize + protocol `maskSecretShapes`)가 Atlassian `ATATT…` 모양도 눌러 닫는다.
 - **시험** — 전부 순수다: `confluence-client.test.ts`(판을 싣는 검색 포함) · `confluence-wire.test.ts`(선로 해석)
   · `confluence-connect.test.ts`(연결 처리기 — 슬러그 분리 · 자격 미반환 부포함) ·
   `confluence-markdown/ledger/path.test.ts`(순수 셋) · `confluence-sync.test.ts`(루프 — 첫 트리 · CQL 증분 · 429
   사다리 · 401 만료 · 상한 · 합류 · 클론 없음 · 깊은 자리의 새 문서 · 제목 변경의 이동 · 시작 걷기의 이동과 거둠 ·
-  검색 실패의 시각 지킴 · 클론 전 거절 · 타이머의 걸러냄 · 다시 걷기의 상한) · `project-fleet-confluence.test.ts` ·
+  검색 실패의 시각 지킴 · 클론 전 거절 · 타이머의 걸러냄 · 다시 걷기의 상한 · 종류 있는 걷기의 폴더 아래 문서 ·
+  빈 폴더 · 미지원 종류 · archived · 사라진 폴더, 2026-10-23) · `project-fleet-confluence.test.ts` ·
   `saveable-paths.test.ts`(D1 거름), 웹은 `next-confluence-connect.test.ts` · `next-plans.test.ts`. 모두 CI 순수
   시험 목록에 있다(2026-10-19). 기획서 폴더의 쓰기 가드는 `write-guard.test.ts` 가 센다. `pnpm test` 가 빌드를
   먼저 도니 src 만 고치고 바로 돌리지 않는다.
@@ -1593,6 +1615,143 @@ effort」). 다만 수치가 먼저다: 재생 벤치를 두 모델로 `--repeat
   `dev/overlay-fixture.html?case=settings&state=conf-connected|conf-rooted|conf-imported|conf-expired|conf-roots|conf-fail`.
   데몬 없이 안 보이는 것 — 미리보기가 정말 살아 있는지 · 좁은 창의 탭 이름 — 은 격리 데몬(`test/cold/smoke-daemon.sh`)에서
   `기획서` 를 눌러 `.nx-preview` 가 마운트된 채 `nx-offstage` 인지 본다.
+
+## 기획 초안 · AI · 발행 — Confluence 쓰기(2026-10-23 · 최종 구현 계획 F1–F4)
+
+기획 올인원의 쓰기 쪽 구현이다. 범위 · 순서 · 인수 기준은 [최종 구현 계획](confluence-sync-plan-2026-10-18.md)을 따른다.
+**코드는 들어왔지만 실사이트 실측(G0–G5)과 전환 인수(F5)는 남았다.** 실제 Confluence 쓰기(발행 · 문서 관리 · 코멘트)는
+환경 변수 `COLONOVA_DESIGN_CONFLUENCE_PUBLISH=1` 일 때만 열린다 — 기본은 꺼짐이다(계획 §9: G3 가 닫히기 전에는 공유
+문서 발행을 출시하지 않는다). 꺼져 있으면 미리보기 · 창이 `publish-disabled` 를 말한다.
+
+- **결정(2026-10-23 · 사용자 위임 · 오케스트레이터)** — ① 편집 표현: 저장 포맷을 블록으로 나누고 사람과 AI 는 블록의
+  투영만 고친다. 바뀌지 않은 블록 · 셀 · 글은 원문 바이트 그대로 나간다. 마크다운 전체 왕복은 쓰지 않는다. ② 기획 AI 는
+  화면 세션과 따로 돌고 읽기 도구만 쓴다. ③ 기획 대화는 초안(문서)마다 하나, 기획서 칸 안에 있다. ④ 작업 자료는 프로젝트
+  데이터(클론 밖)에 둔다. ⑤ 실사이트 쓰기는 위 환경 변수 게이트 뒤에 둔다. ⑥ 선로 이름은 `draft.*`(요금제의 `plan.*` 과
+  섞지 않는다).
+- **블록 엔진(`storage-blocks.ts`)** — 원문 위치를 기억하는 작은 토크나이저다(엔티티 · CDATA 때문에 XML 파서를 쓰지 않는다).
+  `parseStorage` 는 최상위와 `ac:layout` 셀 안을 블록으로 나누고(칸 `main` · `main.<n>` · `L<섹션>.<셀>` — 섹션 번호는 문서
+  전체로 센다), `serializeStorage` 가 바이트까지 되살린다. `projectBlock` 의 투영 글은 좁은 마크다운(굵게 · 기울임 · 코드 ·
+  링크 · 줄바꿈)이고, 못 담는 인라인은 토큰이다 — `⟦t1⟧`(통째로 지키는 조각) · `⟦p1⟧…⟦/p1⟧`(글을 감싸는 모양) ·
+  `⟦c1⟧…⟦/c1⟧`(코멘트 닻). 토큰의 사람 말은 웹의 `L.drafts.tokenLabel` 이 고른다. `renderBlock` 은 같은 부분을 원문 그대로
+  두고 바뀐 부분만(표는 셀 단위) 새로 만들며, 사라진 토큰을 `removedTokens` 로 돌려준다. 강조 읽기는 CommonMark 의 구분자
+  스택을 줄인 것이라 한국어의 단어 안 강조(`정책**서**를`)가 이스케이프 없이 왕복한다. 강조 끝의 공백은 고친 블록에서만
+  표지 밖으로 정규화된다. v1 의 보존 전용 경계(병합 셀 표 · 표 속 표 · 중첩 목록 · 매크로 블록)는 G2 실측 전이다.
+  성능(합성 문서 · 2026-10-23 측정 `scripts/bench/plans-blocks.bench.mjs`): 블록 1,500개 · 1.2MB 문서의 읽기 13ms · 전체 투영
+  47ms · 다시 맞추기 105ms, 5,000개 · 4.2MB 는 다시 맞추기 724ms. 칸별 직렬화와 강조 짝짓기의 제곱 자람은 고쳤고(옛 결과와
+  무작위 7,000건 바이트 대조), 다시 맞추기의 LCS 는 제곱이지만 이 크기에서 여유가 커 그대로 둔다. 상한 시험은
+  `plans-blocks.test.mjs`(CI).
+- **저장소(`draft-store.ts`)** — `~/.colonova-design/projects/<slug>/plans/` 의 `drafts/<docKey>.json` · `.base.xml` ·
+  `proposals/` · `threads/` · `intents/<commandId>.json`(+ `.body.xml` — 확인한 본문은 한 번만 쓴다) · `ops/` · `refs.jsonl` ·
+  `trash.json`. docKey 는 `p-<페이지 id>` · `n-<32자 16진>`. 쓰기는 원자적(0o600), 읽기는 던지지 않는다. 저장은 개정을 대 보고
+  (`save(record, expectedRevision)` → `DraftStaleError`, 선로 오류 코드 `draft.stale`), 문서마다 한 줄로 선다(`withLock` —
+  잠금이 인스턴스 안이라 서비스가 슬러그마다 저장소 하나를 쥔다).
+- **서비스 · 요청(`draft-service.ts` · `requests/drafts.ts`)** — `draft.list · open · create · get · edit · discard · ask ·
+  cancel · thread · adopt · reject · snapshot · publish.preview · publish · publish.recheck · publish.close · rebase · resolve`.
+  문서 · 부모 · 근거가 범위 안인지 데몬이 원장으로 검사한다(프런트의 id 를 믿지 않는다). 초안이 바뀌면 `draft.changed`, AI
+  진행은 `draft.ai`(started · text · read · done · failed · cancelled)를 방송한다. 오류 답은 `draft.` 로 시작하는 `code` 를
+  싣고, 웹의 `call` 이 그것을 오류 객체에 붙인다. 발행 중 · 결과 확인 필요(`publishing` · `result-unknown` · 남은
+  `pendingCommandId`)인 초안은 버리지 못한다 — 재확인 · 종료의 길이 초안과 함께 사라지지 않게(2026-10-23 독립 검토).
+  발행을 보내고 답을 받기 전에 데몬이 멈췄으면(디스크에 의도 `sending` · 초안 `publishing` 만 남는다) 다시 띄운 데몬이
+  읽는 길(`open` · `get` · `list`)에서 그 초안을 `result-unknown` 으로, 의도를 `unknown` 으로 옮긴다 — 이 프로세스에서
+  도는 발행(`#sending`)은 건드리지 않고, 다시 보내지 않는다(A5 · A9).
+  발행 미리보기와 AI 변경안 저장도 문서 잠금 안에서 돈다.
+- **기획 AI(`draft-ai.ts`)** — Agent SDK `query`: 도구는 Read · Grep · Glob 뿐이고 PreToolUse 훅이 클론 `docs/plans/` 밖 ·
+  `..` · `~` 로 시작하는 경로 · 바깥을 가리키는 링크 · Glob 의 절대/`..`/`~` 패턴을 막는다. `settingSources: []` · `strictMcpConfig` ·
+  `managedSettings.allowedMcpServers: []` 로 사용자 MCP 와 계정 커넥터를 싣지 않고, 환경은 허용 목록(`draftAiEnv` — 앱
+  비밀 · 과금 키가 없다)이다. 답은 `outputFormat` json_schema(`reply` · `summary` · `ops`)로 받고, `resume` 으로 대화가
+  이어진다. 모델은 CLI 기본값이다. 서비스가 걸음을 다시 검사해 맞지 않는 것은 버리고(로그에는 수만), 채택 전에는 초안에
+  닿지 않는다. 중단 · 실패한 생성은 변경안을 남기지 않는다. 걸음은 물을 때의 초안(AI 가 본 것)으로 검사하고, 생성 중에
+  초안의 개정이나 기준 판이 바뀌었으면 새 변경안은 처음부터 오래됨이다. 기준이 바뀌면(발행 · 다시 맞추기 — 블록 id 가
+  다시 매겨진다) 그 전의 열린 걸음도 모두 오래됨이 된다(`DraftStore.replaceBase`). 채택은 오래됨으로 표시된 걸음을
+  건너뛴다(지문 · 앵커를 다시 대 보는 것만으로는 생성 중 고침 · id 재매김을 가리지 못한다). 생성 중에 초안을 버리면
+  도는 생성을 끊고, 생성은 대화 · 변경안을 남기지 않고 `cancelled` 로 끝난다(대화 저장도 문서 잠금 안에서 초안이 있는지
+  보고 쓴다).
+- **발행(`draft-publish.ts`)** — 미리보기는 막는 이유(`publish-disabled` · `nothing-to-publish` · `remote-newer` ·
+  `remote-draft` · `remote-draft-unknown` · `remote-missing` · `no-permission` · `out-of-scope` · `conflict-open` ·
+  `pending-command`)와 바뀜 · 지운 보호 조각 · 판 표기를 낸다. 발행은 보내기 전에 의도를 본문과 함께 쓰고 초안을 잠근 뒤
+  `PUT` 의 판 = 기준 + 1(조건부 갱신)로 보낸다. 판 표기가 1.0 이상이면 새 표기와 사유가 있어야 하고 사유는 판 메모로 간다.
+  결과는 applied(발행본이 새 기준) · conflict · unknown(잠김 유지 · 자동 재전송 없음) · failed. applied 뒤에는 원격 본문을
+  한 번 읽어(판이 같을 때) 그것을, 못 읽으면 보낸 본문을 새 기준으로 삼고 **초안을 그 기준에서 다시 세운다** — 블록 id 는
+  기준을 파싱한 자리 번호라 넣고 · 빼고 · 옮긴 뒤의 옛 id 를 남기면 되돌리기가 엉뚱한 블록을 잡고, Confluence 가 저장하며
+  바꾼 꼴(속성 · 엔티티)을 따라야 다음 발행에서 고치지 않은 블록이 원격 바이트 그대로 나간다(2026-10-23 검토). 같은 commandId 는 다시 보내지
+  않고, 다른 문서의 발행에 쓰인 commandId 면 거절한다. 뿌리 설정이 없으면 조상 검사를 건너뛰지 않고 `out-of-scope` 로 막는다. `recheck` 는 판 번호 · 판 작성자(`version.authorId` 와 whoAmI) · 시각에 더해 보낸 본문과 원격 본문의 글 지문
+  (`publishedTextMatches` — 태그 · 엔티티(ISO-8859-1 과 흔한 기호의 이름 엔티티 · 숫자 엔티티를 풀고, 모르는 이름은 양쪽
+  같은 표지로) · 공백의 꼴 · 맨 앞뒤의 빈 블록 경계를 걷은 글, CDATA 속은 그대로)이 같아야 `applied` 로 본다 — 같은 계정의
+  다른 편집(화면 AI 의 사용자 MCP 등)을 발행으로 착각하지 않게(2026-10-23 독립 검토). 새 문서는 찾은 문서를 다시 읽어 작성자 ·
+  글을 대조한다. `close` 는 `closed-unconfirmed` 로 잠금만 푼다. `rebase` 는 블록 지문의 LCS 로 기준 · 내 초안 · 원격을 견주어 양쪽이 고친 블록을 `conflict`(`theirsXml`)로 두고,
+  `resolve` 가 고른다. 원격 미발행 초안 판정(`get-draft`)은 G3 실측 전의 추정이다.
+- **화면 작업의 근거(`plan-refs.ts` · F3)** — `draft.snapshot` 이 가져온 문서(캐시의 파생 마크다운) 또는 초안
+  (`composeDraftBody` → `deriveMarkdown`)을 첫 줄 표식(`<!-- colonova-design:plan-ref {…} -->`)이 달린 마크다운 첨부로 만든다.
+  웹이 그것을 `nx:composer:attach` 로 입력창에 붙이면 내용이 요청 순간에 굳고 브리프에 경로가 없다. 보낼 때 `session.send`
+  가 표식을 읽어 `refs.jsonl` 에 남기고, 제출 때 도구 구간에 `### 기획 근거` 절이 선다(발행본은 주소 · 판 · 절, 초안은
+  미발행 · 개정 — 초안 본문은 싣지 않는다). 공통 규칙의 기획서 구절도 이에 맞췄다. 돌아가는 길(F3b): `draft.refs
+  { sessionId }` 가 그 대화의 근거 기록을 최근 순 · 같은 근거 하나로 · 20개까지 돌려주고(`recentPlanRefs`), 화면 대화의
+  입력창 위 `PlanRefStrip` 이 칩으로 보인다. 칩은 창 이벤트 `nx:plans:open`(`{ pageId }` 또는 `{ docKey }` — 초안이
+  앞선다)을 보내고 `nav.openPlans()` 로 오른쪽 칸을 바꾼다. `PlansColumn` 이 그 이벤트를 받아 문서나 초안 편집기를 연다
+  (받으면 `preventDefault`). 대화가 바뀌거나 사람 말이 늘 때 다시 읽는다. 스냅샷의 절은 이름으로 찾되 양쪽을 같은
+  정규화(`normalizeSectionName` — 굵게 · 기울임 · 코드 표지 · 이스케이프를 벗기고 링크는 글만, 매크로 · 첨부 자리 표시와
+  토큰은 지우고 공백을 하나로)로 견주고, 하나라도 못 찾으면 문서 전체로 대신하지 않고 거절한다.
+- **문서 관리(`doc-ops.ts` · F2 휴지통 · F4)** — `doc.op.preview · trash · restore · copy · move · trashed`. 휴지통은 v2
+  `DELETE /pages/{id}`(쿼리 없음 — **영구 삭제(purge) 길은 만들지 않는다**), 복제 · 이동은 v1 copy · move(append), 복구는
+  휴지통 판을 `status: current` 로 갱신한다(G4 실측 전). 같은 commandId 는 한 번만 보내고, 적용 · 결과 불명 뒤에는 트리를 걷는다(`ConfluenceSync.walkNow` — 이동은
+  판을 올리지 않고 휴지통 문서는 증분에 안 잡혀서다. 걷기 표를 먼저 세우고, 도는 바퀴는 차선 밖에서 기다린 뒤 한 바퀴를
+  더 돈다 — 차선 작업 안에서 다른 바퀴를 기다리면 종류만 보는 합류 때문에 자기 자신을 기다려 차선이 멈춘다).
+  로컬 초안은 지우지 않는다. 복구는 이 앱이 휴지통에 넣은 문서(`trash.json`)만 대상이다. 복제 · 이동의 들어갈 자리도
+  원장의 문서 · 폴더나 뿌리여야 한다(아니면 `out-of-scope` — 원격을 두드리기 전에 막는다). 기록이 있는 commandId 가 다른
+  종류 · 문서의 요청으로 오면 거절한다(코멘트도 같다).
+- **코멘트 쓰기(`doc-comments.ts` · `comment-text.ts` · F4)** — `doc.comment.create · reply · update · resolve`. 바닥글 ·
+  인라인 만들기는 v2 `POST /footer-comments` · `/inline-comments`, 고치기 · 해결은 `PUT /{footer|inline}-comments/{id}`
+  (판 + 1). 같은 commandId 는 `plans/comment-ops/` 의 기록으로 답하고(보내기 전에 `sending` 을 쓴다), 검사에서 막힌
+  것은 기록을 남기지 않는다. 앱은 코멘트를 맨 글로 쓴다(줄마다 `<p>`). 인라인 닻은 원문 글(태그를 벗기고 엔티티를 푼,
+  블록 경계에서 끊은)에 **한 번만** 나오는 문장만 잇는다 — 둘 이상이면 `anchor-ambiguous`, 없으면 `anchor-missing`.
+  고치기는 원격 판이 같고(`comment-changed`) 본문이 문단 · 줄바꿈 · 글뿐일 때만(`comment-not-plain` — 서식 · 멘션을
+  잃지 않게), 해결은 원격 본문을 그대로 다시 싣되 본문을 못 읽었으면 멈춘다(`comment-unreadable`). 코멘트 목록은
+  `body-format=storage` 로 읽는다(없으면 본문이 오지 않는다). `doc.read` 의 코멘트 줄은 맨 글 본문(멘션은
+  `@이름`)과 선택 필드 `id · kind · version · parentId · resolved · mine · editable` 을 싣는다 — `mine` 은
+  `whoAmI` 와 작성자 대조, `editable = mine && 판 있음 && 맨 글`.
+- **선로의 한계와 오류** — 클라이언트 메시지가 스키마(길이 · 개수)를 넘으면 데몬은 zod 의 영어 문장 대신 「요청을 읽지
+  못했어요 — 글이 너무 길거나 고른 것이 너무 많을 수 있어요」로 답하고 로그에는 검사 경로만 남긴다. 웹은 같은 한계를
+  `plans/draft/limits.ts`(출처는 `protocol/src/draft.ts`)로 먼저 지킨다 — 새 문서 제목 255자 · 새 단계 표기 32자 · 질문
+  8,000자 · 근거 20개 · 절 20개 · 절 이름 200자.
+- **화면(웹)** — `plans/draft/`: 편집기(`DraftEditor` · `use-draft` · `draft-model`), 기획 대화(`DraftThread` ·
+  `use-draft-thread` · `thread-model`), 발행 창과 새 문서(`PublishDialog` · `NewDraftDialog` · `publish-model`).
+  `plans/doc-actions/`: 문서 머리의 ⋯ 메뉴와 확인 창(`DocActions` · `DocOpDialog` — 미리보기의 막는 이유가 없을 때만
+  확인이 열리고 한 창에서 한 번만 보낸다), 휴지통(`TrashDialog`), 근거 보내기(`SendToScreen` — 스냅샷을
+  `nx:composer:attach` 로 입력창에 담고, 받는 입력창이 없으면 그렇게 말한다). `plans/comments/`: 코멘트 절
+  (`DocComments` — 스레드 묶기 · 줄마다 답글 · 고치기 · 해결, `CommentComposer` — 네 쓰임의 입력 · 열릴 때 명령
+  아이디 하나 · 실패 뒤엔 새 아이디 · 불명이면 `다시 읽기` 만, `InlineAnchorButton` — 본문 선택 끝의 단추,
+  `comments-model` — 닻은 화면 글에서도 한 번만 나와야 통과). 코멘트가 적용되면 `use-plans` 의 `refreshDoc` 가 단계를
+  `loading` 으로 돌리지 않고 문서를 조용히 다시 읽는다. 칸 · 편집기의 Esc 는 열린 창 · 메뉴가 있으면 물러선다
+  (`plans/escape-layer.ts` — 그것들의 Esc 처리기는 문서 단위 수신기라 칸의 React 처리기보다 늦게 돈다). 견본은
+  `dev/plans-fixture.html` — 문서를 열고 `고치기`(초안 · 대화 · 변경안), ⋯ 메뉴 · 휴지통 · 근거 보내기 · 코멘트,
+  `?case=draft-conflict`(충돌 블록) · `publish-blocked` · `publish-closed` · `publish-unknown` · `op-blocked` ·
+  `op-unknown` · `op-failed` · `comment-failed` · `comment-unknown`.
+- **화면 AI 의 Confluence 쓰기(2026-10-23 사용자 결정)** — 화면 세션은 사용자 설정(`settingSources` 의 `user`)을 싣는다.
+  사용자가 스스로 설정한 Atlassian MCP · 계정 커넥터로 화면 AI 가 Confluence 에 쓰는 것은 막지 않고, 그 변경은 외부 편집으로
+  가져오기 · 비교가 다룬다. 앱은 그 MCP 를 주입하지 않고 자격도 넘기지 않으며, 그 쓰기에 앱 발행의 확인 · 판 검사 · 원격 초안
+  보호를 약속하지 않는다.
+- **시험** — 데몬 `storage-blocks` · `draft-store` · `draft-wire` · `draft-ai` · `draft-service` · `draft-publish` ·
+  `plan-refs` · `doc-ops` · `doc-ops-wire` · `doc-comments` · `doc-comments-wire` · `comment-text` · `doc-read-comments` ·
+  `draft-flow`(진짜 서비스 · 발행 · 저장소 · 블록 엔진을 잇고 Confluence 는 합성 fixture, AI 는 정해 둔 답 — 열기 →
+  고치기 → AI 변경안 채택 → 게이트 꺼짐/켬 발행 → 같은 명령 재발행 → 근거 스냅샷 → 원격 최신본 맞추기 · 충돌 → 응답
+  유실 · 재확인 · 종료), 웹 `next-drafts` · `next-draft-thread` · `next-draft-publish` · `next-draft-screens` ·
+  `next-doc-actions` · `next-doc-comments` · `next-plan-refs`, 데몬 `draft-refs` · `wire-error-ko`(그리고
+  `confluence-sync` 의 걷기 교착 회귀 — 진짜 `GitLane` 으로 걷기와 가져오기를 엇갈려 줄 세운다) · `storage-report` · `scope-report`. 모두 순수 시험이라 CI 목록에 있다. 실사이트 · 진짜 Claude 를 부르는 시험은 없다.
+- **실측 도구(이 컴퓨터에서만 돈다 — 실제 문서를 어떤 AI 에도 보내지 않는다)** — G2 읽기 판정:
+  `pnpm build` 뒤 `node scripts/plans-g2-check.mjs <클론 또는 docs/plans> [--titles] [--json <파일>] [--only <id,…>]`.
+  원장의 문서마다 저장 포맷(`.storage.xml`)을 블록 엔진에 돌려 블록 종류 · 보존 전용 사유(`table:merged` · `table:nested` ·
+  `list:nested` · `macro:<이름>` …) · 토큰 라벨 · 매크로 수와 세 검사(바이트 왕복 · 투영 그대로의 렌더 · 한 블록만 고친
+  편집의 격리)를 숫자로만 낸다(`storage-report.ts`). 본문 글은 출력에 없고, 제목은 `--titles` 일 때만.
+  G0 범위 대조: `COLONOVA_DESIGN_CONFLUENCE_EMAIL=… COLONOVA_DESIGN_CONFLUENCE_TOKEN=… node scripts/plans-g0-check.mjs
+  --site <사이트> --root <뿌리 id> [--ledger <클론>] [--json <파일>]`. 데몬과 같은 direct-children 걷기 · 뿌리로 좁힌 CQL
+  (전부를 받는 꼴) · 원장을 견주어 종류별 수, **폴더 아래 문서가 CQL 에 빠지는지**, CQL 에만 · 원장에만 있는 id, 걷기 ·
+  페이지네이션의 끝을 낸다(`scope-report.ts`). 전송은 `getOnlyTransport` 로 감싸 GET 이 아닌 요청은 보내기 전에 던진다 —
+  읽기만 한다. 자격은 환경 변수로만 받는다(셸 기록에 남지 않게).
+- **남은 것** — G0–G5 실측(앱 자격 · 승인한 검증용 문서 · 동료 계정), 실제 대표 문서 8개로 블록 엔진의 왕복 · 편집 범위
+  확인(G2), 발행 게이트를 켜는 결정, 전환 인수(F5). 실측 전의 추정으로 둔 것 — 원격 미발행 초안 판정(`get-draft` · G3),
+  휴지통 복구의 `status: current` 갱신(G4), Confluence 가 인라인 닻을 세는 방식과 인라인 답글이 목록에 오는지(G5),
+  폴더 아래 문서의 CQL 증분(G0). 데몬이 도는 사이 Confluence 에서 일어난 이동 · 삭제는 다음 데몬 시작의 걷기가 잡는다 —
+  주기적 다시 걷기는 아직 없다.
 
 ## 전체 구조
 
@@ -1731,7 +1890,9 @@ v19 에서 더한 것(PLAN-UI 3 · 8): `repo.submit { sessionId?, note? }` 와 �
 `update-claude`, `InviteRow` 의 `keep`, 데스크톱 브리지의
 `invite.discard(path)` · `invite.pathOf(file)`. 데몬은 에이전트 CLI 를 띄울 때
 `DISABLE_AUTOUPDATER=1` 을 건다 — 자기 업데이트를 끄고 설정의 업데이트 줄이 대신 맡는다
-(둘이 서로 바꾸지 않게).
+(둘이 서로 바꾸지 않게). 같은 자리에서 앱의 자격 재정의도 거른다(`withoutAppSecrets` · 2026-10-23). 명령 · 사용량 ·
+모델 목록을 묻는 프로브(`probeQuery`)는 그동안 환경을 따로 주지 않았는데, 2026-10-23 부터 같은 환경(자기 업데이트
+끔 · 자격 거름)을 받는다.
 2026-10-20 사용자 요청으로 Codex 에이전트를 앱에서 뺐다 — `agent.update` 의 `kind` · `agentUpdates` 의 열쇠 · 설치 진행기의
 종류는 `claude` 하나만 남고 `install-codex` · `login-codex` · `update-codex` 는 선로에서 사라졌다(프로토콜 버전은 그대로).
 옛 `machine.json` 의 `provider: "codex"` 는 조용히 자동으로 돌아간다.
@@ -1849,9 +2010,9 @@ git push origin v0.4.0
 ### 깨끗한 기계 점검
 
 릴리스마다 한 번, **아무것도 깔리지 않은 기계**에서 처음부터 끝까지 밟는다 —
-Windows 11 일반 사용자 계정(관리자 아님)과 mac 새 사용자 계정에서 각각. 설치본의 합격 기준과 남은 검증 상태는
-[MVP 범위와 안정화 계획](MVP.md)의 P4 와 검증 상태 표를 따른다(첫 Windows 베타 세션은 2026-10-19 실기로
-마쳤다 — 위 「Windows 코드 수리와 첫 베타 세션」).
+Windows 11 일반 사용자 계정(관리자 아님)과 mac 새 사용자 계정에서 각각. 설치본의 합격 기준과 MVP 완료 상태는
+[MVP 범위와 안정화 기록](MVP.md)을 따른다. 그 문서의 2026-10-20 표는 당시 실행 기록이며 현재 남은 검증 목록이 아니다.
+첫 Windows 베타 세션은 2026-10-19 실기로 마쳤다 — 위 「Windows 코드 수리와 첫 베타 세션」.
 
 1. 설치 파일 받기 — 릴리스 페이지에서 기계에 맞는 파일이 내려받아 설치된다.
 2. 첫 실행 허가 — Windows 는 `추가 정보` → `실행`(스마트 앱 컨트롤이 켜진 PC 는 여기서 막힌다 —

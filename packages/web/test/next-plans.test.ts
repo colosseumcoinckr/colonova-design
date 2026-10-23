@@ -11,6 +11,8 @@ import {
   importLine,
   macroHeadings,
   type PlanDoc,
+  type PlanFolder,
+  type PlanUnsupported,
   planBodyBlocks,
   planCommentRows,
   planRows,
@@ -30,6 +32,19 @@ const doc = (path: string, title: string, version: number, pageId = title): Plan
   version,
   pageId,
 });
+
+const folder = (path: string, title: string, folderId = title): PlanFolder => ({
+  path,
+  title,
+  folderId,
+});
+
+const unsupported = (
+  path: string,
+  title: string,
+  type: string,
+  contentId = title,
+): PlanUnsupported => ({ path, title, type, contentId });
 
 test("목록 조립 — 경로의 걸음 순서로 서고 깊이가 들여쓰기가 된다", () => {
   const rows = planRows([
@@ -99,6 +114,50 @@ test("목록 조립 — 공간 이름이 비어 뿌리 경로가 한 걸음이�
   );
 });
 
+test("목록 조립 — 폴더 · 문서 · 전용 항목이 섞여도 경로 순서로 서고 깊이 · 아래 달림이 맞다", () => {
+  const rows = planRows(
+    [
+      doc("COLO/8.8 ColoNova/정책 폴더/출고 정책서", "출고 정책서", 3),
+      doc("COLO/8.8 ColoNova", "8.8 ColoNova", 13),
+    ],
+    [folder("COLO/8.8 ColoNova/정책 폴더", "정책 폴더")],
+    [unsupported("COLO/8.8 ColoNova/흐름도", "흐름도", "whiteboard")],
+  );
+  assert.deepEqual(
+    rows.map((row) => [row.title, row.kind, row.depth, row.version, row.type]),
+    [
+      ["8.8 ColoNova", "doc", 0, 13, null],
+      ["정책 폴더", "folder", 1, 0, null],
+      ["출고 정책서", "doc", 2, 3, null],
+      ["흐름도", "unsupported", 1, 0, "whiteboard"],
+    ],
+  );
+  // 폴더 줄도 아래 줄이 서면 접는 단추가 필요하다.
+  assert.deepEqual(
+    rows.map((row) => row.hasChildren),
+    [true, true, false, false],
+  );
+  // 줄의 열쇠 — 문서는 pageId, 폴더는 folderId, 전용 항목은 contentId 다.
+  assert.deepEqual(
+    rows.map((row) => row.pageId),
+    ["8.8 ColoNova", "정책 폴더", "출고 정책서", "흐름도"],
+  );
+});
+
+test("목록 조립 — 아래 문서가 없는 폴더도 줄로 선다", () => {
+  const rows = planRows(
+    [doc("COLO/8.8 ColoNova", "8.8 ColoNova", 13)],
+    [folder("COLO/8.8 ColoNova/빈 폴더", "빈 폴더")],
+  );
+  assert.deepEqual(
+    rows.map((row) => [row.title, row.kind, row.hasChildren]),
+    [
+      ["8.8 ColoNova", "doc", true],
+      ["빈 폴더", "folder", false],
+    ],
+  );
+});
+
 test("접기 — 접은 폴더의 자손만 가려지고 형제는 그대로다", () => {
   const rows = planRows([
     doc("COLO/루트", "루트", 1),
@@ -120,6 +179,18 @@ test("접기 — 접은 폴더의 자손만 가려지고 형제는 그대로다"
   assert.deepEqual(titles(["루트"]), ["루트"]);
 });
 
+test("접기 — 폴더 줄을 접으면 그 아래 문서 · 전용 항목이 함께 가려진다", () => {
+  const rows = planRows(
+    [doc("COLO/루트/가/가1", "가1", 1), doc("COLO/루트", "루트", 1)],
+    [folder("COLO/루트/가", "가"), folder("COLO/루트/나", "나")],
+    [unsupported("COLO/루트/가/흐름도", "흐름도", "whiteboard")],
+  );
+  const titles = (collapsed: string[]) =>
+    visiblePlanRows(rows, new Set(collapsed)).map((row) => row.title);
+  assert.deepEqual(titles([]), ["루트", "가", "가1", "흐름도", "나"]);
+  assert.deepEqual(titles(["가"]), ["루트", "가", "나"]);
+});
+
 test("찾기 — 조각이 모두 들어 있어야 맞고, 폴더 이름도 본다", () => {
   const rows = planRows([
     doc("COLO/루트", "루트", 1),
@@ -136,6 +207,30 @@ test("찾기 — 조각이 모두 들어 있어야 맞고, 폴더 이름도 본�
   assert.deepEqual(found("없는말"), []);
   // 대소문자 · 한글 조합 방식(NFD)은 가리지 않는다.
   assert.deepEqual(found("접수".normalize("NFD")), ["[정책서] 주문 접수"]);
+});
+
+test("찾기 — 폴더 줄은 빠지고 문서와 전용 항목만 찾는다", () => {
+  const rows = planRows(
+    [doc("COLO/루트/정책 폴더/출고 정책서", "출고 정책서", 1), doc("COLO/루트", "루트", 1)],
+    [folder("COLO/루트/정책 폴더", "정책 폴더"), folder("COLO/루트/빈 폴더", "빈 폴더")],
+    [unsupported("COLO/루트/흐름도", "흐름도", "whiteboard")],
+  );
+  // `정책` 은 폴더 줄(정책 폴더)도 맞지만 결과는 문서와 전용 항목뿐이다.
+  assert.deepEqual(
+    filterPlanRows(rows, "정책").map((row) => [row.title, row.kind]),
+    [["출고 정책서", "doc"]],
+  );
+  assert.deepEqual(
+    filterPlanRows(rows, "흐름도").map((row) => row.title),
+    ["흐름도"],
+  );
+});
+
+test("전용 항목의 종류 — 화이트보드 · 데이터베이스 · 임베드, 모르는 종류는 한 문장으로", () => {
+  assert.equal(L.plans.unsupportedKind("whiteboard"), "Confluence 전용 · 화이트보드");
+  assert.equal(L.plans.unsupportedKind("database"), "Confluence 전용 · 데이터베이스");
+  assert.equal(L.plans.unsupportedKind("embed"), "Confluence 전용 · 임베드");
+  assert.equal(L.plans.unsupportedKind("chat"), "Confluence 전용 · 이 앱이 모르는 종류");
 });
 
 test("매크로가 든 절만 가려진다 — 뷰어의 표시 자료는 머리말뿐이다", () => {
@@ -273,10 +368,36 @@ test("코멘트 줄 — 작성자가 없으면 `이름 없음`, 시각은 문장
   assert.equal(rows[0]?.anchor, null);
   assert.equal(rows[1]?.anchor, L.plans.commentAnchor("colosseum"));
   assert.equal(rows[1]?.when, null);
-  // 열쇠는 순서다 — 안 풀린 목록의 자리가 곧 화면의 자리다.
+  // id 없는 줄의 열쇠는 자리 번호다 — 옛 데몬의 목록에는 붙잔 이름이 없다.
   assert.deepEqual(
     rows.map((row) => row.key),
     ["0", "1"],
+  );
+});
+
+test("코멘트 줄의 열쇠 — id 있으면 `c-<id>`, 없을 때만 자리 번호다", () => {
+  // 조용한 다시 읽기로 앞쪽에 줄이 끼어들어도(자리 번호가 밀려도) id 열쇠는 그 코멘트에 붙는다 —
+  // 열려 있는 답글 · 고치기 입력이 다른 코멘트 아래로 옮겨 붙지 않게(2026-10-23 · R3 의심 1).
+  const rows = planCommentRows([
+    { author: "정인권", body: "첫", createdAt: null, anchorText: null, id: "c1" },
+    { author: "정인권", body: "둘", createdAt: null, anchorText: null },
+    { author: "정인권", body: "셋", createdAt: null, anchorText: null, id: "c3" },
+  ]);
+  assert.deepEqual(
+    rows.map((row) => row.key),
+    ["c-c1", "1", "c-c3"],
+  );
+  // 같은 id 면 줄이 밀려도 열쇠가 같다.
+  const after = planCommentRows([
+    { author: "정인권", body: "끼어든 줄", createdAt: null, anchorText: null, id: "c0" },
+    ...[
+      { author: "정인권", body: "첫", createdAt: null, anchorText: null, id: "c1" },
+      { author: "정인권", body: "셋", createdAt: null, anchorText: null, id: "c3" },
+    ],
+  ]);
+  assert.deepEqual(
+    after.map((row) => row.key),
+    ["c-c0", "c-c1", "c-c3"],
   );
 });
 

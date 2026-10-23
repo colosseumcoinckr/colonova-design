@@ -384,6 +384,8 @@ export class RepoWorkspace {
     options: {
       shots?: HandoffShot[];
       commentsFile?: string;
+      /** C3: 근거 기록(`plans/refs.jsonl`) — `### 기획 근거` 절의 재료. */
+      planRefsFile?: string;
       note?: string;
       version?: SubmitVersion;
     } = {},

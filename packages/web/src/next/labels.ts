@@ -9,6 +9,8 @@
  * 단계마다 자기 칸이 있다. 각 단계는 자기 칸의 끝에만 더해 병합이 겹치지 않게
  * 한다 — 칸 사이의 빈 줄 셋은 그 완충이다.
  */
+import type { DocOpKind } from "@colonova-design/protocol";
+
 // biome-ignore format: 단계 칸 사이의 빈 줄 셋이 병합의 완충이다 — 포매터가 한 줄로 접지 않게 둔다.
 export const L = {
   // ── 공통 — U10 어휘 · 문제 문장 · 여정(U2)
@@ -1660,6 +1662,15 @@ export const L = {
     foldClose: (title: string) => `${title} 접기`,
     lastViewed: "마지막으로 본 문서",
     docVersions: (version: number) => `판 ${version}`,
+    // Confluence 전용 항목의 종류 — 이 앱이 열지 못하는 것을 제목 옆의 작은 글로 알린다(2026-10-23 F0).
+    unsupportedKind: (type: string) =>
+      type === "whiteboard"
+        ? "Confluence 전용 · 화이트보드"
+        : type === "database"
+          ? "Confluence 전용 · 데이터베이스"
+          : type === "embed"
+            ? "Confluence 전용 · 임베드"
+            : "Confluence 전용 · 이 앱이 모르는 종류",
     emptyNoneTitle: "기획서를 이 앱에서 읽어요",
     emptyNoneBody:
       "Confluence 에 한 번만 연결하면 기획 문서를 화면 옆에서 바로 볼 수 있어요. 문서는 여기서 읽기만 하고, 고치는 곳은 Confluence 예요.",
@@ -1688,10 +1699,385 @@ export const L = {
     macroInline: (name: string) => `Confluence 전용 · ${name}`,
     attachInline: (name: string) => `첨부 · ${name}`,
     commentHeading: (count: number) => `안 풀린 코멘트 ${count}개`,
-    commentNote: "답글과 해결은 Confluence 에서 해요",
+    commentNote: "코멘트는 Confluence 에 바로 남아요",
     commentsUnavailable: "코멘트는 지금 읽지 못했어요",
     commentAnchor: (anchor: string) => `이 부분: ${anchor}`,
     commentNoAuthor: "이름 없음",
+  },
+  // ── 기획 초안(2026-10-23 · 최종 구현 계획 F1) — 문서를 블록으로 읽고 고치는 초안 편집기. 발행은 다른 칸의 몫이다.
+  drafts: {
+    // 들어가는 길 — 읽는 문서의 머리에서 초안 편집기로
+    edit: "고치기",
+    /** 이어 보기 막대의 마지막 걸음에 붙는 표시 — 지금 문서가 아니라 그 초안을 본다는 말이다. */
+    chip: "초안",
+    // 머리 — 제목 · 한 줄 상태 · 닫기 · 버리기
+    close: "닫기",
+    discard: "초안 버리기",
+    discardTitle: "이 초안을 버릴까요?",
+    discardBody: "이 컴퓨터에 보관한 초안을 지워요. Confluence 의 문서는 그대로 남아요.",
+    discardConfirm: "버리기",
+    cancel: "그만두기",
+    meta: (revision: number, baseVersion: number | null) =>
+      baseVersion === null
+        ? `새 초안 · 개정 ${revision}`
+        : `초안 · 개정 ${revision} · 기준 판 ${baseVersion}`,
+    /** 제목의 단계 표기가 1.0 이후일 때 배지 옆에 선다 — 발행이 새 판을 만든다는 안내다. */
+    stageClosed: "발행하면 새 판이 돼요",
+    locked: "발행을 확인하는 동안은 고칠 수 없어요 — 끝나면 다시 고칠 수 있어요.",
+    /** 방송으로 다시 읽은 판 — 고치는 칸이 열려 있을 때의 한 줄(2026-10-23 화면 확인 · A4 완화). 칸의 글은 지우지 않는다. */
+    reloadedOutside: "다른 창이나 대화에서 초안이 바뀌어 다시 읽었어요 — 고치던 내용을 다시 살펴 주세요.",
+    staleReloaded: "초안이 다르게 바뀌어 있어 다시 읽었어요 — 방금 고친 내용을 다시 적어 주세요.",
+    loadFailed: "초안을 읽지 못했어요 — 잠시 뒤 다시 시도해 주세요.",
+    titleField: "제목",
+    /** 새 문서 제목의 한계 — 숫자는 선로 스키마(`packages/protocol/src/draft.ts` 의 255자)와 같다(2026-10-23 화면 확인). */
+    limitTitleLength: "제목은 255자까지 쓸 수 있어요",
+    // 블록의 처지 배지
+    statusSame: "그대로",
+    statusChanged: "고침",
+    statusNew: "새로",
+    statusConflict: "충돌",
+    // 블록의 손잡이 단추
+    blockEdit: "고치기",
+    addBelow: "아래에 더하기",
+    moveUp: "위로",
+    moveDown: "아래로",
+    remove: "지우기",
+    revert: "되돌리기",
+    addParagraph: "문단",
+    addHeading: "제목",
+    addList: "목록",
+    addTable: "표",
+    /** 보존 조각의 상자 — 이름표는 `tokenLabel` 이 사람의 말로 바꿔 준다. */
+    preservedBox: (label: string) => `${label} — Confluence 전용 조각`,
+    preservedNote: "여기서는 고칠 수 없어요 — Confluence 에서 고쳐요.",
+    removePreservedTitle: "이 조각을 지울까요?",
+    removePreservedBody: "Confluence 의 이 조각이 발행물에서도 빠져요.",
+    removeConfirm: "지우기",
+    // 고치는 칸
+    apply: "적용",
+    editCancel: "취소",
+    levelLabel: "제목 수준",
+    orderedLabel: "번호 목록",
+    headingField: "제목 글자",
+    bodyField: "본문",
+    listField: "목록 항목 — 한 줄에 하나",
+    cellLabel: (row: number, col: number) => `${row}번째 줄 ${col}번째 칸`,
+    addRow: "행 더하기",
+    removeRow: "행 빼기",
+    addColumn: "열 더하기",
+    removeColumn: "열 빼기",
+    legendItem: (name: string, label: string) => `⟦${name}⟧ ${label}`,
+    legendNote: "⟦…⟧ 는 Confluence 의 조각 자리예요 — 지우면 그 조각이 발행물에서 빠져요.",
+    // 충돌 블록 — 내 것과 Confluence 것을 나란히 보고 고른다
+    conflictMine: "내 것",
+    conflictTheirs: "Confluence 것",
+    useMine: "내 것 쓰기",
+    useTheirs: "Confluence 것 쓰기",
+    // 빈 초안
+    emptyGuide: "아직 내용이 없어요 — 첫 문단부터 써 보세요.",
+    writeDirectly: "직접 쓰기",
+    /** 토큰 · 보존 조각의 기계 이름을 사람의 말로 — 모르는 이름은 막연한 Confluence 요소로 본다. */
+    tokenLabel: (machine: string) => {
+      // 시험이 표본 값으로도 불러 금칙어를 잰다 — 문자가 아니면 모르는 이름으로 본다.
+      const name = typeof machine === "string" ? machine : "";
+      if (name === "image") return "이미지";
+      if (name === "link:page") return "문서 링크";
+      if (name === "link:user") return "사람 멘션";
+      if (name === "link:attachment") return "첨부 링크";
+      if (name === "link") return "링크";
+      if (name === "emoticon") return "이모티콘";
+      if (name === "date") return "날짜";
+      if (name === "placeholder") return "자리 표시";
+      if (name === "comment-anchor") return "코멘트 닻";
+      if (name === "cell:complex") return "복잡한 셀";
+      if (name === "list:nested") return "중첩 목록";
+      if (name === "table:merged") return "병합 셀이 있는 표";
+      if (name === "table:nested") return "표 속 표";
+      if (name === "heading:complex" || name === "paragraph:complex") return "복잡한 단락";
+      if (name === "hr") return "가로줄";
+      if (name === "blockquote") return "인용";
+      if (name === "pre") return "서식 있는 글";
+      if (name === "text") return "글";
+      if (name.startsWith("macro:")) {
+        const macros: Record<string, string> = {
+          info: "정보 상자",
+          note: "메모 상자",
+          warning: "경고 상자",
+          tip: "팁 상자",
+          status: "상태 표시",
+          expand: "펼치기",
+          code: "코드 블록",
+          toc: "목차",
+          jira: "지라 연결",
+        };
+        const rest = name.slice("macro:".length);
+        return macros[rest] ?? `${rest} 매크로`;
+      }
+      if (name.startsWith("format:")) return "글 모양";
+      return "Confluence 요소";
+    },
+    // ── 기획 대화 — 초안 편집기 안에서 AI 와 문서를 다듬는 칸(2026-10-23 · 최종 구현 계획 F1)
+    threadTitle: "기획 대화",
+    threadEmpty: "무엇을 어떻게 고칠지 물어보세요 — AI 가 변경안을 만들어 보여줄게요.",
+    send: "보내기",
+    inputHint: "예: 둘째 절에 목표를 더하고 문단을 나눠 줘",
+    aiWorking: "AI 가 쓰는 중…",
+    aiFailed: "AI 가 답을 마치지 못했어요",
+    readBy: (count: number) => `AI 가 문서 ${count}개를 읽었어요`,
+    // 변경안 카드 — 요약 · 걸음 · 처지 배지 · 채택 단추
+    preview: "미리보기",
+    opAdopted: "채택함",
+    opRejected: "거절함",
+    staleBadge: "오래됨",
+    opStale: "초안이 바뀌어 오래된 걸음이에요",
+    opMissing: "원래 자리의 블록이 없어졌어요",
+    opBlank: "빈 블록",
+    opReplace: (head: string) => `“${head}” 블록을 고쳐 써요`,
+    opInsert: (head: string | null) =>
+      head === null ? "맨 앞에 블록을 더해요" : `“${head}” 블록 뒤에 더해요`,
+    opDelete: (head: string) => `“${head}” 블록을 지워요`,
+    opTitle: (title: string) => `제목을 “${title}” 로 바꿔요`,
+    adoptSelected: "고른 것 채택",
+    adoptAll: "모두 채택",
+    reject: "거절",
+    reask: "다시 요청",
+    reaskPrompt: "앞 변경안을 다시 써 줘",
+    // 근거 — 함께 보낼 문서와 절
+    addRef: "근거 더하기",
+    removeRef: "근거 빼기",
+    refChip: (title: string, version: number | null, sections?: readonly string[]) => {
+      // 시험이 표본 값으로도 불러 금칙어를 잰다 — 문자가 아니면 빈 자리로 본다.
+      const parts = [
+        typeof title === "string" ? title : "",
+        version === null ? null : `판 ${version}`,
+        Array.isArray(sections) && sections.length > 0 ? sections.join(", ") : null,
+      ];
+      return parts.filter((part) => part !== null && part !== "").join(" · ");
+    },
+    refSearchLabel: "찾기",
+    refSearchHint: "제목이나 폴더 이름으로 찾아요",
+    refNone: "맞는 문서가 없어요",
+    refLoadFailed: "문서 목록을 읽지 못했어요 — 근거 더하기를 다시 눌러 주세요.",
+    refMeta: (version: number, folder: string) => {
+      const parts = [`판 ${version}`, typeof folder === "string" && folder !== "" ? folder : null];
+      return parts.filter((part) => part !== null && part !== "").join(" · ");
+    },
+    refSectionsLabel: "절 이름",
+    refSectionsHint: "예: 배경, 목표 — 쉼표로 나눠 적어요",
+    refAdd: "근거로 담기",
+    // 기획 대화의 입력 한계(2026-10-23 화면 확인) — 데몬의 검사에 부딪치기 전에 화면이 먼저 지킨다.
+    // 숫자는 선로 스키마(`packages/protocol/src/draft.ts`)와 같다.
+    limitQuestionLength: "질문은 8,000자까지 쓸 수 있어요",
+    limitRefCount: "근거는 문서 20개까지 함께 보낼 수 있어요",
+    limitSectionCount: "절은 20개까지 골라 주세요",
+    limitSectionLength: "절 이름은 200자까지 쓸 수 있어요",
+    startWithAi: "AI 와 시작하기",
+    // ── 발행(2026-10-23 · 최종 구현 계획 F2) — Confluence 에 반영하기 전에 무엇이 반영되는지 보인다
+    publish: "Confluence 에 발행",
+    publishTitle: "Confluence 에 발행",
+    publishSub: "반영되는 내용과 막힌 것이 있으면 미리 알려요.",
+    publishConfirm: "발행",
+    publishing: "보내는 중…",
+    previewTarget: "대상",
+    previewTitle: "제목",
+    previewVersions: (base: number | null, remote: number | null, revision: number) =>
+      `기준 판 ${base ?? "없음"} · 지금 원격 판 ${remote ?? "없음"} · 초안 개정 ${revision}`,
+    changeHeading: "이번에 반영할 내용",
+    changeCounts: (changed: number, inserted: number, deleted: number) => {
+      const parts: string[] = [];
+      if (changed > 0) parts.push(`고침 ${changed}`);
+      if (inserted > 0) parts.push(`새로 ${inserted}`);
+      if (deleted > 0) parts.push(`지움 ${deleted}`);
+      return parts.join(" · ");
+    },
+    protectedRemoved: (label: string) => `${label} — 지운 조각이 발행물에서도 빠져요`,
+    /** 막는 이유의 글 — 이름은 선로의 기계 이름이다(시험이 열한 갈래를 대조한다). */
+    blocker: {
+      "publish-disabled": "발행이 아직 꺼져 있어요 — 검증을 마친 뒤 켜요",
+      "nothing-to-publish": "바뀐 내용이 없어요 — 발행할 것이 없어요",
+      "remote-newer": "Confluence 에 더 새 판이 있어요",
+      "remote-draft": "Confluence 에서 누군가 고치는 중인 내용이 있어요",
+      "remote-draft-unknown":
+        "Confluence 에서 고치는 중인지 아직 몰라요 — Confluence 에서 확인해 주세요",
+      "remote-missing": "Confluence 에서 문서를 찾지 못했어요 — 지워졌을 수 있어요",
+      "no-permission": "이 문서를 바꿀 권한이 없어요",
+      "out-of-scope": "연결한 기획서 범위 밖의 문서예요 — 여기서 발행하지 않아요",
+      "conflict-open": "충돌한 블록이 남아 있어요 — 먼저 골라 주세요",
+      "pending-command": "아직 결과를 확인하지 못한 발행이 있어요 — 결과를 다시 확인해 주세요",
+      "unsupported-change": "여기서 고칠 수 없는 모양이 섞여 있어요 — Confluence 에서 고쳐 주세요",
+    },
+    actionRebase: "원격 최신본에 맞추기",
+    actionOpen: "Confluence 에서 열기",
+    actionResolve: "충돌 고르러 가기",
+    actionRecheck: "결과 다시 확인",
+    stageRevision: "이 발행은 새 판을 만들어요 — 새 단계 표기와 사유를 골라 주세요.",
+    stageNotation: "새 단계 표기",
+    /** 새 단계 표기의 한계 — 숫자는 선로 스키마(`packages/protocol/src/draft.ts` 의 32자)와 같다(2026-10-23 화면 확인). */
+    limitNotationLength: "단계 표기는 32자까지 쓸 수 있어요",
+    stageReason: "사유",
+    stageReasonPick: "사유를 고르세요",
+    stageReasonSpec: "기획 오류",
+    stageReasonOps: "운영 요구",
+    stageReasonResource: "리소스",
+    stageReasonDirect: "직접 쓰기",
+    resultApplied: (version: number) => `발행했어요 — Confluence 판 ${version}`,
+    resultUnknownTitle: "결과 확인 필요",
+    resultUnknownBody: "보낸 내용이 Confluence 에 닿았는지 아직 몰라요. 자동으로 다시 보내지는 않아요.",
+    resultConflict: "Confluence 가 그 사이 바뀌었어요 — 원격 최신본에 맞추는 것이 좋아요.",
+    resultNotApplied: "발행이 Confluence 에 닿지 않았어요 — 이유를 살펴 보고 결과를 다시 확인해 주세요.",
+    resultFailed: "발행이 실패했어요",
+    resultClosed: "결과 확인을 두고 종료했어요 — 다시 보내지 않아요.",
+    publishedNote: "Confluence 에 발행이 반영됐어요.",
+    conflictNote: "충돌한 블록을 골라 주세요 — 남길 쪽을 고르면 발행할 수 있어요.",
+    viewInConfluence: "Confluence 에서 보기",
+    closeNoResend: "재전송 없이 종료",
+    closeNoResendTitle: "결과를 확인하지 않고 종료할까요?",
+    closeNoResendBody: "Confluence 에 닿았는지 모른 채 이 상태를 거둬요. 같은 내용을 다시 보내지 않아요.",
+    closeNoResendConfirm: "종료",
+    // ── 새 문서 초안(2026-10-23 · 최종 구현 계획 F2)
+    newDoc: "새 문서",
+    newDocTitle: "새 문서 만들기",
+    newDocSub: "Confluence 의 고른 자리 아래에 빈 문서의 초안을 만들어요.",
+    newDocParent: "들어갈 자리",
+    newDocParentPick: "자리를 고르세요",
+    /** 들어갈 자리가 하나도 없을 때의 안내 — 가져오기가 먼저다(2026-10-23 화면 확인). */
+    newDocNoPlace: "들어갈 자리가 아직 없어요 — 기획서를 먼저 가져와요",
+    newDocTemplate: "밑그림",
+    newDocTemplateNone: "없음",
+    create: "만들기",
+    creating: "만드는 중…",
+    newDraftGroup: "새 문서 초안",
+    resume: "초안 이어 쓰기",
+    chipCount: (changed: number) => `초안 · ${changed}`,
+    // ── 화면 작업에 근거 보내기(2026-10-23 · 최종 구현 계획 F3) — 문서 · 초안을 입력창 첨부로 담는다
+    sendToScreen: "화면 작업에 근거로 보내기",
+    sendTitle: "근거로 보내기",
+    sendSub: "고른 문서와 절을 화면 작업의 근거로 입력창에 담아요.",
+    sendScope: "보낼 범위",
+    sendWhole: "문서 전체",
+    sendGo: "입력창에 담기",
+    /** 초안의 근거임을 알리는 안내 — 발행 전이라는 말을 먼저 한다. */
+    sendDraftNote: "아직 발행하지 않은 초안이에요 — 개발자에게는 미발행으로 전해져요",
+    sentToComposer: "근거를 입력창에 담았어요 — 말을 붙여 보내 주세요",
+    noComposer: "입력창을 찾지 못했어요 — 대화 칸을 열고 다시 시도해 주세요",
+    sendFailed: "근거를 만들지 못했어요 — 잠시 뒤 다시 시도해 주세요",
+  },
+  // ── 기획 근거 줄(2026-10-23 · 최종 구현 계획 F3) — 화면 대화의 입력창 위에 이번 대화가
+  // 삼은 근거가 한 줄로 선다. 칩을 누르면 그 문서 · 초안으로 돌아간다.
+  planRefs: {
+    /** 줄 머리 — 오른쪽에 오는 칩들이 무엇인지 이름한다. */
+    stripLabel: "기획 근거",
+    /** 발행된 문서의 판. */
+    version: (n: number) => `판 ${n}`,
+    /** 아직 발행하지 않은 초안 — 미발행임을 개정과 함께 말한다. */
+    draftRevision: (n: number) => `미발행 초안 · 개정 ${n}`,
+    /** 첫 절 외에 더 있는 절의 수. */
+    sectionsMore: (n: number) => `외 ${n}`,
+    /** 접힌 칩을 펼치는 단추 — 남은 근거의 수. */
+    more: (n: number) => `+${n}`,
+    /** 칩의 이름표 — 누르면 기획서 칸에서 그 문서 · 초안이 열린다는 말. */
+    openAria: (title: string) => `${title} 기획서에서 열기`,
+  },
+  // ── 문서 관리(2026-10-23 · 최종 구현 계획 F4) — 복제 · 위치 옮기기 · 휴지통 · 복구. 영구 삭제는 없다.
+  docOps: {
+    menu: "더보기",
+    copy: "복제",
+    move: "위치 옮기기",
+    trash: "휴지통으로 옮기기",
+    restore: "복구",
+    trashList: "휴지통",
+    trashTitle: "휴지통",
+    trashEmptyTitle: "휴지통이 비어 있어요",
+    trashEmptyBody:
+      "이 앱에서 휴지통으로 옮긴 문서가 여기에 모여요. Confluence 의 휴지통에서도 되살릴 수 있어요.",
+    trashListFailed: "휴지통을 읽지 못했어요 — 잠시 뒤 다시 시도해 주세요.",
+    trashLoading: "휴지통을 읽는 중…",
+    trashedAt: (when: string) => `${when}에 휴지통으로`,
+    dialogTitle: (op: DocOpKind) =>
+      op === "copy"
+        ? "문서 복제"
+        : op === "move"
+          ? "위치 옮기기"
+          : op === "restore"
+            ? "문서 복구"
+            : "휴지통으로 옮기기",
+    dialogSub: "Confluence 에서 미리 확인하고 눌러요.",
+    childCount: (n: number) => `아래 문서 ${n}개도 함께 영향받을 수 있어요`,
+    hasDraft: "이 컴퓨터의 초안은 지워지지 않아요",
+    /** 막는 이유의 글 — 이름은 선로의 기계 이름이다(시험이 일곱 갈래를 대조한다). */
+    blocker: {
+      "publish-disabled": "Confluence 에 쓰기가 아직 꺼져 있어요 — 검증을 마친 뒤 켜요",
+      "remote-missing": "Confluence 에서 문서를 찾지 못했어요 — 지워졌을 수 있어요",
+      "out-of-scope": "연결한 기획서 범위 밖의 문서예요 — 여기서는 옮기지 않아요",
+      "no-permission": "이 문서를 바꿀 권한이 없어요",
+      "has-draft": "이 컴퓨터의 초안은 지워지지 않아요",
+      "not-trashed-here": "이 앱에서 휴지통으로 옮긴 문서가 아니에요 — 복구는 이 앱에서 옮긴 문서만 해요",
+      "same-parent": "지금과 같은 자리예요 — 다른 자리를 골라 주세요",
+    },
+    target: "들어갈 자리",
+    targetPick: "자리를 고르세요",
+    newTitle: "새 제목",
+    /** 복제 제목의 붙임 — 끝에 `사본` 이, 그다음부터 `사본 2 · 3 …` 이 붙는다. */
+    copySuffix: "사본",
+    copyRound: (n: number) => `사본 ${n}`,
+    checking: "Confluence 에서 확인하는 중…",
+    confirm: (op: DocOpKind) =>
+      op === "copy" ? "복제하기" : op === "move" ? "옮기기" : op === "restore" ? "복구하기" : "휴지통으로 옮기기",
+    sending: "보내는 중…",
+    /** 결과 처지의 글 — applied 는 알림 한 줄, unknown 은 자동 재전송이 없다는 말을 함께 한다. */
+    applied: (op: DocOpKind) =>
+      op === "copy" ? "복제했어요" : op === "move" ? "옮겼어요" : op === "restore" ? "복구했어요" : "휴지통으로 옮겼어요",
+    unknown: "결과를 확인하지 못했어요 — 목록을 새로 가져와 확인해 주세요. 자동으로 다시 보내지 않아요.",
+    failed: "Confluence 요청이 실패했어요",
+  },
+  // ── 문서 코멘트(2026-10-23 · 최종 구현 계획 F4) — 기획서 문서에 바닥글 · 인라인 · 답글 · 고침 · 해결로
+  // 남긴다. 코멘트는 정본인 Confluence 에 바로 기록된다.
+  comments: {
+    // 단추 — 코멘트 줄마다 서는 것과 입력의 것
+    reply: "답글",
+    edit: "고치기",
+    resolve: "해결",
+    send: "보내기",
+    sending: "보내는 중…",
+    cancel: "그만두기",
+    reread: "다시 읽기",
+    // 입력의 자리 표시 — 바닥글 입력은 문서 아래 늘 선다
+    footerPlaceholder: "코멘트 남기기",
+    replyPlaceholder: "답글 남기기",
+    editPlaceholder: "고칠 내용을 적어 주세요",
+    inlinePlaceholder: "이 부분에 남길 말을 적어 주세요",
+    count: (left: number) => `${left}자 더 쓸 수 있어요`,
+    countOver: (over: number) => `${over}자 넘었어요 — 줄여 주세요`,
+    /** 적용됨의 한 줄 알림 — 명령의 종류별 문장이다. */
+    applied: {
+      create: "코멘트를 남겼어요",
+      reply: "답글을 남겼어요",
+      update: "코멘트를 고쳤어요",
+      resolve: "해결로 표시했어요",
+    },
+    unknown: "결과를 확인하지 못했어요 — 문서를 다시 읽어 확인해 주세요. 자동으로 다시 보내지 않아요.",
+    failed: "Confluence 요청이 실패했어요",
+    /** 막는 이유의 글 — 이름은 선로의 기계 이름이다(시험이 여덟 갈래를 대조한다). */
+    reason: {
+      "publish-disabled": "지금은 이 앱에서 Confluence 에 쓰기가 꺼져 있어요 — Confluence 에서 직접 남겨 주세요",
+      "out-of-scope": "연결한 기획서 범위 밖의 문서예요 — 여기서는 남기지 않아요",
+      "anchor-missing": "그 문장이 문서에서 바뀌었어요 — 다시 골라 주세요",
+      "anchor-ambiguous": "같은 문장이 문서에 여러 번 있어요 — 조금 더 길게 골라 주세요",
+      "comment-changed": "다른 곳에서 먼저 바뀌었어요 — 다시 읽은 뒤 해 주세요",
+      "comment-missing": "그 코멘트가 이미 없어요 — 문서를 다시 읽어 주세요",
+      "comment-not-plain": "서식이나 멘션이 있는 코멘트는 Confluence 에서 고쳐 주세요",
+      "comment-unreadable": "코멘트 본문을 읽지 못했어요 — Confluence 에서 확인해 주세요",
+    },
+    // 닻 — 본문에서 고른 문장의 단추와 안내
+    anchorButton: "이 부분에 코멘트",
+    anchor: {
+      empty: "문장을 골라 주세요",
+      multiBlock: "한 문단 안에서 골라 주세요",
+      tooLong: "500자가 넘어요 — 조금 더 짧게 골라 주세요",
+      repeated: "같은 문장이 문서에 여러 번 있어요 — 조금 더 길게 골라 주세요",
+    },
+    resolveConfirm: "이 코멘트를 해결로 표시할까요?",
+    resolveGo: "해결로 표시",
   },
 } as const;
 

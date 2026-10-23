@@ -20,6 +20,7 @@ import { createServer } from "node:http";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { HandoffPreviewInfo, HandoffStatus } from "@colonova-design/protocol";
+import { withoutAppSecrets } from "./agent-env.js";
 import { extraPathPrefix } from "./claude-trust.js";
 import { currentPlatform, resolveGitExecutable } from "./environment.js";
 import { descendantPids, killTree, pidListeningPorts, probePreviewUrl } from "./preview-claim.js";
@@ -329,7 +330,9 @@ export class HandoffPreviews {
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
       env: {
-        ...process.env,
+        // 미리보기는 AI 가 쓴 코드를 돌린다 — 앱의 자격 재정의는 물려주지 않는다
+        // (2026-10-23 · 최종 구현 계획 F0).
+        ...withoutAppSecrets(process.env),
         ...(hint === undefined ? {} : { PORT: String(hint) }),
         // 미리보기는 절대 과금 키를 물려받지 않는다 (본 미리보기와 같은 규율).
         ANTHROPIC_API_KEY: undefined,
@@ -444,7 +447,7 @@ async function git(cwd: string, args: string[]): Promise<string | null> {
         cwd,
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
-        env: { ...process.env, ANTHROPIC_API_KEY: undefined },
+        env: withoutAppSecrets({ ...process.env, ANTHROPIC_API_KEY: undefined }),
       });
     } catch {
       resolve(null);

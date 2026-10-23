@@ -13,7 +13,7 @@ import { rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentInstallKind } from "@colonova-design/protocol";
-import { withoutSelfUpdate } from "./agent-env.js";
+import { withoutAppSecrets, withoutSelfUpdate } from "./agent-env.js";
 import { resolveClaudeExecutable } from "./environment.js";
 import type { SpawnLike } from "./onboarding.js";
 
@@ -409,8 +409,9 @@ export class AgentInstall {
     }
     try {
       const outcome = await runInstallChild(ctx.spawnLike, command, args, {
-        // 설치가 부르는 `claude install` 도 Claude 자식이다 — 자기 업데이트를 끈다.
-        env: withoutSelfUpdate(ctx.env),
+        // 설치가 부르는 `claude install` 도 Claude 자식이다 — 자기 업데이트를
+        // 끄고 앱의 자격도 거른다(2026-10-23 · 최종 구현 계획 F0).
+        env: withoutSelfUpdate(withoutAppSecrets(ctx.env)),
         signal: ctx.signal,
         onLine: ctx.progress,
       });

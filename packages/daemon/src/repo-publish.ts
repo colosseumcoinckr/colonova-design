@@ -23,6 +23,7 @@ import {
   buildChecksSection,
   buildCommentsSection,
   buildFilesSection,
+  buildPlanRefsSectionFromFile,
   buildScopeSection,
   formatHandoffTitle,
   noteLine,
@@ -573,6 +574,8 @@ export class PublishCycle {
       shots?: HandoffShot[];
       /** D93: 코멘트 저장소 — `### 수정 요청` 절의 재료. */
       commentsFile?: string;
+      /** C3: 근거 기록(`plans/refs.jsonl`) — `### 기획 근거` 절의 재료. */
+      planRefsFile?: string;
       /** 제출 확인의 `개발자에게 한마디`(PLAN-UI U3) — 작성자 줄 바로 아래. */
       note?: string;
       version?: SubmitVersion;
@@ -613,6 +616,18 @@ export class PublishCycle {
       if (scopeSection) sections.push(scopeSection);
       const filesSection = buildFilesSection(numstat);
       if (filesSection) sections.push(filesSection);
+    } catch {
+      // 제출 자체가 일을 싣는다 — 절 하나가 못 나오는 것은 조용하다.
+    }
+    // 기획 근거 절(2026-10-23 작업 C3) — 이 사이클의 화면 작업이 근거로 삼은 문서 · 판 · 절. 코멘트 절 앞에 선다.
+    try {
+      if (options.planRefsFile) {
+        const section = buildPlanRefsSectionFromFile(
+          options.planRefsFile,
+          await this.core.cycleAnchor(),
+        );
+        if (section) sections.push(section);
+      }
     } catch {
       // 제출 자체가 일을 싣는다 — 절 하나가 못 나오는 것은 조용하다.
     }

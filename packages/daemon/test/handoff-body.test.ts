@@ -2,12 +2,16 @@
 // (제목은 생성할 때만). `../dist` 임포트인 이유: node --test 는 src 의 `.js`
 // 지정자를 못 읽는다(cycle-ledger.test.ts 와 같은 길).
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import {
   aiKindsOf,
   buildAiLine,
   buildChecksSection,
   buildFilesSection,
+  buildPlanRefsSectionFromFile,
   buildScopeSection,
   classifyScopePath,
   formatHandoffTitle,
@@ -24,6 +28,7 @@ import {
   TOOL_BLOCK_END,
   TOOL_BLOCK_START,
 } from "../dist/handoff-body.js";
+import { appendPlanRefs } from "../dist/plan-refs.js";
 
 const BLOCK = "> 작성자: 기획자\n\n### 바뀐 파일\n\n- a.ts (+1 −0)";
 const wrap = (body: string) => `${TOOL_BLOCK_START}\n${body}\n${TOOL_BLOCK_END}`;
@@ -668,4 +673,41 @@ test("plainHandoffTitle — 읽을 말이 없으면 null, 긴 말은 80자에서
   assert.ok(long.endsWith("…"));
   const exact = "나".repeat(PLAIN_TITLE_MAX_CHARS);
   assert.equal(plainHandoffTitle(exact), exact, "상한과 같으면 자르지 않는다");
+});
+
+// ————— 2026-10-23 작업 C3 — `### 기획 근거` 절: 이 사이클의 근거 기록만 묶는다 —————
+
+/** 합성 근거 기록 — 실제 문서를 흉내 내지 않는다. */
+const planRef = (title: string, version: number) => ({
+  title,
+  pageId: "123",
+  docKey: null,
+  url: "https://site.atlassian.net/wiki/pages/viewpage.action?pageId=123",
+  version,
+  revision: null,
+  published: true,
+  sections: ["배경"],
+});
+
+test("기획 근거 절 — 근거 기록이 있으면 절이 서고 없으면 서지 않는다", () => {
+  const home = mkdtempSync(join(tmpdir(), "handoff-refs-"));
+  try {
+    const file = join(home, "plans", "refs.jsonl");
+    assert.equal(buildPlanRefsSectionFromFile(file, "2026-10-23T00:00:00Z"), null);
+    assert.equal(buildPlanRefsSectionFromFile(join(home, "없는", "기록.jsonl"), null), null);
+    appendPlanRefs(file, [
+      { at: "2026-10-22T00:00:00Z", sessionId: "옛 대화", ref: planRef("지난 문서", 3) },
+      { at: "2026-10-23T01:00:00Z", sessionId: "s1", ref: planRef("로그인 화면", 4) },
+    ]);
+    const section = buildPlanRefsSectionFromFile(file, "2026-10-23T00:00:00Z") ?? "";
+    assert.ok(section.startsWith("### 기획 근거"), section);
+    assert.ok(section.includes("[로그인 화면]"), section);
+    assert.ok(section.includes("· 판 4 · 절: 배경"), section);
+    // 앵커 이전의 기록은 지난 제출의 것이다 — 소급해 싣지 않는다.
+    assert.ok(!section.includes("지난 문서"));
+    // 앵커를 못 읽으면 절이 서지 않는다 — 코멘트 절과 같은 판정이다.
+    assert.equal(buildPlanRefsSectionFromFile(file, "어깨"), null);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
 });

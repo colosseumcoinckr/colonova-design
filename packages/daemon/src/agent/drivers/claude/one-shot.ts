@@ -1,5 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { withoutSelfUpdate } from "../../../agent-env.js";
+import { withoutAppSecrets, withoutSelfUpdate } from "../../../agent-env.js";
 
 /**
  * One machine turn (비개발자 저장): the same SDK entry the sessions use,
@@ -28,8 +28,9 @@ export async function claudeOneShot(
         tools: [],
         settingSources: [],
         abortController: controller,
-        // 세션과 같이 자기 업데이트를 끈다(PLAN-UI U12).
-        env: withoutSelfUpdate(process.env),
+        // 세션과 같이 자기 업데이트를 끄고, 앱의 자격이 새지 않게 거른다
+        // (2026-10-23 · 최종 구현 계획 F0).
+        env: withoutSelfUpdate(withoutAppSecrets(process.env)),
       },
     });
     let answer: string | null = null;

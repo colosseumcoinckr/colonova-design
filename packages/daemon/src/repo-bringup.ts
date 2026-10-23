@@ -7,6 +7,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { dirname, join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import type { RepoErrorKind, RepoStatus } from "@colonova-design/protocol";
+import { withoutAppSecrets } from "./agent-env.js";
 import { extraPathPrefix, sanitizeRepoAgentSettings, trustWorkspace } from "./claude-trust.js";
 import { mergeNpmrc, npmrcPath } from "./credentials.js";
 import {
@@ -612,7 +613,9 @@ export class BringUp {
  */
 export function repoCommandEnv(base: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return {
-    ...base,
+    // 레포 명령이 돌리는 설치 · 미리보기는 AI 가 쓴 코드를 실행한다 — 앱의
+    // 자격 재정의는 물려주지 않는다(2026-10-23 · 최종 구현 계획 F0).
+    ...withoutAppSecrets(base),
     // The preview must never inherit a key that would bill API credit.
     ANTHROPIC_API_KEY: undefined,
     // The desktop app bundles portable Node/pnpm (and MinGit on Windows)

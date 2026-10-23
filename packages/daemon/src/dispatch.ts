@@ -1,6 +1,8 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   type ClientMessage,
+  type DraftPlanRef,
   type EffortLevel,
   markTurn,
   readTurn,
@@ -8,10 +10,14 @@ import {
 
 import { describeProblem } from "./developer-notice.js";
 import { realpathBestEffort } from "./paths.js";
+import { appendPlanRefs, readPlanRef } from "./plan-refs.js";
 import type { ProjectWorkspaces } from "./project-fleet.js";
 import type { StartupRecovery } from "./queue-store.js";
 import type { RepoWorkspace } from "./repo.js";
 import { confluenceHandlers } from "./requests/confluence.js";
+import { docCommentHandlers } from "./requests/doc-comments.js";
+import { docOpHandlers } from "./requests/doc-ops.js";
+import { draftHandlers } from "./requests/drafts.js";
 import { projectHandlers } from "./requests/projects.js";
 import { repositoryHandlers } from "./requests/repository.js";
 import { systemHandlers } from "./requests/system.js";
@@ -43,6 +49,9 @@ export class RequestRouter {
     this.handlers = {
       ...this.sessionHandlers,
       ...confluenceHandlers(deps),
+      ...draftHandlers(deps),
+      ...docOpHandlers(deps),
+      ...docCommentHandlers(deps),
       ...projectHandlers(deps),
       ...repositoryHandlers(deps, (sessionId, stage) => this.briefTo(sessionId, stage)),
       ...systemHandlers(deps),
@@ -85,6 +94,31 @@ export class RequestRouter {
   private workspaceOfSession(sessionId: string): ProjectWorkspaces | null {
     return this.deps.fleet.workspaceOfSession(sessionId);
   }
+
+  /**
+   * 기획 근거의 기록(2026-10-23 작업 C3) — 글 첨부 가운데 첫 줄에 근거 표식이 선
+   * 것을 활성 프로젝트 데이터의 `plans/refs.jsonl` 에 덧붙인다. 남기는 것은 언제 ·
+   * 어느 대화 · 어느 문서(제목 · 판 · 절)뿐이다 — 첨부 본문과 사용자의 말은 기록에
+   * 들어가지 않는다.
+   */
+  private recordPlanRefs(
+    sessionId: string,
+    attachments: Array<{ name: string; mediaType: string; data: string }>,
+  ): void {
+    // 표식부터 읽는다 — 근거가 없는 보통의 보내기는 프로젝트 자료에 닿지 않는다(2026-10-23 오케스트레이터 검토).
+    const refs = attachments
+      .filter((file) => file.mediaType.startsWith("text/"))
+      .map((file) => readPlanRef(Buffer.from(file.data, "base64").toString("utf8")))
+      .filter((ref): ref is DraftPlanRef => ref !== null);
+    if (refs.length === 0) return;
+    const slug = this.deps.registry.activeSlug();
+    if (slug === null) return;
+    appendPlanRefs(
+      join(this.deps.registry.paths(slug).root, "plans", "refs.jsonl"),
+      refs.map((ref) => ({ at: new Date().toISOString(), sessionId, ref })),
+    );
+  }
+
   /** 세션 요청은 재개 예산과 복구 수명을 함께 쓴다. */
   private readonly sessionHandlers = {
     "session.list": async (message) => {
@@ -248,6 +282,14 @@ export class RequestRouter {
       // 2026-10-20 응답 지연 개선: 준비 중인 프로젝트만 대기 줄에 둔다.
       // 원격 읽기는 감독자의 관찰 주기에서(합치기는 받아오기 단추), 핀의 코드 탐색은 AI가 맡는다.
       this.deps.fleet.holdIfPreparing(carrier.id);
+      // 기획 근거의 기록(2026-10-23 작업 C3) — 표식이 선 첨부는 이 요청의 근거로
+      // 남긴다. 제출 때 PR 본문의 `### 기획 근거` 절이 이 기록을 읽는다. 실패는
+      // 보내기를 막지 않고 종류만 로그에 남긴다.
+      try {
+        this.recordPlanRefs(message.sessionId, message.attachments ?? []);
+      } catch {
+        this.deps.logger.warn("기획 근거 기록 실패");
+      }
       carrier.send(
         message.text,
         message.attachments,

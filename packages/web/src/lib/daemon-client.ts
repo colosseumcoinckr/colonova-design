@@ -8,6 +8,22 @@ import type {
   DiagnosticsSummary,
   DiffFile,
   DiffStatus,
+  DocCommentResult,
+  DocOpKind,
+  DocOpPreview,
+  DocOpResult,
+  DocTrashEntry,
+  DraftAiMessage,
+  DraftChangedMessage,
+  DraftEdit,
+  DraftPublishPreview,
+  DraftPublishResult,
+  DraftRefEntry,
+  DraftRefInput,
+  DraftSnapshot,
+  DraftSummary,
+  DraftThread,
+  DraftView,
   EffortLevel,
   FeatureRequestInput,
   FeatureRequestResult,
@@ -649,6 +665,27 @@ export type SaveHistoryEntry = RepoHistoryEntry;
 type HandoffDraft = RepoHandoffDraft;
 type SaveHistory = RepoHistory;
 
+/**
+ * 기획서 한 문서의 코멘트 한 줄(doc.read) — 본문은 데몬이 푼 맨 글이다(멘션은 `@이름`). 선택 필드는
+ * 코멘트 쓰기의 재료다(2026-10-23 · 최종 구현 계획 F4).
+ */
+export interface PlanDocComment {
+  author: string;
+  body: string;
+  createdAt: string | null;
+  anchorText: string | null;
+  /** 코멘트의 id · 종류 · 판 · 부모 · 해결 — 고치기 · 답글 · 해결의 재료다. */
+  id?: string;
+  kind?: "footer" | "inline";
+  version?: number | null;
+  parentId?: string | null;
+  resolved?: boolean;
+  /** 연결한 계정이 쓴 코멘트인가. */
+  mine?: boolean;
+  /** 앱에서 고쳐도 잃는 것이 없는가 — 내 코멘트이고 문단 · 줄바꿈 · 글뿐일 때다. */
+  editable?: boolean;
+}
+
 interface DaemonApi {
   /** Every thread of the one workspace, newest first. */
   listSessions: () => Promise<SessionSummary[]>;
@@ -953,21 +990,67 @@ interface DaemonApi {
   }) => Promise<{ site: string; rootTitle: string | null }>;
   /** 기획서 가져오기 — 같은 종류가 도는 중이면 그 바퀴에 합류한다(취소는 없다). */
   confluenceImportNow: () => Promise<{ imported: number; skipped: number; capped: boolean }>;
+  /** 문서 관리 미리보기 — 휴지통 · 복구 · 복제 · 위치 옮기기 전에 막는 이유와 영향(2026-10-23 · 최종 구현 계획 F2 · F4). */
+  docOpPreview: (op: DocOpKind, pageId: string, parentId?: string) => Promise<DocOpPreview>;
+  docTrash: (pageId: string, commandId: string) => Promise<DocOpResult>;
+  docRestore: (pageId: string, commandId: string) => Promise<DocOpResult>;
+  docCopy: (
+    pageId: string,
+    commandId: string,
+    title: string,
+    parentId: string,
+  ) => Promise<DocOpResult>;
+  docMove: (pageId: string, commandId: string, parentId: string) => Promise<DocOpResult>;
+  /** 이 앱이 휴지통에 넣은 문서 — 복구할 수 있는 목록. */
+  docTrashed: () => Promise<{ entries: DocTrashEntry[] }>;
   /** 기획서 목록 — 원장의 트리와 판. 아직 가져온 것이 없으면 docs 가 null 이다. */
   docList: () => Promise<{
     docs: Array<{ pageId: string; title: string; version: number; path: string }> | null;
+    /** Confluence 폴더 — 문서와 같은 나눔 경로로 폴더 줄을 세운다. */
+    folders?: Array<{ folderId: string; title: string; path: string }>;
+    /** 이 앱이 열지 못하는 항목 — type 은 모르는 종류의 원래 글이다. */
+    unsupported?: Array<{ contentId: string; title: string; path: string; type: string }>;
   }>;
   /** 기획서 한 문서 — 파생 마크다운과 절, 코멘트는 안 풀린 것만(읽기 실패면 null). */
   docRead: (pageId: string) => Promise<{
     markdown: string;
     sections: Array<{ heading: string; macro: boolean }>;
-    comments: Array<{
-      author: string;
-      body: string;
-      createdAt: string | null;
-      anchorText: string | null;
-    }> | null;
+    comments: PlanDocComment[] | null;
   }>;
+  // --- 문서 코멘트(2026-10-23 · 최종 구현 계획 F4) — 정본인 Confluence 에 기록한다. 쓰기는
+  // 발행 게이트가 켜졌을 때만 열리고, 같은 명령 아이디는 한 번만 만든다.
+  /** 코멘트 만들기 — anchor 가 있으면 인라인, 없으면 바닥글이다. */
+  docCommentCreate: (input: {
+    pageId: string;
+    commandId: string;
+    text: string;
+    anchor?: { selection: string; index: number };
+  }) => Promise<DocCommentResult>;
+  /** 답글 — 부모 코멘트의 종류가 스레드의 자리를 정한다. */
+  docCommentReply: (input: {
+    pageId: string;
+    commandId: string;
+    parentId: string;
+    kind: "footer" | "inline";
+    text: string;
+  }) => Promise<DocCommentResult>;
+  /** 코멘트 고치기 — 현재 판이 어긋나면 실패다. */
+  docCommentUpdate: (input: {
+    pageId: string;
+    commandId: string;
+    commentId: string;
+    kind: "footer" | "inline";
+    version: number;
+    text: string;
+  }) => Promise<DocCommentResult>;
+  /** 인라인 코멘트의 해결 · 다시 열기 — 바닥글은 해결의 대상이 아니다. */
+  docCommentResolve: (input: {
+    pageId: string;
+    commandId: string;
+    commentId: string;
+    version: number;
+    resolved: boolean;
+  }) => Promise<DocCommentResult>;
   confluenceSuggestRoots: (
     query: string,
   ) => Promise<{ roots: Array<{ id: string; title: string }> }>;
@@ -979,6 +1062,59 @@ interface DaemonApi {
   ) => Promise<unknown>;
   /** 로그인 코드 붙여넣기 — 데몬이 자식 stdin 으로 흘려 보낸다(P1-1). */
   agentLoginCode: (code: string) => Promise<{ ok: true }>;
+  // --- 기획 초안(2026-10-23 · 최종 구현 계획 F1) — 문서마다 대화 하나, 발행은 확인 뒤 보낸다.
+  /** 이 프로젝트의 초안 목록 — 기획서 칸의 줄. */
+  draftList: () => Promise<DraftSummary[]>;
+  /** 기존 문서의 초안 — 처음이면 원격 최신본을 기준으로 만들어 돌려준다. */
+  draftOpen: (pageId: string) => Promise<DraftView>;
+  /** 새 문서의 초안 — 부모 문서 · 폴더 아래에 생기고, 같은 모양의 견본 문서를 받을 수 있다. */
+  draftCreate: (input: {
+    title: string;
+    parentId: string;
+    parentType: "page" | "folder";
+    templatePageId?: string;
+  }) => Promise<DraftView>;
+  draftGet: (docKey: string) => Promise<DraftView>;
+  /** 여러 걸음을 한 요청에 싣는다 — 하나라도 어긋나면 전부 거절된다. */
+  draftEdit: (docKey: string, expectedRevision: number, edits: DraftEdit[]) => Promise<DraftView>;
+  draftDiscard: (docKey: string) => Promise<{ discarded: boolean }>;
+  /** 초안 대화의 말 — 생성은 `draft.ai` 방송으로 이어진다. */
+  draftAsk: (
+    docKey: string,
+    text: string,
+    refs: DraftRefInput[],
+  ) => Promise<{ threadId: string; messageId: string }>;
+  draftCancel: (docKey: string) => Promise<{ cancelled: boolean }>;
+  draftThread: (docKey: string) => Promise<DraftThread>;
+  draftAdopt: (
+    docKey: string,
+    proposalId: string,
+    opIds: string[],
+    expectedRevision: number,
+  ) => Promise<DraftView>;
+  draftReject: (docKey: string, proposalId: string, opIds?: string[]) => Promise<DraftThread>;
+  /** 근거 스냅샷 — 기획서 칸이 입력창 첨부로 붙이는 마크다운 한 장(2026-10-23 · F3). */
+  draftSnapshot: (input: {
+    pageId?: string;
+    docKey?: string;
+    sections?: string[];
+  }) => Promise<DraftSnapshot>;
+  /** 화면 대화가 삼은 근거 — 근거 줄의 재료, 최근 것이 앞(2026-10-23 · F3). */
+  draftRefs: (sessionId: string) => Promise<{ refs: DraftRefEntry[] }>;
+  draftPublishPreview: (docKey: string) => Promise<DraftPublishPreview>;
+  /** 실제 발행 — `commandId` 는 재전송이 같은 발행을 두 번 하지 않게 하는 멱등 키다. */
+  draftPublish: (
+    docKey: string,
+    commandId: string,
+    expectedRevision: number,
+    stage?: { notation: string; reason: string },
+  ) => Promise<DraftPublishResult>;
+  /** 전송 결과를 못 받았을 때 다시 묻는다 — 자동 재전송은 없다. */
+  draftPublishRecheck: (commandId: string) => Promise<DraftPublishResult>;
+  draftPublishClose: (commandId: string) => Promise<DraftPublishResult>;
+  /** 기준을 원격 최신본으로 옮긴다 — 부딪친 블록은 화면에서 고른다. */
+  draftRebase: (docKey: string) => Promise<DraftView>;
+  draftResolve: (docKey: string, blockId: string, choice: "mine" | "theirs") => Promise<DraftView>;
 }
 
 /**
@@ -1065,6 +1201,11 @@ export interface Daemon {
   markLive: (sessionId: string) => void;
   /** Forget one undelivered send the planner has restored or let go of. */
   dismissDropped: (sessionId: string, itemId: string) => void;
+  /**
+   * 초안 방송의 구독(2026-10-23 · 최종 구현 계획 F1) — `draft.changed` · `draft.ai` 를 받은 그대로
+   * 넘긴다. 상태는 만들지 않는다 — 구독한 화면이 직접 다시 읽는다. 돌려받은 함수로 끊는다.
+   */
+  onDraftEvent: (listener: (message: DraftChangedMessage | DraftAiMessage) => void) => () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -1283,6 +1424,11 @@ export function useDaemon(url: string | null): Daemon {
    * 가리키게 ref로 둔다. 루프가 없으면(null url) null이라 호출이 no-op.
    */
   const reconnectRef = useRef<(() => void) | null>(null);
+  /**
+   * 초안 방송의 구독자 목록 — 리액트 상태는 만들지 않는다. 초안 칸이 구독으로
+   * 직접 다시 읽는다(2026-10-23 · 최종 구현 계획 F1).
+   */
+  const draftListeners = useRef(new Set<(message: DraftChangedMessage | DraftAiMessage) => void>());
 
   // --- 낙관 숨김 (대화 지우기) --------------------------------------------
   // 지우기 승인의 같은 커밋에서 행을 거둔다. 데몬의 목록(`projects`)이
@@ -1458,7 +1604,14 @@ export function useDaemon(url: string | null): Daemon {
           if (call.timer) clearTimeout(call.timer);
           pendingCalls.current.delete(message.id!);
           if (message.type === "ok") call.resolve(message.data);
-          else call.reject(new Error(message.message));
+          // 오류 코드가 있으면 오류 객체에 싣는다 — 초안의 `draft.stale` 이 다시 읽기로 갈라진다.
+          else
+            call.reject(
+              Object.assign(
+                new Error(message.message),
+                message.code === undefined ? {} : { code: message.code },
+              ),
+            );
         }
         return;
       }
@@ -1527,6 +1680,11 @@ export function useDaemon(url: string | null): Daemon {
           at: Date.now(),
         };
         setEditingScreens((prev) => new Map(prev).set(message.sessionId, entry));
+        return;
+      }
+      if (message.type === "draft.changed" || message.type === "draft.ai") {
+        // 초안의 방송 — 상태를 두지 않고 구독자에게 그대로 넘긴다(초안 칸이 직접 다시 읽는다).
+        for (const listener of draftListeners.current) listener(message);
         return;
       }
       if (message.type === "agent.login.url") {
@@ -2102,21 +2260,46 @@ export function useDaemon(url: string | null): Daemon {
           { type: "confluence.importNow" },
           120_000,
         ),
+      docOpPreview: (op: DocOpKind, pageId: string, parentId?: string) =>
+        call<DocOpPreview>(
+          {
+            type: "doc.op.preview",
+            op,
+            pageId,
+            ...(parentId === undefined ? {} : { parentId }),
+          },
+          60_000,
+        ),
+      docTrash: (pageId: string, commandId: string) =>
+        call<DocOpResult>({ type: "doc.trash", pageId, commandId }, 60_000),
+      docRestore: (pageId: string, commandId: string) =>
+        call<DocOpResult>({ type: "doc.restore", pageId, commandId }, 60_000),
+      docCopy: (pageId: string, commandId: string, title: string, parentId: string) =>
+        call<DocOpResult>({ type: "doc.copy", pageId, commandId, title, parentId }, 60_000),
+      docMove: (pageId: string, commandId: string, parentId: string) =>
+        call<DocOpResult>({ type: "doc.move", pageId, commandId, parentId }, 60_000),
+      docTrashed: () => call<{ entries: DocTrashEntry[] }>({ type: "doc.trashed" }, 30_000),
       docList: () =>
         call<{
           docs: Array<{ pageId: string; title: string; version: number; path: string }> | null;
+          folders?: Array<{ folderId: string; title: string; path: string }>;
+          unsupported?: Array<{ contentId: string; title: string; path: string; type: string }>;
         }>({ type: "doc.list" }, 60_000),
       docRead: (pageId: string) =>
         call<{
           markdown: string;
           sections: Array<{ heading: string; macro: boolean }>;
-          comments: Array<{
-            author: string;
-            body: string;
-            createdAt: string | null;
-            anchorText: string | null;
-          }> | null;
+          comments: PlanDocComment[] | null;
         }>({ type: "doc.read", pageId }, 60_000),
+      // 문서 코멘트의 네 문(2026-10-23 작업 D2a) — 원격 쓰기의 창이다(읽기의 60 초와 같은 길이).
+      docCommentCreate: (input) =>
+        call<DocCommentResult>({ type: "doc.comment.create", ...input }, 60_000),
+      docCommentReply: (input) =>
+        call<DocCommentResult>({ type: "doc.comment.reply", ...input }, 60_000),
+      docCommentUpdate: (input) =>
+        call<DocCommentResult>({ type: "doc.comment.update", ...input }, 60_000),
+      docCommentResolve: (input) =>
+        call<DocCommentResult>({ type: "doc.comment.resolve", ...input }, 60_000),
       // One read of one pull request — no gate, no push. The window a remote
       // read gets, not the one a transfer does.
       handoffStatus: () =>
@@ -2212,6 +2395,86 @@ export function useDaemon(url: string | null): Daemon {
         ),
       agentLoginCode: (code: string) =>
         call<{ ok: true }>({ type: "agent.login.code", code }, 30_000),
+      // --- 기획 초안(2026-10-23 · 최종 구현 계획 F1) — 기다림: 화면 대화의 한 턴보다
+      // 긴 생성 · 원격 읽기 · 발행을 상정한 값이다.
+      draftList: () => call<DraftSummary[]>({ type: "draft.list" }, 30_000),
+      draftOpen: (pageId: string) => call<DraftView>({ type: "draft.open", pageId }, 60_000),
+      draftCreate: (input: {
+        title: string;
+        parentId: string;
+        parentType: "page" | "folder";
+        templatePageId?: string;
+      }) =>
+        call<DraftView>(
+          {
+            type: "draft.create",
+            title: input.title,
+            parentId: input.parentId,
+            parentType: input.parentType,
+            ...(input.templatePageId ? { templatePageId: input.templatePageId } : {}),
+          },
+          60_000,
+        ),
+      draftGet: (docKey: string) => call<DraftView>({ type: "draft.get", docKey }, 30_000),
+      draftEdit: (docKey: string, expectedRevision: number, edits: DraftEdit[]) =>
+        call<DraftView>({ type: "draft.edit", docKey, expectedRevision, edits }, 30_000),
+      draftDiscard: (docKey: string) =>
+        call<{ discarded: boolean }>({ type: "draft.discard", docKey }, 30_000),
+      draftAsk: (docKey: string, text: string, refs: DraftRefInput[]) =>
+        call<{ threadId: string; messageId: string }>(
+          { type: "draft.ask", docKey, text, refs },
+          30_000,
+        ),
+      draftCancel: (docKey: string) =>
+        call<{ cancelled: boolean }>({ type: "draft.cancel", docKey }, 30_000),
+      draftThread: (docKey: string) => call<DraftThread>({ type: "draft.thread", docKey }, 30_000),
+      draftAdopt: (docKey: string, proposalId: string, opIds: string[], expectedRevision: number) =>
+        call<DraftView>(
+          { type: "draft.adopt", docKey, proposalId, opIds, expectedRevision },
+          30_000,
+        ),
+      draftReject: (docKey: string, proposalId: string, opIds?: string[]) =>
+        call<DraftThread>(
+          { type: "draft.reject", docKey, proposalId, ...(opIds ? { opIds } : {}) },
+          30_000,
+        ),
+      draftPublishPreview: (docKey: string) =>
+        call<DraftPublishPreview>({ type: "draft.publish.preview", docKey }, 60_000),
+      draftPublish: (
+        docKey: string,
+        commandId: string,
+        expectedRevision: number,
+        stage?: { notation: string; reason: string },
+      ) =>
+        call<DraftPublishResult>(
+          {
+            type: "draft.publish",
+            docKey,
+            commandId,
+            expectedRevision,
+            ...(stage ? { stage } : {}),
+          },
+          120_000,
+        ),
+      draftPublishRecheck: (commandId: string) =>
+        call<DraftPublishResult>({ type: "draft.publish.recheck", commandId }, 60_000),
+      draftPublishClose: (commandId: string) =>
+        call<DraftPublishResult>({ type: "draft.publish.close", commandId }, 30_000),
+      draftRebase: (docKey: string) => call<DraftView>({ type: "draft.rebase", docKey }, 60_000),
+      draftResolve: (docKey: string, blockId: string, choice: "mine" | "theirs") =>
+        call<DraftView>({ type: "draft.resolve", docKey, blockId, choice }, 30_000),
+      draftSnapshot: (input: { pageId?: string; docKey?: string; sections?: string[] }) =>
+        call<DraftSnapshot>(
+          {
+            type: "draft.snapshot",
+            ...(input.pageId !== undefined ? { pageId: input.pageId } : {}),
+            ...(input.docKey !== undefined ? { docKey: input.docKey } : {}),
+            ...(input.sections !== undefined ? { sections: input.sections } : {}),
+          },
+          30_000,
+        ),
+      draftRefs: (sessionId: string) =>
+        call<{ refs: DraftRefEntry[] }>({ type: "draft.refs", sessionId }, 30_000),
     }),
     [call, keepProjects, keepRepo],
   );
@@ -2325,6 +2588,20 @@ export function useDaemon(url: string | null): Daemon {
     [api],
   );
 
+  /**
+   * 초안 방송의 구독 — 해제 함수를 돌려준다. 같은 리스너를 두 번 넣어도
+   * 하나로 센다(Set 의 멤버십), 끊는 함수는 언제 와도 안전하다.
+   */
+  const onDraftEvent = useCallback(
+    (listener: (message: DraftChangedMessage | DraftAiMessage) => void) => {
+      draftListeners.current.add(listener);
+      return () => {
+        draftListeners.current.delete(listener);
+      };
+    },
+    [],
+  );
+
   return {
     connection,
     connectionError,
@@ -2349,6 +2626,7 @@ export function useDaemon(url: string | null): Daemon {
     hydrate,
     markLive,
     dismissDropped,
+    onDraftEvent,
     repo,
     diffStatus,
     browserDriving: driving,

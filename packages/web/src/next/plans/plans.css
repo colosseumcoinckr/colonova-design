@@ -256,8 +256,13 @@
   white-space: nowrap;
 }
 
-/* 아래에 문서가 달린 줄(폴더)은 한 단계 굵게 — 접는 단추가 있는 줄이 구역의 머리로 읽힌다. */
+/* 아래에 줄이 달린 줄(폴더)은 한 단계 굵게 — 접는 단추가 있는 줄이 구역의 머리로 읽힌다. */
 .nx-pl-row[data-fold] .nx-pl-title {
+  font-weight: 600;
+}
+
+/* 폴더 줄도 굵게 — 아래 줄이 없어 접는 단추가 없는 빈 폴더도 구역의 머리로 읽힌다. */
+.nx .nx-pl-row--folder .nx-pl-title {
   font-weight: 600;
 }
 
@@ -277,6 +282,23 @@
   color: var(--ink3);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+}
+
+/* Confluence 전용 항목 — 여기서 열지 못한다. 흐린 글과 커서로 알리고, 손가락을 얹어도 눈에 뜨지 않게. */
+.nx .nx-pl-row--off {
+  cursor: not-allowed;
+  color: var(--ink3);
+}
+
+.nx .nx-pl-row--off:hover {
+  background: transparent;
+}
+
+/* 전용 항목의 종류 — 제목 옆의 작은 보조 글. */
+.nx-pl-kind {
+  flex: none;
+  color: var(--ink3);
+  font-size: 12px;
 }
 
 /* ---------- 한 줄 안내 · 비었을 때 · 읽는 중 ---------- */
@@ -618,4 +640,103 @@
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* ---------- 새 문서 단추 · 초안 표시(2026-10-23 · 최종 구현 계획 F2) ---------- */
+.nx .nx-pl-newdoc {
+  flex: none;
+}
+
+/* 새 문서 초안 묶음 — 아직 Confluence 에 없는 문서의 초안이 목록 맨 위에 선다. */
+.nx-pl-fresh {
+  flex: none;
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.nx-pl-fresh-t {
+  margin: 0 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink3);
+}
+
+.nx-pl-fresh-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+
+/* 초안 칩 — 문서 줄의 이름 옆에 선다. 결과를 모르는 동안은 주황으로 눈에 뜬다. */
+.nx-pl-draft {
+  flex: none;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.nx-pl-draft[data-tone="warn"] {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+/* 새 문서 창 — 제목 · 들어갈 자리 · 밑그림의 세 칸이다. */
+.nx-nd {
+  width: min(480px, calc(100vw - 48px));
+}
+
+.nx-nd-fields {
+  display: grid;
+  gap: 12px;
+}
+
+.nx-nd-field {
+  display: grid;
+  gap: 5px;
+  color: var(--ink2);
+  font-size: 12.5px;
+}
+
+.nx .nx-nd-field input,
+.nx .nx-nd-field select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 13.5px;
+}
+
+.nx-nd-fail {
+  margin: 10px 0 0;
+  color: var(--red);
+  font-size: 12.5px;
+}
+
+/* 제목의 한계 이유 — 제목 칸이 선로의 상한에서 멈출 때 왜인지 말한다(2026-10-23 화면 확인). */
+.nx-nd-limit {
+  color: var(--ink3);
+  font-size: 12px;
+}
+
+/* 들어갈 자리가 하나도 없을 때의 안내 — 이유와 `새로 가져오기` 길을 먼저 보인다(2026-10-23 화면 확인). */
+.nx-nd-noplace {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: 12.5px;
+}
+
+.nx-nd-noplace p {
+  margin: 0;
 }

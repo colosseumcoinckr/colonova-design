@@ -133,6 +133,11 @@ export interface FleetDeps {
   machineSetting?: { get(key: string): string | null };
   /** 기획서 동기화의 만료 판정 — 401 뒤 다시 connect 하기까지의 상태. */
   confluenceExpired?: (slug: string) => boolean;
+  /**
+   * 이 앱이 Confluence 에 쓸 수 있는가 — 발행 게이트(2026-10-23 기획자 화면 손질 U2). 요약에 실어 화면이 누르기 전에
+   * 꺼짐을 알린다. 없으면 쓸 수 없다고 말한다(시험의 조립).
+   */
+  confluenceWritable?: () => boolean;
 }
 
 /**
@@ -504,6 +509,8 @@ export class ProjectFleet {
       rootTitle: this.deps.machineSetting?.get(confluenceRootTitleKey(slug)) ?? null,
       lastImportAt: ledger.lastSyncAt,
       pages: Object.keys(ledger.pages).length,
+      // 발행 게이트 — 화면이 누르기 전에 꺼짐을 알린다(2026-10-23 기획자 화면 손질 U2). 막는 것은 각 쓰기 경로다.
+      writable: this.deps.confluenceWritable?.() ?? false,
     };
   }
 

@@ -161,7 +161,7 @@ include(`packages/desktop/build/installer.nsh`)가 옛 GUID 설치를 설치 맨
 | `COLONOVA_DESIGN_PIN_EFFORT` | unset(끔) | 핀으로 시작하는 턴의 첫 노력 자세 — 턴 통계가 재는 실험줄. 없으면 아무 일도 일어나지 않는다 |
 | `COLONOVA_DESIGN_CONFLUENCE_EMAIL` · `…_TOKEN` | unset | 기획서(Confluence) 연결 자격의 환경 재정의 — 저장소 값보다 앞선다(2026-10-18). 시험이 쓴다. AI 자식 · 레포 명령에는 물려주지 않는다(2026-10-23) |
 | `COLONOVA_DESIGN_CONFLUENCE_API` | `https://<사이트>` | 기획서 동기화 REST 주소 재지정 — 기록된 fixture 전송을 쓰는 시험의 몫 |
-| `COLONOVA_DESIGN_CONFLUENCE_PUBLISH` | unset(꺼짐) | `1` 이면 기획서 초안 발행 · 문서 관리 · 코멘트의 실제 Confluence 쓰기를 연다 — G1–G3 실측 전이라 기본은 꺼짐(2026-10-23) |
+| `COLONOVA_DESIGN_CONFLUENCE_PUBLISH` | unset(꺼짐) | `1` 이면 기획서 초안 발행 · 문서 관리 · 코멘트의 실제 Confluence 쓰기를 연다 — G1–G3 실측 전이라 기본은 꺼짐(2026-10-23). 프로젝트 요약의 `confluence.writable` 로도 방송돼 화면이 누르기 전에 꺼짐을 알린다(같은 날 기획자 화면 손질 U2) |
 | `COLONOVA_DESIGN_CONFLUENCE_FIXTURE` | unset | 기록된 전송 기록(fixtures.json)의 폴더 — Confluence 시험 전반이 이 전송으로 돈다 |
 | `COLONOVA_DESIGN_REPO_SETTINGS` · `…_NPMRC` · `…_RUN_DIR` · `…_UNDO_LOG` · `…_PERMISSION_LOG` · `…_PLAN_USAGE` | 기본 자리 | 각 저장 파일(repo.json · 사용자 `.npmrc` · run · undo · 권한 반복 · 계획 사용량)의 자리 — 테스트가 일회용 파일로 가리킨다 |
 

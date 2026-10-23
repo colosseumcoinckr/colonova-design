@@ -115,6 +115,12 @@ export interface ProjectSummary {
     rootTitle: string | null;
     lastImportAt: string | null;
     pages: number;
+    /**
+     * 이 앱이 Confluence 에 쓸 수 있는가 — 발행 게이트(`COLONOVA_DESIGN_CONFLUENCE_PUBLISH=1`). 발행 · 문서 관리 ·
+     * 코멘트 쓰기가 같은 게이트를 지난다. 화면은 누르기 전에 꺼짐을 알린다(2026-10-23 기획자 화면 손질 U2). 선택
+     * 필드다 — 없으면 모른다(옛 데몬). 실제로 막는 것은 데몬의 각 쓰기 경로다.
+     */
+    writable?: boolean;
   };
 }
 

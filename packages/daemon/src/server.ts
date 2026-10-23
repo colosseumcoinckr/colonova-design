@@ -758,6 +758,8 @@ export class DaemonServer {
       // ConfluenceSync 는 이 아래 start() 에서 만들어진다.
       machineSetting: this.machineSetting,
       confluenceExpired: (slug) => this.confluence?.expiredState(slug) ?? false,
+      // 발행 게이트 — 쓰기 경로(draft-service · doc-ops · doc-comments)와 같은 환경 변수를 읽는다(2026-10-23 U2).
+      confluenceWritable: () => process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH === "1",
     });
     await migrateProjectPats(
       this.credentials,

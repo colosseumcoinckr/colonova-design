@@ -19,7 +19,13 @@ interface Rig {
   cleanup(): void;
 }
 
-function rig(opts: { site?: string; expired?: boolean; ledger?: boolean }): Rig {
+function rig(opts: {
+  site?: string;
+  expired?: boolean;
+  ledger?: boolean;
+  /** 발행 게이트 — 없으면 조립이 손을 넘기지 않는다(쓸 수 없다고 말해야 한다). */
+  writable?: boolean;
+}): Rig {
   const home = mkdtempSync(join(tmpdir(), "fleet-confluence-"));
   const cloneRoot = join(home, "clone");
   mkdirSync(join(cloneRoot, ".git"), { recursive: true });
@@ -67,6 +73,7 @@ function rig(opts: { site?: string; expired?: boolean; ledger?: boolean }): Rig 
     notice: () => {},
     machineSetting: { get: (key: string) => machine.get(key) ?? null },
     confluenceExpired: () => opts.expired === true,
+    ...(opts.writable !== undefined ? { confluenceWritable: () => opts.writable === true } : {}),
   } as never);
   return {
     fleet,
@@ -89,10 +96,39 @@ test("연결된 프로젝트의 상태 방송 — 미러와 원장에서 채워�
       rootTitle: "8.8 ColoNova",
       lastImportAt: "2026-10-18T01:00:00Z",
       pages: 1,
+      // 게이트의 손이 없으면 쓸 수 없다고 말한다 — 모른다고 켜진 척하지 않는다(2026-10-23 U2).
+      writable: false,
     });
   } finally {
     rig1.cleanup();
   }
+});
+
+test("발행 게이트 — 켜졌는지가 요약에 실려 화면이 누르기 전에 꺼짐을 알린다(2026-10-23 기획자 화면 손질 U2)", () => {
+  const on = rig({ site: "colosseum.atlassian.net", writable: true });
+  const off = rig({ site: "colosseum.atlassian.net", writable: false });
+  try {
+    const find = (one: Rig) => one.fleet.projectSummaries().find((row) => row.slug === "demo");
+    assert.equal(find(on)?.confluence?.writable, true);
+    assert.equal(find(off)?.confluence?.writable, false);
+  } finally {
+    on.cleanup();
+    off.cleanup();
+  }
+});
+
+test("발행 게이트 — 서버 조립이 쓰기 경로와 같은 환경 변수를 넘긴다", () => {
+  const source = readFileSync(join(import.meta.dirname, "..", "src", "server.ts"), "utf8");
+  const assembly = source.slice(
+    source.indexOf("new ProjectFleet"),
+    source.indexOf("await migrateProjectPats"),
+  );
+  assert.ok(
+    assembly.includes(
+      'confluenceWritable: () => process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH === "1"',
+    ),
+    "fleet 조립에 발행 게이트의 손이 없다 — 화면이 꺼짐을 미리 알 수 없다",
+  );
 });
 
 test("미연결은 confluence 키 자체가 없다 — 읽지 못함이 아니라 「없다」", () => {

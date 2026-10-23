@@ -5,19 +5,29 @@ on:
     types: [submitted]
   pull_request:
     types: [closed, review_requested]
+  issue_comment:
+    types: [created]
 
 jobs:
   pr-status-update:
-    # Only run for specific review states, PR close, and review (re-)request events.
+    # Only run for specific review states, PR close, review (re-)request events,
+    # and comments left on a PR.
     # (review_requested fires for both first-time reviewer assignment and genuine
     #  re-requests; the reusable workflow sends genuine re-requests plus reviewer
     #  additions to already-announced PRs, and skips the rest.)
+    # (Comments: a PR conversation comment or a review submitted as "Comment".
+    #  Only the event shape is filtered here — comments on plain issues are
+    #  skipped. Who wrote it (bots, machine accounts) is decided in the reusable
+    #  workflow's job `if`, like every other actor guard. Per-line inline
+    #  comments are not subscribed — the review submission already carries them
+    #  as one event.)
     if: |
       (
         github.event_name == 'pull_request_review' &&
         (
           github.event.review.state == 'approved' ||
-          github.event.review.state == 'changes_requested'
+          github.event.review.state == 'changes_requested' ||
+          github.event.review.state == 'commented'
         )
       ) ||
       (
@@ -26,6 +36,10 @@ jobs:
           github.event.action == 'closed' ||
           github.event.action == 'review_requested'
         )
+      ) ||
+      (
+        github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request
       )
     uses: colosseumcoinckr/.github/.github/workflows/org-workflow-pr-status-update.yml@v2
     secrets: inherit

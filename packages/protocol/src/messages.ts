@@ -763,6 +763,45 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     pageId: z.string().min(1).max(64),
   }),
   /**
+   * 연결 지도 읽기(2026-10-24 연결 지도 계획): 원장의 문서와 연결 레포의 화면
+   * 인벤토리, 연결 파일(클론 뿌리 `plans-map.json`)의 연결을 한 번에 답한다. 연결이
+   * 없으면 문서가 비고 화면·연결은 빈 배열이다 — 읽기만 하고 아무것도 고치지
+   * 않는다. 쓰기는 `map.write` 다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("map.read"),
+  }),
+  /**
+   * 연결 지도 쓰기(2026-10-24 연결 지도 계획 2조각) — 사람이 문서와 화면을 잇고 끊는
+   * 변경을 연결 레포 뿌리의 `plans-map.json` 에 반영한다. 한 요청이 통째로 성공하거나
+   * 거절한다(부분 반영 없음). 답은 쓴 뒤의 연결 목록이다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("map.write"),
+    changes: z
+      .array(
+        z.union([
+          z.object({
+            op: z.literal("add"),
+            pageId: z.string().min(1).max(64),
+            route: z.string().min(1).max(500),
+            section: z.string().max(300).optional(),
+            note: z.string().max(1000).optional(),
+          }),
+          z.object({
+            op: z.literal("remove"),
+            pageId: z.string().min(1).max(64),
+            route: z.string().min(1).max(500),
+            section: z.string().max(300).optional(),
+          }),
+        ]),
+      )
+      .min(1)
+      .max(100),
+  }),
+  /**
    * 코멘트 기록 (PLAN D57): the pins the planner sent from the preview land
    * in the project's own `comments.json` — every row is born resolved. The
    * record's clock is ACCEPTANCE, not delivery (커미티 판정 3, 2026-09-14):

@@ -2519,7 +2519,9 @@
 html[data-theme="dark"] .nx .nx-aipick,
 html[data-theme="dark"] .nx .nx-model-pop .nx-mseg,
 html[data-theme="github"] .nx .nx-aipick,
-html[data-theme="github"] .nx .nx-model-pop .nx-mseg {
+html[data-theme="github"] .nx .nx-model-pop .nx-mseg,
+html[data-theme="claude-dark"] .nx .nx-aipick,
+html[data-theme="claude-dark"] .nx .nx-model-pop .nx-mseg {
   --nx-track: var(--bg);
   --nx-pill: color-mix(in srgb, var(--ink) 14%, var(--card));
   /* 고정 — 어두운 바탕 위의 그림자는 더 짙어야 보인다. */

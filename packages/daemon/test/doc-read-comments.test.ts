@@ -39,7 +39,7 @@ function fixture(
   };
 }
 
-/** 코멘트 한 줄의 응답 모양 — 저장 포맷 본문과 판이 싣는다. */
+/** 코멘트 한 줄의 응답 모양 — 실제 v2 처럼 작성자 · 만든 때는 판(version)이 싣는다(2026-10-24). */
 function commentRow(
   id: string,
   authorId: string,
@@ -49,10 +49,8 @@ function commentRow(
 ): Record<string, unknown> {
   return {
     id,
-    authorId,
-    version: { number: version },
+    version: { number: version, authorId, createdAt: "2026-10-23T00:00:00Z" },
     body: { storage: { value: storage, representation: "storage" } },
-    createdAt: "2026-10-23T00:00:00Z",
     parentId: null,
     ...extra,
   };

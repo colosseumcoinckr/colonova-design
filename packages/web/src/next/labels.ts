@@ -175,6 +175,8 @@ export const L = {
     plansDrafts: (n: number) => `초안 ${n}`,
     plansDraftsAria: (n: number) => `기획서 · 작성 중인 초안 ${n}개`,
     screen: "화면",
+    /** 사이드바의 연결 지도 줄(2026-10-24 연결 지도 사이드바 자리 결정) — 기획서와 화면 사이에 선다. */
+    map: "연결",
     screenRunning: "화면 · 만드는 중",
   },
   /** 사이클 상태의 한 단어 — 사이드바 · 전환기 · 팔레트가 함께 쓴다. */
@@ -1350,6 +1352,7 @@ export const L = {
     themeNames: {
       system: "시스템 따르기",
       claude: "Claude · 기본",
+      "claude-dark": "Claude 어두움",
       light: "밝음",
       dark: "어두움",
       "github-light": "GitHub 밝음",
@@ -1646,7 +1649,7 @@ export const L = {
     cancel: "그만두기",
     rootQuery: "기준 페이지",
     rootSub: "이 페이지 아래의 문서를 모두 가져와요",
-    rootPlaceholder: "예) 8.8 ColoNova",
+    rootPlaceholder: "예) 8.8 ColoNova · 페이지 URL 도 돼요",
     changeRoot: "바꾸기",
     findRoots: "찾기",
     finding: "찾는 중…",
@@ -1731,6 +1734,19 @@ export const L = {
     draftsInProgress: "작성 중인 초안",
     hasDraft: "초안 있음",
     focusTree: "목록에서 찾기",
+    // 연결 지도(F6 · 2026-10-24 연결 지도 계획) — 사이드바의 사는 자리(같은 날 사용자 결정). 2조각부터 잇기·끊기가 열린다.
+    mapView: "연결 지도",
+    mapLoading: "연결 지도를 불러오는 중…",
+    mapFailed: "연결 지도를 읽지 못했어요",
+    mapRefresh: "다시 읽기",
+    mapLinksCount: (count: number) => `연결 ${count}개`,
+    mapNoLinks: "아직 연결이 없어요",
+    mapHint: "문서에서 화면으로 끌어 연결해요 · 문서는 두 번 눌러 열어요",
+    mapUnlink: "연결 끊기",
+    mapWriteFailed: "연결을 고치지 못했어요",
+    mapObserved: "관찰됨",
+    mapGoneDoc: "없어진 문서",
+    mapGoneScreen: "없어진 화면",
   },
   // ── 기획 초안(2026-10-23 · 최종 구현 계획 F1) — 문서를 블록으로 읽고 고치는 초안 편집기. 발행은 다른 칸의 몫이다.
   drafts: {

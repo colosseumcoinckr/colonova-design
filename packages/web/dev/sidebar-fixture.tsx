@@ -457,6 +457,11 @@ function Frame({ spec }: { spec: Case }) {
       setPlansOn(true);
       setLog("기획서 열기");
     },
+    openMap: () => {
+      setView("thread");
+      setPlansOn(false);
+      setLog(L.plans.mapView);
+    },
     showPane: (pane: string) => {
       setPlansOn(pane === "plans");
       setLog(`오른쪽 칸 → ${pane}`);

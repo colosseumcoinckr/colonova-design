@@ -8,16 +8,18 @@
 #   각 패키지의 build 는 tsc 컴파일 그 자체라 타입 오류도 같은 문에서 걸린다.
 # - 정적 검사(biome): 전수. pre-commit 은 스테이징 파일만 보므로, 쌓이는
 #   포맷·import 오류를 막는 문은 여기뿐이다.
-# - 순수 시험: 프로세스를 띄우지 않는 시험만 돌린다. 라벨 · 어휘 · 공통
-#   규칙 · 턴 통계 · 로그 정화 같은 규칙의 회귀가 로컬 없이도 지켜진다.
+# - 순수 시험: 프로세스를 띄우지 않는 시험만 돌린다. 선별기(`scripts/pure-tests.mjs`)가
+#   로컬 `pnpm test` 와 같은 glob 전수에서 머리에 `CI-순수-제외` 표식이 든 파일만 뺀다.
+#   라벨 · 어휘 · 공통 규칙 · 턴 통계 · 로그 정화 같은 규칙의 회귀가 로컬 없이도 지켜진다.
 #
 # 2026-09-21: 테스트 레인(L1·L2·L3·L5, 정적 검사)은 운영 판단으로
 # 걷어냈다 — 러너(Linux)와 실제 배포 플랫폼(mac·Windows) 환경이 어긋나
 # 제품이 아니라 러너를 탓하는 빨간 신호가 5일(릴리스 2건) 지속됐다.
 # 2026-10-02: 그 결정을 좁혀 되살린다. 플랫폼을 전혀 만지지 않는 순수 시험과
 # biome 은 러너와 무관하므로 그 빨간불의 이유가 닿지 않는다. 프로세스를
-# 띄우는 시험(cycle-* · git-* · agent-install · type-check · agent-briefs)은
-# 여전히 로컬 `pnpm test` 에만 둔다. 출처: 2026-10-02 프로젝트 개선 분석 8번.
+# 띄우는 시험은 여전히 로컬 `pnpm test` 에만 둔다. 출처: 2026-10-02 프로젝트 개선 분석 8번.
+# 2026-10-24: 수동 목록을 선별기로 바꾼다 — 목록이 실제 파일과 어긋나 유령 7개로 깨지던
+# 문과, 목록에 못 들어온 순수 시험이 저절로 생기던 구멍을 같이 닫는다.
 name: ci
 
 on:
@@ -96,189 +98,8 @@ jobs:
       - name: 빌드
         run: pnpm -r build
 
-      # 프로세스를 띄우는 시험은 여기에 두지 않는다(파일 머리 주석 참조).
-      # 새 시험이 순수하면 목록에 더한다 — 띄우는 시험이면 로컬에만 둔다.
+      # 프로세스를 띄우는 시험은 여기에 두지 않는다 — 그 시험의 머리에
+      # `CI-순수-제외` 표식이 있고 선별기가 뺀다. 새 순수 시험은 표식이
+      # 없으면 저절로 이 문에 들어온다(로컬 `pnpm test` 는 전수).
       - name: 순수 시험
-        run: >
-          node --test
-          packages/daemon/test/colonova-names.test.ts
-          packages/daemon/test/common-instructions.test.ts
-          packages/daemon/test/gate-type.test.ts
-          packages/daemon/test/screen-a11y.test.ts
-          packages/daemon/test/screen-overflow.test.ts
-          packages/daemon/test/turn-stats-measure.test.ts
-          packages/daemon/test/turn-changes.test.ts
-          packages/daemon/test/handoff-body.test.ts
-          packages/daemon/test/capture-targets.test.ts
-          packages/daemon/test/request-replay.test.ts
-          packages/daemon/test/screen-comparisons.test.ts
-          packages/daemon/test/submit-sent-wire.test.ts
-          packages/daemon/test/github-pr-since.test.ts
-          packages/daemon/test/screen-map-checked.test.ts
-          packages/daemon/test/session-dirs.test.ts
-          packages/daemon/test/session-identity.test.ts
-          packages/daemon/test/session-manager-close.test.ts
-          packages/daemon/test/log-sanitize.test.ts
-          packages/daemon/test/git-network-stall.test.ts
-          packages/daemon/test/machine-setting.test.ts
-          packages/daemon/test/plan-usage.test.ts
-          packages/daemon/test/queue-inflight.test.ts
-          packages/daemon/test/submit-preview.test.ts
-          packages/daemon/test/github-reviewers.test.ts
-          packages/daemon/test/feedback.test.ts
-          packages/daemon/test/agent-attachments.test.ts
-          packages/daemon/test/agent-env.test.ts
-          packages/daemon/test/ai-review.test.ts
-          packages/daemon/test/app-comment.test.ts
-          packages/daemon/test/child-hide.test.ts
-          packages/daemon/test/child-shell.test.ts
-          packages/daemon/test/ci-checks.test.ts
-          packages/daemon/test/claude-delete-all.test.ts
-          packages/daemon/test/cycle-landed.test.ts
-          packages/daemon/test/cycle-ledger.test.ts
-          packages/daemon/test/cycle-reconcile.test.ts
-          packages/daemon/test/diagnostics-summary.test.ts
-          packages/daemon/test/edit-screens.test.ts
-          packages/daemon/test/event-mapper-error.test.ts
-          packages/daemon/test/first-look.test.ts
-          packages/daemon/test/first-prep.test.ts
-          packages/daemon/test/first-screen.test.ts
-          packages/daemon/test/github-ci.test.ts
-          packages/daemon/test/invite-check.test.ts
-          packages/daemon/test/login-wall-gate.test.ts
-          packages/daemon/test/login-wall.test.ts
-          packages/daemon/test/notice-voice.test.ts
-          packages/daemon/test/onboarding-plan.test.ts
-          packages/daemon/test/preview-claim.test.ts
-          packages/daemon/test/project-slug.test.ts
-          packages/daemon/test/session-viewing-line.test.ts
-          packages/daemon/test/submit-state.test.ts
-          packages/daemon/test/tool-labels.test.ts
-          packages/daemon/test/turn-retry-failure.test.ts
-          packages/daemon/test/viewing-line.test.ts
-          packages/daemon/test/write-guard.test.ts
-          packages/daemon/test/handoff-signals.test.ts
-          packages/daemon/test/invite-page-safety.test.ts
-          packages/daemon/test/push-gate-kind.test.ts
-          packages/daemon/test/replay-attachments.test.ts
-          packages/daemon/test/secret-shapes.test.ts
-          packages/daemon/test/write-guard-links.test.ts
-          packages/daemon/test/write-guard-shell.test.ts
-          packages/daemon/test/confluence-client.test.ts
-          packages/daemon/test/confluence-connect.test.ts
-          packages/daemon/test/confluence-ledger.test.ts
-          packages/daemon/test/confluence-legacy.test.ts
-          packages/daemon/test/confluence-markdown.test.ts
-          packages/daemon/test/confluence-path.test.ts
-          packages/daemon/test/confluence-sync.test.ts
-          packages/daemon/test/confluence-wire.test.ts
-          packages/daemon/test/draft-wire.test.ts
-          packages/daemon/test/draft-store.test.ts
-          packages/daemon/test/draft-ai.test.ts
-          packages/daemon/test/storage-blocks.test.ts
-          packages/daemon/test/draft-service.test.ts
-          packages/daemon/test/draft-publish.test.ts
-          packages/daemon/test/doc-ops.test.ts
-          packages/daemon/test/doc-ops-wire.test.ts
-          packages/daemon/test/plan-refs.test.ts
-          packages/daemon/test/doc-comments.test.ts
-          packages/daemon/test/doc-comments-wire.test.ts
-          packages/daemon/test/draft-flow.test.ts
-          packages/daemon/test/comment-text.test.ts
-          packages/daemon/test/doc-read-comments.test.ts
-          packages/daemon/test/draft-refs.test.ts
-          packages/daemon/test/wire-error-ko.test.ts
-          packages/daemon/test/storage-report.test.ts
-          packages/daemon/test/scope-report.test.ts
-          packages/daemon/test/project-fleet-confluence.test.ts
-          packages/daemon/test/saveable-paths.test.ts
-          packages/web/test/chat-options.test.ts
-          packages/web/test/error-words.test.ts
-          packages/web/test/invite-file-name.test.ts
-          packages/web/test/transcript-history.test.ts
-          packages/web/test/next-labels.test.ts
-          packages/web/test/vocab-sweep.test.ts
-          packages/web/test/next-journey.test.ts
-          packages/web/test/next-problem.test.ts
-          packages/web/test/next-project-note.test.ts
-          packages/web/test/next-submit-copy.test.ts
-          packages/web/test/next-work-ledger.test.ts
-          packages/web/test/next-modal-escape.test.ts
-          packages/web/test/next-session-target.test.ts
-          packages/web/test/next-sent-draft.test.ts
-          packages/web/test/next-request-results.test.ts
-          packages/web/test/next-submit-review.test.ts
-          packages/web/test/next-usage.test.ts
-          packages/web/test/next-invite-rows.test.ts
-          packages/web/test/next-feedback-draft.test.ts
-          packages/web/test/next-shortcut-sheet.test.ts
-          packages/web/test/next-crash.test.ts
-          packages/web/test/next-submit-view.test.ts
-          packages/web/test/next-agent-fix.test.ts
-          packages/web/test/next-retry-send.test.ts
-          packages/web/test/next-bridge-coverage.test.ts
-          packages/web/test/next-pin-words.test.ts
-          packages/web/test/next-viewing.test.ts
-          packages/web/test/next-result-photos.test.ts
-          packages/web/test/next-result-card-css.test.ts
-          packages/web/test/next-undo-last.test.ts
-          packages/web/test/next-checked-line.test.ts
-          packages/web/test/next-run-line.test.ts
-          packages/web/test/next-handoff-preview.test.ts
-          packages/web/test/next-receipt.test.ts
-          packages/web/test/next-waiting.test.ts
-          packages/web/test/next-settings-close.test.ts
-          packages/web/test/next-settings-reset.test.ts
-          packages/web/test/next-settings-css.test.ts
-          packages/web/test/next-update-row.test.ts
-          packages/web/test/next-connection-copy.test.ts
-          packages/web/test/next-compare-zoom.test.ts
-          packages/web/test/next-preview-overlays.test.ts
-          packages/web/test/next-preview-bar.test.ts
-          packages/web/test/next-revert-summary.test.ts
-          packages/web/test/next-roving.test.ts
-          packages/web/test/next-chat-popups.test.ts
-          packages/web/test/next-feedback-gate.test.ts
-          packages/web/test/next-feedback-css.test.ts
-          packages/web/test/next-invite-css.test.ts
-          packages/web/test/next-sidebar-css.test.ts
-          packages/web/test/next-status-css.test.ts
-          packages/web/test/next-tokens.test.ts
-          packages/web/test/next-band-frame.test.ts
-          packages/web/test/next-empty-pin.test.ts
-          packages/web/test/palette-match.test.ts
-          packages/web/test/next-account-line.test.ts
-          packages/web/test/next-ask-preview.test.ts
-          packages/web/test/next-ci-line.test.ts
-          packages/web/test/next-diagnostics-text.test.ts
-          packages/web/test/next-fail-card.test.ts
-          packages/web/test/next-first-look.test.ts
-          packages/web/test/next-invite-open.test.ts
-          packages/web/test/next-landed.test.ts
-          packages/web/test/next-live-follow.test.ts
-          packages/web/test/next-marker-cards.test.ts
-          packages/web/test/next-photo-diff.test.ts
-          packages/web/test/next-photo-share.test.ts
-          packages/web/test/next-photo-ui.test.ts
-          packages/web/test/next-ready-watch.test.ts
-          packages/web/test/next-secret-scrub.test.ts
-          packages/web/test/next-confluence-connect.test.ts
-          packages/web/test/next-plans.test.ts
-          packages/web/test/next-drafts.test.ts
-          packages/web/test/next-draft-thread.test.ts
-          packages/web/test/next-draft-publish.test.ts
-          packages/web/test/next-doc-actions.test.ts
-          packages/web/test/next-doc-comments.test.ts
-          packages/web/test/next-plan-refs.test.ts
-          packages/desktop/test/app-reset.test.ts
-          packages/desktop/test/notices.test.ts
-          packages/desktop/test/pin-envelope.test.ts
-          packages/desktop/test/pin-envelope-overlay.test.ts
-          packages/desktop/test/quit-contract.test.ts
-          packages/desktop/test/clipboard-permission.test.ts
-          packages/desktop/test/daemon-start.test.ts
-          packages/desktop/test/invite-open.test.ts
-          packages/desktop/test/menu.test.ts
-          packages/desktop/test/notify-policy.test.ts
-          scripts/bench/lib.test.mjs
-          scripts/bench/plans-blocks.test.mjs
+        run: node --test $(node scripts/pure-tests.mjs)

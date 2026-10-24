@@ -22,12 +22,14 @@ import { daysSince } from "./lib/waiting";
 import { commentCount, outsideChanges } from "./lib/work-ledger";
 import type { NextShellProps } from "./NextShell";
 import { draftsInProgress } from "./plans/home-drafts";
+import { MapBar, MapColumn } from "./plans/map/MapColumn";
 import { openPlanTarget } from "./plans/open-plan";
 import { PlansColumn } from "./plans/PlansColumn";
 import { PlansHeader } from "./plans/PlansHeader";
 import { PlansSidebar } from "./plans/PlansSidebar";
 import { PlansContext, usePlansWorkspace } from "./plans/PlansWorkspace";
 import { useDraftSummaries } from "./plans/use-draft-summaries";
+import { useLinkMap } from "./plans/use-link-map";
 import { PreviewColumn } from "./preview/PreviewColumn";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { Sidebar } from "./sidebar/Sidebar";
@@ -132,11 +134,14 @@ export function Workspace({
   });
   const project = daemon.projects.find((entry) => entry.slug === daemon.activeSlug) ?? null;
   const plansOn = state.view === "thread" && state.pane === "plans";
+  const mapOn = state.view === "thread" && state.pane === "map";
+  // 기획서와 연결 지도는 같은 지면을 쓴다 — 화면 자리(대화 · 미리보기)가 아니라는 뜻이다.
+  const paneOn = plansOn || mapOn;
   // 자리마다 폭을 기억한다(2026-10-23 화면 전면 재설계 §3.2).
   const sidebarWidth = useSidebarWidth(
-    plansOn ? (settings.layout.plansSidebarWidth ?? null) : settings.layout.sidebarWidth,
-    (width) => onLayoutChange(plansOn ? { plansSidebarWidth: width } : { sidebarWidth: width }),
-    plansOn,
+    paneOn ? (settings.layout.plansSidebarWidth ?? null) : settings.layout.sidebarWidth,
+    (width) => onLayoutChange(paneOn ? { plansSidebarWidth: width } : { sidebarWidth: width }),
+    paneOn,
   );
 
   const titleForThread = useCallback(
@@ -193,6 +198,10 @@ export function Workspace({
   // 열기 전에는 짓지 않는다: 지으면 기획서를 쓰지 않는 프로젝트도 앱을 켤 때마다 목록을 읽는다.
   const [plansMounted, setPlansMounted] = useState(false);
   if (state.pane === "plans" && !plansMounted) setPlansMounted(true);
+  // 연결 지도 칸도 같은 관례 — 처음 열 때 마운트하고 그 뒤로는 마운트된 채 숨는다.
+  const [mapMounted, setMapMounted] = useState(false);
+  if (mapOn && !mapMounted) setMapMounted(true);
+  const linkMap = useLinkMap(daemon, mapMounted);
   // 기획서 칸이 초안 편집기를 열고 닫을 때 알리는 손 — 이동 상태(`planDraft`)에 남긴다. 칸에 건네는 손은 렌더마다 같은
   // 것이어야 칸의 알림 효과가 매번 다시 돌지 않는다.
   const navRef = useRef(nav);
@@ -314,7 +323,7 @@ export function Workspace({
     .join(" ");
   const home = state.view === "home";
   const pinCount = pins.list.length;
-  const chatHidden = home || plansOn || (narrow && state.tab === "preview");
+  const chatHidden = home || paneOn || (narrow && state.tab === "preview");
   // 넓은 창으로 다녀오면 서랍은 닫는다 — 열어 둔 채 넓혔다 다시 좁히면 서랍이 저절로 열려 있던 것을
   // 막는다(2026-10-06 겹판 조사).
   useEffect(() => {
@@ -353,15 +362,15 @@ export function Workspace({
     }
     const focused = document.activeElement;
     if (!sidebarRef.current?.contains(focused) && !focused?.matches(".nx-scrim")) return;
-    const bar = home ? ".nx-homebar" : plansOn ? ".nx-pl-bar" : ".nx-statusbar";
+    const bar = home ? ".nx-homebar" : paneOn ? ".nx-pl-bar" : ".nx-statusbar";
     document.querySelector<HTMLElement>(`${bar} .nx-ibtn`)?.focus();
-  }, [sidebarHidden, home, plansOn]);
+  }, [sidebarHidden, home, paneOn]);
 
   // 대화 화면이 홈 뒤에서 나올 때 — 대화 화면은 홈이 떠 있는 동안에도 마운트돼 있어(미리보기가
   // 살아 있게) 입력창의 열쇠가 안 바뀐다. 입력창이 초점을 받도록 알린다.
   useEffect(() => {
-    if (!home && !plansOn) window.dispatchEvent(new Event("nx:composer:focus"));
-  }, [home, plansOn]);
+    if (!home && !paneOn) window.dispatchEvent(new Event("nx:composer:focus"));
+  }, [home, paneOn]);
 
   return (
     <PlansContext.Provider value={plans}>
@@ -376,6 +385,7 @@ export function Workspace({
           activeSessionId={activeId}
           view={state.view}
           plansOn={plansOn}
+          mapOn={mapOn}
           running={running}
           plansContent={
             plansMounted ? (
@@ -479,6 +489,13 @@ export function Workspace({
                 narrow={narrow}
                 onOpenSidebar={openSidebar}
               />
+            ) : mapOn ? (
+              <MapBar
+                hand={linkMap}
+                narrow={narrow}
+                sidebarHidden={sidebarHidden}
+                onOpenSidebar={openSidebar}
+              />
             ) : (
               <StatusLine
                 daemon={daemon}
@@ -505,7 +522,7 @@ export function Workspace({
               onClearInvite={() => nav.setDiscardableInvitePath(null)}
               onToast={nav.toast}
             />
-            {narrow && !plansOn && (
+            {narrow && !paneOn && (
               <div className="nx-tabs" role="tablist">
                 <button
                   type="button"
@@ -535,12 +552,12 @@ export function Workspace({
             <div
               ref={bodyRef}
               className={`nx-body${drag ? " planner__body--resizing" : ""}`}
-              data-tab={narrow && !plansOn ? state.tab : undefined}
+              data-tab={narrow && !paneOn ? state.tab : undefined}
               style={
-                narrow && !plansOn
+                narrow && !paneOn
                   ? undefined
                   : {
-                      gridTemplateColumns: plansOn
+                      gridTemplateColumns: paneOn
                         ? "minmax(0, 1fr)"
                         : `${shownChatWidth}px minmax(0, 1fr)`,
                     }
@@ -551,9 +568,9 @@ export function Workspace({
                 aria-hidden={chatHidden}
                 inert={chatHidden}
               >
-                <ChatColumn {...slot} offstage={plansOn} pane="preview" />
+                <ChatColumn {...slot} offstage={paneOn} pane="preview" />
               </div>
-              {!narrow && !plansOn && (
+              {!narrow && !paneOn && (
                 <Splitter
                   side="left"
                   width={shownChatWidth}
@@ -595,7 +612,7 @@ export function Workspace({
               <PreviewColumn
                 {...slot}
                 onScreenName={setScreenName}
-                offstage={home || (narrow && state.tab === "chat") || state.pane === "plans"}
+                offstage={home || (narrow && state.tab === "chat") || state.pane !== "preview"}
               />
               {plansMounted && (
                 <PlansColumn
@@ -608,6 +625,8 @@ export function Workspace({
                   onDraftOpen={setPlanDraft}
                 />
               )}
+              {/* 연결 지도 칸(2026-10-24 사용자 결정) — 기획서 칸과 같은 지면, 마운트된 채 한쪽만 선다. */}
+              {mapMounted && <MapColumn hand={linkMap} nav={nav} offstage={!mapOn} />}
             </div>
           </div>
         </main>

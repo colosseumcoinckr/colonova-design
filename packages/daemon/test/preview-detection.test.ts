@@ -1,3 +1,4 @@
+// CI-순수-제외 — localhost 서버를 연다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
 import { test } from "node:test";

@@ -1,3 +1,4 @@
+// CI-순수-제외 — 감독자 하네스(cycle-harness)가 진짜 git 을 만든다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 // PLAN 단계 6 시험 — 감독자의 제출 네 단계 (L6). S9 입양 · 두 번 누르기 ·
 // 네트워크 끊김 · 끝난 PR · 본문 보존 · 단계 예산 · 채팅 의도.
 import assert from "node:assert/strict";

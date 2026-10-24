@@ -1,5 +1,6 @@
 import {
   type HookCallback,
+  type McpServerConfig,
   type ModelInfo,
   type PermissionResult,
   type Query,
@@ -128,6 +129,24 @@ function classifyTool(toolName: string, input: Record<string, unknown>): ToolCla
   }
   return { kind: "other", name: toolName };
 }
+/**
+ * 화면 세션에 앱이 싣는 내장 MCP — context-mode(2026-10-24 사용자 결정).
+ * 2026-10-20 「내장 MCP 미주입」 결정을 이 서버만 다시 연다. `strictMcpConfig` 를
+ * 켜지 않으므로 사용자 설정의 커넥터 · MCP 와 함께 쓰이고, 이 서버는 자격이 필요
+ * 없다(`npx -y context-mode`). Windows 의 stdio 자식은 `cmd /c` 로 열어야 `npx` 를
+ * 찾는다. 가드 훅은 셸 · 파일 쓰기 도구만 보므로 이 서버의 도구는 가드 · 확인
+ * 카드 없이 돈다 — 문서(DEVELOPERS 「연결 레포가 개발 규칙을 정한다」)의 몫이다.
+ */
+export function screenSessionMcpServers(
+  platform: NodeJS.Platform = process.platform,
+): Record<string, McpServerConfig> {
+  return {
+    "context-mode":
+      platform === "win32"
+        ? { type: "stdio", command: "cmd", args: ["/c", "npx", "-y", "context-mode"] }
+        : { type: "stdio", command: "npx", args: ["-y", "context-mode"] },
+  };
+}
 
 /**
  * What the daemon hands the driver to start a query. `sessionId` is the
@@ -241,6 +260,10 @@ export class ClaudeAgentSession implements AgentSession {
         // pre-approved tool rules gets those keys cut before this query
         // reads anything; see sanitizeRepoAgentSettings.)
         settingSources: ["user", "project", "local"],
+        // 앱이 싣는 내장 MCP — context-mode(2026-10-24 사용자 결정). 사용자 설정의
+        // 커넥터 · MCP 와 병합되며(strictMcpConfig 를 켜지 않는다), 기획 AI · 단발
+        // 프로브는 싣지 않는다.
+        mcpServers: screenSessionMcpServers(),
         // 질문 카드의 선택지 미리보기를 HTML 로 받는다 (PLAN D96): 이 앱의
         // 카드는 웹이라 monospace 박스가 아니라 그려진 시안을 보여 줄 수 있다.
         // 카드는 스크립트 없는 sandbox iframe 으로만 그린다.

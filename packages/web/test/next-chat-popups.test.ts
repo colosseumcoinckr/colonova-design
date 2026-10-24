@@ -50,6 +50,10 @@ test("모델 칩 CSS: 고른 칸의 알약은 토큰이고, 어두운 팔레트�
   const dark = all.find((one) => one.selector.includes('html[data-theme="dark"] .nx .nx-aipick'));
   assert.ok(dark, "dark 의 알약 · 틀 덮어쓰기");
   assert.ok(dark.selector.includes('html[data-theme="github"] .nx .nx-aipick'), "github 도 같다");
+  assert.ok(
+    dark.selector.includes('html[data-theme="claude-dark"] .nx .nx-aipick'),
+    "claude-dark 도 같다",
+  );
   assert.match(dark.body, /--nx-track:\s*var\(--bg\)/, "틀이 바탕보다 어둡다");
   assert.match(dark.body, /--nx-pill:\s*color-mix\(/, "알약은 잉크를 섞어 밝다");
 });

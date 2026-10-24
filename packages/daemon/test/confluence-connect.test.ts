@@ -8,6 +8,7 @@ import { confluenceMirrorLedger } from "../dist/confluence-mirror.js";
 import { MemoryCredentialStore } from "../dist/credentials.js";
 import { RequestRouter, type RouterDeps } from "../dist/dispatch.js";
 import { MachineSetting } from "../dist/machine-setting.js";
+import { pageIdFromQuery } from "../dist/requests/confluence.js";
 
 /**
  * 기획서(Confluence) 연결 명령의 순수 시험(기획서 동기화 1단계 · M2) — RequestRouter 를
@@ -206,6 +207,24 @@ test("재연결 — 이메일·토큰을 비우고 보내면 저장된 자격으
   }
 });
 
+test("pageIdFromQuery — URL · id 입력에서 페이지 id를 뽑는다(2026-10-24 사용자 결정)", () => {
+  // 브라우저 주소 표시줄의 두 모양 — pageId 주소 인자와 /pages/<id>/ 길.
+  assert.equal(
+    pageIdFromQuery("https://colosseum.atlassian.net/wiki/spaces/PROD/pages/1767604270/SSOT"),
+    "1767604270",
+  );
+  assert.equal(
+    pageIdFromQuery("https://colosseum.atlassian.net/wiki/pages/viewpage.action?pageId=1767604270"),
+    "1767604270",
+  );
+  assert.equal(pageIdFromQuery("  pageId=1767604270 "), "1767604270");
+  // 숫자만 — 주소에서 id 만 떼어 낸 입력.
+  assert.equal(pageIdFromQuery("1767604270"), "1767604270");
+  // 제목 검색의 말은 건드리지 않는다 — 숫자가 섞인 제목도 검색으로 간다.
+  assert.equal(pageIdFromQuery("8.8 ColoNova"), null);
+  assert.equal(pageIdFromQuery(""), null);
+});
+
 test("기준 페이지 찾기 — 연결 전엔 한국어 거절, 연결 뒤엔 CQL 목록이다", async () => {
   const cql = `type=page AND title ~ "8.8"`;
   const searchUrl = `/wiki/rest/api/search?cql=${encodeURIComponent(cql)}&limit=100`;
@@ -235,6 +254,30 @@ test("기준 페이지 찾기 — 연결 전엔 한국어 거절, 연결 뒤엔 
     ]);
   } finally {
     rig6.cleanup();
+  }
+});
+
+test("기준 페이지 찾기 — URL 입력은 검색 없이 그 문서를 바로 읽는다(2026-10-24 사용자 결정)", async () => {
+  const url = "https://colosseum.atlassian.net/wiki/spaces/PROD/pages/987/SSOT";
+  const rig8 = rig([
+    fixture("연결 확인", WHO_URL, 200, AUTH_USER),
+    fixture("기준 문서", "/wiki/api/v2/pages/987?body-format=storage", 200, {
+      id: "987",
+      title: "8.8 ColoNova",
+      body: { storage: { value: "<p/>" } },
+      version: { number: 3 },
+    }),
+  ]);
+  try {
+    await rig8.router.dispatch(connect());
+    const reply = (await rig8.router.dispatch({
+      id: "s1",
+      type: "confluence.suggestRoots",
+      query: url,
+    })) as { roots: Array<{ id: string; title: string }> };
+    assert.deepEqual(reply.roots, [{ id: "987", title: "8.8 ColoNova" }]);
+  } finally {
+    rig8.cleanup();
   }
 });
 

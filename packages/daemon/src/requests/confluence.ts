@@ -112,8 +112,23 @@ async function confluenceConnect(
 }
 
 /**
+ * 입력에서 Confluence 페이지 id를 뽑는다 — 브라우저 주소의 URL 붙여넣기를 받는 길이다
+ * (2026-10-24 사용자 결정). `pageId=<숫자>` 주소 인자 · `/pages/<숫자>/` 길 · 숫자만 있는
+ * 입력 셋을 받고, 제목 검색의 말로는 못 알아듣는다. 없으면 null.
+ */
+export function pageIdFromQuery(query: string): string | null {
+  const inUrl = /(?:pageId=|\/pages\/)(\d+)/u.exec(query.trim());
+  const fromUrl = inUrl?.[1];
+  if (fromUrl !== undefined) return fromUrl;
+  const trimmed = query.trim();
+  return /^\d+$/u.test(trimmed) ? trimmed : null;
+}
+
+/**
  * 기준 페이지 찾기 — 저장된 자격과 사이트로 CQL 제목 검색(type=page)을 돌린다.
- * 연결이 없으면 한국어 거절로 답한다; 자격은 어디에도 실리지 않는다.
+ * 입력이 페이지 URL·id 면 검색을 거치지 않고 그 문서를 바로 읽어 한 줄로 돌려준다
+ * (id 가 곧 식별자다 — 정본 계획 §식별). 연결이 없으면 한국어 거절로 답한다;
+ * 자격은 어디에도 실리지 않는다.
  */
 async function confluenceSuggestRoots(
   deps: ConfluenceDeps,
@@ -128,6 +143,13 @@ async function confluenceSuggestRoots(
     );
   }
   const client = confluenceClient(site, creds);
+  // URL · id 입력 — 제목 검색 대신 그 문서를 바로 읽는다(2026-10-24 사용자 결정).
+  const pageId = pageIdFromQuery(query);
+  if (pageId !== null) {
+    const direct = await client.readPage(pageId);
+    if (!direct.readable) throw new Error(direct.detail);
+    return { roots: [{ id: direct.value.id, title: direct.value.title }] };
+  }
   const escaped = query.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const read = await client.searchPages(`type=page AND title ~ "${escaped}"`);
   if (!read.readable) throw new Error(read.detail);

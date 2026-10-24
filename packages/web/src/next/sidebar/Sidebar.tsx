@@ -1,5 +1,5 @@
 import type { ThreadSummary } from "@colonova-design/protocol";
-import { Monitor } from "lucide-react";
+import { Monitor, Waypoints } from "lucide-react";
 import { type ReactNode, type Ref, useState } from "react";
 import type { Sessions } from "../../hooks/useSessions";
 import type { Daemon } from "../../lib/daemon-client";
@@ -30,6 +30,7 @@ export function Sidebar({
   activeSessionId,
   view,
   plansOn = false,
+  mapOn = false,
   planDrafts = 0,
   running = false,
   plansContent,
@@ -48,6 +49,8 @@ export function Sidebar({
   sessions: Sessions;
   activeSessionId: string | null;
   view: "home" | "thread";
+  /** `plansOn` 의 형제 — 연결 지도 자리인가(2026-10-24 연결 지도 사이드바 자리 결정). */
+  mapOn?: boolean;
   /** 기획서 자리인가. 자리 표시와 목록 선택에 쓴다. */
   plansOn?: boolean;
   /** 지금 프로젝트의 작성 중인 초안 수 — `기획서` 줄 끝에 흐리게 선다(2026-10-23 기획자 화면 손질 D5). */
@@ -121,6 +124,12 @@ export function Sidebar({
           {L.sidebar.home}
           {waiting > 0 && <Count n={waiting} className="nx-r" />}
         </button>
+        {/* 왼쪽 줄의 차례는 홈 · 찾기 · 기획서 · 연결 · 화면이다(2026-10-24 사용자 결정). */}
+        <button type="button" className="nx-side-row" onClick={onPalette}>
+          <SearchIcon />
+          {L.sidebar.find}
+          <kbd>{keyHint("⌘K")}</kbd>
+        </button>
         {/* 자리는 다시 눌러도 닫히지 않는다(2026-10-23 화면 전면 재설계 §3.1). */}
         <button
           type="button"
@@ -138,10 +147,21 @@ export function Sidebar({
             </span>
           )}
         </button>
+        {/* 연결 지도 — 기획서와 화면 사이의 사는 자리(2026-10-24 사용자 결정). 다시 눌러도 머문다. */}
         <button
           type="button"
-          className={`nx-side-row${view === "thread" && !plansOn ? " nx-side-row--on" : ""}`}
-          aria-current={view === "thread" && !plansOn ? "page" : undefined}
+          className={`nx-side-row${mapOn ? " nx-side-row--on" : ""}`}
+          aria-current={mapOn ? "page" : undefined}
+          title={L.plans.mapView}
+          onClick={nav.openMap}
+        >
+          <Waypoints className="nx-i" size={16} aria-hidden="true" />
+          {L.sidebar.map}
+        </button>
+        <button
+          type="button"
+          className={`nx-side-row${view === "thread" && !plansOn && !mapOn ? " nx-side-row--on" : ""}`}
+          aria-current={view === "thread" && !plansOn && !mapOn ? "page" : undefined}
           aria-label={running ? L.sidebar.screenRunning : undefined}
           onClick={nav.openScreen ?? nav.showScreen}
         >
@@ -153,14 +173,9 @@ export function Sidebar({
             </span>
           )}
         </button>
-        <button type="button" className="nx-side-row" onClick={onPalette}>
-          <SearchIcon />
-          {L.sidebar.find}
-          <kbd>{keyHint("⌘K")}</kbd>
-        </button>
       </nav>
       {plansContent}
-      <div className="nx-side-conversations" hidden={plansOn}>
+      <div className="nx-side-conversations" hidden={plansOn || mapOn}>
         <div className="nx-side-list-head">
           <h2>{L.sidebar.convs}</h2>
           <button

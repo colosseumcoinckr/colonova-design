@@ -18,6 +18,7 @@ import { confluenceHandlers } from "./requests/confluence.js";
 import { docCommentHandlers } from "./requests/doc-comments.js";
 import { docOpHandlers } from "./requests/doc-ops.js";
 import { draftHandlers } from "./requests/drafts.js";
+import { mapHandlers } from "./requests/map.js";
 import { projectHandlers } from "./requests/projects.js";
 import { repositoryHandlers } from "./requests/repository.js";
 import { systemHandlers } from "./requests/system.js";
@@ -52,6 +53,7 @@ export class RequestRouter {
       ...confluenceHandlers(deps),
       ...draftHandlers(deps),
       ...docOpHandlers(deps),
+      ...mapHandlers(deps),
       ...docCommentHandlers(deps),
       ...projectHandlers(deps),
       ...repositoryHandlers(deps, (sessionId, stage) => this.briefTo(sessionId, stage)),

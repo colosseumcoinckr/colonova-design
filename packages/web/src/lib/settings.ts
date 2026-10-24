@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from "react";
 
 /** A paintable palette. dark/light are the native pair "system" chooses
     between; the rest are whole looks of their own. */
-export type ThemeId = "dark" | "light" | "github" | "github-light" | "claude";
+export type ThemeId = "dark" | "light" | "github" | "github-light" | "claude" | "claude-dark";
 /** What the picker stores: a palette, or "follow the OS". */
 export type ThemeChoice = "system" | ThemeId;
 /** Which keypress sends a message. The other one inserts a newline. */
@@ -288,6 +288,7 @@ export const THEMES: ThemeChoice[] = [
   "github",
   "github-light",
   "claude",
+  "claude-dark",
 ];
 
 const KEY = "colonova-design.settings";
@@ -301,12 +302,13 @@ const BLOB_VERSION = 2;
 
 /**
  * 설정의 테마 줄이 보여주는 목록 — 팔레트 자체는 styles.css 에 있고(THEMES와 같은
- * 5개), 고르는 칸은 이 것만 선다. 검증도 같은 목록이므로 여기서 뺀 값은 저장에
+ * 6개), 고르는 칸은 이 것만 선다. 검증도 같은 목록이므로 여기서 뺀 값은 저장에
  * 남아 있어도 기본(Claude)으로 돌아온다.
  */
 export const PICKER_THEMES = [
   "system",
   "claude",
+  "claude-dark",
   "light",
   "dark",
   "github-light",

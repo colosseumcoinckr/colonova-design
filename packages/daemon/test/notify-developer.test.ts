@@ -1,3 +1,4 @@
+// CI-순수-제외 — 감독자 하네스(cycle-harness)가 진짜 git 을 만든다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 // PLAN-MCP §3.E 의 E-3 — notify_developer 도구. 인자 정규화 · 결과 문장 ·
 // 알림 키는 순수로, 예산은 감독자 장면(가짜 시계)의 원장으로, 배달은
 // developer-notice.test.ts 의 가짜 GitHub(MemoryGitHub) 관례로 본다.

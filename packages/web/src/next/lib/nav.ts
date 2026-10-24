@@ -8,8 +8,8 @@ export interface NavState {
   view: "home" | "thread";
   /** 좁은 창(900px 아래)의 두 탭 중 앞에 선 것(U16). 넓은 창은 읽지 않는다. */
   tab: "chat" | "preview";
-  /** 기획서와 화면 자리의 구분(2026-10-23 화면 전면 재설계 §3.1). */
-  pane: "preview" | "plans";
+  /** 기획서 · 연결 · 화면 자리의 구분(2026-10-24 연결 지도 사이드바 자리 결정). */
+  pane: "preview" | "plans" | "map";
   /** 기존 호출 계약을 유지한다. 자리 배치는 초안 여부와 무관하다(2026-10-23 화면 전면 재설계 §3.4). */
   planDraft: boolean;
   /** 좁은 창의 사이드바 서랍이 열려 있는가(`≡` · 스크림). */
@@ -40,7 +40,9 @@ export type NavAction =
   | { type: "screen" }
   /** 기획서 자리로 간다. 다시 골라도 같은 자리다. */
   | { type: "plans" }
-  /** 기존 호출자가 기획서와 화면 자리를 바꾸는 길이다. */
+  /** 연결 지도 자리로 간다(2026-10-24 사용자 결정) — 기획서 칸의 보기 전환에서 사이드바 자리로 옮겼다. */
+  | { type: "map" }
+  /** 기존 호출자가 기획서 · 연결 · 화면 자리를 바꾸는 길이다. */
   | { type: "pane"; pane: NavState["pane"] }
   /** 기획서 칸의 초안 편집기가 열리고 닫혔다 — 칸이 알린다(2026-10-23 D2). */
   | { type: "plan-draft"; open: boolean }
@@ -81,6 +83,9 @@ export function navReducer(state: NavState, action: NavAction): NavState {
     case "plans":
       // 대화와 미리보기는 숨고 기획서 본문이 선다(2026-10-23 화면 전면 재설계 §3.4).
       return { ...state, view: "thread", tab: "preview", pane: "plans", drawer: false };
+    case "map":
+      // 연결 지도가 칸 전체에 선다(2026-10-24 사용자 결정) — 기획서 칸의 보기 전환을 걷고 사이드바 자리로.
+      return { ...state, view: "thread", tab: "preview", pane: "map", drawer: false };
     case "pane":
       return state.pane === action.pane ? state : { ...state, pane: action.pane };
     case "plan-draft":

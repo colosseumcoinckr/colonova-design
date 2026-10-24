@@ -1,6 +1,6 @@
 /* ColoNova Design 소개 페이지 — 앱의 팔레트(styles.css)를 그대로 잇는다.
-   data-theme 으로 앱과 같은 다섯 팔레트(Claude · 밝음 · 어두움 · GitHub 밝음 ·
-   GitHub 어두움)를 갈아입고, 시스템 따르기는 theme.js 가 밝음/어두움으로 풀어 준다 —
+   data-theme 으로 앱과 같은 여섯 팔레트(Claude · Claude 어두움 · 밝음 · 어두움 ·
+   GitHub 밝음 · GitHub 어두움)를 갈아입고, 시스템 따르기는 theme.js 가 밝음/어두움으로 풀어 준다 —
    기능 벤토의 테마 카드가 바꾼다. 팔레트 토큰은 앱의 것이라 건드리지 않는다 —
    최신화는 층(배경 · 그림자 · 유리), 타입, 간격, 모션으로 한다. */
 
@@ -97,6 +97,34 @@
   --shadow-win: 0 30px 80px -32px rgba(60, 50, 35, 0.26), 0 0 120px -40px rgba(177, 74, 46, 0.12);
   --scrim: rgba(60, 50, 35, 0.32);
   color-scheme: light;
+}
+
+/* ---------- 팔레트: Claude 어두움 ---------- */
+[data-theme="claude-dark"] {
+  --bg: #262521;
+  --bg-2: #2b2925;
+  --panel: #2f2d28;
+  --panel-2: #36342e;
+  --panel-3: #3e3b34;
+  --line: #454237;
+  --line-soft: #34322b;
+  --line-strong: #524e40;
+  --text: #ece9e0;
+  --text-2: #c6c1b2;
+  --muted: #a39d8d;
+  --accent: #dc7c5c;
+  --accent-strong: #e8957a;
+  --accent-soft: rgba(220, 124, 92, 0.12);
+  --accent-glow: rgba(220, 124, 92, 0.38);
+  --on-accent: #2b1008;
+  --ok: #90b573;
+  --ok-line: rgba(144, 181, 115, 0.4);
+  --ok-soft: rgba(144, 181, 115, 0.1);
+  --danger: #e5826e;
+  --warn: #c99a55;
+  --shadow-win: 0 30px 80px -30px rgba(0, 0, 0, 0.8), 0 0 120px -40px rgba(220, 124, 92, 0.16);
+  --scrim: rgba(0, 0, 0, 0.52);
+  color-scheme: dark;
 }
 
 /* ---------- 팔레트: GitHub ---------- */

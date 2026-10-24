@@ -1,3 +1,4 @@
+// CI-순수-제외 — 진짜 git 원격을 본다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 // PLAN 단계 6 시험 — 캡처의 고아 브랜치(O4). 나머지 제출 장면(감독자 네 단계)은
 // cycle-submit-flow.test.ts 가 감독자 하네스로 다룬다. 여기는 PublishCycle 의
 // 몸통(runHandoff 의 캡처 구간)을 서버 없이 세운다.

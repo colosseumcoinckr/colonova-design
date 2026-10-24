@@ -329,7 +329,7 @@ test("searchPages — withVersion 은 판을 함께 싣고, 제목은 content.ti
   assert.equal(calls[0], first);
 });
 
-test("listInlineComments — 해결 상태와 닻을 읽고, 모르는 모양은 열린 것으로 흘린다", async () => {
+test("listInlineComments — 해결 상태와 닻을 읽고, 작성자 · 만든 때는 판(version)에서 온다", async () => {
   const { client } = fake({
     "/wiki/api/v2/pages/1/inline-comments?body-format=storage&limit=100": {
       status: 200,
@@ -337,15 +337,13 @@ test("listInlineComments — 해결 상태와 닻을 읽고, 모르는 모양은
         results: [
           {
             id: "31",
-            authorId: "5f0",
-            createdAt: "2026-10-18T01:49:00.000Z",
             resolutionStatus: "resolved",
-            version: { number: 3 },
+            version: { number: 3, authorId: "5f0", createdAt: "2026-10-18T01:49:00.000Z" },
             body: { storage: { value: "풀린 코멘트" } },
           },
           {
             id: "32",
-            authorId: "5f1",
+            version: { authorId: "5f1" },
             body: { storage: { value: "안 풀린 코멘트" } },
             inlineProperties: { selection: "데이터 모델 SSoT" },
           },
@@ -398,11 +396,15 @@ test("listFooterComments — 본문 · 작성자 · 답글 부모를 읽고, 실
         results: [
           {
             id: "41",
-            authorId: "5f0",
+            version: { authorId: "5f0", createdAt: "2026-10-18T02:00:00.000Z" },
             body: { storage: { value: "첫 바닥글" } },
-            createdAt: "2026-10-18T02:00:00.000Z",
           },
-          { id: "42", authorId: "5f1", parentId: "41", body: { storage: { value: "답글" } } },
+          {
+            id: "42",
+            parentId: "41",
+            version: { authorId: "5f1" },
+            body: { storage: { value: "답글" } },
+          },
         ],
       },
     },
@@ -410,6 +412,9 @@ test("listFooterComments — 본문 · 작성자 · 답글 부모를 읽고, 실
   const read = await ok.client.listFooterComments("1");
   if (!read.readable) assert.fail("바닥글은 읽혀야 한다");
   assert.equal(read.value.length, 2);
+  assert.equal(read.value[0]?.authorId, "5f0");
+  assert.equal(read.value[0]?.createdAt, "2026-10-18T02:00:00.000Z");
+  assert.equal(read.value[1]?.authorId, "5f1");
   assert.equal(read.value[1]?.parentId, "41");
 
   const denied = fake({

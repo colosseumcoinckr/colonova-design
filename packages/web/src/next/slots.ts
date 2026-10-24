@@ -30,8 +30,10 @@ export interface ShellNav {
   openScreen?: () => void;
   /** 사이드바의 기획서 항목 — 오른쪽 칸을 기획서 보기로 바꾼다(2026-10-18 · M4). */
   openPlans: () => void;
+  /** 사이드바의 연결 항목 — 오른쪽 칸을 연결 지도로 바꾼다(2026-10-24 연결 지도 사이드바 자리 결정). */
+  openMap: () => void;
   /** 기획서 칸의 돌아오는 길 — 오른쪽 칸의 얼굴을 바꾼다. */
-  showPane: (pane: "preview" | "plans") => void;
+  showPane: (pane: "preview" | "plans" | "map") => void;
   /**
    * 기획서 칸의 초안 편집기가 열리고 닫혔다고 알린다(2026-10-23 기획자 화면 손질 D2) — 넓은 창의 집중 배치를 고르고, 그동안
    * 대화를 열면 화면 쪽으로 돌아오게 한다(`nav.ts` 의 `planDraft`).

@@ -42,10 +42,8 @@ const inlinePostUrl = "/wiki/api/v2/inline-comments";
 
 const commentJson = (id: string, version: number, extra: Record<string, unknown> = {}) => ({
   id,
-  authorId: "5f0",
-  version: { number: version },
+  version: { number: version, authorId: "5f0", createdAt: "2026-10-23T00:00:00Z" },
   body: { storage: { value: `${id} 의 합성 코멘트`, representation: "storage" } },
-  createdAt: "2026-10-23T00:00:00Z",
   ...extra,
 });
 

@@ -686,6 +686,32 @@ export interface PlanDocComment {
   editable?: boolean;
 }
 
+/**
+ * 연결 지도의 재료(map.read) — 원장 문서와 화면 목록, 그 사이의 연결. 연결이 없어도 문서·화면은
+ * 빈 배열로 나가고 `linked` 로 Confluence 연결 여부를 가린다(2026-10-24 연결 지도 계획 1조각).
+ */
+export interface MapReadResult {
+  linked: boolean;
+  docs: Array<{ pageId: string; title: string; version: number; path: string }>;
+  folders: Array<{ folderId: string; title: string; path: string }>;
+  screens: Array<{ route: string; title: string | null; observed: boolean }>;
+  links: Array<{
+    pageId: string;
+    route: string;
+    section: string | null;
+    note: string | null;
+    createdAt: string | null;
+  }>;
+}
+
+/**
+ * 연결 지도의 한 가지 고침(map.write · F6 2조각) — 잇기(add)와 끊기(remove). 요청은 통째로
+ * 성공하거나 거절된다(거절은 한국어 문장의 예외). 답은 쓴 뒤의 연결 목록 전체다.
+ */
+export type MapChange =
+  | { op: "add"; pageId: string; route: string; section?: string; note?: string }
+  | { op: "remove"; pageId: string; route: string; section?: string };
+
 interface DaemonApi {
   /** Every thread of the one workspace, newest first. */
   listSessions: () => Promise<SessionSummary[]>;
@@ -1012,6 +1038,10 @@ interface DaemonApi {
     /** 이 앱이 열지 못하는 항목 — type 은 모르는 종류의 원래 글이다. */
     unsupported?: Array<{ contentId: string; title: string; path: string; type: string }>;
   }>;
+  /** 연결 지도 — 기획서 문서와 화면 목록, 그 사이의 연결을 한 번에 읽는다(읽기 전용). */
+  mapRead: () => Promise<MapReadResult>;
+  /** 연결 지도 고치기 — 잇기·끊기 묶음을 통째로 보내고 쓴 뒤의 연결 목록 전체를 받는다. */
+  mapWrite: (changes: readonly MapChange[]) => Promise<MapReadResult["links"]>;
   /** 기획서 한 문서 — 파생 마크다운과 절, 코멘트는 안 풀린 것만(읽기 실패면 null). */
   docRead: (pageId: string) => Promise<{
     markdown: string;
@@ -2288,6 +2318,9 @@ export function useDaemon(url: string | null): Daemon {
           folders?: Array<{ folderId: string; title: string; path: string }>;
           unsupported?: Array<{ contentId: string; title: string; path: string; type: string }>;
         }>({ type: "doc.list" }, 60_000),
+      mapRead: () => call<MapReadResult>({ type: "map.read" }, 60_000),
+      mapWrite: (changes: readonly MapChange[]) =>
+        call<MapReadResult["links"]>({ type: "map.write", changes }, 60_000),
       docRead: (pageId: string) =>
         call<{
           markdown: string;

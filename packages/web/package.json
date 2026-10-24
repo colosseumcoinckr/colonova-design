@@ -12,6 +12,7 @@
   "dependencies": {
     "@colonova-design/protocol": "workspace:*",
     "@streamdown/cjk": "^1.0.4",
+    "@xyflow/react": "^12.12.0",
     "lucide-react": "^1.56.0",
     "mermaid": "^12.2.0",
     "pretendard": "^1.3.9",

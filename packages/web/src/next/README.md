@@ -5,8 +5,9 @@
 
 ## 여는 법
 
-`App.tsx` 가 연결이 서면 언제나 `NextShell` 을 그린다. 연결 전(브라우저 개발
-경로의 url 붙여넣기)만 `ConnectScreen.tsx` 가 선다. 셸 밖에서 빌려 쓰는 것:
+`App.tsx` 가 연결이 서면 언제나 `NextShell` 을 그린다. 연결 전 · 연결 그릇 — url 을 이미 쥔
+데스크톱은 `next/ConnectingScreen.tsx` 가(재시도), url 이 없거나 브라우저 개발 경로면
+`ConnectScreen.tsx` 가(url 붙여넣기) 선다. 셸 밖에서 빌려 쓰는 것:
 훅(`useDaemon` · `useSessions` · `usePins` · `use-invite-import`), 대화록의 블록
 (`components/transcript/{blocks,activity,todo,shared}`), 미리보기 무대의 선로
 (`components/preview/PreviewFrame` — 데스크톱이 `[data-testid=preview-slot]` 을 찾는다 —
@@ -101,25 +102,26 @@
 NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onboarding/FirstRun · NoProjects(창 전체)
 │           초대 파일 가져오기의 컨트롤러 하나 + onboarding/InviteConfirm(확인판)
 └ Workspace ─ useSessions · usePins · useShellNav · usePlansWorkspace를 한 번씩 부른다
-  ├ sidebar/Sidebar     앱 머리 / 프로젝트 전환기 / 홈 · 기획서 · 화면 · 찾기 / 자리별 목록 / 바닥
+  ├ sidebar/Sidebar     앱 머리 / 프로젝트 전환기 / 홈 · 찾기 · 기획서 · 연결 · 화면 / 자리별 목록 / 바닥
   │ ├ 홈 · 화면          대화 + 새 대화 / 다른 프로젝트 줄 · 날짜별 대화 목록 · 도구가 한 일
   │ └ plans/PlansSidebar 기준 페이지 + 새 문서 · ⋯ / 찾기 · 작성 중인 초안 · 트리(PlansList) / 가져온 때
   ├ 홈 — home/HomeView   인사 · 프로젝트 한 줄 / HomeInbox(part="waiting") / 두 시작 카드 / 세 걸음 / HomeReady / HomeInbox(part="rest")
   │ ├ home/HomePlans    기획서 카드 — 초안 셋 · 새 문서 · 기획서 열기(연결한 프로젝트만)
   │ └ 화면 카드          화면 열기 · HomeComposer(입력창 · 첨부 · 모델 · HomeStarters)
-  └ 작업 보기            홈에서는 마운트된 채 nx-offstage
-    ├ 자리별 머리        기획서: plans/PlansHeader / 화면: status/StatusLine
-    ├ status/ProblemLine 문제 문장 · 초대 파일 안내(두 작업 자리에 유지)
+    ├ 자리별 머리        기획서: plans/PlansHeader / 연결: map/MapBar / 화면: status/StatusLine
+    ├ status/ProblemLine 문제 문장 · 초대 파일 안내(작업 자리에 유지)
     ├ 기획서 자리        plans/PlansColumn — PlanDocView(본문 · 코멘트) / DraftEditor(문서 · 기획 대화)
     │                   plans/PlansEmpty — 연결 없음 · 빈 목록 · 실패 · 만료 안내
+    ├ 연결 자리          map/MapColumn — PlansMap(reactflow 노드 그래프 · 드래그 잇기)
     └ 화면 자리          (좁은 창) 대화 | 화면 · <이름> 탭
       ├ chat/ChatColumn  Thread · 카드 · RunLine · Composer(모델 · `/` · `@`)
       └ preview/PreviewColumn 막대 · PreviewHost · LiveLayer · 말풍선 · 준비 화면 · 작업 기록 서랍
 ```
 
-**세 자리** — `Workspace`는 `view === "home"`이면 홈, `view === "thread" && pane === "plans"`이면 기획서,
-나머지 작업 보기는 화면으로 나눈다. 기획서 자리에는 `PlansHeader`가 서고 화면 대화 · 미리보기 · 화면 상태 줄 · 좁은 창의 탭은
-보이지 않는다. `ProblemLine`은 두 작업 자리에 남는다. 화면 자리에는 대화와 미리보기가 함께 서고 좁은 창에서만 탭으로 나눈다.
+**네 자리** — `Workspace`는 `view === "home"`이면 홈, `view === "thread" && pane === "plans"`이면 기획서,
+`pane === "map"`이면 연결, 나머지 작업 보기는 화면으로 나눈다(연결 자리는 2026-10-24 사용자 결정 —
+[연결 지도 계획](../../../../docs/link-map-plan-2026-10-24.md)). 기획서 · 연결 자리에는 화면 대화 · 미리보기 ·
+화면 상태 줄 · 좁은 창의 탭은 보이지 않는다. 화면 자리에는 대화와 미리보기가 함께 서고 좁은 창에서만 탭으로 나눈다.
 기획서의 트리는 좁은 창의 사이드바 서랍 안에 있다.
 (2026-10-23 화면 전면 재설계 — [ux-redesign-2026-10-23.md](../../../../docs/ux-redesign-2026-10-23.md))
 

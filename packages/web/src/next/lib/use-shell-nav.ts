@@ -214,6 +214,7 @@ export function useShellNav({
       else dispatch({ type: "screen" });
     },
     openPlans: () => dispatch({ type: "plans" }),
+    openMap: () => dispatch({ type: "map" }),
     showPane: (pane) => dispatch({ type: "pane", pane }),
     setPlanDraft: (open) => dispatch({ type: "plan-draft", open }),
     openProjectScreen: (slug) => {
@@ -280,7 +281,7 @@ export function useShellNav({
     const step = stepFirstPrep(watchingPrep.current, daemon.projects);
     watchingPrep.current = step.watching;
     const seen: SeenView = {
-      view: state.pane === "plans" ? "home" : state.view,
+      view: state.pane !== "preview" ? "home" : state.view,
       tab: state.tab,
       narrow,
       activeSlug: daemon.activeSlug,

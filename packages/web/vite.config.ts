@@ -20,6 +20,10 @@ export default defineConfig({
             : segments?.[0];
           if (!name) return undefined;
           if (name === "react" || name === "react-dom" || name === "scheduler") return "react";
+          // 연결 지도의 그릇(2026-10-24 F6 2조각) — 줌 · 팬 · 드래그 잇기가 여기 산다.
+          if (name === "@xyflow/react" || name === "d3-drag" || name === "d3-selection") {
+            return "flow";
+          }
           // The markdown pipeline is a dependency cluster of its own —
           // react-markdown pulls unified/remark/micromark/hast, matched by
           // family prefix so one missed package name cannot strand it.

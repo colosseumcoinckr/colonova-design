@@ -46,6 +46,7 @@ test("inviteProgress: 진행기가 아는 만큼만, 넘치지 않게", () => {
 test("themePeekHalves: 시스템 따르기는 밝음과 어두움의 반반이다", () => {
   assert.deepEqual(themePeekHalves("system"), ["light", "dark"]);
   assert.deepEqual(themePeekHalves("claude"), ["claude"]);
+  assert.deepEqual(themePeekHalves("claude-dark"), ["claude-dark"]);
   assert.deepEqual(themePeekHalves("github"), ["github"]);
 });
 

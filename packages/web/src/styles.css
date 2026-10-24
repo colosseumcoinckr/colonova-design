@@ -8,7 +8,7 @@
 /* The base console doubles as the "dark" palette, declared on any element:
    anything with [data-theme] wears a whole palette without touching the
    app around it. The palettes that remain: dark, light, github(-light),
-   claude (the default). */
+   claude (the default), claude-dark (its night side). */
 :root,
 [data-theme="dark"] {
   /* surfaces, darkest → lightest (neutral, no blue cast) */
@@ -293,6 +293,48 @@
   --shadow-float: 0 2px 6px -2px rgba(60, 50, 35, 0.09), 0 24px 56px -20px rgba(60, 50, 35, 0.22);
 
   color-scheme: light;
+}
+
+/* Claude 어두움 — claude.ai 의 밤. 같은 종이 문법을 따뜻한 잉크 어둠으로 옮긴 판이다.
+   테라코타(#b14a2e)는 어둠에 잠기므로 한 단 밝혀 글자로도 쓴다. */
+[data-theme="claude-dark"] {
+  --bg: #262521;
+  --bg-2: #2b2925;
+  --panel: #2f2d28;
+  --panel-2: #36342e;
+  --panel-3: #3e3b34;
+
+  --line: #454237;
+  --line-soft: #34322b;
+  --line-strong: #524e40;
+  --line-hover: #5d5847;
+  --line-hover-strong: #68624f;
+  --scroll-thumb: #4d4a3f;
+
+  --text: #ece9e0;
+  --text-2: #c6c1b2;
+  --muted: #aea897;
+
+  --accent: #dc7c5c;
+  --accent-soft: rgba(220, 124, 92, 0.12);
+  --accent-glow: rgba(220, 124, 92, 0.38);
+  --warn: #c99a55;
+  --warn-soft: rgba(201, 154, 85, 0.1);
+  --danger: #e5826e;
+  --danger-soft: rgba(229, 130, 110, 0.1);
+  --ok: #90b573;
+
+  --warn-line: rgba(201, 154, 85, 0.42);
+  --danger-line: rgba(229, 130, 110, 0.45);
+  --select-bg: rgba(220, 124, 92, 0.24);
+
+  --shadow-pop: 0 16px 40px -12px rgba(0, 0, 0, 0.7), 0 4px 12px -4px rgba(0, 0, 0, 0.55);
+  --brand: #dc7c5c;
+  --scrim: rgba(0, 0, 0, 0.52);
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.24), 0 12px 32px -16px rgba(0, 0, 0, 0.5);
+  --shadow-float: 0 2px 6px -2px rgba(0, 0, 0, 0.4), 0 24px 56px -20px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
 }
 
 /* ------------------------------------------------------------------ base */

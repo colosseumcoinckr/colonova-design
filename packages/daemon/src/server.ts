@@ -633,8 +633,8 @@ export class DaemonServer {
       onChanged: () =>
         void this.status().then((status) => this.broadcast({ type: "status", status })),
       catalogSources: this.agentDrivers.all().flatMap((driver) => {
-        const listModels = driver.listModels;
-        return typeof listModels === "function"
+        const listModels = driver.listModels?.bind(driver);
+        return listModels
           ? [
               {
                 provider: driver.id,

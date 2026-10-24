@@ -1,3 +1,4 @@
+// CI-순수-제외 — 가짜 git 실행 파일을 진짜로 돌린다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 import assert from "node:assert/strict";
 import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

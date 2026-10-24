@@ -1045,9 +1045,10 @@ function commentOf(row: Record<string, unknown>): ConfluenceComment | null {
     asRecord(row.inlineProperties) ?? asRecord(asRecord(row.properties)?.inlineProperties);
   return {
     id,
-    authorId: asString(row.authorId),
+    // 작성자 · 만든 때는 판(version) 안에 온다(2026-10-24 공식 FooterCommentModel · 실측 사례).
+    authorId: asString(asRecord(row.version)?.authorId) ?? asString(row.authorId),
     body: asString(asRecord(asRecord(row.body)?.storage)?.value) ?? "",
-    createdAt: asString(row.createdAt),
+    createdAt: asString(asRecord(row.version)?.createdAt) ?? asString(row.createdAt),
     parentId: asString(row.parentId),
     resolved:
       row.resolutionStatus === "resolved" ||

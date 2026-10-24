@@ -1,3 +1,4 @@
+// CI-순수-제외 — 진짜 git 과 자식 프로세스를 띄운다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";

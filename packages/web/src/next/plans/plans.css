@@ -573,3 +573,170 @@
 .nx-pl-body .md .md__codeacts .ghost {
   font-size: var(--fs-cap);
 }
+
+/* 연결 지도 칸(2026-10-24 사용자 결정) — 사이드바 자리로 옮겨 칸 전체 폭에 선다. */
+.nx-map-col {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+.nx-map-col-title {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-ui);
+  color: var(--ink2);
+}
+.nx-map {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.nx-map-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-1) var(--sp-1) var(--sp-3);
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+.nx-map-head p {
+  margin: 0;
+  flex: 1;
+}
+.nx .nx-map-retry {
+  flex: none;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-cap);
+  color: var(--ink2);
+}
+.nx-map-note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-3) var(--sp-1);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+}
+.nx-map-note p {
+  margin: 0;
+}
+.nx-map-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+
+/* 그림판 — @xyflow/react. 손으로 쓰는 모양은 이 안의 토큰만 읽는다. */
+.nx-map-flow {
+  flex: 1 1 100%;
+  min-height: 220px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg);
+}
+.nx-map-node {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  width: 240px;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--fs-sm);
+}
+.nx-map-node--doc {
+  cursor: pointer;
+}
+.nx-map-node--doc:hover {
+  border-color: var(--accent-line);
+}
+.nx-map-node--docGroup,
+.nx-map-node--screenGroup {
+  justify-content: flex-start;
+  width: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
+}
+.nx-map-node--goneDoc,
+.nx-map-node--goneScreen {
+  flex-direction: column;
+  align-items: flex-start;
+  border-style: dashed;
+  color: var(--ink3);
+}
+.nx-map-node-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.nx-map-node-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-map-node-sub {
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+.nx-map-observed {
+  flex: none;
+  padding-inline: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+
+/* 잇기의 손잡이와 연결 선 — 그릇의 기본 모양을 토큰에 맞춘다. */
+.nx .nx-map-node .react-flow__handle {
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--line);
+  background: var(--accent);
+}
+/* 문서에 손을 올리면 나가는 손잡이가 부풀어 잇기 시작을 알린다. */
+.nx-map-node--doc:hover .react-flow__handle {
+  border-color: var(--accent-line);
+  transform: scale(1.35);
+}
+.nx-map-flow .react-flow__edge-path {
+  stroke: var(--line2);
+  stroke-width: 1.5;
+}
+.nx-map-flow .react-flow__edge.selected .react-flow__edge-path,
+.nx-map-flow .react-flow__edge:focus .react-flow__edge-path {
+  stroke: var(--accent);
+}
+.nx-map-flow .react-flow__edge-text {
+  fill: var(--ink2);
+  font-size: var(--fs-cap);
+}
+.nx-map-flow .react-flow__edge-textbg {
+  fill: var(--bg);
+}
+.nx-map-flow .react-flow__minimap {
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+}

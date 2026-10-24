@@ -1,9 +1,9 @@
 /**
  * 기능 카드의 놀이 — 카드마다 그 기능이 실제로 하는 일을 손으로 해 보게 한다.
  *
- * 주문(끌어다 놓기) · 진짜 서비스(크기 · 검색) · 찍기(여러 곳 · 문장이 뜻을 정한다) ·
- * 제출(확인 한 장) · 작업 기록(시점 되돌리기) · 오류(도구가 먼저 열어 본다) ·
- * 여러 프로젝트 · 알림 · 테마 카드.
+ * 주문(끌어다 놓기) · 진짜 서비스(크기 · 검색) · 기획서(변경안 채택) · 연결 지도(끌어
+ * 잇기) · 찍기(여러 곳 · 문장이 뜻을 정한다) · 제출(확인 한 장) · 작업 기록(시점 되돌리기) ·
+ * 오류(도구가 먼저 열어 본다) · 여러 프로젝트 · 알림 · 테마 카드.
  *
  * 문구는 앱의 것을 그대로 쓴다(packages/web/src/next/labels.ts) — 첨부 한도 8MB 와
  * 그 거절 문장, 되돌리기 확인 문장, 영수증 줄이 그렇다. 파일을 끌어다 놓아도 이름과
@@ -21,6 +21,7 @@ const hasBatchim = (word) => {
   return code >= 0 && code <= 11171 && code % 28 !== 0;
 };
 const eunNeun = (word) => `${word}${hasBatchim(word) ? "은" : "는"}`;
+const eulReul = (word) => `${word}${hasBatchim(word) ? "을" : "를"}`;
 
 /** 숨은 쪽은 탭으로도 못 들어가게 — 겹쳐 놓은 두 장면 중 안 보이는 장면에 건다. */
 const setInert = (el, on) => {
@@ -581,3 +582,164 @@ bnTry?.addEventListener("click", () => {
     toast.hidden = true;
   }, 3200);
 });
+
+/* ---------- 기획서 — 변경안을 골라 채택하면 초안 블록이 바뀐다(2026-10-24) ---------- */
+const pdStage = $("pd-stage");
+if (pdStage) {
+  const adopt = $("pd-adopt");
+  const again = $("pd-again");
+  adopt?.addEventListener("click", () => {
+    pdStage.dataset.state = "adopted";
+  });
+  again?.addEventListener("click", () => {
+    pdStage.dataset.state = "offer";
+  });
+}
+
+/* ---------- 연결 지도 — 문서 손잡이를 끌어 화면 노드에 잇는다(2026-10-24) ---------- */
+const lmStage = $("lm-stage");
+if (lmStage) {
+  const svg = $("lm-svg");
+  const note = $("lm-note");
+  const docs = [...lmStage.querySelectorAll(".lm-col--docs .lm-node")];
+  const screens = [...lmStage.querySelectorAll(".lm-col--screens .lm-node")];
+  const NOTE_DEFAULT = note?.textContent ?? "";
+  /** 연결된 짝 — 키는 `${문서}|${화면}`. 처음부터 이어진 한 쌍이 있다. */
+  const links = new Map([["doc-order|scr-order", true]]);
+  const nameOf = (node) => node.firstChild.textContent.trim();
+
+  const center = (node) => {
+    const stage = lmStage.getBoundingClientRect();
+    const r = node.getBoundingClientRect();
+    return { x: r.left - stage.left + r.width / 2, y: r.top - stage.top + r.height / 2 };
+  };
+
+  const sync = () => {
+    for (const node of [...docs, ...screens]) {
+      node.classList.toggle(
+        "lm-node--linked",
+        [...links.keys()].some((key) => key.split("|").includes(node.dataset.node)),
+      );
+    }
+  };
+
+  const draw = () => {
+    if (!svg) return;
+    const w = lmStage.clientWidth;
+    const h = lmStage.clientHeight;
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    for (const line of [...svg.querySelectorAll("line:not(.lm-svg--temp)")]) line.remove();
+    for (const key of links.keys()) {
+      const [docId, scrId] = key.split("|");
+      const doc = docs.find((n) => n.dataset.node === docId);
+      const scr = screens.find((n) => n.dataset.node === scrId);
+      if (!doc || !scr) continue;
+      const a = center(doc);
+      const b = center(scr);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      line.setAttribute("x1", a.x);
+      line.setAttribute("y1", a.y);
+      line.setAttribute("x2", b.x);
+      line.setAttribute("y2", b.y);
+      const label = `${nameOf(doc)} — ${nameOf(scr)} 연결 끊기`;
+      line.setAttribute("role", "button");
+      line.setAttribute("tabindex", "0");
+      line.setAttribute("aria-label", label);
+      line.setAttribute("title", label);
+      const cut = () => {
+        links.delete(key);
+        sync();
+        draw();
+        if (note) note.textContent = `${nameOf(doc)} — ${nameOf(scr)} 연결을 끊었어요`;
+      };
+      line.addEventListener("click", cut);
+      line.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          cut();
+        }
+      });
+      svg.appendChild(line);
+    }
+  };
+
+  const connect = (doc, scr, announce = true) => {
+    const key = `${doc.dataset.node}|${scr.dataset.node}`;
+    if (links.has(key)) return false;
+    links.set(key, true);
+    sync();
+    draw();
+    if (announce && note) {
+      note.textContent = `${nameOf(doc)} — ${eulReul(nameOf(scr))} 연결했어요 · 보관 · 제출을 지나면 팀이 같은 지도를 봐요`;
+    }
+    return true;
+  };
+
+  /** 짧은 누름(클릭 · Enter) 길 — 아직 잇지 않은 첫 화면에 잇는다. */
+  const connectNext = (doc) => {
+    for (const scr of screens) {
+      if (connect(doc, scr)) return;
+    }
+    if (note) note.textContent = `${eunNeun(nameOf(doc))} 이미 모든 화면에 연결되어 있어요 — 선을 눌러 끊어 보세요`;
+  };
+
+  const keyOf = (doc, scr) => `${doc.dataset.node}|${scr.dataset.node}`;
+  /** 포인터가 노드 위에 있는가 — 손잡이가 포인터를 붙잡으므로(target 이 손잡이다) 좌표로 잰다. */
+  const hit = (node, x, y) => {
+    const r = node.getBoundingClientRect();
+    return x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+  };
+
+  let drag = null;
+  let suppressClick = false;
+  for (const handle of lmStage.querySelectorAll(".lm-handle")) {
+    const doc = handle.closest(".lm-node");
+    handle.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      handle.setPointerCapture(e.pointerId);
+      suppressClick = false;
+      drag = { doc, line: null };
+    });
+    handle.addEventListener("pointermove", (e) => {
+      if (!drag || drag.doc !== doc || !svg) return;
+      const stage = lmStage.getBoundingClientRect();
+      if (!drag.line) {
+        drag.line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        drag.line.setAttribute("class", "lm-svg--temp");
+        svg.appendChild(drag.line);
+        suppressClick = true;
+      }
+      const a = center(doc);
+      drag.line.setAttribute("x1", a.x);
+      drag.line.setAttribute("y1", a.y);
+      drag.line.setAttribute("x2", e.clientX - stage.left);
+      drag.line.setAttribute("y2", e.clientY - stage.top);
+      // 손을 올린 화면 노드를 살짝 알린다.
+      const over = screens.find((n) => hit(n, e.clientX, e.clientY));
+      for (const scr of screens) {
+        scr.classList.toggle("lm-node--linked", over === scr || links.has(keyOf(doc, scr)));
+      }
+    });
+    const finish = (e) => {
+      if (!drag || drag.doc !== doc) return;
+      drag.line?.remove();
+      drag = null;
+      sync();
+      draw();
+      const over = screens.find((n) => hit(n, e.clientX, e.clientY));
+      if (over) connect(doc, over);
+    };
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+    handle.addEventListener("click", () => {
+      if (suppressClick) return;
+      connectNext(doc);
+    });
+  }
+
+
+  sync();
+  draw();
+  addEventListener("resize", draw);
+  if ("ResizeObserver" in window) new ResizeObserver(draw).observe(lmStage);
+}

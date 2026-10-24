@@ -377,7 +377,7 @@ OS 자격 증명 저장소(맥 키체인 등)에만 있어요. 공유 서버를 
 ## 📚 더 알아보기
 
 - 📘 **[사용 설명서](docs/GUIDE.md)** — 화면 하나하나, 버튼 하나하나를 적은 전체 안내
-- 🌐 **[소개 페이지](https://colosseumcoinckr.github.io/colonova-design/)** — 말하기 · 찍기 · 제출 장면을 고르고, 설치 없이 기능 체험하기
+- 🌐 **[소개 페이지](https://colosseumcoinckr.github.io/colonova-design/)** — 말하기 · 찍기 · 제출 장면을 고르고, 기획서 · 연결 지도까지 설치 없이 체험하기
 - 💌 **[초대장 만들기](https://colosseumcoinckr.github.io/colonova-design/#invite)** — 개발자가 사용자에게 보낼 초대 파일 만들기
 - 🛠️ **[개발자 · 운영자 안내](docs/DEVELOPERS.md)** — 팀의 서비스를 연결하는 법, 소스 · 배포 안내
 

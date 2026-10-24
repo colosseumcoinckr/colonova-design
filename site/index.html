@@ -6,13 +6,13 @@
     <title>ColoNova Design — 말과 문서가 화면이 됩니다</title>
     <meta
       name="description"
-      content="기획자 · 디자이너 · 사업/운영 담당자를 위한 AI 화면 제작 도구. 말로 부탁하면 우리 서비스의 진짜 화면이 그 자리에서 바뀌고, 제출 한 번으로 개발자에게 넘어가요. 코딩 지식도 터미널도 필요 없어요."
+      content="기획자 · 디자이너 · 사업/운영 담당자를 위한 AI 기획 · 화면 제작 도구. 말로 부탁하면 우리 서비스의 진짜 화면이 그 자리에서 바뀌고, Confluence 기획 문서도 같은 창에서 읽고 고쳐요. 제출 한 번으로 개발자에게 넘어가요. 코딩 지식도 터미널도 필요 없어요."
     >
     <link rel="canonical" href="https://colosseumcoinckr.github.io/colonova-design/">
     <meta property="og:title" content="ColoNova Design — 말과 문서가 화면이 됩니다">
     <meta
       property="og:description"
-      content="말하고 · 찍고 · 제출. 우리 서비스의 진짜 화면이 그 자리에서 바뀝니다 — 코딩 지식도 터미널도 필요 없어요."
+      content="말하고 · 찍고 · 제출. 우리 서비스의 진짜 화면이 그 자리에서 바뀌고, Confluence 기획 문서도 같은 창에서 읽고 고쳐요 — 코딩 지식도 터미널도 필요 없어요."
     >
     <meta property="og:type" content="website">
     <meta property="og:locale" content="ko_KR">
@@ -34,10 +34,10 @@
     >
     <!-- 동기: 저장된 테마를 첫 페인트 전에 입힌다 — 밝은 테마가 어두운 화면으로 번쩍이지 않게. -->
     <script src="theme.js?v=1"></script>
-    <link rel="stylesheet" href="style.css?v=15">
+    <link rel="stylesheet" href="style.css?v=16">
     <script type="module" src="invite.js?v=11"></script>
     <script type="module" src="demo.js?v=12"></script>
-    <script type="module" src="bento.js?v=2"></script>
+    <script type="module" src="bento.js?v=3"></script>
     <script type="module" src="page.js?v=2"></script>
     <script type="module" src="motion.js?v=2"></script>
     <script type="module" src="flair.js?v=2"></script>
@@ -96,6 +96,7 @@
           <ul class="hero__trust">
             <li>macOS · Windows</li>
             <li>코딩 지식 없이</li>
+            <li>기획 문서도 같은 창에서</li>
           </ul>
           <p class="hero__dev">
             시작할 때 <a href="#install">내 Claude 계정 · 개발자의 초대 파일</a>을 준비하세요.
@@ -119,8 +120,9 @@
               </div>
               <div class="appwin__body">
                 <aside class="mock-side">
-                  <div class="ms-row">
-                    <svg viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" /></svg>새 대화
+                  <div class="ms-switch">
+                    <i></i>회원 관리
+                    <svg class="ms-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5" /></svg>
                   </div>
                   <div class="ms-row">
                     <svg viewBox="0 0 12 12"><path d="M2 5.5 6 2l4 3.5M3.2 4.8V10h5.6V4.8" /></svg
@@ -134,11 +136,34 @@
                     </svg
                     >찾기
                   </div>
-                  <div class="ms-switch">
-                    <i></i>회원 관리
-                    <svg class="ms-chev" viewBox="0 0 12 12"><path d="M3 4.5 6 7.5 9 4.5" /></svg>
+                  <div class="ms-row">
+                    <svg viewBox="0 0 12 12">
+                      <path d="M3 2h4.5L10 4.5V10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" />
+                      <path d="M7.5 2v2.5H10" />
+                    </svg
+                    >기획서
+                    <span class="ms-note">초안 2</span>
+                  </div>
+                  <div class="ms-row">
+                    <svg viewBox="0 0 12 12">
+                      <circle cx="2.8" cy="6" r="1.5" />
+                      <circle cx="9.2" cy="2.9" r="1.5" />
+                      <circle cx="9.2" cy="9.1" r="1.5" />
+                      <path d="M4.2 5.4 7.8 3.4M4.2 6.6 7.8 8.6" />
+                    </svg
+                    >연결
+                  </div>
+                  <div class="ms-row ms-row--on">
+                    <svg viewBox="0 0 12 12">
+                      <rect x="1.6" y="2.2" width="8.8" height="6.4" rx="1" />
+                      <path d="M4.2 10.2h3.6" />
+                    </svg
+                    >화면
                   </div>
                   <div class="ms-sect">대화</div>
+                  <div class="ms-row">
+                    <svg viewBox="0 0 12 12"><path d="M6 2v8M2 6h8" /></svg>새 대화
+                  </div>
                   <div class="ms-sess ms-sess--on">회원 목록 검색</div>
                   <div class="ms-sess">로그인 화면</div>
                   <div class="ms-tool">
@@ -569,6 +594,103 @@
             </div>
           </div>
 
+          <!-- 기획서 — Confluence 문서를 읽고, 초안에서 AI 변경안을 골라 채택한다(2026-10-24) -->
+          <div class="bento__cell bento__cell--wide" id="bento-plans">
+            <p class="bento__name">기획서도 이 창에서 읽고 고쳐요</p>
+            <p class="bento__desc">
+              Confluence 기획 문서를 사이드바 <b>기획서</b>에서 바로 읽어요 — 10분마다 저절로
+              최신이 돼요. <b>고치기</b>를 누르면 이 컴퓨터의 <b>초안</b>이 열리고, 옆의 기획
+              대화에서 AI 가 만든 <b>변경안</b>을 골라 채택해요. 고친 문서나 절은
+              <b>화면에서 확인</b>로 화면을 고치는 말에 얹어요.
+            </p>
+            <div class="pd-stage" id="pd-stage" data-state="offer">
+              <div class="pd-doc">
+                <p class="pd-crumb">기획서 › 회원 › 회원 정책서</p>
+                <b class="pd-title">회원 정책서</b>
+                <span class="pd-meta">판 11 · 3일 전 고침</span>
+                <div class="pd-block" id="pd-block">
+                  <span class="pd-before"
+                    >부분 취소는 고객센터 전화로만 받고, 결제일부터 7일이 지나면 받지
+                    않는다.</span
+                  >
+                  <span class="pd-after">
+                    <span class="pd-badge">고침</span>
+                    <span class="pd-table">
+                      <span><b>결제일부터 7일 안</b>전화 · 문의 모두에서 받는다</span>
+                      <span><b>7일이 지나면</b>받지 않는다</span>
+                    </span>
+                  </span>
+                </div>
+                <p class="pd-block pd-block--plain">
+                  회원은 가입 후 30일 안에 첫 결제 시 10% 할인을 받는다.
+                </p>
+              </div>
+              <div class="pd-chat">
+                <p class="pd-chat-note">
+                  이 AI 는 문서의 변경안만 만들어요 — 화면과 Confluence 는 바꾸지 않아요
+                </p>
+                <p class="pd-line pd-line--me">부분 취소 조건을 표로 정리해 줘</p>
+                <div class="pd-card" id="pd-card">
+                  <span class="pd-card__name">변경안 · 부분 취소 조건</span>
+                  <span class="pd-diff">
+                    <del>고객센터 전화로만 받고, 결제일부터 7일이 지나면 받지 않는다</del>
+                    <ins>조건을 표 두 줄로 정리</ins>
+                  </span>
+                  <span class="pd-card__offer">
+                    <button type="button" class="pd-adopt" id="pd-adopt">고른 것 채택</button>
+                  </span>
+                  <span class="pd-card__done" aria-live="polite">
+                    채택했어요 — 초안에 반영됐어요
+                    <button type="button" class="pd-again" id="pd-again">다시 해 보기</button>
+                  </span>
+                </div>
+              </div>
+            </div>
+            <p class="bento__foot">
+              채택은 초안에만 닿아요 — Confluence 에 올리는 <b>발행</b>은 검증이 끝나는 대로
+              열려요.
+            </p>
+          </div>
+
+          <!-- 연결 지도 — 문서 노드를 끌어 화면 노드에 잇는다(2026-10-24) -->
+          <div class="bento__cell" id="bento-map">
+            <p class="bento__name">문서와 화면을 한 지도에서</p>
+            <p class="bento__desc">
+              사이드바 <b>연결</b>에서 기획 문서와 이 프로젝트의 화면이 노드로 서요. 문서를 끌어
+              화면에 잇고, <b>보관</b> · <b>제출</b>을 지나면 팀이 같은 지도를 봐요.
+            </p>
+            <div class="lm-stage" id="lm-stage">
+              <svg class="lm-svg" id="lm-svg" aria-hidden="true"></svg>
+              <div class="lm-col lm-col--docs">
+                <span class="lm-col-title">기획서</span>
+                <div class="lm-node" data-node="doc-policy">
+                  회원 정책서
+                  <button
+                    type="button"
+                    class="lm-handle"
+                    aria-label="회원 정책서를 화면에 연결하기"
+                  ></button>
+                </div>
+                <div class="lm-node" data-node="doc-order">
+                  주문 기능설계서
+                  <button
+                    type="button"
+                    class="lm-handle"
+                    aria-label="주문 기능설계서를 화면에 연결하기"
+                  ></button>
+                </div>
+              </div>
+              <div class="lm-col lm-col--screens">
+                <span class="lm-col-title">화면</span>
+                <div class="lm-node" data-node="scr-member">회원 목록</div>
+                <div class="lm-node" data-node="scr-order">주문 상세</div>
+              </div>
+            </div>
+            <p class="bento__foot lm-note" id="lm-note" aria-live="polite">
+              문서 오른쪽 손잡이를 끌어 화면에 놓아 연결해 보세요 — 선을 누르면 끊겨요
+            </p>
+          </div>
+
           <!-- 찍기 — 여러 곳을 찍고, 문장 하나로 보낸다. 뜻은 문장이 정한다. -->
           <div class="bento__cell bento__cell--wide" id="bento-pin">
             <p class="bento__name">설명하지 말고, 찍어요</p>
@@ -940,6 +1062,40 @@
             </button>
           </li>
           <li>
+            <button
+              type="button"
+              class="say__row"
+              data-copy="부분 취소 조건을 표로 정리해 줘"
+            >
+              <span class="say__bubble"
+                ><span class="say__tag">기획 대화에서</span>부분 취소 조건을 표로 정리해
+                줘</span
+              >
+              <span class="say__arrow" aria-hidden="true">→</span>
+              <span class="say__result"
+                >변경안이 서고, 골라 채택하면 이 컴퓨터의 초안에 들어가요</span
+              >
+              <span class="say__copy" aria-hidden="true">복사</span>
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              class="say__row"
+              data-copy="회원 목록 화면을 이 정책서에 맞게 고쳐 줘"
+            >
+              <span class="say__bubble"
+                ><span class="say__tag">기획서에서 근거로</span>회원 목록 화면을 이 정책서에
+                맞게 고쳐 줘</span
+              >
+              <span class="say__arrow" aria-hidden="true">→</span>
+              <span class="say__result"
+                >문서 · 절을 근거로 얹어 보내면 AI 가 그 근거로 화면을 고쳐요</span
+              >
+              <span class="say__copy" aria-hidden="true">복사</span>
+            </button>
+          </li>
+          <li>
             <button type="button" class="say__row" data-copy="이게 뭐야?">
               <span class="say__bubble"><span class="say__tag">버튼 찍기</span>이게 뭐야?</span>
               <span class="say__arrow" aria-hidden="true">→</span>
@@ -1001,7 +1157,8 @@
             <strong>비밀은 이 컴퓨터에만</strong>
             <span
               >연결 코드와 AI 로그인은 맥 키체인 같은 OS 자격 증명 저장소에만 있어요. 공유 서버를
-              거치지 않아요.</span
+              거치지 않아요. 기획서(Confluence)의 이메일 · API 토큰도 저장 뒤에는 어디에도 다시
+              나오지 않아요.</span
             >
           </li>
           <li class="trust__card">
@@ -1201,6 +1358,24 @@
               작업은 이 컴퓨터에 있는 서비스의 복사본에서 일어나요. 서비스의 원본은 개발자가
               제출을 받아 합치기 전까지 그대로예요. 복사본 밖의 파일은 AI 가 고치지 못하게 도구가
               막아요. 마음에 안 들면 <b>작업 기록</b>에서 언제든 되돌리면 돼요.
+            </p>
+          </details>
+          <details class="faq__item">
+            <summary>Confluence 기획 문서도 앱에서 볼 수 있나요?</summary>
+            <p>
+              네. 설정 → <b>연결</b>에서 Confluence 사이트와 이메일 · API 토큰으로 한 번 연결하면
+              사이드바의 <b>기획서</b>에서 바로 읽어요. 10분마다 저절로 최신으로 가져오고,
+              <b>고치기</b>를 누르면 이 컴퓨터의 초안을 AI 와 함께 고쳐요. 고친 문서나 절은
+              <b>화면에서 확인</b>로 화면을 고치는 말에 얹어요. Confluence 에 올리는
+              <b>발행</b>은 검증이 끝나는 대로 열려요.
+            </p>
+          </details>
+          <details class="faq__item">
+            <summary>가져온 기획서는 어디에 남나요?</summary>
+            <p>
+              이 컴퓨터의 앱 기억 안에만 있어요. 제출에 타지 않고, 개발자 쪽에 쌓이지도 않아요.
+              Confluence 원본은 그대로고, 사람이 Confluence 에서 직접 고치는 길도 계속 열려
+              있어요.
             </p>
           </details>
           <details class="faq__item">

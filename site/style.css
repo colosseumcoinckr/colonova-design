@@ -800,6 +800,21 @@ main {
   padding: 0 5px;
   line-height: 15px;
 }
+/* 왼쪽 줄의 차례는 홈 · 찾기 · 기획서 · 연결 · 화면이다(2026-10-24). */
+.ms-row--on {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  box-shadow: inset 1.5px 0 0 var(--accent);
+}
+.ms-note {
+  margin-left: auto;
+  font-size: 9.5px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.mock-side > .ms-switch:first-child {
+  margin-top: 0;
+}
 .ms-switch {
   margin-top: 10px;
   font-weight: 700;
@@ -2414,6 +2429,305 @@ main {
   text-align: center;
   font-size: 11.5px;
   color: var(--muted);
+}
+
+/* 기획서 놀이 — 문서 한 장과 기획 대화가 나란히, 변경안을 골라 채택한다(2026-10-24) */
+.pd-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 14px;
+  margin-top: 10px;
+}
+.pd-doc {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.pd-crumb {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.pd-title {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+.pd-meta {
+  font-size: 11px;
+  color: var(--muted);
+}
+.pd-block {
+  position: relative;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--r-lg);
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-2);
+  word-break: keep-all;
+}
+.pd-block--plain {
+  background: transparent;
+}
+.pd-before,
+.pd-after {
+  display: block;
+}
+.pd-after {
+  display: none;
+  padding-left: 10px;
+  border-left: 2px solid var(--accent);
+}
+.pd-stage[data-state="adopted"] .pd-before {
+  display: none;
+}
+.pd-stage[data-state="adopted"] .pd-after {
+  display: block;
+}
+.pd-badge {
+  display: inline-block;
+  margin: 0 6px 4px 0;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--accent-glow);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 10px;
+  font-weight: 700;
+  vertical-align: 1px;
+}
+.pd-table {
+  display: grid;
+  gap: 4px;
+  margin-top: 4px;
+}
+.pd-table > span {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  font-size: 12px;
+  color: var(--text);
+}
+.pd-table b {
+  flex: none;
+  font-size: 11px;
+  color: var(--accent-strong);
+}
+.pd-chat {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pd-chat-note {
+  margin: 0;
+  padding: 6px 9px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-lg);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  word-break: keep-all;
+}
+.pd-line {
+  margin: 0;
+  max-width: 92%;
+  padding: 7px 11px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+.pd-line--me {
+  align-self: flex-end;
+  color: var(--on-accent);
+  background: var(--accent);
+  font-weight: 600;
+}
+.pd-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.pd-card__name {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.pd-diff {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  word-break: keep-all;
+}
+.pd-diff del,
+.pd-diff ins {
+  text-decoration: none;
+  padding: 4px 8px;
+  border-radius: var(--r-md);
+}
+.pd-diff del {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  text-decoration: line-through;
+}
+.pd-diff ins {
+  color: var(--text);
+  background: var(--ok-soft);
+  font-weight: 600;
+}
+.pd-card__offer,
+.pd-card__done {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pd-stage[data-state="offer"] .pd-card__done {
+  display: none;
+}
+.pd-stage:not([data-state="offer"]) .pd-card__offer {
+  display: none;
+}
+.pd-adopt {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  border-radius: var(--r-lg);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+.pd-adopt:hover {
+  filter: brightness(1.08);
+}
+.pd-card__done {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ok);
+}
+.pd-again {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-2);
+  border-radius: var(--r-lg);
+  padding: 6px 10px;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.pd-again:hover {
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+
+/* 연결 지도 놀이 — 문서 노드를 끌어 화면 노드에 잇는다(2026-10-24) */
+.lm-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 10px;
+  min-height: 190px;
+  padding: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  background: var(--panel);
+  overflow: hidden;
+}
+.lm-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.lm-svg line {
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.lm-svg line.lm-svg--temp {
+  stroke-dasharray: 4 4;
+  opacity: 0.75;
+  cursor: inherit;
+  pointer-events: none;
+}
+.lm-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1;
+}
+.lm-col-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.lm-node {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  word-break: keep-all;
+}
+.lm-node--linked {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+.lm-handle {
+  position: absolute;
+  right: -7px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--bg-2);
+  padding: 0;
+  cursor: grab;
+  touch-action: none;
+}
+.lm-handle:hover {
+  background: var(--accent);
+}
+.lm-handle:active {
+  cursor: grabbing;
+}
+.lm-note {
+  margin: auto 0 0;
+}
+@media (max-width: 560px) {
+  .pd-stage {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 찍기 놀이 — 여러 곳을 찍고 문장 하나로 보낸다 */

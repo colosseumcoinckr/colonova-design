@@ -42,8 +42,29 @@ export function describeElementInPage(
     return text.replace(/\s+/g, " ").trim().slice(0, 400);
   };
 
-  /** body 부터의 CSS 경로 — 같은 태그의 형제가 둘 이상일 때만 nth-of-type.
-   *  레포 마커 철거(2026-09-21)와 같은 결: 닻은 언제나 body 다. */
+  /** 말짱한 클래스인가 — 스타일 도구가 뱉는 해시(css-xxxx · 숫자와 대문자가
+   *  섞인 열두 글자짜리)는 셀렉터의 짐일 뿐이라 걷어낸다(orca grab 의 판정,
+   *  2026-10-25). 사람이 지은 클래스(Tailwind · BEM)는 살아 남는다. */
+  const isStableClass = (cls: string): boolean => {
+    if (cls === "" || cls.length > 60) return false;
+    if (/^css-[a-z0-9]+$/i.test(cls)) return false;
+    return !(/^[A-Za-z0-9_-]{12,}$/.test(cls) && /\d/.test(cls) && /[A-Z]/.test(cls));
+  };
+
+  /** 셀렉터 조각의 이스케이프 — Tailwind 처럼 ':' · '/' 를 품은 클래스도
+   *  querySelector 가 읽는 글자로 바꾼다. CSS.escape 는 페이지 월드의 글자다. */
+  const cssEscape = (value: string): string => {
+    const native = (globalThis as { CSS?: { escape?: (value: string) => string } }).CSS?.escape;
+    if (native) return native(value);
+    return value.replace(/[^a-zA-Z0-9_-]/g, (ch) => `\\${ch}`);
+  };
+
+  /** body 부터의 CSS 경로 — 조각은 id · 말짱한 클래스(둘까지)를 먼저 쓰고,
+   *  같은 태그의 형제가 둘 이상일 때는 nth-of-type 을 얹는다(위치는 닻의
+   *  유일성을 지키는 마지막 보루다). 위치만 셋던 옛 경로는 살아 움직이는
+   *  DOM 에 약했다 — 클래스 조각이 형제의 자리 바뀜에도 살아 남는다
+   *  (2026-10-25, orca grab 참고). 닻은 언제나 body 다(2026-09-21 레포
+   *  마커 철거와 같은 결). */
   const cssPath = (element: Element): string => {
     const parts: string[] = [];
     for (
@@ -58,8 +79,14 @@ export function describeElementInPage(
         (candidate) => candidate.tagName === current.tagName,
       );
       const index = siblings.length > 1 ? `:nth-of-type(${siblings.indexOf(current) + 1})` : "";
-      const id = current.id ? `#${current.id}` : "";
-      parts.unshift(`${tag}${id}${index}`);
+      const id = current.id ? `#${cssEscape(current.id)}` : "";
+      const classes = id
+        ? []
+        : Array.from(current.classList)
+            .filter(isStableClass)
+            .slice(0, 2)
+            .map((cls) => `.${cssEscape(cls)}`);
+      parts.unshift(`${tag}${id}${classes.join("")}${index}`);
     }
     return ["body", ...parts].join(" > ");
   };
@@ -198,7 +225,8 @@ export function describeElementInPage(
       const id = element.id || undefined;
       const testId =
         element.getAttribute("data-testid") ?? element.getAttribute("data-test") ?? undefined;
-      const classes = Array.from(element.classList).slice(0, 5);
+      // 해시성 클래스는 걷어낸다 — 도구가 뱉은 글자는 갈고리가 아니다(2026-10-25).
+      const classes = Array.from(element.classList).filter(isStableClass).slice(0, 5);
       const attrs: {
         id?: string;
         testId?: string;

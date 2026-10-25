@@ -208,3 +208,40 @@ test("오버레이 출력: 클래스도 속성도 없는 요소와 링크 · 입
   assert.equal(read.envelope.pin.element.attrs?.name, "go");
   assert.equal(read.envelope.pin.element.component, "a");
 });
+
+test("오버레이 출력: 경로 조각은 id · 말짱한 클래스 를 먼저 쓴다(2026-10-25, orca grab 참고)", () => {
+  const card = new FakeElement("div", { class: "card member-card css-1q2w3e4 Xy9zAbcDefGhi" }, {}, [
+    "회원",
+  ]);
+  const { element } = pinOf(card);
+  // 해시성(css-… · 숫자·대문자 섞인 12자)은 걷혀도 사람이 지은 클래스는 조각에 오른다.
+  assert.equal(element.path, "body > main > section > div.card.member-card");
+
+  const save = new FakeElement("button", { id: "save-row" }, {}, ["저장"]);
+  assert.equal(pinOf(save).element.path, "body > main > section > button#save-row");
+});
+
+test("오버레이 출력: 형제가 둘 이상이면 클래스 위에 위치가 얹혀 닻은 하나다", () => {
+  const first = new FakeElement("div", { class: "cell" }, {}, ["첫 칸"]);
+  const second = new FakeElement("div", { class: "cell" }, {}, ["둘째 칸"]);
+  const section = new FakeElement("section", {}, {}, [first, second]);
+  const main = new FakeElement("main", {}, {}, [section]);
+  body.childNodes.length = 0;
+  body.append(main);
+  const target = describeElementInPage(second);
+  assert.ok(target, "오버레이가 요소를 읽는다");
+  assert.equal(target.path, "body > main > section > div.cell:nth-of-type(2)");
+});
+
+test("오버레이 출력: 특수문자 클래스는 이스케이프되어 유효한 셀렉터가 된다", () => {
+  const box = new FakeElement("div", { class: "w-1/2 hover:bg-blue-600" }, {}, ["반 폭"]);
+  const { element } = pinOf(box);
+  assert.equal(element.path, "body > main > section > div.w-1\\/2.hover\\:bg-blue-600");
+});
+
+test("오버레이 출력: attrs.classes 에서도 해시성 클래스는 걷혀 있다", () => {
+  const row = new FakeElement("li", { class: "css-1a2b3c row sc-AbCdEf123456" }, {}, ["한 줄"]);
+  const { element, envelope } = pinOf(row);
+  assert.deepEqual(element.attrs?.classes, ["row"]);
+  assert.equal(readPinEnvelope(envelope).ok, true);
+});

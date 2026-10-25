@@ -82,7 +82,11 @@ git, 그리고 데몬 환경에 `ANTHROPIC_API_KEY` 가 없을 것. Node(22 이�
 경보에 따라 `@modelcontextprotocol/sdk`(^1.31.0 — claude-agent-sdk 의 peer, daemon 에 실린다)
 와 `proxy-addr`(^2.0.8 — 같은 연쇄의 express 쪽, 치명)을 추가했고 `mermaid` 는 범위 안
 갱신(12.2.0)으로 `katex` 를 0.18.x 에 올렸다. 패치가 없는 `http-cache-semantics` ·
-`sprintf-js`(모두 electron-builder 빌드 도구 연쇄)는 남겨 두고 본다.
+`sprintf-js`(모두 electron-builder 빌드 도구 연쇄)는 남겨 두고 본다. 2026-10-25 Dependabot
+경보(1 high · 2 moderate)에 따라 `body-parser`(^2.4.0 — express 연쇄, 압축 본문 뒤 잉여
+바이트 DoS)와 `hono`(^4.13.11 — MCP SDK 의 정적 경로 미들웨어 우회)를 더하고 같은 연쇄의
+`fast-uri`(^3.1.9) · `ip-address`(^10.7.4)도 올렸다 — 넷은 전부 claude-agent-sdk → MCP SDK
+전이 의존성이고 상위 선언 범위 안의 패치 버전이다.
 
 **연결 레포가 개발 규칙을 정한다**(2026-10-20 사용자 요청). Claude Code는 프로젝트의
 로컬 클론을 작업 경로로 사용한다. 앱은 내장 MCP를 주입하지 않는다. 브라우저 중계 엔드포인트와

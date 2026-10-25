@@ -1138,6 +1138,12 @@ export const L = {
     agentFailed: "설치가 안 됐어요",
     /** 확인이 실패로 끝난 항목 — 도는 표시 대신 손이 필요하다는 말. */
     toolsBlocked: "확인이 막힌 항목이 있어요",
+    /** 도구 칸의 고침이 도는 동안(2026-10-25 설치 인지 손질) — pnpm 설치는 요청이 끝까지 돌고 돌아오는 사이 방송이 없다. */
+    toolsInstalling: "설치하는 중…",
+    /** macOS git 설치 — OS 설치 창에서 진행되는 동안. 끝은 다시 확인만이 안다(2026-10-25 설치 인지 손질). */
+    toolsInstallingOutside: "설치 창에서 설치하고 있어요",
+    /** Claude 설치 시작 직전의 예고 — 진행기 방송이 오기까지의 빈틈(loginStarting 과 같은 모양, 2026-10-25). */
+    installStarting: "설치를 시작하고 있어요",
     /** 설치 진행기의 날 줄을 가려낸 세 단계의 말 — lib/install-step.ts 의 판정과 짝이다. */
     installSteps: {
       download: "내려받는 중…",

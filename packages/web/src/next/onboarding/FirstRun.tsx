@@ -22,6 +22,7 @@ import {
   WrenchIcon,
 } from "./icons";
 import { currentGate, type GateKey, gatePasses, takeFreshPasses } from "./motion";
+import { type ToolWord, toolProgress } from "./tool-progress";
 import "./onboarding.css";
 
 /**
@@ -40,6 +41,11 @@ import "./onboarding.css";
  * 도구 칸이 막히거나, 고칠 단추가 없는 AI 칸에는 `다시 확인` 이 서고, AI 칸은 도구가 알려 준 이유를
  * 말한다. 도구 칸의 고침 단추가 돌려준 안내는 버리지 않고 단추 아래에 둔다. 머리는 준비물(유료 계정 ·
  * 초대 파일)을 먼저 말하고, 체크리스트 아래에는 `막혔나요?` 진단 복사가 선다.
+ *
+ * 2026-10-25 설치 인지 손질: 고침을 누른 뒤에도 화면이 가만히 있으면 설치가 도는지 알 수 없었다.
+ * pnpm 설치는 누름 즉시 돌림과 `설치하는 중…` 이 서고(macOS git 설치는 OS 설치 창의 기다림이
+ * 알약에 남는다 — 판정은 `tool-progress.ts`), Claude 설치는 진행기 방송이 닿을 때까지 예고 문장이
+ * 서고 단추의 재눌림이 막힌다(`loginLaunching` 과 같은 모양).
  */
 export function FirstRun({
   daemon,
@@ -70,6 +76,12 @@ export function FirstRun({
   const toolsOpen = toolSteps.filter((step) => step.status !== "pass");
   // 확인이 실패한 항목 — 도는 표시 대신 손이 필요하다는 말을 낸다.
   const toolsFailed = toolSteps.some((step) => step.status === "fail");
+
+  // ── 도구 칸의 고침이 도는 동안(2026-10-25 설치 인지 손질) — pnpm 설치는 요청이 corepack 을
+  //    끝까지 돌리고 돌아오는 길이라 그 사이 방송이 없다. 누름 즉시 돌림이 서고 단추가 꺼진다.
+  const [toolFixBusy, setToolFixBusy] = useState<string | null>(null);
+  // macOS git 설치 — OS 설치 창을 열었다는 답. 앱은 끝을 모르므로 다시 확인이 지운다.
+  const [toolInstallOpened, setToolInstallOpened] = useState(false);
 
   // ── 세 항목의 통과 — 링 · 카드의 위계 · 통과의 순간이 같은 판을 읽는다.
   const projects = daemon.projects;
@@ -139,19 +151,40 @@ export function FirstRun({
       .finally(() => setLoginLaunching(false));
   }, [loginStarted, loginLive, installing, claudeStep, daemon.api, provider]);
 
-  const runFix = (step: OnboardingStep) => {
+  // 설치 시작의 직후 갭 — fix 요청이 설치 진행기(installing)로 이어지기까지. 이 동안만
+  // 예고 문장이 서고 단추의 재눌림이 막힌다(2026-10-25 설치 인지 손질 · loginLaunching 과 같은 모양).
+  // 시작했다는 답(started)을 받은 뒤로는 진행기 · 끝 방송이 이어받아 지운다.
+  const [installLaunching, setInstallLaunching] = useState(false);
+  useEffect(() => {
+    if (installing || daemon.installDone) setInstallLaunching(false);
+  }, [installing, daemon.installDone]);
+  const startClaudeInstall = () => {
+    setInstallLaunching(true);
     void daemon.api
-      .onboardingFix(
-        step.fix?.kind ?? "install-claude",
-        step.fix?.kind === "login-claude" ? provider : undefined,
-      )
+      .onboardingFix("install-claude")
+      .then((reply) => {
+        if (!fixReplyStarted(reply)) setInstallLaunching(false);
+      })
+      .catch(() => setInstallLaunching(false));
+  };
+
+  const runFix = (step: OnboardingStep) => {
+    const kind = step.fix?.kind ?? "install-claude";
+    if (kind === "install-claude") {
+      startClaudeInstall();
+      return;
+    }
+    void daemon.api
+      .onboardingFix(kind, kind === "login-claude" ? provider : undefined)
       .catch(() => undefined);
   };
 
   // ── 다시 확인 — 앱 밖에서 고친 것(설치 창 · IT 의 허용 · 다시 설치)을 앱을 다시 켜지 않고 읽는다.
+  //    OS 설치 창의 끝도 이 길만이 안다 — 기다림 상태를 여기서 지운다.
   const [rechecking, setRechecking] = useState(false);
   const recheck = () => {
     if (rechecking) return;
+    setToolInstallOpened(false);
     setRechecking(true);
     void daemon.api
       .onboardingCheck(provider)
@@ -173,27 +206,50 @@ export function FirstRun({
   const [toolNote, setToolNote] = useState<string | null>(null);
   const runToolFix = (step: OnboardingStep) => {
     const kind = step.fix?.kind;
-    if (!kind) return;
+    if (!kind || toolFixBusy !== null) return;
     setToolNote(null);
+    setToolInstallOpened(false);
+    setToolFixBusy(kind);
     void daemon.api
       .onboardingFix(kind)
       .then((reply) => {
         setToolNote(fixReplyLine(reply));
+        // macOS git — 설치 창이 열렸다는 답을 기다림 상태로 남긴다(끝은 다시 확인이 읽는다).
+        if (kind === "install-git" && fixReplyStarted(reply)) setToolInstallOpened(true);
         // 이 고침은 끝까지 돌고 돌아온다 — 곧바로 다시 확인한다.
         if (kind === "install-pnpm") recheck();
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setToolFixBusy(null));
   };
   const recheckButton = (primary: boolean) => (
     <button
       type="button"
       className={`nx-btn${primary ? " nx-btn--pri" : ""}`}
-      disabled={rechecking || checking}
+      disabled={rechecking || checking || toolFixBusy !== null}
       onClick={recheck}
     >
       {rechecking ? L.onboarding.toolsChecking : L.onboarding.recheck}
     </button>
   );
+
+  // ── 도구 칸의 진행(2026-10-25 설치 인지 손질) — 판정은 순수 모듈(tool-progress)이,
+  //    문장은 L 이 맡는다. 누름 즉시 돌림이 서고, OS 설치 창의 기다림이 알약에 남는다.
+  const toolsProgress = toolProgress({
+    pass: toolsPass,
+    fixing: toolFixBusy,
+    installOpened: toolInstallOpened,
+    failed: toolsFailed,
+    rechecking,
+    slowFirstCheck: firstCheckPending && checkSlow,
+  });
+  const toolStatusWord: Record<ToolWord, string> = {
+    ready: L.vocab.toolsReady,
+    installing: L.onboarding.toolsInstalling,
+    outside: L.onboarding.toolsInstallingOutside,
+    checking: L.onboarding.toolsChecking,
+    blocked: L.onboarding.toolsBlocked,
+  };
 
   // ── 막혔나요 — 도움말 메뉴와 같은 진단 글을 첫 화면에서 바로 복사한다.
   const buildReport = useDiagnosticsText(daemon);
@@ -223,7 +279,7 @@ export function FirstRun({
   const installPhase = installStep === null ? 0 : INSTALL_STEPS.indexOf(installStep);
 
   const agentFix = claudeStep && claudeStep.status !== "pass" ? (claudeStep.fix ?? null) : null;
-  const agentBusy = installing || loginLive || checking;
+  const agentBusy = installing || loginLive || checking || installLaunching;
 
   const agentRight =
     agentState === "pass"
@@ -280,19 +336,11 @@ export function FirstRun({
           {/* 도구 준비 */}
           <Step
             glyph={<WrenchIcon />}
-            state={
-              toolsPass ? "ok" : toolsFailed || (firstCheckPending && checkSlow) ? "act" : "run"
-            }
+            state={toolsProgress.tile}
             current={current === "tools"}
             fresh={freshPasses.includes("tools")}
             title={L.onboarding.tools}
-            status={
-              toolsPass
-                ? L.vocab.toolsReady
-                : toolsFailed
-                  ? L.onboarding.toolsBlocked
-                  : L.onboarding.toolsChecking
-            }
+            status={toolStatusWord[toolsProgress.word]}
           >
             {/* 막힌 도구 — 이유 문장들, 그 고침 단추들과 `다시 확인` 이 한 줄에 선다. 고침이 돌려준 안내는 그 아래. */}
             <Fold open={toolsOpen.length > 0}>
@@ -318,6 +366,7 @@ export function FirstRun({
                       key={step.id}
                       type="button"
                       className="nx-btn nx-btn--pri"
+                      disabled={toolFixBusy !== null}
                       onClick={() => runToolFix(step)}
                     >
                       {step.fix.label}
@@ -383,6 +432,12 @@ export function FirstRun({
 
             {/* 아직 시작 전 — 설치 · 로그인의 첫 걸음. */}
             <Fold open={agentState === "idle" && !loginFailed && agentFix !== null}>
+              {/* 설치 시작이 나간 뒤 진행기 방송이 서기까지의 빈틈 — 눌렀는지 알 수 없게 하지 않는다(2026-10-25). */}
+              {installLaunching && (
+                <p className="nx-ob-d" role="status">
+                  {L.onboarding.installStarting}
+                </p>
+              )}
               {/* 시작이 나간 뒤 로그인 판이 서기까지의 빈틈 — 예고 없이 브라우저가 뜨지 않게. */}
               {loginLaunching && (
                 <p className="nx-ob-d" role="status">
@@ -428,6 +483,12 @@ export function FirstRun({
                   {failureParts.itLine && (
                     <div className="nx-codebox nx-codebox--ask">{failureParts.itLine}</div>
                   )}
+                  {/* 다시 시도가 나간 뒤 진행기 방송이 서기까지의 빈틈(2026-10-25 설치 인지 손질). */}
+                  {installLaunching && (
+                    <p className="nx-ob-d" role="status">
+                      {L.onboarding.installStarting}
+                    </p>
+                  )}
                   <div className="nx-ob-acts">
                     {failureParts.itLine && (
                       <CopyButton
@@ -441,9 +502,7 @@ export function FirstRun({
                       type="button"
                       className="nx-btn"
                       disabled={agentBusy}
-                      onClick={() =>
-                        void daemon.api.onboardingFix("install-claude").catch(() => undefined)
-                      }
+                      onClick={startClaudeInstall}
                     >
                       {L.onboarding.retry}
                     </button>
@@ -569,6 +628,12 @@ function fixReplyLine(reply: unknown): string | null {
   if (typeof guidance === "string" && guidance !== "") return guidance;
   if (typeof detail === "string" && detail !== "") return detail;
   return null;
+}
+
+/** git · Claude 설치 고침의 답이 `started: true` 를 내장하는지 — 방송을 기다릴지 물러설지 정한다(2026-10-25). */
+function fixReplyStarted(reply: unknown): boolean {
+  if (typeof reply !== "object" || reply === null) return false;
+  return (reply as { started?: unknown }).started === true;
 }
 
 /** 카드 한 칸의 상태 — 통과 · 도는 중 · 손이 필요 · 기다림 · 막힘. */

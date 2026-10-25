@@ -1020,10 +1020,15 @@ function bodyNext(data: unknown): string | null {
   }
 }
 
-/** 문서 한 줄 읽기 — v2 페이지 응답을 정본 모양으로. 본문이 없으면 없는 것이다(readPage · readTrashedPage 공용). */
+/**
+ * 문서 한 줄 읽기 — v2 페이지 응답을 정본 모양으로(readPage · readTrashedPage 공용).
+ * 본문 칸이 아예 없으면 못 읽은 것이다 — 빈 문자열은 빈 문서다(2026-10-25 devjik 사이트 실측 —
+ * 빈 페이지의 v2 응답은 `value: ""` 로 오고, 이것을 실패로 돌리면 빈 기준 페이지가 연결조차 못 했다).
+ */
 function pageOf(row: Record<string, unknown>): ConfluencePage | null {
   const id = asString(row.id);
-  const storage = asString(asRecord(asRecord(row.body)?.storage)?.value);
+  const storageValue = asRecord(asRecord(row.body)?.storage)?.value;
+  const storage = typeof storageValue === "string" ? storageValue : null;
   if (!id || storage === null) return null;
   return {
     id,

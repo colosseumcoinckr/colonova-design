@@ -121,6 +121,26 @@ test("readPage — 저장 포맷 원문과 판을 읽는다(정본은 저장 포
   });
 });
 
+test('readPage — 빈 문서는 빈 본문("")으로 읽는다(2026-10-25 devjik 사이트 실측)', async () => {
+  const { client } = fake({
+    "/wiki/api/v2/pages/2?body-format=storage": {
+      status: 200,
+      json: {
+        id: "2",
+        title: "테스트용 페이지1",
+        spaceId: "COLO",
+        version: { number: 1, createdAt: "2026-10-25T12:02:01.867Z", authorId: "acct-1" },
+        body: { storage: { value: "", representation: "storage" } },
+      },
+    },
+  });
+  const read = await client.readPage("2");
+  if (!read.readable)
+    assert.fail("빈 본문의 문서도 읽혀야 한다 — 빈 페이지가 연결의 길을 막지 않는다");
+  assert.equal(read.value.storage, "");
+  assert.equal(read.value.title, "테스트용 페이지1");
+});
+
 test("readPage — 실패는 한 단어로 분류되고 던지지 않는다(401 · 403 · 409 · 못 읽는 본문)", async () => {
   const routes = (status: number, json: unknown = {}) => ({
     "/wiki/api/v2/pages/1?body-format=storage": { status, json },

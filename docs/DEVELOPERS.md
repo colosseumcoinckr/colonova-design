@@ -1567,7 +1567,9 @@ exclude 줄도 보관 거름도 없다. 자리는 `confluence-mirror.ts` 의 두
 연결 레포가 자기 `docs/plans/` 에 문서를 추적할 수 있어서 그 자리는 보통 레포 폴더로 돌려준다.
 
 - **부품** — `confluence-client.ts`(REST — fetch 전송 주입, Basic 인증 한 곳, 401/403/409/429
-  분류와 429 재시기 사다리, 트리는 다섯 종류의 `direct-children`), `confluence-markdown.ts`(저장 포맷 → 파생 마크다운 + 절 목록 —
+  분류와 429 재시기 사다리, 트리는 다섯 종류의 `direct-children`; 빈 문서는 본문 칸이 `""` 로 오는데 빈 문서로 읽는다 —
+  `body` 칸이 아예 없는 것만 못 읽음, 2026-10-25 devjik 사이트 실측 — 빈 기준 페이지가 연결에서 「응답에 본문이
+  없습니다」로 거부되던 것을 고쳤다), `confluence-markdown.ts`(저장 포맷 → 파생 마크다운 + 절 목록 —
   매크로 든 절은 `macro:true`), `confluence-ledger.ts`(원장 — parse 는 절대 안 던진다 · 원자
   쓰기 · 절대 경로이거나 `..` · `.` 조각이 낀 path 의 항목은 읽을 때 버린다 — 증분 쓰기와 거두기가 사본 밖을 만지지 않게,
   2026-10-23), `confluence-path.ts`(트리 → 폴더 경로 — 위험 문자 걷기 · 이름 충돌은 id 접미 · 사본이 Claude Code 의 작업 폴더로

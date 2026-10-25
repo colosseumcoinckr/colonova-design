@@ -941,11 +941,25 @@
   font-size: var(--fs-sm);
 }
 
-/* 걸음의 배지는 블록의 것과 달리 줄 안에 선다. */
-.nx-dr-prop-step .nx-dr-badge {
-  position: absolute;
-  top: var(--sp-2);
-  right: var(--sp-2);
+/* 걸음의 머리줄 — 체크칸과 처지 배지 · 크게 보기가 한 줄에 선다(2026-10-25 UX 심화 사용). 배지는
+   머리줄의 흐름 안에 있다 — 크게 보기 단추와 같은 줄에 서게 absolute 를 걷었다. */
+.nx-dr-prop-step-hd {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-1);
+}
+
+.nx-dr-prop-step-hd > .nx-dr-check {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.nx-dr-prop-step-acts {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
 }
 
 .nx-dr-prop-note {
@@ -962,13 +976,42 @@
   border-top: 1px solid var(--line-soft);
   background: var(--bg);
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-1);
 }
 
 .nx-dr-prop-acts > button {
   flex: none;
+}
+
+/* 미선택 채택 잠김의 이유(2026-10-25 UX 관찰) — 꺼진 단추 곁에서 이유를 말한다. */
+.nx-dr-prop-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+
+/* 아무 걸음도 고르지 않은 동안 — 체크 상자가 숨 쉬며 먼저 고르라고 알린다(2026-10-25 UX 관찰). */
+.nx-dr-prop-steps[data-pick="none"] .nx-dr-check > input:not(:checked) {
+  box-shadow: 0 0 0 1px var(--accent-soft);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .nx-dr-prop-steps[data-pick="none"] .nx-dr-check > input:not(:checked) {
+    animation: nx-dr-pick-pulse 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes nx-dr-pick-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 1px var(--accent-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
 }
 
 /* 입력 — 여러 줄 칸, 근거 칩 줄, 근거 고르기 판. */
@@ -995,6 +1038,13 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
+}
+
+/* 모델 칩은 보내기 곁으로(2026-10-26) — 근거 담기가 왼쪽을 지키고, 칩 · 보내기가 오른쪽에
+   붙는다. margin:auto 가 남은 폭을 모두 삼켜 space-between 의 벌림이 사라진다. 좁은 칸에서는
+   줄바꿈(wrap)이 알아서 다음 줄에 내려놓는다. */
+.nx-dr-thread-acts > .nx-anchor {
+  margin-left: auto;
 }
 
 .nx-dr-refpick {
@@ -1128,6 +1178,46 @@
 }
 .nx-dr-prop-version .nx-dr-read {
   font-size: var(--fs-ui);
+}
+/*
+ * 기획서 칸의 표는 셀마다 제 폭을 지킨다(2026-10-25 UX 심화 사용). 전역 `.md table` 의 width:100%
+ * 이 좁은 칸에서 CJK 셀을 한 글자씩 접는다 — 「노쇼」가 「노/쇼」 로 쪼개지던 것이다. 칸보다 넓은
+ * 표는 `md__table-scroll` 이 옆으로 굴리고, 좁으면 min-width:100% 으로 칸을 채운다.
+ */
+.nx-dr-read .md table,
+.nx-dr-msg-md .md table {
+  width: auto;
+  min-width: 100%;
+}
+.nx-dr-read .md th,
+.nx-dr-read .md td,
+.nx-dr-msg-md .md th,
+.nx-dr-msg-md .md td {
+  min-width: 4em;
+}
+/*
+ * 견주기 크게 보기(2026-10-25 UX 심화 사용) — 좁은 칸에서 접히는 걸음을 넓은 판에 나란히 펼친다.
+ * 두 쪽은 카드의 짧은 견주기와 같은 `.nx-dr-prop-version` 모양을 쓴다. 판이 좁은 창에서는 위아래로.
+ */
+.nx-dr-cmp {
+  width: min(760px, calc(100% - 40px));
+  max-height: min(80vh, 720px);
+}
+.nx-dr-cmp-head {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
+}
+.nx-dr-cmp-sides {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+}
+@media (max-width: 640px) {
+  .nx-dr-cmp-sides {
+    grid-template-columns: 1fr;
+  }
 }
 .nx-dr-prop-step .nx-dr-check {
   align-items: flex-start;

@@ -27,7 +27,11 @@ export function draftHandlers(deps: DraftDeps): RequestHandlers<DraftRequest> {
     "draft.get": (message) => drafts.get(message.docKey),
     "draft.edit": (message) => drafts.edit(message.docKey, message.expectedRevision, message.edits),
     "draft.discard": (message) => drafts.discard(message.docKey),
-    "draft.ask": (message) => drafts.ask(message.docKey, message.text, message.refs),
+    "draft.ask": (message) =>
+      drafts.ask(message.docKey, message.text, message.refs, {
+        ...(message.model !== undefined ? { model: message.model } : {}),
+        ...(message.effort !== undefined ? { effort: message.effort } : {}),
+      }),
     "draft.cancel": (message) => drafts.cancel(message.docKey),
     "draft.thread": (message) => drafts.thread(message.docKey),
     "draft.adopt": (message) =>

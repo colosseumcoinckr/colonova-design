@@ -290,6 +290,29 @@ test("extraRoots 를 주면 추가 읽기 뿌리가 실리고 안 주면 키가 
   assert.equal("additionalDirectories" in withoutRoots.calls[0].options, false);
 });
 
+test("고른 모델 · 생각 시간은 실리고 안 골랐거나 빈 값이면 키가 없다(2026-10-26)", async () => {
+  const picked = fakeQuery([success(ANSWER)]);
+  await createDraftAiRunner(picked.fn)(
+    makeRequest({ model: "claude-opus-5", effort: "high" }).request,
+    collector(),
+  );
+  assert.equal(picked.calls[0].options.model, "claude-opus-5");
+  assert.equal(picked.calls[0].options.effort, "high");
+
+  const empty = fakeQuery([success(ANSWER)]);
+  await createDraftAiRunner(empty.fn)(
+    makeRequest({ model: null, effort: null }).request,
+    collector(),
+  );
+  assert.equal("model" in empty.calls[0].options, false);
+  assert.equal("effort" in empty.calls[0].options, false);
+
+  const bare = fakeQuery([success(ANSWER)]);
+  await createDraftAiRunner(bare.fn)(makeRequest().request, collector());
+  assert.equal("model" in bare.calls[0].options, false);
+  assert.equal("effort" in bare.calls[0].options, false);
+});
+
 test("뿌리가 둘이면 클론 안은 지나고 두 뿌리 밖 · 빠져나가는 경로는 막는다", async () => {
   const { fn, calls } = fakeQuery([success(ANSWER)]);
   await createDraftAiRunner(fn)(makeRequest({ extraRoots: [CLONE] }).request, collector());

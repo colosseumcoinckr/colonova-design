@@ -1109,11 +1109,12 @@ interface DaemonApi {
   /** 여러 걸음을 한 요청에 싣는다 — 하나라도 어긋나면 전부 거절된다. */
   draftEdit: (docKey: string, expectedRevision: number, edits: DraftEdit[]) => Promise<DraftView>;
   draftDiscard: (docKey: string) => Promise<{ discarded: boolean }>;
-  /** 초안 대화의 말 — 생성은 `draft.ai` 방송으로 이어진다. */
+  /** 초안 대화의 말 — 생성은 `draft.ai` 방송으로 이어진다. `pick` 은 기획 AI 의 모델 · 생각 시간(2026-10-26). */
   draftAsk: (
     docKey: string,
     text: string,
     refs: DraftRefInput[],
+    pick?: { model?: string | null; effort?: EffortLevel | null },
   ) => Promise<{ threadId: string; messageId: string }>;
   draftCancel: (docKey: string) => Promise<{ cancelled: boolean }>;
   draftThread: (docKey: string) => Promise<DraftThread>;
@@ -2456,9 +2457,21 @@ export function useDaemon(url: string | null): Daemon {
         call<DraftView>({ type: "draft.edit", docKey, expectedRevision, edits }, 30_000),
       draftDiscard: (docKey: string) =>
         call<{ discarded: boolean }>({ type: "draft.discard", docKey }, 30_000),
-      draftAsk: (docKey: string, text: string, refs: DraftRefInput[]) =>
+      draftAsk: (
+        docKey: string,
+        text: string,
+        refs: DraftRefInput[],
+        pick?: { model?: string | null; effort?: EffortLevel | null },
+      ) =>
         call<{ threadId: string; messageId: string }>(
-          { type: "draft.ask", docKey, text, refs },
+          {
+            type: "draft.ask",
+            docKey,
+            text,
+            refs,
+            ...(pick?.model ? { model: pick.model } : {}),
+            ...(pick?.effort ? { effort: pick.effort } : {}),
+          },
           30_000,
         ),
       draftCancel: (docKey: string) =>

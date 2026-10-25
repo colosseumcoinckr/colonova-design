@@ -26,6 +26,7 @@ import type {
   DraftSummary,
   DraftThread,
   DraftView,
+  EffortLevel,
   ServerMessage,
 } from "@colonova-design/protocol";
 import { draftStageOf } from "@colonova-design/protocol";
@@ -378,12 +379,14 @@ export class DraftService {
 
   /**
    * 묻기 — 사람 메시지를 붙이고 답의 자리를 마련해 바로 돌려주고, 뒤에서 생성을 돈다(2026-10-23 · D3).
-   * 같은 초안에 도는 생성이 있으면 거절이다.
+   * 같은 초안에 도는 생성이 있으면 거절이다. `pick` 은 기획 AI 의 모델 · 생각 시간(2026-10-26 사용자 요청) —
+   * 없으면 CLI 기본으로 돈다.
    */
   ask(
     docKey: string,
     text: string,
     refs: DraftRefInput[],
+    pick: { model?: string | null; effort?: EffortLevel | null } = {},
   ): { threadId: string; messageId: string } {
     const slug = this.#slug();
     const store = this.#store(slug);
@@ -439,6 +442,7 @@ export class DraftService {
       history,
       refs: refRows,
       aiMessageId,
+      pick,
       signal: controller.signal,
     }).finally(() => {
       if (this.#running.get(runKey) === controller) this.#running.delete(runKey);
@@ -558,9 +562,11 @@ export class DraftService {
     history: DraftMessage[];
     refs: Array<{ input: DraftRefInput; title: string; version: number; path: string }>;
     aiMessageId: string;
+    /** 고른 모델 · 생각 시간 — 없으면 CLI 기본(2026-10-26 사용자 요청). */
+    pick: { model?: string | null; effort?: EffortLevel | null };
     signal: AbortSignal;
   }): Promise<void> {
-    const { slug, store, record, thread, text, history, refs, aiMessageId, signal } = input;
+    const { slug, store, record, thread, text, history, refs, aiMessageId, pick, signal } = input;
     const docKey = record.docKey;
     const announce = (
       phase: "started" | "text" | "read" | "done" | "failed" | "cancelled",
@@ -620,6 +626,8 @@ export class DraftService {
           ...(cloneRoot !== null ? { extraRoots: [cloneRoot] } : {}),
           resume: thread.sdkSessionId,
           prompt,
+          ...(pick.model ? { model: pick.model } : {}),
+          ...(pick.effort ? { effort: pick.effort } : {}),
           signal,
         },
         {

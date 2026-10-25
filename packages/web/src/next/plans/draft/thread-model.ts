@@ -76,6 +76,51 @@ export function selectableOpIds(proposal: DraftProposal): string[] {
   return proposal.ops.filter((op) => op.state === "open").map((op) => op.opId);
 }
 
+/** 견주기의 두 쪽 — 투영 글과, 그 글이 빈 자리일 때 대신 서는 말(2026-10-25 UX 심화 사용). */
+export interface OpCompare {
+  before: string;
+  after: string;
+  /** 앞 쪽이 빈 자리일 때의 말 — 더하기는 새 자리라 `없음`, 원래 블록이 사라졌으면 그 이유를 말한다. */
+  beforeEmpty: string;
+  /** 뒤 쪽이 빈 자리일 때의 말 — 지우기는 `이 블록을 지워요`. */
+  afterEmpty: string;
+}
+
+/**
+ * 걸음의 견주기 두 쪽 — 카드의 짧은 견주기와 `크게 보기`의 큰 판이 같은 글을 쓴다(2026-10-25 UX 심화
+ * 사용 · 칸이 좁아 접히는 견주기를 큰 판에서 나란히 본다). 토큰은 갈아 끼울 블록의 것을 쓰고 새 자리는
+ * 이름을 모른다.
+ */
+export function opCompare(
+  op: DraftOp,
+  blocks: readonly DraftBlock[],
+  currentTitle: string,
+): OpCompare {
+  const beforeBlock =
+    op.type === "replace" || op.type === "delete"
+      ? blocks.find((block) => block.id === op.blockId)
+      : undefined;
+  const tokens = op.type === "replace" ? (beforeBlock?.tokens ?? {}) : {};
+  const before =
+    op.type === "title"
+      ? currentTitle
+      : beforeBlock === undefined
+        ? ""
+        : viewToMarkdown(beforeBlock.view, beforeBlock.tokens);
+  const after =
+    op.type === "title"
+      ? op.title
+      : op.type === "replace" || op.type === "insert"
+        ? viewToMarkdown(op.view, tokens)
+        : "";
+  return {
+    before,
+    after,
+    beforeEmpty: op.type === "insert" ? L.drafts.noBlock : L.drafts.opMissing,
+    afterEmpty: L.drafts.removedBlock,
+  };
+}
+
 /** 근거 고르기의 후보 한 줄 — 목록의 문서 줄에서 제목 · 판 · 바로 위 폴더를 옮긴다. */
 export interface DraftRefChoice {
   pageId: string;

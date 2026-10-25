@@ -8,7 +8,7 @@ import { realpathSync } from "node:fs";
 import { dirname, isAbsolute, resolve, sep } from "node:path";
 import type { HookCallback, Options, SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import type { DraftMessage, DraftView } from "@colonova-design/protocol";
+import type { DraftMessage, DraftView, EffortLevel } from "@colonova-design/protocol";
 
 export interface DraftAiRequest {
   executable: string;
@@ -18,6 +18,9 @@ export interface DraftAiRequest {
   extraRoots?: string[];
   resume: string | null;
   prompt: string;
+  /** 고른 모델 · 생각 시간(2026-10-26 사용자 요청) — 없으면 CLI 기본. 이어지는 세션에도 다음 묻기부터 적용된다. */
+  model?: string | null;
+  effort?: EffortLevel | null;
   signal: AbortSignal;
 }
 
@@ -537,6 +540,9 @@ export function createDraftAiRunner(queryFn: typeof query = query): DraftAiRunne
       maxTurns: 12,
       includePartialMessages: true,
       persistSession: true,
+      // 화면 세션과 같은 손(2026-10-26 사용자 요청) — 고른 값만 실고 안 골랐으면 CLI 기본에 맡긴다.
+      ...(request.model ? { model: request.model } : {}),
+      ...(request.effort ? { effort: request.effort } : {}),
       ...(request.resume === null ? {} : { resume: request.resume }),
       abortController,
       env: draftAiEnv(process.env),

@@ -12,6 +12,7 @@
  */
 
 import { z } from "zod";
+import { effortLevelSchema } from "./shared.js";
 
 /** 초안의 열쇠 — 기존 문서는 `p-<페이지 id>`, 새 문서는 `n-<32자 소문자 16진>`. 경로에도 쓰여 모양을 좁힌다. */
 export const DRAFT_KEY_PATTERN = /^(?:p-\d{1,20}|n-[0-9a-f]{32})$/;
@@ -446,6 +447,9 @@ export const draftClientMessageSchemas = [
     docKey: z.string().regex(DRAFT_KEY_PATTERN),
     text: z.string().min(1).max(8_000),
     refs: z.array(refInputSchema).max(20),
+    /** 기획 AI 의 모델 · 생각 시간(2026-10-26 사용자 요청) — 화면 대화의 칩과 같은 값. 없으면 CLI 기본. */
+    model: z.string().min(1).max(200).optional(),
+    effort: effortLevelSchema.optional(),
   }),
   z.object({
     ...withId,

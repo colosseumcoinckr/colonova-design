@@ -1,7 +1,6 @@
 import type {
   DraftBlock,
   DraftMessage,
-  DraftOp,
   DraftProposal,
   DraftReadRef,
   DraftRefInput,
@@ -10,22 +9,28 @@ import { ChevronDown, ChevronUp, Ellipsis } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { Markdown } from "../../../components/Markdown";
 import type { Daemon } from "../../../lib/daemon-client";
+import { EyeIcon } from "../../chat/icons";
+import { ModelChip } from "../../chat/ModelChip";
 import { L } from "../../labels";
 import type { ShellNav } from "../../slots";
 import { CloseIcon, PlusIcon, SendIcon, Spin } from "../../ui/icons";
+import { ModalBody, ModalFoot, ModalFrame, ModalHead, useModalClose } from "../../ui/ModalFrame";
 import { Popover } from "../../ui/Popover";
 import { escapeOwnedByLayer } from "../escape-layer";
 import { type PlanListRow, planRows } from "../plans-list";
-import { viewToMarkdown } from "./draft-model";
 import { DRAFT_LIMITS } from "./limits";
 import {
   type DraftRefChoice,
+  type OpCompare,
+  opCompare,
   openOpIds,
   opSummary,
   parseRefSections,
@@ -34,6 +39,7 @@ import {
   selectableOpIds,
 } from "./thread-model";
 import type { DraftHand } from "./use-draft";
+import { draftRefreshUsage, useDraftPick } from "./use-draft-pick";
 import { useDraftThread } from "./use-draft-thread";
 
 /**
@@ -42,6 +48,78 @@ import { useDraftThread } from "./use-draft-thread";
  * AI 의 답은 설명과 변경안으로 나뉘고, 변경안은 사람이 걸음마다 채택하거나 거절한다 — 채택은 이 컴퓨터의
  * 초안에만 닿는다. 이 컴퓨터의 말은 전부 `L.drafts` 이고, 클래스는 `nx-dr-*` 로만 산다.
  */
+
+/** 견주기의 한 쪽 — 이름표와 투영 글(빈 자리면 대신 서는 말). 카드의 짧은 견주기와 큰 판이 같은 모양으로 쓴다. */
+function CompareSide({
+  label,
+  text,
+  empty,
+  after,
+}: {
+  label: string;
+  text: string;
+  empty: string;
+  after?: boolean;
+}) {
+  return (
+    <div className={`nx-dr-prop-version${after ? " nx-dr-prop-version--after" : ""}`}>
+      <span className="nx-dr-prop-version-label">{label}</span>
+      {text === "" ? (
+        <p>{empty}</p>
+      ) : (
+        <div className="nx-dr-read">
+          <Markdown text={text} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 견주기 크게 보기 — 좁은 기획 대화 칸에서 표가 한 글자씩 접히는 걸음을 넓은 판에 나란히 펼친다
+ * (2026-10-25 UX 심화 사용). 겹판 뼈대라 Esc · 스크림 · 초점 가두기 · 닫는 모션이 같다. 기획서 칸은
+ * `container-type` 이 fixed 의 기준을 가두므로 앱 뿌리(`.nx`)로 옮겨 그린다(AskPreview 의 큰 보기와
+ * 같은 이유).
+ */
+function CompareBig({
+  head,
+  compare,
+  onClose,
+}: {
+  /** 걸음의 한 줄 요약 — 판 머리 아래 다시 세운다. */
+  head: string;
+  compare: OpCompare;
+  onClose: () => void;
+}) {
+  const close = useModalClose();
+  return createPortal(
+    <ModalFrame onClose={onClose} className="nx-dr-cmp">
+      <ModalHead title={L.drafts.compareBigTitle} sub={L.drafts.compareBigSub} />
+      <ModalBody>
+        <p className="nx-dr-cmp-head">{head}</p>
+        <div className="nx-dr-cmp-sides">
+          <CompareSide
+            label={L.drafts.beforeChange}
+            text={compare.before}
+            empty={compare.beforeEmpty}
+          />
+          <CompareSide
+            label={L.drafts.afterChange}
+            text={compare.after}
+            empty={compare.afterEmpty}
+            after
+          />
+        </div>
+      </ModalBody>
+      <ModalFoot>
+        <button type="button" className="nx-btn" onClick={close}>
+          {L.modal.close}
+        </button>
+      </ModalFoot>
+    </ModalFrame>,
+    document.querySelector(".nx") ?? document.body,
+  );
+}
 
 /** 변경안 카드 — 요약 한 줄, 걸음의 체크칸과 요약 · 미리보기 · 처지 배지, 채택 단추들. */
 function ProposalCard({
@@ -66,9 +144,14 @@ function ProposalCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuAnchor = useRef<HTMLButtonElement>(null);
   const [checked, setChecked] = useState<ReadonlySet<string>>(() => new Set());
+  // 크게 보기로 펼친 걸음 — 없으면 닫힘(2026-10-25 UX 심화 사용).
+  const [zoomOpId, setZoomOpId] = useState<string | null>(null);
+  const hintId = useId();
   const selectable = useMemo(() => new Set(selectableOpIds(proposal)), [proposal]);
   const open = useMemo(() => openOpIds(proposal), [proposal]);
   const picked = [...checked].filter((opId) => selectable.has(opId));
+  // 아직 아무 걸음도 고르지 않은 동안 — 꺼진 채택 단추의 이유를 곁에서 말한다(2026-10-25 UX 관찰).
+  const pickHint = !locked && !busy && picked.length === 0 && selectable.size > 0;
 
   const toggle = (opId: string) => {
     setChecked((before) => {
@@ -82,83 +165,64 @@ function ProposalCard({
     });
   };
 
-  // 미리보기의 토큰 — 갈아 끼울 블록의 것을 쓰고, 새 자리는 이름을 모른다(모르는 이름은 막연한 말로 그린다).
-  const tokensOf = (op: DraftOp): Record<string, string> => {
-    if (op.type === "replace") {
-      return blocks.find((block) => block.id === op.blockId)?.tokens ?? {};
-    }
-    return {};
-  };
-
   return (
     <article className="nx-dr-prop">
       <p className="nx-dr-prop-sum">{proposal.summary}</p>
-      <ul className="nx-dr-prop-steps">
+      <ul className="nx-dr-prop-steps" data-pick={pickHint ? "none" : undefined}>
         {proposal.ops.map((op) => {
           const checkable = selectable.has(op.opId);
-          const beforeBlock =
-            op.type === "replace" || op.type === "delete"
-              ? blocks.find((block) => block.id === op.blockId)
-              : undefined;
-          const before =
-            op.type === "title"
-              ? currentTitle
-              : beforeBlock === undefined
-                ? ""
-                : viewToMarkdown(beforeBlock.view, beforeBlock.tokens);
-          const after =
-            op.type === "title"
-              ? op.title
-              : op.type === "replace" || op.type === "insert"
-                ? viewToMarkdown(op.view, tokensOf(op))
-                : "";
+          const head = opSummary(op, blocks);
+          const compare = opCompare(op, blocks, currentTitle);
           return (
             <li key={op.opId} className="nx-dr-prop-step" data-state={op.state}>
-              <label className="nx-dr-check">
-                <input
-                  type="checkbox"
-                  checked={checked.has(op.opId)}
-                  disabled={!checkable || locked || busy}
-                  onChange={() => toggle(op.opId)}
-                />
-                <span>{opSummary(op, blocks)}</span>
-              </label>
-              {op.state !== "open" && (
-                <span
-                  className={`nx-pill nx-dr-badge${op.state === "adopted" ? " nx-pill--blue" : op.state === "stale" ? " nx-pill--amber" : ""}`}
-                  data-op={op.state}
-                >
-                  {op.state === "adopted"
-                    ? L.drafts.opAdopted
-                    : op.state === "rejected"
-                      ? L.drafts.opRejected
-                      : L.drafts.staleBadge}
+              <div className="nx-dr-prop-step-hd">
+                <label className="nx-dr-check">
+                  <input
+                    type="checkbox"
+                    checked={checked.has(op.opId)}
+                    disabled={!checkable || locked || busy}
+                    onChange={() => toggle(op.opId)}
+                  />
+                  <span>{head}</span>
+                </label>
+                <span className="nx-dr-prop-step-acts">
+                  {op.state !== "open" && (
+                    <span
+                      className={`nx-pill nx-dr-badge${op.state === "adopted" ? " nx-pill--blue" : op.state === "stale" ? " nx-pill--amber" : ""}`}
+                      data-op={op.state}
+                    >
+                      {op.state === "adopted"
+                        ? L.drafts.opAdopted
+                        : op.state === "rejected"
+                          ? L.drafts.opRejected
+                          : L.drafts.staleBadge}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className="nx-ibtn nx-ibtn--sm nx-dr-prop-zoom"
+                    aria-label={L.drafts.compareBigOf(head)}
+                    title={L.drafts.compareBig}
+                    aria-haspopup="dialog"
+                    onClick={() => setZoomOpId(op.opId)}
+                  >
+                    <EyeIcon />
+                  </button>
                 </span>
-              )}
+              </div>
               {op.state === "stale" && <p className="nx-dr-prop-note">{L.drafts.opStale}</p>}
               <div className="nx-dr-prop-compare">
-                <div className="nx-dr-prop-version">
-                  <span className="nx-dr-prop-version-label">
-                    {op.state === "open" ? L.drafts.beforeChange : L.drafts.currentDraft}
-                  </span>
-                  {before === "" ? (
-                    <p>{op.type === "insert" ? L.drafts.noBlock : L.drafts.opMissing}</p>
-                  ) : (
-                    <div className="nx-dr-read">
-                      <Markdown text={before} />
-                    </div>
-                  )}
-                </div>
-                <div className="nx-dr-prop-version nx-dr-prop-version--after">
-                  <span className="nx-dr-prop-version-label">{L.drafts.afterChange}</span>
-                  {after === "" ? (
-                    <p>{L.drafts.removedBlock}</p>
-                  ) : (
-                    <div className="nx-dr-read">
-                      <Markdown text={after} />
-                    </div>
-                  )}
-                </div>
+                <CompareSide
+                  label={op.state === "open" ? L.drafts.beforeChange : L.drafts.currentDraft}
+                  text={compare.before}
+                  empty={compare.beforeEmpty}
+                />
+                <CompareSide
+                  label={L.drafts.afterChange}
+                  text={compare.after}
+                  empty={compare.afterEmpty}
+                  after
+                />
               </div>
             </li>
           );
@@ -170,6 +234,7 @@ function ProposalCard({
           className="nx-btn nx-btn--sm nx-btn--pri"
           disabled={locked || busy || picked.length === 0}
           title={locked ? L.drafts.locked : undefined}
+          aria-describedby={pickHint ? hintId : undefined}
           onClick={() => onAdopt(proposal.proposalId, picked)}
         >
           {L.drafts.adoptSelected}
@@ -235,7 +300,24 @@ function ProposalCard({
             </button>
           </Popover>
         )}
+        {pickHint && (
+          <p className="nx-dr-prop-hint" id={hintId}>
+            {L.drafts.adoptPickHint}
+          </p>
+        )}
       </div>
+      {zoomOpId !== null &&
+        (() => {
+          const op = proposal.ops.find((one) => one.opId === zoomOpId);
+          if (op === undefined) return null;
+          return (
+            <CompareBig
+              head={opSummary(op, blocks)}
+              compare={opCompare(op, blocks, currentTitle)}
+              onClose={() => setZoomOpId(null)}
+            />
+          );
+        })()}
     </article>
   );
 }
@@ -455,6 +537,8 @@ export function DraftThread({
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
 }) {
   const thread = useDraftThread(daemon, docKey);
+  // 기획 AI 의 모델 · 생각 시간 칩의 주인(2026-10-26 사용자 요청) — 화면 대화와 같은 부품, 다른 주인.
+  const chip = useDraftPick(daemon);
   const [pendingRefs, setPendingRefs] = useState<Array<DraftReadRef & { sections?: string[] }>>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [inputText, setInputText] = useState("");
@@ -486,7 +570,7 @@ export function DraftThread({
         ? { pageId: ref.pageId, sections }
         : { pageId: ref.pageId };
     });
-    void thread.ask(text, refs).then((ok) => {
+    void thread.ask(text, refs, { model: chip.pick.model, effort: chip.pick.effort }).then((ok) => {
       if (!ok) return;
       setInputText("");
       setPendingRefs([]);
@@ -743,6 +827,12 @@ export function DraftThread({
                   <PlusIcon />
                   {L.drafts.addRef}
                 </button>
+                {/* 화면 대화와 같은 모델 칩 — 이 대화의 AI 는 모델 · 생각 시간만 고른다(2026-10-26 사용자 요청). */}
+                <ModelChip
+                  daemon={daemon}
+                  sessions={{ refreshUsage: draftRefreshUsage(daemon) }}
+                  target={chip.target}
+                />
                 <button
                   type="submit"
                   className="nx-btn nx-btn--accent"

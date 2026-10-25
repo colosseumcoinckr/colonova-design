@@ -1756,7 +1756,10 @@ exclude 줄도 보관 거름도 없다. 자리는 `confluence-mirror.ts` 의 두
   규칙 한 줄로만 말한다(2026-10-23 사용자 「일단은」). `settingSources: []` · `strictMcpConfig` ·
   `managedSettings.allowedMcpServers: []` 로 사용자 MCP 와 계정 커넥터를 싣지 않고, 환경은 허용 목록(`draftAiEnv` — 앱
   비밀 · 과금 키가 없다)이다. 답은 `outputFormat` json_schema(`reply` · `summary` · `ops`)로 받고, `resume` 으로 대화가
-  이어진다. 모델은 CLI 기본값이다. 서비스가 걸음을 다시 검사해 맞지 않는 것은 버리고(로그에는 수만), 채택 전에는 초안에
+  이어진다. 모델 · 생각 시간은 묻는 요청(`draft.ask` 의 선택 필드 `model` · `effort`, 2026-10-26 사용자 요청)이 고른 값만
+  실는다 — 안 골랐거나 빈 값이면 키 자체가 없어 CLI 기본값으로 돈다. 화면 대화의 칩(ModelChip)이 같은 부품으로 기획 대화
+  입력줄에도 서고, 고른 값은 웹의 `localStorage`(`colonova-design.draft-pick`)에 산다 — 프로바이더는 Claude 하나로
+  정해져 있어 프로젝트마다 달라질 이유가 없다(씨앗 규칙은 화면 대화의 next 와 같다 — `draft-pick.ts`). 서비스가 걸음을 다시 검사해 맞지 않는 것은 버리고(로그에는 수만), 채택 전에는 초안에
   닿지 않는다. 중단 · 실패한 생성은 변경안을 남기지 않는다. 걸음은 물을 때의 초안(AI 가 본 것)으로 검사하고, 생성 중에
   초안의 개정이나 기준 판이 바뀌었으면 새 변경안은 처음부터 오래됨이다. 기준이 바뀌면(발행 · 다시 맞추기 — 블록 id 가
   다시 매겨진다) 그 전의 열린 걸음도 모두 오래됨이 된다(`DraftStore.replaceBase`). 채택은 오래됨으로 표시된 걸음을

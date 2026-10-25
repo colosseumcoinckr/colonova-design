@@ -110,6 +110,52 @@ test("draft.ask — 말과 근거 문서를 싣는다", () => {
   assert.ok(!noRefs.ok);
 });
 
+test("draft.ask — 고른 모델 · 생각 시간을 선택적으로 실린다(2026-10-26)", () => {
+  const parsed = parseClientMessage(
+    JSON.stringify({
+      id: "d5c",
+      type: "draft.ask",
+      docKey: "p-42",
+      text: "깊게 생각해 주세요",
+      refs: [],
+      model: "claude-opus-5",
+      effort: "high",
+    }),
+  );
+  assert.ok(parsed.ok);
+  if (parsed.ok) {
+    const message = parsed.value as { model?: string; effort?: string };
+    assert.equal(message.model, "claude-opus-5");
+    assert.equal(message.effort, "high");
+  }
+
+  // 모르는 생각 시간 단계는 거절 — 칩이 다섯 칸만 보여 준다.
+  const badEffort = parseClientMessage(
+    JSON.stringify({
+      id: "d5d",
+      type: "draft.ask",
+      docKey: "p-42",
+      text: "요약해 주세요",
+      refs: [],
+      effort: "매우깊게",
+    }),
+  );
+  assert.ok(!badEffort.ok);
+
+  // 빈 모델 이름도 거절 — 「기본」은 아예 실리지 않는다(빈 문자열이 아니라 키 없음).
+  const emptyModel = parseClientMessage(
+    JSON.stringify({
+      id: "d5e",
+      type: "draft.ask",
+      docKey: "p-42",
+      text: "요약해 주세요",
+      refs: [],
+      model: "",
+    }),
+  );
+  assert.ok(!emptyModel.ok);
+});
+
 test("draft.adopt · draft.reject — 변경안을 골라 반영하거나 물린다", () => {
   const adopt = parseClientMessage(
     JSON.stringify({

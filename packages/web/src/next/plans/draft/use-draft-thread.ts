@@ -1,4 +1,9 @@
-import type { DraftReadRef, DraftRefInput, DraftThread } from "@colonova-design/protocol";
+import type {
+  DraftReadRef,
+  DraftRefInput,
+  DraftThread,
+  EffortLevel,
+} from "@colonova-design/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../../lib/daemon-client";
 import { L } from "../../labels";
@@ -23,7 +28,12 @@ export interface DraftThreadHand {
   error: string | null;
   /** 개정이 어긋나 채택이 무산했을 때의 한 줄 — 판이 토스트로 옮기고 거둔다. */
   notice: string | null;
-  ask: (text: string, refs: DraftRefInput[]) => Promise<boolean>;
+  /** 기획 AI 의 모델 · 생각 시간 — 없으면 CLI 기본(2026-10-26 사용자 요청). */
+  ask: (
+    text: string,
+    refs: DraftRefInput[],
+    pick?: { model?: string | null; effort?: EffortLevel | null },
+  ) => Promise<boolean>;
   cancel: () => void;
   /** 채택은 이 컴퓨터의 초안에만 닿는다 — 성패와 무관하게 초안을 다시 읽는 것은 부른 쪽의 몫이다. */
   adopt: (proposalId: string, opIds: string[], revision: number) => Promise<boolean>;
@@ -139,12 +149,16 @@ export function useDraftThread(daemon: Daemon, docKey: string | null): DraftThre
   );
 
   const ask = useCallback(
-    (text: string, refs: DraftRefInput[]): Promise<boolean> => {
+    (
+      text: string,
+      refs: DraftRefInput[],
+      pick?: { model?: string | null; effort?: EffortLevel | null },
+    ): Promise<boolean> => {
       const key = keyRef.current;
       if (key === null) return Promise.resolve(false);
       setError(null);
       return apiRef.current
-        .draftAsk(key, text, refs)
+        .draftAsk(key, text, refs, pick)
         .then(() => {
           reload(); // 사람의 말이 곧 대화에 선다
           return true;

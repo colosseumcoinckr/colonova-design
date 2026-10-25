@@ -721,6 +721,38 @@ test("묻기 — 클론 뿌리 의존이 없거나 null 을 돌려주면 AI 요�
   }
 });
 
+test("묻기 — 고른 모델 · 생각 시간이 AI 요청에 실리고 안 골랐으면 키가 없다(2026-10-26)", async () => {
+  const picked = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
+  const rigPicked = rig(picked.runner);
+  try {
+    await rigPicked.service.open(PAGE_ID);
+    rigPicked.service.ask(KEY, "다듬어 줘", [], { model: "claude-opus-5", effort: "high" });
+    await until(
+      () => aiMessages(rigPicked.messages).some((message) => message.phase === "done"),
+      "done 방송",
+    );
+    assert.equal(picked.calls[0]?.model, "claude-opus-5");
+    assert.equal(picked.calls[0]?.effort, "high");
+  } finally {
+    rigPicked.cleanup();
+  }
+
+  const bare = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
+  const rigBare = rig(bare.runner);
+  try {
+    await rigBare.service.open(PAGE_ID);
+    rigBare.service.ask(KEY, "다듬어 줘", []);
+    await until(
+      () => aiMessages(rigBare.messages).some((message) => message.phase === "done"),
+      "done 방송",
+    );
+    assert.ok(!("model" in (bare.calls[0] ?? {})));
+    assert.ok(!("effort" in (bare.calls[0] ?? {})));
+  } finally {
+    rigBare.cleanup();
+  }
+});
+
 test("묻기 — 실행기가 실제 경로 표기로 읽음을 알려도 읽은 근거가 남는다(2026-10-23 · 검토 R1)", async () => {
   const ai = fakeAi(async (request, callbacks) => {
     // 사본 뿌리가 심볼릭 링크 뒤에 있으면 실행기는 실제 경로(realpath) 표기로 알린다.

@@ -5,6 +5,7 @@ import { L } from "../src/next/labels.ts";
 // 순수 모듈 — src 에서 곧장 읽는다(next-drafts.test.ts 와 같은 모양).
 import {
   blockHead,
+  opCompare,
   openOpIds,
   opSummary,
   parseRefSections,
@@ -142,6 +143,74 @@ test("채택 대상 — 열린 걸음만 손에 닿고, 채택함 · 거절함 �
   assert.deepEqual(selectableOpIds(done), []);
 });
 
+test("견주기 두 쪽 — 고침의 앞은 원래 블록 · 뒤는 바꾼 블록의 투영 글이다", () => {
+  const blocks = [paragraph("b0", "원래 문장이다.")];
+  const replaced = opCompare(
+    op({
+      opId: "o1",
+      blockId: "b0",
+      state: "open",
+      view: { kind: "paragraph", text: "새 문장이다." },
+    }),
+    blocks,
+    "옛 제목",
+  );
+  assert.equal(replaced.before, "원래 문장이다.");
+  assert.equal(replaced.after, "새 문장이다.");
+});
+
+test("견주기 두 쪽 — 고침의 새 글은 갈아 끼울 블록의 토큰 이름으로 그린다", () => {
+  const blocks = [
+    {
+      id: "b0",
+      view: { kind: "paragraph", text: "원본" },
+      editable: true,
+      tokens: { t1: "macro:info" },
+      status: "same",
+    } satisfies DraftBlock,
+  ];
+  const replaced = opCompare(
+    op({
+      opId: "o1",
+      blockId: "b0",
+      state: "open",
+      view: { kind: "paragraph", text: "앞 ⟦t1⟧ 뒤" },
+    }),
+    blocks,
+    "제목",
+  );
+  assert.equal(replaced.after, "앞 〔정보 상자〕 뒤");
+});
+
+test("견주기 두 쪽 — 더하기의 앞은 없음, 지우기의 뒤는 지운다는 말, 제목은 앞뒤가 제목이다", () => {
+  const insert = opCompare(
+    {
+      opId: "o1",
+      type: "insert",
+      afterBlockId: null,
+      state: "open",
+      view: { kind: "paragraph", text: "새 문단" },
+    },
+    [],
+    "제목",
+  );
+  assert.equal(insert.before, "");
+  assert.equal(insert.beforeEmpty, L.drafts.noBlock);
+  assert.equal(insert.after, "새 문단");
+  const gone = opCompare({ opId: "o2", type: "delete", blockId: "b9", state: "open" }, [], "제목");
+  assert.equal(gone.before, "");
+  assert.equal(gone.beforeEmpty, L.drafts.opMissing);
+  assert.equal(gone.after, "");
+  assert.equal(gone.afterEmpty, L.drafts.removedBlock);
+  const title = opCompare(
+    { opId: "o3", type: "title", title: "새 제목", state: "open" },
+    [],
+    "옛 제목",
+  );
+  assert.equal(title.before, "옛 제목");
+  assert.equal(title.after, "새 제목");
+});
+
 test("근거 후보 — 문서 줄만 후보가 되고 폴더 · Confluence 전용 항목은 빠진다", () => {
   const rows = planRows(
     [
@@ -232,6 +301,14 @@ test("새 기획 대화 문장이 모두 살아 있다", () => {
   assert.equal(L.drafts.readBy(2), "AI 가 문서 2개를 읽었어요");
   assert.equal(L.drafts.addRef, "근거 더하기");
   assert.equal(L.drafts.startWithAi, "AI 와 시작하기");
+  // 견주기 크게 보기(2026-10-25 UX 심화 사용) — 좁은 칸에서 접히는 걸음을 큰 판으로 펼친다.
+  assert.equal(L.drafts.compareBig, "크게 보기");
+  assert.equal(
+    L.drafts.compareBigOf("“말 · 뜻” 블록을 고쳐 써요"),
+    "“말 · 뜻” 블록을 고쳐 써요 크게 보기",
+  );
+  assert.equal(L.drafts.compareBigTitle, "변경안 크게 보기");
+  assert.equal(L.drafts.compareBigSub, "바뀌기 전과 바뀐 뒤를 나란히 펼쳐 봐요.");
   // 근거 칩 — 제목 · 판 · 절이 남고, 없는 자리는 빠진다.
   assert.equal(
     L.drafts.refChip("로그인 개선", 3, ["배경", "목표"]),

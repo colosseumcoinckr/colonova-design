@@ -1909,6 +1909,8 @@ export const L = {
     opDelete: (head: string) => `“${head}” 블록을 지워요`,
     opTitle: (title: string) => `제목을 “${title}” 로 바꿔요`,
     adoptSelected: "고른 것 채택",
+    // 미선택 채택 잠김의 이유 한 줄(2026-10-25 UX 관찰) — 꺼진 단추가 스스로 이유를 말한다.
+    adoptPickHint: "먼저 바꿀 걸음을 고르세요 — 위의 체크 상자를 고르면 단추가 켜져요",
     adoptAll: "모두 채택",
     reject: "거절",
     reask: "다시 요청",
@@ -2039,6 +2041,11 @@ export const L = {
     // 전후 비교의 이름(2026-10-23 화면 전면 재설계 §4 D).
     beforeChange: "바뀌기 전",
     afterChange: "바뀐 뒤",
+    // 견주기 크게 보기 — 좁은 기획 대화 칸에서 표가 접히면 큰 판으로 펼친다(2026-10-25 UX 심화 사용).
+    compareBig: "크게 보기",
+    compareBigOf: (head: string) => `${head} 크게 보기`,
+    compareBigTitle: "변경안 크게 보기",
+    compareBigSub: "바뀌기 전과 바뀐 뒤를 나란히 펼쳐 봐요.",
     noBlock: "없음",
     removedBlock: "이 블록을 지워요",
     protectedHeading: "지워지는 Confluence 전용 조각",

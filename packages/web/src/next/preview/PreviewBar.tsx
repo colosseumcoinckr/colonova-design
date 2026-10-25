@@ -582,6 +582,8 @@ function AddressList({
           </div>
         )}
       </div>
+      {/* 목록의 기준 한 줄(2026-10-25 UX 관찰) — 스크롤 목록 밖 바닥에 떠서 늘 보인다. */}
+      {flat.length > 0 && <p className="nx-addr-crit">{L.preview.addrCriteria}</p>}
     </>
   );
 }

@@ -63,7 +63,7 @@ export function HomePlans({
         </div>
       </div>
       {rows !== null && (
-        <div className="nx-hcard-bd">
+        <div className={`nx-hcard-bd${shown.length === 0 ? " nx-hcard-bd--none" : ""}`}>
           <h3 className="nx-hplans-sub">{L.home.plansInProgress}</h3>
           {shown.length === 0 ? (
             <p className="nx-hplans-none">{L.home.plansNone}</p>

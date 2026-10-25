@@ -748,6 +748,8 @@ export const L = {
     homeScreen: "첫 화면",
     untitledScreen: "이름 없는 화면",
     addrOnly: "미리보기 안의 화면 주소만 열 수 있어요",
+    // 주소 목록의 기준 한 줄(2026-10-25 UX 관찰) — 목록이 어디서 오는지 말하고, 전체는 지도에 있음을 알린다.
+    addrCriteria: "이 대화에서 만든 화면 · 이름이 붙은 화면 · 지나온 화면이에요 — 전체는 연결 지도에서",
     addrEmpty: "찾는 화면이 없어요",
     /** 목록 위의 낭독 한 줄 — 친 글자에 맞는 화면 수. */
     addrCount: (n: number) => `화면 ${n}곳`,
@@ -2009,7 +2011,8 @@ export const L = {
     // ── 새 문서 초안(2026-10-23 · 최종 구현 계획 F2)
     newDoc: "새 문서",
     newDocTitle: "새 문서 만들기",
-    newDocSub: "Confluence 의 고른 자리 아래에 빈 문서의 초안을 만들어요.",
+    /** 창 머리의 한 줄 — 이 초안이 아직 Confluence 에 없다는 사실을 여기서 말한다(2026-10-25 UX 관찰). */
+    newDocSub: "고른 자리 아래에 새 초안을 만들어요 — 발행할 때 Confluence 에 처음 닿아요.",
     newDocParent: "들어갈 자리",
     newDocParentPick: "자리를 고르세요",
     /** 들어갈 자리가 하나도 없을 때의 안내 — 가져오기가 먼저다(2026-10-23 화면 확인). */

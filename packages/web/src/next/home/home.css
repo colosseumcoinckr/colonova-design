@@ -335,6 +335,14 @@
   word-break: keep-all;
 }
 
+/* 초안이 없을 때의 몸통 — `화면` 카드와 같은 높이를 지키느라 남는 자리가 크다(§3.6).
+   안내 묶음을 남은 높이의 가운데에 앉혀 텅 빈 아래쪽이 빈틈이 아니라 여백으로 읽히게 한다(2026-10-25 UX 관찰). */
+.nx-hcard-bd--none {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .nx .nx-hplans-more {
   display: inline-flex;
   align-items: center;

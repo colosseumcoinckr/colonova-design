@@ -405,6 +405,14 @@
   color: var(--amber);
 }
 
+/* 주소 목록의 기준 한 줄(2026-10-25 UX 관찰) — 목록이 어디서 오는지 말한다. */
+.nx-addr-crit {
+  margin: 0;
+  padding: var(--sp-1) var(--sp-3) 0;
+  font-size: var(--fs-cap);
+  color: var(--ink3);
+}
+
 .nx-addr-none {
   padding: var(--sp-3);
   font-size: var(--fs-sm);

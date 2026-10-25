@@ -13,7 +13,7 @@ import { finalOutgoingChanges, outgoingScreens } from "../lib/work-ledger";
 import { ChevronRightIcon, Spin } from "../ui/icons";
 import { ModalBody, ModalFoot, ModalFrame, ModalHead, useModalClose } from "../ui/ModalFrame";
 import { HandoffPreviewBox } from "./HandoffPreviewBox";
-import { FailIcon, LockIcon, ScreenRow, SentIcon, SubmitIcon } from "./parts";
+import { FailIcon, FileIcon, LockIcon, ScreenRow, SentIcon, SubmitIcon, whenText } from "./parts";
 
 interface SubmitPopoverProps {
   anchor: RefObject<HTMLElement | null>;
@@ -269,6 +269,32 @@ function SubmitBody({
     </li>
   );
 
+  // 남은 변경 한 줄 — 출처(그 변경을 만든 말 · 파일 수 · 시각)를 펼친 깊이가 아니라 줄에서 바로 본다
+  // (2026-10-25 베타 사용성). 화면 줄과 같은 해부라 목록 안에서 위계가 갈라지지 않는다.
+  const outsideRow = (
+    item: { key: string; note: string | null; at: string | null; files: number },
+    index: number,
+  ) => (
+    <li
+      key={item.key}
+      className="nx-submit-screen"
+      style={{ "--i": Math.min(index, 7) } as CSSProperties}
+    >
+      <div className="nx-li nx-wp-row">
+        <span className="nx-filebox" aria-hidden="true">
+          <FileIcon />
+        </span>
+        <span className="nx-li-main">
+          <span className="nx-li-title">
+            {item.note ? (item.note.split(/\r?\n/, 1)[0] ?? "") : L.submitConfirm.unassociatedRow}
+          </span>
+          <span className="nx-li-sub">{L.submitConfirm.filesCount(item.files)}</span>
+        </span>
+        <span className="nx-li-end">{whenText(item.at)}</span>
+      </div>
+    </li>
+  );
+
   return (
     <>
       <ModalBody className="nx-sub-body">
@@ -342,7 +368,10 @@ function SubmitBody({
             )}
           </section>
         )}
-        {view.showList && outsideFiles > 0 && (
+        {/* 남은 변경 — 보낼 화면이 있으면 화면 목록 아래에 접혀 있고, 화면 없는 제출이면 이것이 곧 목록이라
+            접지 않고 바로 세운다(2026-10-25 베타 사용성: 출처 없는 1건이 유일한 내용인데 수만 말하는 접힘으로
+            서 있으면 놀란다). */}
+        {view.showList && outsideFiles > 0 && screens.length > 0 && (
           <details className="nx-sub-fold">
             <summary>
               <span className="nx-sub-caret">
@@ -351,14 +380,15 @@ function SubmitBody({
               {L.submitConfirm.outsideScreens(outsideFiles)}
             </summary>
             <p>{L.submitConfirm.outsideDetail}</p>
-            {outside.map((item) => (
-              <p key={item.key}>
-                {item.note
-                  ? L.submitConfirm.relatedRequest(item.note.split(/\r?\n/, 1)[0] ?? "", item.files)
-                  : L.submitConfirm.unassociated(item.files)}
-              </p>
-            ))}
+            <ul>{outside.map(outsideRow)}</ul>
           </details>
+        )}
+        {view.showList && outsideFiles > 0 && screens.length === 0 && (
+          <section className="nx-sub-list">
+            <h3 className="nx-sub-h">{L.submitConfirm.outsideScreens(outsideFiles)}</h3>
+            <p className="nx-sub-note">{L.submitConfirm.outsideDetail}</p>
+            <ul>{outside.map(outsideRow)}</ul>
+          </section>
         )}
       </ModalBody>
 

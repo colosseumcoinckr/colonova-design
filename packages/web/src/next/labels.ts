@@ -973,8 +973,10 @@ export const L = {
     earlierScreens: (n: number) => `앞서 제출한 화면 ${n}곳`,
     outsideScreens: (n: number) => `화면에 드러나지 않은 변경 ${n}건`,
     outsideDetail: "최종 변경이 남은 파일과 관련 요청이에요. 기록 횟수를 세지 않아요.",
-    relatedRequest: (note: string, n: number) => `관련 요청: ${note} · 파일 ${n}개`,
-    unassociated: (n: number) => `화면과 관련 요청을 확인하지 못한 변경 · 파일 ${n}개`,
+    // 2026-10-25 베타 사용성 — 남은 변경 건마다 출처(그 변경을 만든 말 · 시각)를 펼친 깊이가 아니라
+    // 줄에서 바로 본다. 줄 제목은 관련 요청의 첫 줄이고, 요청을 알지 못하면 아래 문장이 선다.
+    unassociatedRow: "관련 요청을 확인하지 못한 변경",
+    filesCount: (n: number) => `파일 ${n}개`,
     empty: "제출할 변경이 없어요.",
     note: "개발자에게 한마디",
     optional: "선택",

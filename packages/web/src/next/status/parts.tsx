@@ -2,6 +2,7 @@ import {
   Check,
   CircleAlert,
   ExternalLink,
+  FileText,
   History,
   Lock,
   type LucideIcon,
@@ -53,6 +54,8 @@ export function DrawnCheck() {
 }
 export const FailIcon = make(CircleAlert, 14);
 export const ExtIcon = make(ExternalLink, 12);
+/** 남은 변경 출처 줄의 앞 그림 — 화면 줄의 섬네일 자리에 서는 문서 그림(2026-10-25 베타 사용성). */
+export const FileIcon = make(FileText, 15);
 /** 작업 기록 서랍을 여는 단추의 그림 — 막대의 단추 · 서랍 머리 · 대화의 메뉴와 같은 `History` 다. */
 export const HistoryIcon = make(History, 13);
 export const MailIcon = make(Mail, 13);

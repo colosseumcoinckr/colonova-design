@@ -845,6 +845,20 @@
   right: 12px;
 }
 
+/* 남은 변경 출처 줄의 앞 칸 — 화면 줄의 섬네일과 같은 칸수(40×28)에 문서 그림이 선다(2026-10-25
+   베타 사용성). 화면 줄과 나란히 서도 위계가 갈라지지 않게 한다. */
+.nx-wp-row .nx-filebox {
+  width: 40px;
+  height: 28px;
+  border-radius: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  color: var(--ink3);
+  flex: none;
+}
+
 /* 코멘트의 반영 상태 — `nx-pill`(글자와 함께 서는 상태 알약)이다. 고치는 중은 도는 그림이 함께 선다. */
 .nx .nx-pill.nx-wp-state--fixing .nx-i {
   animation: nx-spin 1.4s linear infinite;
@@ -1441,6 +1455,14 @@
   margin-left: auto;
   font-weight: var(--fw-regular);
   color: var(--ink3);
+}
+
+/* 펼쳐 세운 남은 변경 묶음의 한 줄 설명 — 접힘 안쪽 설명(`.nx-sub-fold > p`)과 같은 말투. */
+.nx .nx-sub-note {
+  margin: 0 0 var(--sp-1);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
 }
 
 .nx-sub-list ul,

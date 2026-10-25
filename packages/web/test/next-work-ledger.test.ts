@@ -132,10 +132,34 @@ test("final submission lists unique remaining screens and related outside reques
     finalOutgoingChanges(history, screens, ["member.tsx", "common.css", "common.css", "theme.css"]),
     {
       screens: [screens[0]],
-      outside: [{ key: "style", note: "Use the smaller headings", files: 2 }],
+      outside: [{ key: "style", note: "Use the smaller headings", at, files: 2 }],
     },
   );
   assert.deepEqual(finalOutgoingChanges(history, screens, []), { screens: [], outside: [] });
+});
+
+test("남은 변경 줄은 출처를 싣는다 — 그 변경을 만든 말과 시각, 요청을 모르면 시각도 모른다(2026-10-25)", () => {
+  const history: RepoHistoryEntry[] = [
+    {
+      sha: "old",
+      message: "기획 페이지와 화면 경로 연결 정보 추가",
+      at: "2026-10-25T12:30:00+09:00",
+      files: ["plans-map.json"],
+    },
+    { sha: "new", message: "표 간격 정리", at: "2026-10-25T18:00:00+09:00", files: ["grid.css"] },
+  ];
+  // 두 요청의 파일이 섞여 남았다 — 줄마다 제각각의 출처(말 · 시각)가 붙는다.
+  const mixed = finalOutgoingChanges(history, [], ["grid.css", "plans-map.json"]);
+  assert.deepEqual(
+    mixed.outside.map((row) => [row.note, row.at, row.files]),
+    [
+      ["표 간격 정리", "2026-10-25T18:00:00+09:00", 1],
+      ["기획 페이지와 화면 경로 연결 정보 추가", "2026-10-25T12:30:00+09:00", 1],
+    ],
+  );
+  // 어느 요청이 파일을 만졌는지 알지 못하면 말도 시각도 모른다 — 줄 제목은 부르는 쪽이 갈아 세운다.
+  const unknown = finalOutgoingChanges(history, [], ["orphan.txt"]);
+  assert.deepEqual(unknown.outside, [{ key: "unassociated", note: null, at: null, files: 1 }]);
 });
 
 test("코멘트 장부 — 기록과 병합만으로 코멘트 반영 여부를 추정하지 않는다", () => {

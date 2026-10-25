@@ -87,12 +87,19 @@ export function outsideChanges(
   ).length;
 }
 
-/** Final file deltas grouped by the last related user request. Activity counts are never diff counts. */
+/**
+ * 남은 최종 변경을 마지막 관련 요청별로 묶는다 — 활동 횟수가 아니라 파일 수다. 줄마다
+ * 그 요청의 시각(`at`)을 함께 싣는다. 제출 전에 남아 있는 변경이 어느 말의 것인지
+ * 보게 하는 몫이다(2026-10-25 베타 사용성 — 출처를 펼친 깊이에 숨겨 두지 않게).
+ */
 export function finalOutgoingChanges(
   history: RepoHistoryEntry[],
   screens: CycleScreen[] | undefined,
   finalFiles: string[],
-): { screens: CycleScreen[]; outside: Array<{ key: string; note: string | null; files: number }> } {
+): {
+  screens: CycleScreen[];
+  outside: Array<{ key: string; note: string | null; at: string | null; files: number }>;
+} {
   const meaningful = history
     .filter((entry) => !synced(entry))
     .sort((a, b) => time(b.at) - time(a.at));
@@ -112,12 +119,20 @@ export function finalOutgoingChanges(
       )
       .map((screen) => screen.sha),
   );
-  const outside = new Map<string, { key: string; note: string | null; files: number }>();
+  const outside = new Map<
+    string,
+    { key: string; note: string | null; at: string | null; files: number }
+  >();
   for (const file of final) {
     const owner = meaningful.find((entry) => entry.files.includes(file));
     if (owner && screenShas.has(owner.sha)) continue;
     const key = owner?.sha ?? "unassociated";
-    const row = outside.get(key) ?? { key, note: owner?.message ?? null, files: 0 };
+    const row = outside.get(key) ?? {
+      key,
+      note: owner?.message ?? null,
+      at: owner?.at ?? null,
+      files: 0,
+    };
     row.files++;
     outside.set(key, row);
   }

@@ -2223,6 +2223,7 @@ pnpm typecheck              # 타입 검사 — CI 와 같은 문
 pnpm build                  # 빌드 — 릴리스와 같은 경로
 pnpm knip                   # 죽은 파일 · 유령 의존성 점검 — 소견은 knip.jsonc 기준(아래)
 pnpm dev:desktop            # 눈으로 보는 검증
+node scripts/web-fixture-shot.mjs     # 부품 페이지 스크린샷(전역 Playwright 필요 — 아래)
 node scripts/orphan-check.mjs before|after   # 작업 도중 멈춘 뒤 남은 프로세스 — 깨끗한 기계 점검 10번
 ```
 
@@ -2253,6 +2254,12 @@ pnpm bench compare bench-results/<앞>.json bench-results/<뒤>.json
 실리지 않는다). 상태 줄 견본은 상태(제출 전 · 만드는 중 · 개발자 확인 · 승인과 자동 검사 · 반영됨 ·
 막힘 · 중간 폭 · 좁은 창)를 한 장에 그린다 — `?sweep=1`은 같은 상태를 여러 막대 폭으로,
 `?theme=dark` 는 테마를 바꾼다.
+
+부품 페이지를 한 번에 스크린샷하는 도구도 있다(2026-10-25, orca 의 fixtures:shot 참고) —
+`node scripts/web-fixture-shot.mjs [부품 …]` 이 vite 개발 서버를 스크립트 안에서 띄워
+`packages/web/fixtures-out/` 에 그림을 남긴다(산출물이라 커밋하지 않는다). 콘솔 오류가
+있으면 그대로 출력한다. 전역 Playwright 가 필요하다 — cold 시험과 같은 자리다
+(`npm i -g --prefix ~/.local playwright`).
 
 ```bash
 pnpm --filter @colonova-design/web exec vite --port 29187 --strictPort

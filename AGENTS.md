@@ -68,4 +68,4 @@ MVP 검증은 완료됐다(2026-10-21 사용자 통보). 새 기획 기능의 �
 
 `pnpm typecheck` · `pnpm test`(빌드 포함) · `pnpm build`. CI 는 빌드(타입 검사 포함) · biome ·
 순수 시험을 본다 — 프로세스를 띄우는 시험은 로컬 `pnpm test` 의 몫이다(2026-10-02).
-눈으로 보는 검증은 `pnpm dev:desktop`, 수치는 `scripts/bench/`.
+눈으로 보는 검증은 `pnpm dev:desktop`, 부품 그림은 `scripts/web-fixture-shot.mjs`(전역 Playwright — DEVELOPERS.md), 수치는 `scripts/bench/`.

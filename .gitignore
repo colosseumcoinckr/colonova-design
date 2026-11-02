@@ -35,3 +35,7 @@ docs/qa/**/*.png
 
 # 부품 페이지 스크린샷(scripts/web-fixture-shot.mjs)의 산출물 — 실행마다 다시 찍힌다.
 packages/web/fixtures-out/
+
+# 세션 작업 임시물(.zcode-tmp)과 뿌리 스트린샷 산출물(fixtures-out)은 커밋하지 않는다.
+.zcode-tmp/
+/fixtures-out/

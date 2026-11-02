@@ -1092,3 +1092,86 @@
   font-size: var(--fs-cap);
   color: var(--ink3);
 }
+
+/* 어긋남 카드(2026-11-02 · 같이 고치기 UX 계획 §2) — 기획서와 화면의 다른 규칙을 나란히 보이는 판.
+   기획서 칸의 읽는 문서 곁 · 화면 자리 기획서 탭 · 기획 대화 답 아래가 함께 쓴다. */
+.nx-mismatch {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r);
+  background: var(--paper);
+}
+
+.nx-mismatch-hd {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.nx-mismatch-hd b {
+  font-size: var(--fs-ui);
+  color: var(--ink);
+}
+
+.nx-mismatch-src {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-cap);
+  color: var(--ink3);
+}
+
+.nx-mismatch-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nx-mismatch-row {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.nx-mismatch-sec {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink2);
+}
+
+.nx-mismatch-pair {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.nx-mismatch-pair b {
+  font-weight: 600;
+  color: var(--ink3);
+}
+
+.nx-mismatch-pair b::after {
+  content: " ·";
+}
+
+.nx-mismatch-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1_5);
+}
+
+.nx-mismatch-note {
+  margin: 0;
+  font-size: var(--fs-cap);
+  color: var(--ink3);
+}

@@ -6,6 +6,54 @@ import type { EffortLevel, SessionState } from "./shared.js";
 // ---------------------------------------------------------------------------
 
 /**
+ * 화면 요청이 기획서 초안을 같이 고친 결과(2026-10-30 사용자 결정 · 같이 고치기 계획). 초안까지만 자동이고 발행은
+ * 사람이 한다. `checking` 은 기획 AI 가 맞춰 보는 중, `done` 은 끝이다.
+ */
+export type PlanSyncOutcome =
+  | "checking"
+  | "adopted"
+  | "proposed"
+  | "unchanged"
+  | "failed"
+  | "undone";
+
+export interface PlanSyncDoc {
+  /** 초안 열쇠 — 아직 초안을 열지 못했으면 null. */
+  docKey: string | null;
+  pageId: string | null;
+  title: string;
+  outcome: PlanSyncOutcome;
+  /** 초안에 들어간(또는 변경안으로 남은) 걸음 수. */
+  changes: number;
+  /** 기획 AI 의 한 줄 요약 — 줄에 「무엇이 바뀌었는지」로 선다. */
+  summary?: string;
+  /** 실패 · 일부 보존의 사람 말. */
+  detail?: string;
+  /** 되돌리기의 열쇠(`draft.syncUndo`) — 초안에 들어간 때만. */
+  entryId?: string;
+  /**
+   * 그대로 남은 수 — `adopted` 면 사람이 고치던 곳이라 들어가지 못하고 변경안으로 남은 걸음, `undone` 이면 사람이 그 뒤
+   * 고쳐 두어 되돌리지 않은 블록.
+   */
+  kept?: number;
+}
+
+/** 이 요청으로 생긴 연결 — 근거로 보낸 문서와 바뀐 화면을 이었다(2026-10-30 사용자 결정). */
+export interface PlanSyncLink {
+  pageId: string;
+  title: string;
+  route: string;
+}
+
+export interface PlanSync {
+  phase: "checking" | "done";
+  docs: PlanSyncDoc[];
+  linked: PlanSyncLink[];
+  /** 이어진 기획서가 없는 화면 — 사람이 고르면(`draft.syncPick`) 잇고 같이 고친다. */
+  ask?: { routes: string[] };
+}
+
+/**
  * One send waiting in the daemon's wait room (PLAN D86), as the composer's
  * list shows it: the planner's own words, plus how many pictures and other
  * files rode along.
@@ -114,10 +162,14 @@ export type ChatEvent =
       screens: Array<{ route: string; title: string }>;
       checked?: GateChecked;
     }
+  /** 같이 고치기의 진행과 결과(2026-10-30) — 결과 카드 아래 곁줄이 읽는다. */
+  | { kind: "plans.synced"; requestId: string; sync: PlanSync }
   | {
       kind: "user.echo";
       requestId?: string;
       changedScreens?: Array<{ route: string; title: string }>;
+      /** 같이 고치기의 마지막 결과 — 대화록을 다시 열어도 곁줄이 선다. */
+      planSync?: PlanSync;
       gateResult?: GateResult;
       checked?: GateChecked;
       text: string;

@@ -62,7 +62,7 @@ export function useModalFocus(
       if (event.key !== "Tab") return;
       const root = panel.current;
       if (!root) return;
-      // 숨었거나 inert 인 판(홈 · 가려진 탭 · 옆 서랍 뒤)은 손이 닿지 않는다 — 가두면 초점이 못 가는 곳으로 Tab 을 막아
+      // 숨었거나 inert 인 판(기획서 자리 · 가려진 탭 · 옆 서랍 뒤)은 손이 닿지 않는다 — 가두면 초점이 못 가는 곳으로 Tab 을 막아
       // 키보드가 죽는다.
       if (!panelReachable(root.closest("[inert]"), getComputedStyle(root).visibility)) return;
       // 초점이 이 판 밖의 다른 겹판(aria-modal) 안에 있으면 그쪽의 가두기가 맡는다 — 서랍 위에

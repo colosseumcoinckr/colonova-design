@@ -12,12 +12,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import {
+  type ConversationRecord,
   type DraftRecord,
   DraftStaleError,
   DraftStore,
   type ProposalRecord,
   type PublishIntentRecord,
-  type ThreadRecord,
 } from "../dist/draft-store.js";
 
 /**
@@ -111,10 +111,11 @@ function makeProposal(): ProposalRecord {
   };
 }
 
-function makeThread(): ThreadRecord {
+function makeThread(): ConversationRecord {
   return {
     format: 1,
-    threadId: "t-1",
+    threadId: "0b1f8f2e-1111-4222-8333-444455557777",
+    title: "첫 문단을 다듬어 줘",
     docKey: KEY,
     sdkSessionId: "sdk-1",
     messages: [
@@ -134,6 +135,8 @@ function makeThread(): ThreadRecord {
         reads: [{ pageId: "555", title: "가입 화면", version: null }],
       },
     ],
+    createdAt: "2026-10-23T09:00:00.000Z",
+    updatedAt: "2026-10-23T09:01:00.000Z",
   };
 }
 
@@ -262,7 +265,7 @@ test("list 는 updatedAt 이 늦은 초안부터 돌려준다", () => {
   }
 });
 
-test("remove 는 초안 · 기준 · 변경안 · 대화를 지우고 발행 의도는 남긴다", () => {
+test("remove 는 초안 · 기준 · 변경안 · 대화 · 판 스냅숏을 지우고 발행 의도는 남긴다", () => {
   const root = newRoot();
   try {
     const store = new DraftStore(root);
@@ -274,6 +277,8 @@ test("remove 는 초안 · 기준 · 변경안 · 대화를 지우고 발행 의
     assert.equal(store.read(KEY), null);
     assert.equal(store.readBase(KEY), null);
     assert.deepEqual(store.proposals(KEY), []);
+    // 옮겨진 대화 기록도 지운다 — 옛 자리(threads/)의 파일도 함께 거둔다.
+    assert.equal(store.conversation(makeThread().threadId), null);
     assert.equal(store.thread(KEY), null);
     // 발행 의도는 불변 기록이다.
     assert.equal(store.intent(INTENT_ID)?.state, "sending");
@@ -292,7 +297,59 @@ test("변경안과 대화는 그대로 왕복한다", () => {
     store.saveProposals(KEY, [makeProposal()]);
     store.saveThread(makeThread());
     assert.deepEqual(store.proposals(KEY), [makeProposal()]);
+    // 문서에 붙은 대화로 읽는다(2026-10-31 3단계) — 옮겨진 기록은 대화 열쇠로도 읽힌다.
     assert.deepEqual(store.thread(KEY), makeThread());
+    assert.deepEqual(store.conversation(makeThread().threadId), makeThread());
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("옛 기록(threads/<docKey>.json)은 문서마다 대화 하나로 옮겨진다(2026-10-31 3단계)", () => {
+  const root = newRoot();
+  try {
+    const store = new DraftStore(root);
+    store.create(makeDraft(), null);
+    // 옛 기록의 자리에 직접 놓는다 — 옮기기 전의 디스크 모습이다.
+    const legacy = {
+      format: 1,
+      threadId: "0b1f8f2e-1111-4222-8333-444455558888",
+      docKey: KEY,
+      sdkSessionId: "sdk-old",
+      messages: [
+        { messageId: "m-1", role: "user", text: "옛 말이다", at: "2026-10-23T09:00:00.000Z" },
+      ],
+    };
+    mkdirSync(join(root, "threads"), { recursive: true });
+    writeFileSync(join(root, "threads", `${KEY}.json`), JSON.stringify(legacy));
+    const migrated = store.thread(KEY);
+    assert.equal(migrated?.threadId, legacy.threadId);
+    assert.equal(migrated?.title, "로그인 화면 기획");
+    assert.equal(migrated?.docKey, KEY);
+    assert.equal(migrated?.messages.length, 1);
+    // 옛 파일은 거둔다 — 다시 읽어도 같은 대화다.
+    assert.equal(existsSync(join(root, "threads", `${KEY}.json`)), false);
+    assert.deepEqual(store.thread(KEY), migrated);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("save 는 판 스냅숏을 남기고 revisions 로 읽는다(2026-10-31 2단계)", () => {
+  const root = newRoot();
+  try {
+    const store = new DraftStore(root, () => new Date(1_000));
+    store.create(makeDraft(), null);
+    store.save(makeDraft(), 3, { origin: "ai", label: "노쇼 규칙 정리" });
+    assert.deepEqual(
+      store.revisions(KEY).map((one) => [one.revision, one.origin, one.label]),
+      [[4, "ai", "노쇼 규칙 정리"]],
+    );
+    const snapshot = store.revision(KEY, 4);
+    assert.equal(snapshot?.revision, 4);
+    assert.equal(snapshot?.title, makeDraft().title);
+    assert.equal(snapshot?.blocks.length, makeDraft().blocks.length);
+    assert.equal(store.revision(KEY, 9), null);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -462,7 +519,7 @@ test("원자 쓰기 — 쓰고 나면 어느 폴더에도 임시 파일이 남�
     store.saveProposals(KEY, [makeProposal()]);
     store.saveThread(makeThread());
     store.saveIntent(makeIntent(), "<p>확인한 본문</p>");
-    for (const folder of ["drafts", "proposals", "threads", "intents"]) {
+    for (const folder of ["drafts", "proposals", "conversations", "intents"]) {
       const names = readdirSync(join(root, folder));
       const leftovers = names.filter((name) => name.includes(".tmp-"));
       assert.deepEqual(leftovers, [], `${folder} 에 임시 파일이 남았다`);

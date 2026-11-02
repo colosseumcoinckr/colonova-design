@@ -277,3 +277,25 @@ test("PR 초안 예산 — Windows 는 45초, 그 밖은 15초 그대로다(2026
   assert.equal(handoffDraftTimeoutMs("darwin"), 15_000);
   assert.equal(handoffDraftTimeoutMs("linux"), 15_000);
 });
+
+test("저장 문구의 코드 흔적 — 파일 이름이 든 문장은 기본 문구로 물러난다(2026-11-02 실사용 관찰)", async () => {
+  const scene = await makeScene();
+  try {
+    const files = [{ path: "src/pages/login.tsx", status: "modified", hunks: [] }];
+    // 파일 이름을 품은 답 — 작업 기록에 개발 어휘가 오르므로 거절해 기본 문구로 돌아간다.
+    const junkTurn = new RepoSummarizer(
+      scene.core,
+      async () =>
+        "핵심 변경은 각 화면의 로직을 view.tsx로 분리하고 page.tsx는 얇은 래퍼로 바꾼 것이므로 refactor가 맞습니다.",
+    );
+    assert.equal(await junkTurn.machineMemo(files), null);
+    // 화면의 말만 든 답은 그대로 실린다 — `type:` 접두가 없어도 좋은 문구다.
+    const goodTurn = new RepoSummarizer(
+      scene.core,
+      async () => "feat: 로그인 화면의 경고 창이 사라진다",
+    );
+    assert.equal(await goodTurn.machineMemo(files), "feat: 로그인 화면의 경고 창이 사라진다");
+  } finally {
+    await scene.dispose();
+  }
+});

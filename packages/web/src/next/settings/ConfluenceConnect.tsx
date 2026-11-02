@@ -11,8 +11,9 @@ import { useConfluenceConnect } from "./use-confluence-connect";
 /**
  * 기획서 연결(2026-10-18 기획서 동기화 1단계, 같은 날 개선 패스) — 사이트 · 이메일 · 토큰 · 기준 페이지.
  * 이메일과 토큰은 일회성 입력이다: 제출 뒤에는 값이 어디에도 남지 않는다(모델의 걸음이 지운다). 연결된 뒤에는
- * 입력 칸이 접히고(`다시 연결하기` 로 다시 연다) 사이트 · 기준 페이지가 줄로 서며, 기준 페이지는 `바꾸기` 로 다시
- * 고를 수 있다 — 찾기는 저장된 자격으로 돈다.
+ * 입력 칸이 접히고(`다시 연결하기` 로 다시 연다) 사이트 · 계정 · 기준 페이지가 줄로 서며, 기준 페이지는 `바꾸기` 로
+ * 다시 고를 수 있다 — 찾기는 저장된 자격으로 돈다. 연결 · 자격 모두 활성 프로젝트의 것이다 — 자격은 프로젝트마다
+ * 따로 저장되고(2026-11-03), 상태 알약 곁의 프로젝트 이름 칩이 누구의 연결인지 말한다.
  */
 export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: boolean }) {
   const model = useConfluenceConnect(daemon);
@@ -21,6 +22,7 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
   const linked = state.linked !== null || summary?.connected === true;
   const expired = summary?.expired === true;
   const rootTitle = state.linked?.rootTitle ?? summary?.rootTitle ?? null;
+  const projectName = daemon.projects.find((project) => project.slug === daemon.activeSlug)?.name;
   // 입력 칸 — 연결이 안 섰거나 끊겼거나(만료) 사용자가 다시 연결하러 연 동안.
   const showCreds = !linked || expired || state.reconnecting;
   // 기준 페이지 찾기 — 아직 못 정했거나 바꾸러 연 동안. 연결이 끊기면 찾기도 못 돌므로 서지 않는다.
@@ -35,6 +37,7 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
   return (
     <SGroup>
       <SRow title={L.plans.title} sub={L.plans.titleSub}>
+        {projectName !== undefined && <span className="nx-schip">{projectName}</span>}
         <span className={`nx-pill${chipTone}`}>{model.status}</span>
       </SRow>
 
@@ -49,6 +52,12 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
           >
             {L.plans.reconnect}
           </button>
+        </SRow>
+      )}
+
+      {linked && !showCreds && summary?.account !== undefined && (
+        <SRow title={L.plans.account} sub={L.plans.accountSub}>
+          <span className="nx-sval">{summary.account}</span>
         </SRow>
       )}
 

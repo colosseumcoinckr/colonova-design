@@ -82,17 +82,6 @@
   font-size: var(--fs-sm);
 }
 
-/* 이어 보기 막대의 `초안` 표시 — 지금 문서가 아니라 그 초안을 본다는 말이다. */
-.nx-dr-chip {
-  flex: none;
-  padding: 1px var(--sp-2);
-  border-radius: var(--r-pill);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: var(--fs-cap);
-  font-weight: var(--fw-semi);
-}
-
 /* 입력 한계의 이유 한 줄 — 칸이 선로의 상한에서 멈출 때 왜인지 말한다(2026-10-23 화면 확인). */
 .nx-dr-limit {
   margin: 0;
@@ -613,130 +602,7 @@
   }
 }
 
-/* ---------- 기획 대화 — 편집기 곁의 대화 칸(2026-10-23 · 최종 구현 계획 F1).
-   넓은 칸에서는 편집기 오른쪽에, 좁은 칸에서는 아래에 선다(@container nxpl). ---------- */
-/* 편집기와 대화는 여백 없는 두 칸이다. 종이 여백은 편집기 쪽만 가진다(2026-10-24 PL1). */
-.nx-dr-with {
-  display: grid;
-  align-items: start;
-  width: 100%;
-}
-
-.nx-pl-view.nx-pl-view--draft {
-  padding: 0;
-}
-
-/*
- * 나란히 서는 문턱은 820px 이다(2026-10-23 기획자 화면 손질 D2). 1040px 일 때는 1440 창의 오른쪽 칸(776px)에서도
- * 기획 대화가 문서 전체 아래로 갔다. 집중 배치(화면 대화 칸이 비켜선다)와 함께 1280 창까지 나란히 선다. 기획 대화는 칸의
- * 34%(280–400px)를 쓴다 — 문턱에서도 문서 쪽이 480px 를 넘는다(380px 고정이던 첫 판은 문턱의 문서가 354px 라 머리가 네 줄로
- * 꺾이고 블록 손잡이가 글을 덮었다). 이때 두 쪽은 따로 구른다 — 문서를 내려 읽어도 기획 대화의 입력이 바닥에 남고, 초안
- * 머리(제목 · 발행)가 위에 붙는다.
- */
-.nx-pl-view--draft .nx-dr-hd {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  margin: calc(-1 * var(--nx-pl-pad-top)) calc(-1 * var(--nx-pl-pad-x)) 0;
-  padding: var(--nx-pl-pad-top) var(--nx-pl-pad-x) var(--sp-3);
-  background: var(--bg);
-}
-
-@container nxpl (min-width: 820px) {
-  .nx-dr-with {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, min(34%, 400px));
-  }
-
-  .nx-pl-view--draft {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .nx-pl-view--draft > .nx-dr-with {
-    flex: 1 1 auto;
-    width: 100%;
-    min-height: 0;
-    grid-template-rows: minmax(0, 1fr);
-    align-items: stretch;
-  }
-
-  .nx-pl-view--draft .nx-dr-main {
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
-  .nx-pl-view--draft .nx-dr-thread {
-    min-height: 0;
-  }
-
-  .nx-pl-view--draft .nx-dr-thread-log {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-}
-
-/*
- * 좁은 칸(820px 미만) — 문서와 기획 대화가 위아래로 서는 동안 기획 대화는 칸 바닥에 붙는 판이 된다(2026-10-23 기획자
- * 화면 손질 U3). 문서를 내려 읽어도 AI 의 입력이 늘 보이고, 기록은 판 안에서 구른다. 변경안을 읽을 높이를 확보하고,
- * 펼치면 문서 칸의 대부분을 쓴다(2026-10-24 QA 2 · FXD). 문서 끝에 닿으면 판은 제 자리(문서 아래)에 앉는다.
- */
-@container nxpl (max-width: 819px) {
-  .nx-pl-view--draft .nx-dr-thread {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    border-inline-start: 0;
-    border-top: 1px solid var(--line);
-    height: min(56vh, 520px);
-    max-height: min(56vh, 520px);
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    box-shadow: 0 -10px 28px rgb(0 0 0 / 12%);
-  }
-
-  .nx-pl-view--draft .nx-dr-thread[data-expanded="true"] {
-    height: 82vh;
-    max-height: 82vh;
-  }
-
-  .nx-pl-view--draft .nx-dr-thread-hd {
-    align-items: center;
-  }
-
-  .nx-dr-thread-target {
-    flex: 1 1 0;
-  }
-
-  .nx .nx-pl-view--draft .nx-dr-thread-toggle {
-    display: inline-flex;
-    margin-inline-start: auto;
-  }
-
-  .nx-dr-thread-scope {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .nx .nx-dr-thread-row > textarea {
-    field-sizing: content;
-    min-height: calc(2lh + var(--sp-4) + 2px);
-    max-height: calc(4lh + var(--sp-4) + 2px);
-  }
-
-  .nx-pl-view--draft .nx-dr-thread-log {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-}
-
+/* ---------- 기획 대화 — 문서 판 오른쪽의 대화 칸(2026-10-31 기획서 칸 개선 · 2026-11-02 D 개선). ---------- */
 .nx-dr-thread {
   display: flex;
   flex-direction: column;
@@ -746,49 +612,73 @@
   background: var(--side);
 }
 
+/* 머리는 세 줄의 위계다(2026-11-02 D6) — 대화 제목과 ⋯ 메뉴 / 다루는 문서 / 이 AI 의 담당 한 줄. */
 .nx-dr-thread-hd {
   flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--sp-1) var(--sp-3);
+  display: grid;
+  gap: 2px;
   padding-bottom: var(--sp-2);
   border-bottom: 1px solid var(--line-soft);
 }
 
+.nx-dr-thread-top {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1_5);
+}
+
 .nx-dr-thread-title {
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--fs-lg);
   font-weight: var(--fw-semi);
   color: var(--ink);
 }
 
-.nx .nx-dr-thread-toggle {
-  display: none;
-}
-
 .nx-dr-thread-target {
+  margin: 0;
   min-width: 0;
-  color: var(--ink3);
-  font-size: var(--fs-cap);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
 }
 
-/* 이 AI 가 바꾸는 것 — 머리 아래 한 줄(줄바꿈 상자의 새 줄). */
+/* 이 AI 가 바꾸는 것 — 머리의 마지막 한 줄(줄바꿈 상자의 새 줄). 길면 말줄임하고 `title` 에 전문이 산다. */
 .nx-dr-thread-scope {
-  flex-basis: 100%;
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--ink3);
   font-size: var(--fs-cap);
   line-height: 1.5;
 }
 
+/* 기록은 칸 안에서 구른다 — 머리는 위에, 입력은 바닥에 늘 서고 기록만 오른다. 스크롤 규칙이
+   2026-10-31 개편에서 옛 선택자(.nx-pl-view--draft)에 남아 실제 칸에는 없어서, 대화가 길어지면
+   칸이 넘쳐 입력창이 창밑으로 잘렸다(2026-11-02 사용자 지적). */
 .nx-dr-thread-log {
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 대화가 짧으면 입력창 위에 붙는다(2026-11-02 D1) — 첫 아이의 auto 여백이 남은 높이를 다 삼켜
+   말이 아래에서 시작한다(메신저 · Claude 앱의 관례). 대화가 길어 구르면 auto 는 0 으로 접혀
+   지금처럼 위에서 구른다. */
+.nx-dr-thread-log > :first-child {
+  margin-top: auto;
 }
 
 .nx-dr-thread-empty {
@@ -804,7 +694,8 @@
   line-height: 1.6;
 }
 
-/* 말 한 편 — 사람의 말은 알약으로 오른쪽에, AI 의 말은 왼쪽에 붙인다. */
+/* 말 한 편 — 사람의 말은 알약으로 오른쪽에, AI 의 말은 닻(얼굴)과 몸의 두 칸으로 왼쪽에 붙인다(2026-11-02 D2 —
+   화면 대화와 같은 말씨). */
 .nx-dr-msg {
   display: grid;
   gap: var(--sp-1_5);
@@ -817,6 +708,45 @@
   justify-items: end;
 }
 
+.nx-dr-msg[data-role="ai"] {
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: var(--sp-2);
+  align-items: start;
+}
+
+/* 닯은 얼굴의 뒷말(연속한 AI 말) — 얼굴 칸은 비켜서 몸의 들여쓰기만 지킨다. */
+.nx-dr-msg[data-role="ai"] .nx-av[data-spark="off"] {
+  background: transparent;
+}
+
+.nx-dr-msg-body {
+  display: grid;
+  gap: var(--sp-1_5);
+  min-width: 0;
+}
+
+/* 답의 머리 문장(2026-11-02 D2) — 첫 문단이 짧고 뒤에 더 있으면 살짝 크게(화면 대화와 같은 규칙). */
+.nx-dr-msg[data-lead="true"] .nx-dr-msg-md > .md > p:first-child {
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  line-height: 1.55;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+/* 말의 시각(2026-11-02 D3) — 말 끝의 조용한 한 줄. */
+.nx-dr-msg-at {
+  margin: 0;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+
+/* 화면 요청에서 온 말의 머리(2026-10-30 같이 고치기) — 말풍선 위의 작은 한 줄. */
+.nx-dr-msg-origin {
+  margin: 0 0 4px;
+  font-size: var(--fs-cap);
+  color: var(--ink3);
+}
 .nx-dr-msg[data-role="user"] .nx-dr-msg-text {
   margin: 0;
   padding: 7px 11px;
@@ -899,132 +829,28 @@
   font-size: var(--fs-sm);
 }
 
-/* 변경안 카드 — 요약 · 걸음 · 미리보기 · 채택 단추. */
-.nx-dr-prop {
-  display: grid;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-3);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--r-md);
-  background: var(--bg);
-}
+/* 걸음 · 채택 · 견주기 카드의 옛 규칙(.nx-dr-prop* · .nx-dr-cmp*)은 2026-11-02 D11 에서 걷었다 —
+   채택 없이 바로 반영(2026-10-31)으로 옛걸음 이후 그리는 이가 없었다. */
 
-.nx-dr-prop-sum {
-  margin: 0;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semi);
-}
-
-.nx-dr-prop-steps {
-  list-style: none;
-  display: grid;
-  gap: var(--sp-1_5);
-  margin: 0;
-  padding: 0;
-}
-
-.nx-dr-prop-step {
+/* 입력 — 여러 줄 칸, 근거 칩 줄, 떠 있는 `맨 아래로` 단추의 닻. */
+.nx-dr-formwrap {
   position: relative;
-  display: grid;
-  gap: var(--sp-1);
-  padding: var(--sp-1_5) var(--sp-2);
-  border: 1px solid transparent;
-  border-radius: var(--r);
-}
-
-.nx-dr-prop-step[data-state="stale"] {
-  border-color: var(--line-soft);
-  background: var(--bg-2);
-}
-
-.nx-dr-prop-step .nx-dr-check {
-  font-size: var(--fs-sm);
-}
-
-/* 걸음의 머리줄 — 체크칸과 처지 배지 · 크게 보기가 한 줄에 선다(2026-10-25 UX 심화 사용). 배지는
-   머리줄의 흐름 안에 있다 — 크게 보기 단추와 같은 줄에 서게 absolute 를 걷었다. */
-.nx-dr-prop-step-hd {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--sp-1);
-}
-
-.nx-dr-prop-step-hd > .nx-dr-check {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.nx-dr-prop-step-acts {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--sp-1);
-}
-
-.nx-dr-prop-note {
-  margin: 0;
-  color: var(--amber);
-  font-size: var(--fs-cap);
-}
-
-.nx-dr-prop-acts {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
-  padding-top: var(--sp-2);
-  border-top: 1px solid var(--line-soft);
-  background: var(--bg);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-1);
-}
-
-.nx-dr-prop-acts > button {
-  flex: none;
-}
-
-/* 미선택 채택 잠김의 이유(2026-10-25 UX 관찰) — 꺼진 단추 곁에서 이유를 말한다. */
-.nx-dr-prop-hint {
-  flex: 1 1 100%;
-  margin: 0;
-  color: var(--ink3);
-  font-size: var(--fs-cap);
-}
-
-/* 아무 걸음도 고르지 않은 동안 — 체크 상자가 숨 쉬며 먼저 고르라고 알린다(2026-10-25 UX 관찰). */
-.nx-dr-prop-steps[data-pick="none"] .nx-dr-check > input:not(:checked) {
-  box-shadow: 0 0 0 1px var(--accent-soft);
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .nx-dr-prop-steps[data-pick="none"] .nx-dr-check > input:not(:checked) {
-    animation: nx-dr-pick-pulse 1.6s ease-in-out infinite;
-  }
-}
-
-@keyframes nx-dr-pick-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 0 1px var(--accent-soft);
-  }
-  50% {
-    box-shadow: 0 0 0 3px var(--accent-soft);
-  }
-}
-
-/* 입력 — 여러 줄 칸, 근거 칩 줄, 근거 고르기 판. */
-.nx-dr-thread-form {
   flex: none;
   margin-top: auto;
   display: grid;
+}
+
+.nx-dr-thread-form {
+  display: grid;
   gap: var(--sp-2);
 }
 
-/* 옆 칸 입력은 세 줄, 바닥 판은 두 줄부터 자란다(2026-10-24 QA 2 · FXD). */
+/* 입력창은 글에 맞춰 자란다(2026-11-02 D7) — 두 줄부터 여섯 줄쯤까지(화면 대화 입력창과 같은 규칙). */
 .nx .nx-dr-thread-row > textarea {
   resize: none;
+  min-height: calc(2lh + var(--sp-4) + 2px);
+  max-height: 180px;
+  overflow-y: auto;
 }
 
 .nx-dr-thread-row {
@@ -1047,9 +873,12 @@
   margin-left: auto;
 }
 
+/* 근거 고르기 판 — `+ 근거 더하기` 단추에 붙은 팝 안에 선다(2026-11-02 D8). */
 .nx-dr-refpick {
   display: grid;
   gap: var(--sp-2);
+  width: 300px;
+  max-width: calc(100vw - 48px);
   padding: var(--sp-3);
   border: 1px dashed var(--line2);
   border-radius: var(--r-md);
@@ -1133,51 +962,12 @@
   gap: var(--sp-1_5);
 }
 
-/* 공통 부품에 없는 배치만 둔다(2026-10-23 화면 전면 재설계 §4 D). */
-.nx-dr-main {
-  min-width: 0;
-  padding: 0 var(--nx-pl-pad-x);
-}
-/* 끝 여백을 실제 내용 높이에 넣는다. padding은 머리의 붙는 범위에서 빠진다(2026-10-24 QA 1 · FXD). */
-.nx-dr-main > .nx-dr::after {
-  content: "";
-  flex: none;
-  height: calc(var(--nx-pl-pad-bottom) - var(--sp-3));
-}
+/* 공통 부품에 없는 배치만 둔다(2026-10-23 화면 전면 재설계 §4 D). 옛 문서 판 겉칸(.nx-dr-main)은
+   2026-11-02 D11 에서 걷었다 — 2026-10-31 개편 뒤 그리는 이가 없었다. */
 .nx-dr-read .md,
 .nx-dr-msg-md .md {
   font-size: inherit;
   line-height: var(--lh-read);
-}
-.nx-dr-prop-compare {
-  display: grid;
-  gap: var(--sp-1_5);
-  min-width: 0;
-}
-.nx-dr-prop-version {
-  display: grid;
-  gap: var(--sp-1);
-  padding: var(--sp-2);
-  border-radius: var(--r-sm);
-  background: var(--bg-2);
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.nx-dr-prop-version--after {
-  background: var(--blue-soft);
-}
-.nx-dr-prop-version-label {
-  color: var(--ink2);
-  font-size: var(--fs-cap);
-  font-weight: var(--fw-semi);
-}
-.nx-dr-prop-version > p {
-  margin: 0;
-  font-size: var(--fs-sm);
-  color: var(--ink2);
-}
-.nx-dr-prop-version .nx-dr-read {
-  font-size: var(--fs-ui);
 }
 /*
  * 기획서 칸의 표는 셀마다 제 폭을 지킨다(2026-10-25 UX 심화 사용). 전역 `.md table` 의 width:100%
@@ -1195,33 +985,6 @@
 .nx-dr-msg-md .md td {
   min-width: 4em;
 }
-/*
- * 견주기 크게 보기(2026-10-25 UX 심화 사용) — 좁은 칸에서 접히는 걸음을 넓은 판에 나란히 펼친다.
- * 두 쪽은 카드의 짧은 견주기와 같은 `.nx-dr-prop-version` 모양을 쓴다. 판이 좁은 창에서는 위아래로.
- */
-.nx-dr-cmp {
-  width: min(760px, calc(100% - 40px));
-  max-height: min(80vh, 720px);
-}
-.nx-dr-cmp-head {
-  margin: 0;
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semi);
-}
-.nx-dr-cmp-sides {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--sp-3);
-  margin-top: var(--sp-2);
-}
-@media (max-width: 640px) {
-  .nx-dr-cmp-sides {
-    grid-template-columns: 1fr;
-  }
-}
-.nx-dr-prop-step .nx-dr-check {
-  align-items: flex-start;
-}
 .nx-dr-place-row > input,
 .nx-dr-place-row > svg {
   flex: none;
@@ -1238,14 +1001,6 @@
 }
 .nx-dr-noplace > p {
   margin: 0;
-}
-.nx-dr-prop-step .nx-dr-check input {
-  flex: none;
-  margin-top: var(--sp-1);
-}
-.nx-dr-prop-step .nx-dr-check span {
-  min-width: 0;
-  overflow-wrap: anywhere;
 }
 .nx-dr-refchip {
   min-height: var(--h-sm);
@@ -1374,4 +1129,329 @@
   align-items: center;
   gap: var(--sp-1_5);
   margin-inline-start: auto;
+}
+
+.nx-pl-ask-screens {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--card);
+}
+
+.nx-pl-ask-h {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1_5);
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
+  color: var(--ink);
+}
+
+.nx-pl-ask-n {
+  color: var(--ink3);
+  font-weight: normal;
+}
+
+.nx-pl-ask-empty {
+  margin: 0;
+  font-size: var(--fs-cap);
+  line-height: 1.5;
+  color: var(--ink3);
+}
+
+.nx-pl-ask-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nx-pl-ask-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  min-height: 28px;
+  font-size: var(--fs-sm);
+  color: var(--ink2);
+}
+
+.nx-pl-ask-row > .nx-i {
+  flex: none;
+  color: var(--accent);
+}
+
+.nx-pl-ask-name {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nx-pl-ask-sub {
+  font-size: var(--fs-cap);
+  color: var(--ink3);
+}
+
+/* ————— 기획서 칸 개선(2026-10-31) — 대화 칸 · 문서 카드 · 판 고르기 · 견주기 · 제자리 고치기 ————— */
+
+/* 대화 칸의 시작 문장(§A) — Claude 앱의 시작 화면과 같은 모양. */
+.nx-dr-starters {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding-block: var(--sp-8);
+}
+.nx-dr-starters-h {
+  margin: 0;
+  color: var(--ink2);
+  font-size: var(--fs-ui);
+  text-align: center;
+}
+.nx-dr-starters-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-width: 420px;
+  margin-inline: auto;
+  width: 100%;
+}
+.nx-dr-starter {
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  text-align: left;
+  cursor: pointer;
+}
+.nx-dr-starter:hover {
+  border-color: var(--ink3);
+  background: var(--hover, rgba(0, 0, 0, 0.04));
+}
+
+/* 말의 손 — 복사 · 다시 요청 · 고쳐 보내기(§A). 마지막 말의 손은 hover 없이도 늘 보이고
+   손이 없는 기기에서는 모두 늘 보인다(2026-11-02 D4). */
+.nx-dr-msg-acts {
+  display: flex;
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.nx-dr-msg:hover .nx-dr-msg-acts,
+.nx-dr-msg:focus-within .nx-dr-msg-acts,
+.nx-dr-msg[data-last="true"] .nx-dr-msg-acts {
+  opacity: 1;
+}
+@media (hover: none) {
+  .nx-dr-msg-acts {
+    opacity: 1;
+  }
+}
+
+/* 고른 글 칩(§4단계) — 입력창 위에 선다. */
+.nx-dr-selchip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* 바로 반영의 문서 카드(§B) — 채택 걸음 대신 무엇이 들어갔는지와 되돌리기가 선다. */
+.nx-dr-doccard {
+  margin: var(--sp-2) 0;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-2, transparent);
+}
+.nx-dr-doccard--pub {
+  border-style: dashed;
+  color: var(--ink2);
+}
+.nx-dr-doccard-h {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-weight: var(--fw-semi);
+  font-size: var(--fs-ui);
+}
+.nx-dr-doccard-n {
+  color: var(--ink2);
+  font-weight: var(--fw-normal);
+  font-size: var(--fs-sm);
+}
+
+/* 남은 고침 알약은 손이다(2026-11-02 D9) — 누르면 문서 판의 남은 걸음 띠로 간다. */
+.nx-dr-doccard-kept {
+  border: 0;
+  cursor: pointer;
+}
+
+/* 무엇을 고쳤는지의 요약 한 줄(2026-11-02 D10) — AI 가 변경안에 적어 둔 첫 말. 길면 말줄임. */
+.nx-dr-doccard-sum {
+  margin: var(--sp-1) 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+}
+.nx-dr-doccard-note {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+}
+.nx-dr-doccard-acts {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+/* 판 고르기(§B) — 머리의 `초안 판 N ▾`. */
+.nx-dr-revpick {
+  flex: none;
+}
+.nx-mi-sep {
+  margin: var(--sp-1) 0;
+  border: none;
+  border-top: 1px solid var(--line);
+}
+.nx-mi-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-mi-s {
+  flex: none;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+.nx-dr-oldrev {
+  margin: 0 var(--sp-8);
+}
+
+/* Confluence 판과 견주기(§B) — 지운 글 취소선 · 더한 글 밑줄. */
+.nx-dr-compare {
+  padding: 0 var(--sp-8) var(--sp-4);
+}
+.nx-dr-compare-sub {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+}
+.nx-dr-compare-load {
+  padding: var(--sp-8);
+  color: var(--ink2);
+  font-size: var(--fs-ui);
+}
+.nx-dr-diff {
+  margin: 0;
+  font-size: var(--fs-ui);
+  line-height: 1.7;
+}
+.nx-dr-diff del {
+  color: var(--ink3);
+  text-decoration-thickness: 2px;
+}
+.nx-dr-diff ins {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+}
+.nx-dr-compare-del .nx-dr-diff del {
+  display: block;
+}
+
+/* 사람이 고친 블록 위의 남은 걸음(§B) — AI 의 고침 · 버리기가 그 자리에 선다. */
+.nx-dr-kept {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-1) 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2, transparent);
+}
+.nx-dr-kept-t {
+  flex: 1;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-dr-kept-acts {
+  display: flex;
+  flex: none;
+  gap: var(--sp-1);
+}
+
+/* 제자리 고치기(§4단계) — 본문 글꼴 · 폭 그대로의 칸. */
+.nx-dr-inline {
+  margin: var(--sp-1) 0;
+}
+.nx-dr-inline-area {
+  width: 100%;
+  font-size: inherit;
+  line-height: inherit;
+}
+.nx-dr-inline-hint {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+
+/* 토큰 칩(§4단계) — ⟦t1⟧ 글자 대신 사람의 말 칩. */
+.nx-dr-tokenchip {
+  display: inline-block;
+  margin-inline: 2px;
+  padding: 1px var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-full, 999px);
+  background: var(--bg-2, transparent);
+  color: var(--ink2);
+  font-size: var(--fs-cap);
+  line-height: 1.6;
+  cursor: pointer;
+}
+.nx-dr-tokenchip:hover {
+  color: var(--ink);
+  border-color: var(--ink3);
+}
+/* 상태 표시 칩(2026-11-03 실앱 감사) — 겉껍데기를 벗기고 안의 색 알약(nx-dv-status)이 서게 한다.
+   알약의 색 클래스는 읽기 화면(doc-view.css)과 같은 것을 재사용한다. */
+.nx-dr-tokenchip--status {
+  padding: 0;
+  border: none;
+  background: none;
+}
+.nx-dr-tokenchip--status:hover {
+  border: none;
+}
+
+/* 마지막 AI 고침의 잠깐 칠하기(§B) — 색만으로 말하지 않게 꼬리표 글과 읽어 주는 이름을 함께 둔다. */
+.nx-dr-block[data-flash] {
+  animation: nx-dr-flash 2.4s ease-out;
+  border-radius: var(--r-sm);
+}
+@keyframes nx-dr-flash {
+  0%,
+  40% {
+    background: var(--sel, rgba(15, 98, 254, 0.12));
+  }
+  100% {
+    background: transparent;
+  }
 }

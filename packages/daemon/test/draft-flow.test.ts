@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -171,6 +172,8 @@ interface Rig {
   requests: string[];
   putBodies: string[];
   messages: ServerMessage[];
+  /** 시계를 한 칸(1분) 옮긴다 — 대화의 갱신 시각이 어긋나야 최신 판정이 정해진다(2026-11-03). */
+  tick(): void;
   /** 다음 두 번의 PUT 을 응답 유실로 만든다 — 전송은 나가되 답을 잃는다. */
   failNextPuts(count: number): void;
   cleanup(): void;
@@ -178,6 +181,8 @@ interface Rig {
 
 function rig(runner: DraftAiRunner): Rig {
   const home = mkdtempSync(join(tmpdir(), "draft-flow-"));
+  // 흐르는 시계 — 갱신 시각이 같으면 최신 대화 판정이 파일 목록 순서에 놓이게 된다(2026-11-03).
+  let clock = new Date("2026-10-23T01:00:00Z");
   // 기획서 사본 — 프로젝트 폴더 아래 confluence/ 다. 클론은 아예 없다(2026-10-23 · 기획서 사본 이동 계획 §1 D1).
   const readRoot = join(home, "demo", "confluence");
   mkdirSync(readRoot, { recursive: true });
@@ -216,6 +221,13 @@ function rig(runner: DraftAiRunner): Rig {
       request: { method: "GET", url: WHOAMI_URL },
       response: { status: 200, json: { accountId: "acct-1", displayName: "합성 사람" } },
     })),
+    // 새 문서 초안의 뿌리 읽기 — create 가 공간 열쇠와 뿌리 제목을 얻는 길이다(2026-11-03 골라 읽기 시험).
+    {
+      name: "뿌리 문서 읽기",
+      cite: "GET /wiki/api/v2/pages/9?body-format=storage — 새 문서의 자리 확인",
+      request: { method: "GET", url: "/wiki/api/v2/pages/9?body-format=storage" },
+      response: { status: 200, json: pageJson("9", "기획서 뿌리", STORAGE_V4, 1) },
+    },
     ...times(5, () => makePagePair(4, STORAGE_V4)),
     // 적용된 판(5)의 문서 읽기 — 발행이 적용되면 원격 본문이 새 기준이 되는 길이다.
     remoteV5,
@@ -313,16 +325,20 @@ function rig(runner: DraftAiRunner): Rig {
     logger,
     ai: runner,
     publisher: new DraftPublisher(),
-    now: () => NOW,
+    now: () => clock,
     transport: () => transport,
   });
   return {
     service,
-    store: new DraftStore(join(home, "demo", "plans"), () => NOW),
+    store: new DraftStore(join(home, "demo", "plans"), () => clock),
     home,
     requests,
     putBodies,
     messages,
+    /** 시계를 한 칸 옮긴다 — 대화를 갈라 낼 때 어긋난 갱신 시각이 최신 판정을 정하게(2026-11-03). */
+    tick() {
+      clock = new Date(clock.getTime() + 60_000);
+    },
     failNextPuts(count: number) {
       failedPutsLeft = count;
     },
@@ -425,26 +441,27 @@ test("초안 흐름 — 열고 고치고 묻고 채택해 발행하고, 원격 �
     );
     assert.equal(threadAfterAsk.proposals.length, 1);
     assert.equal(threadAfterAsk.proposals[0]?.summary, "표 값 다듬기와 앞 문단");
+    // 바로 반영(2026-10-31 2단계) — 채택 없이 두 걸음이 모두 초안에 들어간다.
     assert.deepEqual(
       threadAfterAsk.proposals[0]?.ops.map((op) => [op.type, op.state]),
       [
-        ["replace", "open"],
-        ["insert", "open"],
+        ["replace", "adopted"],
+        ["insert", "adopted"],
       ],
     );
-    const proposalId = threadAfterAsk.proposals[0]?.proposalId ?? "";
+    assert.equal(typeof threadAfterAsk.proposals[0]?.appliedAt, "string");
 
-    // ————— 4. 흐름 보기와 채택 — 둘 다 채택 → 개정 2, 표 changed, 새 블록 new —————
+    // ————— 4. 바로 반영의 초안 — 개정 2, 표 changed, 새 블록 new —————
     assert.equal(threadAfterAsk.running, false);
-    const adopted = await rig1.service.adopt(KEY, proposalId, ["op-table", "op-insert"], 1);
-    assert.equal(adopted.revision, 2);
-    assert.match(adopted.blocks[0]?.id ?? "", /^n[0-9a-f]{12}$/);
-    assert.equal(paragraphText(adopted.blocks[0]), "AI 가 붙인 첫 문단이다.");
+    const applied2 = await rig1.service.get(KEY);
+    assert.equal(applied2.revision, 2);
+    assert.match(applied2.blocks[0]?.id ?? "", /^n[0-9a-f]{12}$/);
+    assert.equal(paragraphText(applied2.blocks[0]), "AI 가 붙인 첫 문단이다.");
     assert.deepEqual(
-      adopted.blocks.map((block) => block.status),
+      applied2.blocks.map((block) => block.status),
       ["new", "same", "changed", "changed", "same"],
     );
-    assert.equal(tableView(adopted.blocks[3]).rows[1]?.cells[1]?.text, "5회 (AI 안)");
+    assert.equal(tableView(applied2.blocks[3]).rows[1]?.cells[1]?.text, "5회 (AI 안)");
     assert.deepEqual(
       rig1.service.thread(KEY).proposals[0]?.ops.map((op) => op.state),
       ["adopted", "adopted"],
@@ -657,6 +674,62 @@ test("초안 흐름 — 열고 고치고 묻고 채택해 발행하고, 원격 �
   } finally {
     if (previousGate === undefined) delete process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH;
     else process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH = previousGate;
+    rig1.cleanup();
+  }
+});
+
+test("기획 대화 골라 읽기 · 이름 바꾸기 — 목록 줄이 옛 대화를 다시 열고 자동 제목을 고친다", async () => {
+  const rig1 = rig(async () => ({
+    reply: "정리했어요.",
+    summary: "규칙 정리",
+    ops: [],
+    sdkSessionId: "sess-pick",
+  }));
+  try {
+    await rig1.service.open(PAGE_ID);
+    // 첫 말 — 붙은 대화가 없으니 새로 만들어진다.
+    const first = rig1.service.ask(KEY, "첫 대화의 말이다", []);
+    await until(
+      () => aiMessages(rig1.messages).filter((message) => message.phase === "done").length >= 1,
+      "첫 대화의 끝",
+    );
+    // `새 기획 대화`(null) — 붙은 대화를 이어 받지 않고 갈라 낸다(2026-10-31 3단계).
+    rig1.tick();
+    const second = rig1.service.ask(KEY, "둘째 대화의 말이다", [], {}, null);
+    await until(
+      () => aiMessages(rig1.messages).filter((message) => message.phase === "done").length >= 2,
+      "둘째 대화의 끝",
+    );
+    assert.notEqual(first.threadId, second.threadId);
+    // threadId 없이 읽으면 문서의 최신 대화 — 방금 갈라 낸 둘째다.
+    assert.equal(rig1.service.thread(KEY).threadId, second.threadId);
+    // 골라 읽기(2026-11-03) — 옛 대화가 제 말과 함께 다시 선다.
+    const picked = rig1.service.thread(KEY, first.threadId);
+    assert.equal(picked.threadId, first.threadId);
+    assert.ok(
+      picked.messages.some(
+        (message) => message.role === "user" && message.text === "첫 대화의 말이다",
+      ),
+    );
+    // 이름 바꾸기 — 흰칸은 다듬어 남기고 목록 줄에 곧바로 보인다.
+    const renamed = rig1.service.renameThread(first.threadId, "  반품 규칙 논의  ");
+    assert.equal(renamed.title, "반품 규칙 논의");
+    assert.equal(
+      rig1.service.threadsList().find((row) => row.threadId === first.threadId)?.title,
+      "반품 규칙 논의",
+    );
+    assert.throws(() => rig1.service.renameThread(first.threadId, "   "), /이름이 비어/);
+    assert.throws(() => rig1.service.renameThread(randomUUID(), "아무 이름"), /찾지 못했/);
+    // 옮겨진 대화를 옛 문서로 읽으면 거절한다 — 눌어 있는 고름이 다른 문서에 낡은 대화를 붙이지 않게.
+    const created = await rig1.service.create({
+      title: "곁 문서 초안",
+      parentId: PAGE_ID,
+      parentType: "page",
+    });
+    rig1.service.moveThread(first.threadId, created.docKey);
+    assert.throws(() => rig1.service.thread(KEY, first.threadId), /이어 가는 대화를 찾지 못했/);
+    assert.equal(rig1.service.thread(created.docKey, first.threadId).threadId, first.threadId);
+  } finally {
     rig1.cleanup();
   }
 });

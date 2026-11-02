@@ -1,10 +1,12 @@
+import type { DraftRefEntry, PlanSyncDoc } from "@colonova-design/protocol";
 import {
   alignThumbs,
   readTurn,
   type SessionPinHint,
   type TurnMarker,
 } from "@colonova-design/protocol";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type { PinAttachment } from "../../hooks/usePins";
 import type { Attachment } from "../../lib/attachment";
 import type { Block } from "../../lib/daemon-client";
@@ -15,37 +17,61 @@ import { openScreenPath, screenPath } from "../../lib/screen-link";
 import { tailMoving } from "../../lib/tape-visibility";
 import type { TurnScreen } from "../../lib/turn-screens";
 import { L } from "../labels";
+import { getComposerSheetHost, subscribeComposerSheet } from "../lib/composer-sheet";
 import { connectionLock } from "../lib/connection-copy";
+import { dockOf } from "../lib/dock";
 import { makingPhase, makingWordOf } from "../lib/making";
 import { PIN_SHOT_MAX } from "../lib/pin-words";
 import { isPreparing } from "../lib/project-note";
 import { latestResult } from "../lib/request-results";
 import { planRetry } from "../lib/retry-send";
 import { runPlan } from "../lib/run-plan";
+import { firstScreenName, recentScreenName, startersOf } from "../lib/starters";
+import { nextTabIndex } from "../lib/tab-keys";
 import { dedupeScreens } from "../lib/thread";
 import { undoTargetFor } from "../lib/undo-last";
 import { useHeldPhase } from "../lib/use-held-phase";
-import { PinIcon } from "../preview/icons";
+import { HISTORY_DRAWER_EVENT, HISTORY_OPEN_EVENT, HistoryPanel } from "../preview/HistoryDrawer";
 import type { ChatColumnProps } from "../slots";
 import { Composer, type ComposerHandle } from "./Composer";
 import { AskCard } from "./cards";
-import { ChevIcon, SparkIcon } from "./icons";
-import { PlanRefStrip } from "./PlanRefStrip";
-import { RunLine } from "./RunLine";
-import { RunPlan } from "./RunPlan";
+import { SparkIcon } from "./icons";
+import type { PlanSyncHand } from "./PlanSyncLine";
+import { type PlanFocus, PlanTab } from "./PlanTab";
+import { PublishFromSync } from "./PublishFromSync";
+import { Starters } from "./Starters";
 import { Thread } from "./Thread";
+import { WorkDock } from "./WorkDock";
+
+/** 오른쪽 칸 탭의 차례(S10) — 화살표 걸음과 탭 · 몸의 `id` 짝이 이 차례 하나를 본다. */
+const RTABS = ["chat", "plans", "history"] as const;
+type RTab = (typeof RTABS)[number];
+/** 탭 단추의 `id` — `aria-controls` 로 몸과 짝짓는다(2026-11-03 탭 알약식과 함께). */
+const RTAB_IDS: Record<RTab, string> = {
+  chat: "nx-rtab-chat",
+  plans: "nx-rtab-plans",
+  history: "nx-rtab-history",
+};
+/** 탭 몸의 `id` — 대화록은 `role="log"`(살아있는 칸)를 지키고 나머지는 `tabpanel` 이다. */
+const RTAB_BODY_IDS: Record<RTab, string> = {
+  chat: "nx-rbody-chat",
+  plans: "nx-rbody-plans",
+  history: "nx-rbody-history",
+};
 
 /**
- * 대화 칸(PLAN-UI 단계 2) — 문제 문장 · 대화록(카드 · `고친 화면` · 정산 줄) ·
- * 확인 카드 · 진행 시계 · 입력창. 훅은 셸이 한 번 부른 것을 받는다(`SlotProps`) —
+ * 오른쪽 칸(2026-10-31 화면 자리 개선안 S10 · S15) — 화면 자리에서 대화 · 기획서 · 작업 기록이
+ * 탭으로 서는 오른쪽 칸이다. 위쪽만 탭으로 바뀌고, 작업 독(S4)과 입력창은 어느 탭에서도 바닥에
+ * 남는다. 훅(`useSessions` · `usePins`)은 셸이 한 번만 부른 것을 받는다(`SlotProps`) —
  * 미리보기 칸과 같은 세션 · 같은 핀을 본다.
  *
- * 밖으로 나가는 신호 둘: `nx:history:open`(작업 기록 서랍 — 단계 3 이 듣는다. `방금 한 것 되돌리기` 는
- * `detail: { restoreTo, count }` 로 되돌아갈 곳의 확인을 미리 열어 달라고 부탁한다),
- * `nx:pins:toggle`(좁은 창의 찍기 — 미리보기 탭을 앞에 세운 뒤 단계 3 이 찍기를 켠다).
- * 들어오는 신호 둘(입력창이 듣는다): `nx:pins:send`(말풍선의 지금 보내기) ·
- * `nx:composer:attach`(미리보기의 AI에게 이 화면 보여 주기). 그리고 서랍이 되돌리기를 마치면 보내는
- * `nx:history:changed` 를 이 칸이 듣고 되돌아갈 곳을 다시 읽는다.
+ * 밖으로 나가는 신호: `nx:history:open` 은 이 칸이 받아 넓은 창의 작업 기록 탭으로 바꾸고,
+ * 좁은 창은 `nx:history:drawer`(서랍 — 화면 칸이 듣는다)로 돌린다. `nx:addr:hint` 는 결과
+ * 띠의 화면 칩에 손이 올 때 주소창을 잠깐 물들인다(S9의 거꾸로). 들어오는 신호:
+ * `nx:thread:goto`(지금 화면을 바꾼 말 — 결과 띠로 굴러간다), `nx:composer:sheet`(좁은
+ * 창의 접힌 입력창 — 화면 탭에서 펼친다), `nx:pins:send`(말풍선의 지금 보내기),
+ * `nx:composer:attach`(미리보기의 AI에게 이 화면 보여 주기). 그리고 되돌리기가 마치면
+ * 보내는 `nx:history:changed` 를 듣고 되돌아갈 곳을 다시 읽는다.
  */
 export function ChatColumn({
   daemon,
@@ -56,10 +82,88 @@ export function ChatColumn({
   nav,
   narrow,
   offstage = false,
+  rightTab = "chat",
+  screenRoute = null,
+  sheetOn = false,
 }: ChatColumnProps) {
   const { api, pending, resolvePending } = daemon;
   const { active, activeId } = sessions;
   const blocks = active?.blocks ?? [];
+  const tab = rightTab;
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const narrowRef = useRef(narrow);
+  narrowRef.current = narrow;
+
+  // 같이 고치기의 곁줄 손(2026-10-30) — 초안 열기 · 되돌리기 · 연결 끊기 · 문서 고르기 · 곁줄 발행(2026-11-02 C3).
+  // `보기` 는 기획서 칸으로 옮기지 않고 오른쪽 칸의 기획서 탭을 그 문서의 바뀐 절로 연다(2026-11-02 C4).
+  const [planFocus, setPlanFocus] = useState<PlanFocus | null>(null);
+  const planFocusNonce = useRef(0);
+  // 곁줄 발행 팝 — 열려 있는 동안 약속을 쥐고, 창이 닫히면 결과를 돌려준다(곁줄 문구가 바뀐다).
+  const [publishTarget, setPublishTarget] = useState<{
+    doc: PlanSyncDoc;
+    changes: number;
+    resolve: (ok: boolean) => void;
+  } | null>(null);
+  const planSync = useMemo<PlanSyncHand>(
+    () => ({
+      open: (doc) => {
+        // 바뀐 절을 찾아 그 문서로 간다(C4) — 절은 같이 고친 기록에서 푼다. 못 찾으면 문서 맨 위로 열린다.
+        if (activeId !== null) {
+          void api
+            .draftSyncDocs(activeId)
+            .then(({ docs }) => {
+              const hit = docs.find((one) => one.docKey === doc.docKey) ?? null;
+              planFocusNonce.current += 1;
+              setPlanFocus({
+                pageId: doc.pageId,
+                docKey: doc.docKey,
+                section: hit?.sections[0] ?? null,
+                nonce: planFocusNonce.current,
+              });
+            })
+            .catch(() => {
+              planFocusNonce.current += 1;
+              setPlanFocus({
+                pageId: doc.pageId,
+                docKey: doc.docKey,
+                section: null,
+                nonce: planFocusNonce.current,
+              });
+            });
+        } else {
+          planFocusNonce.current += 1;
+          setPlanFocus({
+            pageId: doc.pageId,
+            docKey: doc.docKey,
+            section: null,
+            nonce: planFocusNonce.current,
+          });
+        }
+        nav.showRightTab("plans");
+      },
+      undo: (entryId) => api.draftSyncUndo(entryId).then(() => undefined),
+      unlink: (link) =>
+        api
+          .mapWrite([{ op: "remove", pageId: link.pageId, route: link.route }])
+          .then(() => undefined),
+      pick: (requestId, pageId) => {
+        if (activeId === null) return Promise.reject(new Error("no session"));
+        return api.draftSyncPick(activeId, requestId, pageId).then(() => undefined);
+      },
+      docs: () => api.docList().then((result) => result.docs ?? []),
+      // 곁줄 발행(C3) — 쓰기 게이트가 열려 있을 때만 손이 선다. 확인 창은 그대로 화면 자리 팝으로 뜬다.
+      ...(project?.confluence?.writable === true
+        ? {
+            publish: (doc: PlanSyncDoc) =>
+              new Promise<boolean>((resolve) => {
+                setPublishTarget({ doc, changes: doc.changes, resolve });
+              }),
+          }
+        : {}),
+    }),
+    [api, nav, activeId, project],
+  );
 
   // 이 대화의 사람 말 수 — 근거 줄이 다시 읽는 셈(보내기 중인 말도 센다 — 보낸 직후에 늘고,
   // 기록이 남는 때와 마친다). 대화가 바뀌면 0부터 다시 센다.
@@ -67,6 +171,29 @@ export function ChatColumn({
     blocks.filter((block) => block.type === "user").length + sessions.outgoing.length;
   const chat = settings.chat;
   const preparing = project !== null && isPreparing(project);
+  const contextFull = sessions.usage !== null && Math.round(sessions.usage.percentage) >= 85;
+
+  // 이 대화의 근거 — 작업 독의 `기획서 N` 칩과 펼쳐진 근거 줄, 기획서 탭이 같은 목록을 읽는다.
+  const [refEntries, setRefEntries] = useState<DraftRefEntry[]>([]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 사람 말 수는 다시 읽는 방아쇠일 뿐 — 몸에서 쓰지 않는다.
+  useEffect(() => {
+    if (activeId === null) {
+      setRefEntries([]);
+      return undefined;
+    }
+    let cancelled = false;
+    api
+      .draftRefs(activeId)
+      .then(({ refs }) => {
+        if (!cancelled) setRefEntries(refs);
+      })
+      .catch(() => {
+        if (!cancelled) setRefEntries([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, activeId, sentCount]);
 
   // 좁은 창이면 미리보기 탭을 앞에 세운 뒤 옮긴다 — 옮긴 곳이 보여야 한다.
   const openScreen = useCallback(
@@ -80,9 +207,9 @@ export function ChatColumn({
   );
 
   // --- 방금 한 것 되돌리기 ---------------------------------------------------
-  // 마지막 결과 카드에만 선다 — 그 요청의 보관이 프로젝트 기록의 맨 위일 때만, 그래서 되돌리면 정확히 그 요청만
+  // 결과 띠에만 선다 — 그 요청의 보관이 프로젝트 기록의 맨 위일 때만, 그래서 되돌리면 정확히 그 요청만
   // 사라질 때만(`lib/undo-last.ts`). 기록은 도는 답이 끝났을 때 · 새 보관이 쌓일 때 · 되돌린 뒤(`nx:history:changed`)에
-  // 다시 읽는다. 단추는 서랍을 열어 그 되돌아갈 곳의 확인을 미리 열어 줄 뿐 — 되돌리는 일은 서랍의 확인이 한다.
+  // 다시 읽는다. 단추는 작업 기록을 열어 그 되돌아갈 곳의 확인을 미리 열어 줄 뿐 — 되돌리는 일은 기록의 확인이 한다.
   const cycleScreens = daemon.repo?.cycleScreens;
   const lastRequestId = sessions.running
     ? null
@@ -330,6 +457,7 @@ export function ChatColumn({
     nonce: number;
     append?: boolean;
     screen?: string;
+    select?: [number, number];
   } | null>(null);
   const nonce = useRef(0);
   const fill = (text: string, append = false, screen?: string) => {
@@ -418,21 +546,19 @@ export function ChatColumn({
     requestAnimationFrame(() => toBottom());
   }, [activeId]);
 
-  // --- 진행 시계: 테이프가 조용한 동안만 ----------------------------------
+  // --- 작업 독의 재료(S4) ----------------------------------------------
   const tailLive = tailMoving(blocks, chat.showThinking, chat.showTools, isToolRunning);
   const awaiting = sessions.awaitingTurn?.sessionId === activeId ? sessions.awaitingTurn : null;
   const clockStart = active?.turnStartedAt ?? awaiting?.since ?? null;
-  // 도는 동안 줄은 늘 그 자리에 서 있고 보이기만 바뀐다 — 붙였다 떨어졌다 하며
-  // 대화를 밀어내지 않게.
+  // 도는 동안 독은 늘 그 자리에 선다 — 붙였다 떨어졌다 하며 대화를 밀어내지 않게.
   const clockMounted = sessions.running || awaiting !== null;
-  const showClock = clockMounted && !tailLive;
   const empty =
     blocks.length === 0 &&
     sessions.queue.length === 0 &&
     sessions.outgoing.length === 0 &&
     !clockMounted;
-  // 줄의 말 — 지금 도는 도구의 묶음이 말을 고른다(`화면 파일을 고치는 중`). 말은 1.5초 이상 산다(상태 줄의 알약과
-  // 같은 규칙). 이 턴의 할 일 · 보조 작업은 입력창 위 알약이 센다(2026-10-20 사용자 요청).
+  // 독의 말 — 지금 도는 도구의 묶음이 말을 고른다(`화면 파일을 고치는 중`). 말은 1.5초 이상 산다.
+  // 지금 고치는 화면의 이름은 미리보기의 라이브 신호가 알려 준다(이름을 모르면 말만 선다).
   const runPhase = useHeldPhase(clockMounted ? makingPhase(blocks) : null, clockMounted);
   const runWord = makingWordOf(runPhase, {
     read: L.journey.makingRead,
@@ -440,7 +566,22 @@ export function ChatColumn({
     command: L.journey.makingCheck,
     fallback: L.chat.working,
   });
+  const editingScreen = activeId === null ? null : (daemon.editingScreens.get(activeId) ?? null);
+  const editingName = clockMounted && !tailLive ? (editingScreen?.title ?? null) : null;
   const runningPlan = clockMounted ? runPlan(blocks) : null;
+
+  // --- 작업 독의 줄 — 차례는 lib/dock.ts 가 정한다 -----------------------------
+  const visiblePending = pending.filter((request) => request.sessionId === activeId);
+  const notices = [
+    editHint ? L.transcript.editScreenHint : "",
+    contextFull ? L.chat.contextFull : "",
+  ].filter((line) => line !== "");
+  const dock = dockOf({
+    running: clockMounted,
+    asks: visiblePending.length,
+    notices,
+    refs: refEntries.length,
+  });
 
   // --- 빈 화면이 빠지는 모습 · 대화록의 열쇠 ----------------------------------
   // 첫 말이 올라오면 빈 화면은 흐려지며 빠진다 — 깜빡이며 사라지지 않게.
@@ -458,10 +599,18 @@ export function ChatColumn({
     const timer = window.setTimeout(() => setEmptyFade(false), 240);
     return () => window.clearTimeout(timer);
   }, [empty]);
-  // 빈 화면의 `수정할 곳 선택` 이 서 있는가 — 서 있는 동안 좁은 창 입력창의 같은 칩은 감춘다. 좁은 창의 대화 탭에는 이 단추가 하나만 서야 한다
-  // (2026-10-24 QA 15: 둘이 80px 간격으로 같이 섰다. 빈 화면의 안내가 `수정할 곳 선택` 을 말하는 GUIDE §2 쪽을 남긴다 — 첫 말이 올라와
-  // 빈 화면이 빠지면 입력창의 칩이 그 자리를 잇는다).
-  const emptyPinShown = (empty || emptyFade) && project !== null && !preparing;
+  // 입력창에 보낼 것이 있는가 — 시작점 칩이 쓰던 말을 덮지 않게 물러난다(Composer 가 알린다).
+  const [filled, setFilled] = useState(false);
+  // 시작점 칩(2026-10-31 홈 걷기 · S5) — 지금 화면의 이름으로 빈 대화를 연다. 이번 작업이 만진
+  // 화면이 먼저이고, 없으면(처음 켠 서비스) 데몬이 읽어 온 첫 화면의 이름으로 선다.
+  const emptyScreenName = useMemo(
+    () => recentScreenName(daemon.repo?.cycleScreens) ?? firstScreenName(daemon.repo?.firstScreen),
+    [daemon.repo?.cycleScreens, daemon.repo?.firstScreen],
+  );
+  const starters = useMemo(
+    () => startersOf(emptyScreenName, L.composer.starters),
+    [emptyScreenName],
+  );
   // 대화가 갈리면 대화록은 새로 마운트되지만, 첫 말로 대화가 태어나는 순간(대화
   // 없음 → 첫 대화)은 그대로 이어 받는다 — 다시 마운트되면 모든 줄의 등장
   // 애니메이션이 한 번 더 돈다.
@@ -473,6 +622,119 @@ export function ChatColumn({
         : { id: activeId, key: activeId };
   }
 
+  // --- 오른쪽 칸의 탭(S10) ----------------------------------------------
+  // 탭이 대화가 아니면 새 답 · 묻는 카드가 와도 눈에 안 보인다 — 대화 탭 곁의 점이 말하고,
+  // 묻는 카드는 작업 독의 ② 칸이 대신한다. 대화 탭으로 돌아오면 점은 거둔다.
+  const [freshNews, setFreshNews] = useState(false);
+  useEffect(() => {
+    if (tab === "chat") setFreshNews(false);
+  }, [tab]);
+  useEffect(() => {
+    if (wasRunning.current && !sessions.running && tabRef.current !== "chat") {
+      setFreshNews(true);
+    }
+  }, [sessions.running]);
+  // 탭은 ref 로 읽는다 — 점을 다시 세우는 것은 묻는 카드 수의 변화뿐이다.
+  useEffect(() => {
+    if (visiblePending.length > 0 && tabRef.current !== "chat") setFreshNews(true);
+  }, [visiblePending.length]);
+
+  // 작업 기록 탭의 되돌아갈 곳 — `nx:history:open` 은 이 칸이 받는다. 넓은 창은 작업 기록
+  // 탭으로(S10), 좁은 창은 화면 칸의 서랍으로 돌린다(S12 — 화면 덮는 시트의 몫이다).
+  const [histArm, setHistArm] = useState<{ sha: string; count: number } | null>(null);
+  useEffect(() => {
+    const onOpen = (event: Event) => {
+      const detail = (event as CustomEvent<{ restoreTo?: unknown; count?: unknown } | null>).detail;
+      if (narrowRef.current) {
+        window.dispatchEvent(new CustomEvent(HISTORY_DRAWER_EVENT, { detail }));
+        nav.showTab("preview");
+        return;
+      }
+      setHistArm(
+        typeof detail?.restoreTo === "string"
+          ? { sha: detail.restoreTo, count: typeof detail.count === "number" ? detail.count : -1 }
+          : null,
+      );
+      nav.showRightTab("history");
+    };
+    window.addEventListener(HISTORY_OPEN_EVENT, onOpen);
+    return () => window.removeEventListener(HISTORY_OPEN_EVENT, onOpen);
+  }, [nav]);
+
+  // 지금 화면을 바꾼 말(S9) — 미리보기의 단추가 부르면 대화 탭으로 돌아와 그 답의
+  // 결과 띠로 굴러가고, 띠가 한 번 빛난다.
+  useEffect(() => {
+    const onGoto = (event: Event) => {
+      const turnId = (event as CustomEvent<{ turnId?: unknown }>).detail?.turnId;
+      if (typeof turnId !== "string") return;
+      nav.showRightTab("chat");
+      nav.showTab("chat");
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const el = scroll.current?.querySelector(`[data-turn='${CSS.escape(turnId)}']`);
+          if (!el) return;
+          el.scrollIntoView({ block: "center", behavior: "smooth" });
+          el.classList.add("nx-band--flash");
+          window.setTimeout(() => el.classList.remove("nx-band--flash"), 1600);
+        });
+      });
+    };
+    window.addEventListener("nx:thread:goto", onGoto);
+    return () => window.removeEventListener("nx:thread:goto", onGoto);
+  }, [nav]);
+  // 결과 띠의 화면 칩에 손이 올 때 주소창이 그 이름으로 잠깐 빛난다(S9의 거꾸로 — 옮기지는 않는다).
+  const onScreenHover = useCallback((path: string | null) => {
+    window.dispatchEvent(new CustomEvent("nx:addr:hint", { detail: { route: path } }));
+  }, []);
+
+  // --- 기획서 탭의 이어진 문서 수(S10) ---------------------------------------
+  const [planCount, setPlanCount] = useState(0);
+
+  // --- 작업 기록 탭의 재료 — 제출의 순간(구분선) -------------------------------
+  const handoff = daemon.repo?.handoff ?? null;
+  const submits = useMemo(() => {
+    if (!handoff) return [];
+    const times: string[] = [];
+    for (const view of Object.values(daemon.sessions)) {
+      for (const block of view.blocks) {
+        if (
+          block.type === "milestone" &&
+          block.subtype === "handed" &&
+          block.pr === handoff.number
+        ) {
+          times.push(block.at);
+        }
+      }
+    }
+    return times.sort();
+  }, [daemon.sessions, handoff]);
+
+  // --- 좁은 창의 입력창 시트(S12) ------------------------------------------
+  // 화면 탭에서도 쓸 수 있게 같은 입력창을 화면 칸의 자리로 옮겨 그린다 — 포털이라
+  // 인스턴스가 하나다(셸 규칙). 접힌 한 줄은 화면 칸이 세우고(`nx:composer:sheet`),
+  // 보내면 접는다. 쓰던 글 · 핀 · 첨부는 대화 탭과 하나다.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetHost = useSyncExternalStore(subscribeComposerSheet, getComposerSheetHost, () => null);
+  useEffect(() => {
+    if (!sheetOn) setSheetOpen(false);
+  }, [sheetOn]);
+  useEffect(() => {
+    const onSheet = () => {
+      setSheetOpen(true);
+      window.dispatchEvent(new Event("nx:composer:focus"));
+    };
+    const onSent = () => setSheetOpen(false);
+    window.addEventListener("nx:composer:sheet", onSheet);
+    window.addEventListener("nx:pins:send", onSent);
+    return () => {
+      window.removeEventListener("nx:composer:sheet", onSheet);
+      window.removeEventListener("nx:pins:send", onSent);
+    };
+  }, []);
+  // 포털의 빠진 자리 — 화면 탭이 아니면 입력창이 이곳(제 자리)에 선다.
+  const [cmpFallback, setCmpFallback] = useState<HTMLDivElement | null>(null);
+  const sheetLive = sheetOn && sheetOpen && sheetHost !== null;
+
   // --- 끌어다 놓기: 칸 어디에 놓아도 입력창의 첨부로 ---------------------------
   const composer = useRef<ComposerHandle | null>(null);
   const registerHandle = useCallback((handle: ComposerHandle | null) => {
@@ -480,7 +742,6 @@ export function ChatColumn({
   }, []);
   const [dragDepth, setDragDepth] = useState(0);
 
-  const visiblePending = pending.filter((request) => request.sessionId === activeId);
   const lockReason = connectionLock(daemon.connection, L);
   const cycleMerged = daemon.repo?.handoff?.state === "merged";
   const placeholder = preparing
@@ -490,10 +751,83 @@ export function ChatColumn({
       : cycleMerged
         ? L.composer.placeholderMerged
         : L.composer.placeholder;
-  const contextFull = sessions.usage !== null && Math.round(sessions.usage.percentage) >= 85;
   // 다음 말 제안(2026-10-14 사용자 요청) — 준비 중과 반영 뒤의 자리 표시는 지금 할 일을 말하니 제안이
   // 대신하지 않는다. 핀이 담겼을 때와 일하는 중에 물러나는 것은 입력창이 안다.
   const nextSay = preparing || cycleMerged ? null : (active?.suggestion ?? null);
+
+  const tabOff = tab !== "chat";
+  // 맨 아래로 — 입력창 오른쪽 위에 떠서(S4) 줄을 차지하지 않는다. 입력창이 커져도 겹치지 않게
+  // 감싸개 기준의 뜬 단추다.
+  const jumpButton = unpinned ? (
+    <button
+      type="button"
+      className="nx-jump"
+      onClick={() => {
+        pinned.current = true;
+        setUnpinned(false);
+        setHasNew(false);
+        toBottom(true);
+      }}
+    >
+      {hasNew ? L.chat.newContent : L.chat.toBottom}
+    </button>
+  ) : null;
+
+  const composerBlock = (
+    <div className="nx-cmp-wrap">
+      {jumpButton}
+      <WorkDock
+        row={dock.main}
+        runWord={runWord}
+        screenName={editingName}
+        startedAt={clockStart}
+        plan={runningPlan}
+        onStop={stop}
+        stopping={stopping}
+        onAskGo={() => {
+          nav.showRightTab("chat");
+          toBottom(true);
+        }}
+        entries={refEntries.length}
+        daemon={daemon}
+        sessionId={activeId}
+        nav={nav}
+      />
+      <Composer
+        daemon={daemon}
+        sessions={sessions}
+        subject={sessions.activeId ? "session" : "next"}
+        draftKey={activeId ?? `new:${daemon.activeSlug ?? "none"}`}
+        placeholder={placeholder}
+        pins={pins.list}
+        pinNumberStart={pins.ghosts.length + 1}
+        onPinNote={pins.setNote}
+        onPinRemove={pins.remove}
+        onPinFocus={(id) => void window.colonovaDesignDesktop?.preview?.pinFlash?.(id)}
+        narrow={narrow}
+        onPinMode={
+          (empty || emptyFade) && project !== null && !preparing
+            ? undefined
+            : () => {
+                nav.showTab("preview");
+                window.dispatchEvent(new CustomEvent("nx:pins:toggle"));
+              }
+        }
+        disabledProviders={chat.disabledProviders}
+        lockReason={lockReason}
+        running={sessions.running}
+        onStop={stop}
+        stopping={stopping}
+        suggestion={nextSay}
+        prefill={prefill}
+        listenPinsSend
+        registerHandle={registerHandle}
+        onContentChange={setFilled}
+        onToast={nav.toast}
+        onSend={send}
+      />
+    </div>
+  );
 
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: 칸 전체가 파일을 놓는 자리다 — 드롭은 포인터의 일이고, 키보드는 입력창의 첨부 단추로 닿는다.
@@ -513,8 +847,86 @@ export function ChatColumn({
         if (event.dataTransfer.files.length > 0) composer.current?.attach(event.dataTransfer.files);
       }}
     >
-      {/* 화면 낭독 — 대화록을 log 로 읽어 흘러들어온 말과 카드가 차례로 들린다. */}
-      <div className="nx-transcript" role="log" aria-live="polite" ref={scroll} onScroll={remember}>
+      {/* 탭 머리(S10 · 2026-11-03 사용자 결정으로 알약식 — 좁은 창의 세 탭과 한 얼굴, 칸 폭을
+          셋이 나눈다) — 넓은 창의 오른쪽 칸이다. 좁은 창은 셸의 세 탭(화면 · 대화 · 기획서)이
+          대신한다. 화살표 · Home/End 로 탭을 옮긴다(lib/tab-keys). */}
+      {!narrow && (
+        <div
+          className="nx-rtabs"
+          role="tablist"
+          data-f6="rtabs"
+          onKeyDown={(event) => {
+            const next = nextTabIndex(event.key, RTABS.length, RTABS.indexOf(tab));
+            if (next === null) return;
+            event.preventDefault();
+            const target = RTABS[next];
+            if (target) {
+              nav.showRightTab(target);
+              event.currentTarget
+                .querySelectorAll<HTMLButtonElement>("[role='tab']")
+                [next]?.focus();
+            }
+          }}
+        >
+          <button
+            type="button"
+            role="tab"
+            id={RTAB_IDS.chat}
+            aria-selected={tab === "chat"}
+            aria-controls={RTAB_BODY_IDS.chat}
+            tabIndex={tab === "chat" ? 0 : -1}
+            className={tab === "chat" ? "nx-rtab--on" : ""}
+            onClick={() => nav.showRightTab("chat")}
+          >
+            <span className="nx-rtab-label">{L.tabs.chat}</span>
+            {freshNews && <i className="nx-rtab-dot" role="status" aria-label={L.tabs.news} />}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id={RTAB_IDS.plans}
+            aria-selected={tab === "plans"}
+            aria-controls={RTAB_BODY_IDS.plans}
+            aria-label={planCount > 0 ? L.tabs.plansAria(planCount) : undefined}
+            tabIndex={tab === "plans" ? 0 : -1}
+            className={tab === "plans" ? "nx-rtab--on" : ""}
+            onClick={() => nav.showRightTab("plans")}
+          >
+            <span className="nx-rtab-label">{L.tabs.plans}</span>
+            {planCount > 0 && (
+              <span className="nx-rtab-n" key={planCount}>
+                {planCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id={RTAB_IDS.history}
+            aria-selected={tab === "history"}
+            aria-controls={RTAB_BODY_IDS.history}
+            tabIndex={tab === "history" ? 0 : -1}
+            className={tab === "history" ? "nx-rtab--on" : ""}
+            onClick={() => nav.showRightTab("history")}
+          >
+            <span className="nx-rtab-label">{L.tabs.history}</span>
+          </button>
+        </div>
+      )}
+
+      {/* 대화 탭의 몸 — 마운트를 지킨다(탭이 바뀌어도 스크롤 · 흐르는 답이 살아 있다). */}
+      <div
+        id={RTAB_BODY_IDS.chat}
+        className={`nx-transcript${tabOff ? " nx-tab-off" : ""}`}
+        role="log"
+        aria-live="polite"
+        aria-hidden={tabOff || undefined}
+        inert={tabOff || undefined}
+        data-f6="body"
+        tabIndex={tabOff ? -1 : undefined}
+        ref={scroll}
+        onScroll={remember}
+      >
         {sessions.historyFailed && (
           <div className="nx-m-note nx-tone--red">
             <span>{L.chat.historyFailed}</span>
@@ -528,9 +940,14 @@ export function ChatColumn({
             <span className="nx-empty-sp">
               <SparkIcon />
             </span>
-            <h2>{L.transcript.emptyTitle}</h2>
-            {/* 화면 작업실의 빈 화면은 화면 작업만 말한다 — 대화 칸이 기획서 곁에 서는 일은
-                없다(2026-10-23 화면 전면 재설계 §3.5). */}
+            {/* 빈 대화는 지금 화면에서 시작한다(S5) — 화면 이름을 모르면 서비스 전체의 말이다. */}
+            <h2>
+              {preparing || project === null
+                ? L.transcript.emptyTitle
+                : emptyScreenName !== null
+                  ? L.transcript.emptyTitleScreen(emptyScreenName)
+                  : L.transcript.emptyTitleAny}
+            </h2>
             {project && (
               <p>
                 {preparing
@@ -540,18 +957,29 @@ export function ChatColumn({
                     : L.transcript.emptyBody(project.name)}
               </p>
             )}
-            {emptyPinShown && (
-              <button
-                type="button"
-                className="nx-btn nx-empty-pin"
-                onClick={() => {
-                  if (narrow) nav.showTab("preview");
-                  window.dispatchEvent(new CustomEvent("nx:pins:toggle"));
+            {/* 시작점 칩 — 새 대화의 빈 자리에서만 선다. 첫 칸은 찍기다(S5). 입력창에 말이 있거나
+                잠겨 있으면 물러난다. */}
+            {empty && (
+              <Starters
+                starters={starters}
+                away={filled || lockReason !== null}
+                onPick={(starter) => {
+                  nonce.current += 1;
+                  setPrefill({
+                    text: starter.text,
+                    nonce: nonce.current,
+                    ...(starter.pick ? { select: starter.pick } : {}),
+                  });
                 }}
-              >
-                <PinIcon />
-                {L.preview.pin}
-              </button>
+                onPin={
+                  project !== null && !preparing
+                    ? () => {
+                        if (narrow) nav.showTab("preview");
+                        window.dispatchEvent(new CustomEvent("nx:pins:toggle"));
+                      }
+                    : undefined
+                }
+              />
             )}
           </div>
         )}
@@ -589,14 +1017,16 @@ export function ChatColumn({
               nav.toast(L.requestResult.draftReady);
             }}
             onOpenScreen={openScreen}
-            onOpenHistory={() => window.dispatchEvent(new CustomEvent("nx:history:open"))}
+            onOpenHistory={() => window.dispatchEvent(new CustomEvent(HISTORY_OPEN_EVENT))}
+            onScreenHover={onScreenHover}
+            planSync={planSync}
             undoLast={
               lastRequestId !== null && undoTarget?.requestId === lastRequestId
                 ? {
                     requestId: lastRequestId,
                     onUndo: () =>
                       window.dispatchEvent(
-                        new CustomEvent("nx:history:open", {
+                        new CustomEvent(HISTORY_OPEN_EVENT, {
                           detail: { restoreTo: undoTarget.sha, count: undoTarget.count },
                         }),
                       ),
@@ -653,75 +1083,68 @@ export function ChatColumn({
             }
           />
         ))}
-        {clockMounted && <RunLine quiet={!showClock} word={runWord} startedAt={clockStart} />}
       </div>
-      <div className="nx-cmp-wrap">
-        {/* 맨 아래로 — 입력창 바로 위에 떠서 입력창이 커져도 겹치지 않는다. */}
-        {unpinned && (
-          <button
-            type="button"
-            className="nx-jump"
-            onClick={() => {
-              pinned.current = true;
-              setUnpinned(false);
-              setHasNew(false);
-              toBottom(true);
-            }}
-          >
-            {hasNew ? L.chat.newContent : L.chat.toBottom}
-            <ChevIcon />
-          </button>
-        )}
-        {runningPlan && <RunPlan plan={runningPlan} />}
-        <PlanRefStrip daemon={daemon} sessionId={activeId} sentCount={sentCount} nav={nav} />
-        {editHint && (
-          <div className="nx-cmp-hint" role="status">
-            {L.transcript.editScreenHint}
-          </div>
-        )}
-        {contextFull && (
-          // 2026-10-04 ux-review: 85% 안내에 행동을 붙인다 — 이미 있는 새 대화 손.
-          <div className="nx-cmp-hint" role="status">
-            {L.chat.contextFull}{" "}
-            <button type="button" className="nx-cmp-hint-act" onClick={() => void sessions.fresh()}>
-              {L.sidebar.newConv}
-            </button>
-          </div>
-        )}
-        <Composer
+
+      {/* 기획서 탭의 몸(S10) — 지금 화면에 이어진 기획서를 그 자리에서 읽는다. */}
+      {tab === "plans" && (
+        <PlanTab
           daemon={daemon}
-          sessions={sessions}
-          variant="thread"
-          subject={sessions.activeId ? "session" : "next"}
-          draftKey={activeId ?? `new:${daemon.activeSlug ?? "none"}`}
-          placeholder={placeholder}
-          pins={pins.list}
-          pinNumberStart={pins.ghosts.length + 1}
-          onPinNote={pins.setNote}
-          onPinRemove={pins.remove}
-          onPinFocus={(id) => void window.colonovaDesignDesktop?.preview?.pinFlash?.(id)}
-          narrow={narrow}
-          onPinMode={
-            emptyPinShown
-              ? undefined
-              : () => {
-                  nav.showTab("preview");
-                  window.dispatchEvent(new CustomEvent("nx:pins:toggle"));
-                }
-          }
-          disabledProviders={chat.disabledProviders}
-          lockReason={lockReason}
-          running={sessions.running}
-          onStop={stop}
-          stopping={stopping}
-          suggestion={nextSay}
-          prefill={prefill}
-          listenPinsSend
-          registerHandle={registerHandle}
-          onToast={nav.toast}
-          onSend={send}
+          nav={nav}
+          screenRoute={screenRoute}
+          sessionId={activeId}
+          sentCount={sentCount}
+          onCount={setPlanCount}
+          focus={planFocus}
+          tabpanelId={RTAB_BODY_IDS.plans}
+          tabpanelLabel={L.tabs.plans}
         />
-      </div>
+      )}
+      {/* 곁줄 발행의 감싸개 팝(2026-11-02 · 같이 고치기 UX 계획 C3) — 확인 창은 그대로, 이동만 없앤다. */}
+      {publishTarget !== null && (
+        <PublishFromSync
+          daemon={daemon}
+          nav={nav}
+          doc={publishTarget.doc}
+          changes={publishTarget.changes}
+          onDone={(ok) => {
+            publishTarget.resolve(ok);
+            setPublishTarget(null);
+          }}
+        />
+      )}
+      {/* 작업 기록 탭의 몸(S10) — 옛 서랍과 같은 몸(`HistoryPanel`)이다. */}
+      {tab === "history" && (
+        <div
+          id={RTAB_BODY_IDS.history}
+          className="nx-histtab"
+          role="tabpanel"
+          aria-label={L.tabs.history}
+          data-f6="body"
+          tabIndex={-1}
+        >
+          <HistoryPanel
+            daemon={daemon}
+            repo={daemon.repo}
+            submits={submits}
+            onRestored={() => {
+              window.dispatchEvent(new CustomEvent("nx:history:restored"));
+            }}
+            toast={nav.toast}
+            arm={histArm}
+            onArmed={() => setHistArm(null)}
+            active
+            headless
+          />
+        </div>
+      )}
+
+      {/* 입력창 — 좁은 창의 화면 탭에서는 화면 칸의 시트 자리로 옮겨 그린다(S12).
+          포털은 인스턴스를 옮길 뿐이라 쓰던 글 · 핀 · 첨부가 살아 있다. */}
+      <div className="nx-cmp-anchor" ref={setCmpFallback} />
+      {createPortal(
+        composerBlock,
+        sheetLive && sheetHost !== null ? sheetHost : (cmpFallback ?? document.body),
+      )}
     </section>
   );
 }

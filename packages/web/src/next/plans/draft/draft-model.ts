@@ -30,15 +30,16 @@ function tableToMarkdown(rows: DraftTableRow[]): string {
 }
 
 /**
- * 토큰을 사람의 말로 바꾼다. 혼자 오는 토큰(`⟦t1⟧`)은 `〔이름〕` 이 되고, 쌍 토큰
- * (`⟦c1⟧…⟦/c1⟧`)은 여닫는 표시를 빼고 안 글만 남는다 — 화면이 그 조각을 따로 그린다.
+ * 토큰을 사람의 말로 바꾼다. 혼자 오는 토큰(`⟦t1⟧`)은 지울 수 있는 칩의 다리인 링크 표지로 남긴다 —
+ * Markdown 이 그 링크를 칩으로 그린다(2026-11-03 실앱 감사: 〔이름〕 낱글자로 그려 칩이 죽어 있었다).
+ * 쌍 토큰(`⟦c1⟧…⟦/c1⟧`)은 여닫는 표시를 빼고 안 글만 남는다 — 화면이 그 조각을 따로 그린다.
  */
 function inlineWords(text: string, tokens: Record<string, string>): string {
   return text.replace(/⟦\/?([^⟧]+)⟧/g, (whole: string, name: string) => {
     if (whole.startsWith("⟦/")) return "";
     if (text.includes(`⟦/${name}⟧`)) return "";
     // 기계 이름을 모르면 막연한 Confluence 요소로 본다.
-    return `〔${L.drafts.tokenLabel(tokens[name] ?? "element")}〕`;
+    return `[${L.drafts.tokenLabel(tokens[name] ?? "element")}](#token-${name})`;
   });
 }
 
@@ -75,11 +76,12 @@ export function listToText(items: string[]): string {
   return items.join("\n");
 }
 
-/** 목록 편집 칸의 값 — 한 줄에 한 항목, 빈 줄은 무시한다. */
+/** 목록 편집 칸의 값 — 한 줄에 한 항목, 빈 줄은 무시한다. 줄머리의 마크다운 표식(`- ` · `* ` ·
+ * `1. `)은 걷는다(2026-11-02 마크다운 길 — 마크다운 목록을 붙여 넣으면 항목으로 바로 선다). */
 export function textToList(text: string): string[] {
   return text
     .split("\n")
-    .map((line) => line.trim())
+    .map((line) => line.trim().replace(/^(?:[-*]|\d+\.)\s+/u, ""))
     .filter((line) => line !== "");
 }
 

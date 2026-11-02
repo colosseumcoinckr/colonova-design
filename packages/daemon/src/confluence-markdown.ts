@@ -8,8 +8,12 @@
  * `[Confluence 매크로: …]` 자리 표시 문장으로 내려앉고, 첨부 참조는 `[첨부: …]` 자리
  * 표시 문장으로 내려앉는다 — 깨진 마크다운 링크는 절대 만들지 않는다(리스크 4).
  *
- * 순수 모듈이다 — 형제 임포트도 의존성도 없다.
+ * 순수 모듈이다 — 임포트는 글자 참조를 푸는 entities.js 하나뿐이다(2026-11-02 실사용 관찰:
+ * 작은 표을 따로 쥐어 `&mdash;` 가 본문에 새어 나왔으니 표는 한 곳에서 읽는다). 관용 XML 파서는
+ * 보기 블록(confluence-view.ts)도 함께 쓴다(2026-10-30 사용자 요청).
  */
+
+import { decodeEntities } from "./entities.js";
 
 export interface ConfluenceMeta {
   pageId: string;
@@ -58,20 +62,20 @@ interface XmlText {
   text: string;
 }
 
-interface XmlElement {
+export interface XmlElement {
   kind: "element";
   name: string;
   attributes: Record<string, string>;
   children: XmlNode[];
 }
 
-type XmlNode = XmlText | XmlElement;
+export type XmlNode = XmlText | XmlElement;
 
 /** 스스로 닫히지 않아도 덩어리로 끝나는 글자들 — 저장 포맷은 보통 스스로 닫는다. */
 const VOID_TAGS = new Set(["br", "hr", "img"]);
 
 /** 저장 포맷 한 편 → 덩어리의 나열. 여는 · 닫는 표가 어긋나도 아는 것까지만 산다. */
-function parseXml(source: string): XmlNode[] {
+export function parseXml(source: string): XmlNode[] {
   const root: XmlElement = { kind: "element", name: "#document", attributes: {}, children: [] };
   const stack: XmlElement[] = [root];
   const append = (text: string): void => {
@@ -150,32 +154,10 @@ function parseTag(tag: string): { element: XmlElement; selfClosed: boolean } {
   return { element: { kind: "element", name, attributes, children: [] }, selfClosed };
 }
 
-const NAMED_ENTITIES: Record<string, string> = {
-  amp: "&",
-  lt: "<",
-  gt: ">",
-  quot: '"',
-  apos: "'",
-  nbsp: "\u00a0",
-};
-
-/** 글자 참조 풀기 — XML 다섯 개와 자주 섞이는 nbsp 까지. 모르는 참조는 그대로 둔다. */
-function decodeEntities(text: string): string {
-  if (!text.includes("&")) return text;
-  return text.replace(/&(#x[0-9a-fA-F]+|#[0-9]+|[a-zA-Z][a-zA-Z0-9]*);/g, (whole, body: string) => {
-    if (body.startsWith("#x")) return codePoint(Number.parseInt(body.slice(2), 16)) ?? whole;
-    if (body.startsWith("#")) return codePoint(Number.parseInt(body.slice(1), 10)) ?? whole;
-    return NAMED_ENTITIES[body] ?? whole;
-  });
-}
-
-const codePoint = (code: number): string | null =>
-  Number.isInteger(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : null;
-
 // ————— 읽기 도우미 —————
 
 /** 안에 든 글자 전부 — 마크다운 표식 없이(원장 sections 의 제목 · 코드 칸 등). */
-function textContent(node: XmlNode): string {
+export function textContent(node: XmlNode): string {
   if (node.kind === "text") return node.text;
   let out = "";
   for (const child of node.children) out += textContent(child);

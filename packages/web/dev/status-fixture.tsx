@@ -36,6 +36,9 @@
  * 제출 뒤의 시야(2026-10-07 베타 준비 분석) — `?case=r`(개발자가 승인 → 여정의 둘째 점 `개발자가 확인했어요`) · `s`(자동 검사를
  * AI 가 고치는 중 — 문제 문장 줄) · `t`(몇 번 고쳐도 통과하지 못해 개발자에게 알림) · `u`(통과) · `v`(도는 중). 여정을 누르면 열리는
  * `이번 작업` 팝의 제출 칸에 자동 검사 한 줄이 같이 보인다.
+ *
+ * 반영된 일(2026-10-31 홈 걷기) — `?case=x`: 병합된 요청 셋을 원장에 싣고, 여정을 눌러 팝을 열면 코멘트 칸 아래의
+ * `반영된 일` 묶음(최근 여덟 · 0건이면 없다)이 선다.
  */
 
 import type {
@@ -313,6 +316,34 @@ const BASE_CASES: Case[] = [
     label: "f · 반영됨",
     title: "결제 내역 표를 월별로 묶어 줘",
     repo: { handoff: handoff("merged"), branch: null, cycleScreens: [] },
+  },
+  {
+    // 반영된 일(2026-10-08 · A2b — 2026-10-31 홈 걷기로 홈의 묶음이 이 팝의 아래로 옮겨 왔다).
+    // 여정을 눌러 팝을 열면 코멘트 칸 아래의 `반영된 일` 묶음이 선다.
+    id: "x",
+    label: "x · 반영된 일 — `이번 작업` 팝의 아래 묶음(2026-10-31 홈 걷기)",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: {
+      handoff: handoff("merged"),
+      branch: null,
+      cycleScreens: [],
+      landed: [
+        {
+          at: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+          pr: 12,
+          title: "회원 목록에 이름으로 찾는 검색창",
+          days: 3,
+          screens: 2,
+        },
+        {
+          at: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+          pr: 11,
+          title: "결제 내역 표를 월별로 묶기",
+          days: 5,
+        },
+        { at: new Date(Date.now() - 16 * 86_400_000).toISOString(), pr: 10 },
+      ],
+    },
   },
   {
     id: "g",
@@ -643,9 +674,6 @@ function Row({ spec }: { spec: Case }) {
             title={spec.title}
             onRename={spec.id === "c" ? undefined : (name) => console.log("rename", name)}
             journey={journey}
-            turnStartedAt={spec.running ? Date.now() - 12_000 : null}
-            makingPhase={spec.phase ?? null}
-            firstTurn={false}
             narrow={spec.narrow ?? false}
             nav={nav}
             onSubmit={() => {}}

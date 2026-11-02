@@ -1,4 +1,5 @@
 import type { DeveloperReview, RepoHistoryEntry, RepoStatus } from "@colonova-design/protocol";
+import { previewTitle } from "./handoff-preview.ts";
 import { historyKindOf } from "./history-kind.ts";
 
 /**
@@ -129,7 +130,9 @@ export function finalOutgoingChanges(
     const key = owner?.sha ?? "unassociated";
     const row = outside.get(key) ?? {
       key,
-      note: owner?.message ?? null,
+      // 보관 제목의 종류 접두(`feat: …`)는 개발자 쪽 형식이다(2026-11-03 실앱 감사) —
+      // 사용자의 줄에서는 벗겨 읽는다. 제출 확인의 제목과 같은 잣대다.
+      note: owner ? previewTitle(owner.message) || null : null,
       at: owner?.at ?? null,
       files: 0,
     };

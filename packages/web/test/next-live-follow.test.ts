@@ -67,7 +67,7 @@ test("shouldFollow: 옮기지 않는 모든 경우 — 하나라도 걸리면 �
     assert.equal(shouldFollow({ ...base(), ...patch }), false, why);
   no({ modes: { ...MODES, follow: false } }, "설정이 꺼져 있다");
   no({ turnStartedAt: null }, "턴이 언제 시작했는지 모른다");
-  no({ view: { ...VIEW, visible: false } }, "홈이 떠 있거나 대화 탭이 앞이라 칸이 숨었다");
+  no({ view: { ...VIEW, visible: false } }, "기획서 자리거나 대화 탭이 앞이라 칸이 숨었다");
   no({ view: { ...VIEW, covered: true } }, "준비 중 · 오류 · 잠금 덮개가 무대를 가린다");
   no({ view: { ...VIEW, external: true } }, "사람이 일부러 외부 페이지로 나갔다");
   no({ modes: { ...MODES, pin: true } }, "핀 모드");
@@ -263,7 +263,7 @@ test("칸: 따라가기는 칸의 기존 이동 `go` 하나만 쓴다 — 새 �
   );
   assert.match(column, /onFollow: followTo,/);
   // 막대의 주소 알약은 따라간 순간도 물들지만, 무대를 훑는 빛줄기는 턴 끝의 도착만의 것이다.
-  assert.match(column, /arrivePulse=\{arriveTick \+ followTick\}/);
+  assert.match(column, /arrivePulse=\{arriveTick \+ followTick \+ hintTick\}/);
   assert.match(column, /sweep=\{arriveTick\}/);
   // 이동의 몸(setTarget)은 `go` 안의 한 곳뿐이다.
   assert.equal(column.match(/setTarget\(\{/g)?.length, 1);
@@ -311,7 +311,10 @@ test("칸: 활성 대화의 조작 · 신호만 읽고, 라이브 층은 무대 
     /editing: activeSessionId \? \(daemon\.editingScreens\.get\(activeSessionId\) \?\? null\) : null,/,
   );
   assert.match(column, /follow: settings\.followEdits,/);
-  assert.match(column, /<LiveLayer line=\{live\.line\} ring=\{live\.ring\} \/>\s*\{frozen && \(/);
+  assert.match(
+    column,
+    /<LiveLayer\s+line=\{live\.line\?\.kind === "editing" \? null : live\.line\}\s+ring=\{live\.ring\}\s*\/>\s*\{frozen && \(/,
+  );
   assert.match(column, /covered: overlay !== null,/);
   assert.match(column, /crowded: narrow && pinCount > 0,/);
 });

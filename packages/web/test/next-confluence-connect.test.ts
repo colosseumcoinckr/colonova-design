@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { test } from "node:test";
 import { timeAgo } from "../src/lib/format.ts";
 import { L } from "../src/next/labels.ts";
@@ -236,4 +238,29 @@ test("상태 알약의 색 — 연결 전은 담담히, 끊김은 노랑, 선 �
   assert.equal(confluenceTone(alive({ expired: true }), null), "warn");
   assert.equal(confluenceTone(alive(), null), "ok");
   assert.equal(confluenceTone(undefined, linked("r").linked), "ok");
+});
+
+test("프로젝트별 연결 판 — 계정 행 · 프로젝트 칩 · 슬러그 바뀌면 리마운트가 서 있다(2026-11-03 소스 계약)", () => {
+  const read = (file: string) =>
+    readFileSync(join(import.meta.dirname, "../src/next/settings", file), "utf8");
+  const connect = read("ConfluenceConnect.tsx");
+  const page = read("ConnectionPage.tsx");
+  // 계정 행 — 요약의 account 가 있을 때만, 가려진 이메일 그대로.
+  assert.ok(
+    connect.includes("summary?.account !== undefined"),
+    "계정 행이 account 유무로 서지 않는다",
+  );
+  assert.ok(connect.includes("{L.plans.account}"), "계정 행의 제목이 라벨을 쓰지 않는다");
+  assert.ok(connect.includes("{summary.account}"), "계정 값이 요약 밖에서 오지 않는다");
+  // 프로젝트 칩 — 상태 행에서 활성 프로젝트의 이름으로.
+  assert.ok(
+    connect.includes("projectName !== undefined"),
+    "프로젝트 칩이 프로젝트를 못 찾을 때도 서 있다",
+  );
+  assert.ok(connect.includes("{projectName}"), "프로젝트 칩이 등록부의 이름을 쓰지 않는다");
+  // 리마운트 — 프로젝트를 바꾸면 판이 새로 서서 옛 프로젝트의 씨앗이 남지 않는다.
+  assert.ok(
+    page.includes('key={daemon.activeSlug ?? ""}'),
+    "ConfluenceConnect 가 activeSlug 로 리마운트되지 않는다",
+  );
 });

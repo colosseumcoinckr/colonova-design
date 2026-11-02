@@ -71,6 +71,8 @@ export function useDraft(daemon: Daemon, input: { pageId?: string; docKey?: stri
         if (seq !== seqRef.current || keyRef.current !== next.docKey) return;
         setView(next);
         setPhase("ready");
+        // 읽기가 성공했으면 지난 실패 문장은 거둔다 — 대화 판과 같은 잣대다(2026-11-02 실사용 관찰).
+        setError(null);
       })
       .catch(() => {
         // 이미 읽은 뷰는 지우지 않는다 — 한 줄로 알린다.

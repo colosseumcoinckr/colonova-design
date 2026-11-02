@@ -80,7 +80,7 @@
   flex-direction: column;
 }
 
-/* 홈이 앞에 서 있는 동안의 대화 · 미리보기 — 마운트한 채 자리만 비운다(미리보기
+/* 기획서 자리가 앞에 서 있는 동안의 대화 · 미리보기 — 마운트한 채 자리만 비운다(미리보기
    게스트가 살아 있게). display:none 이 아니라 크기 0 이다. */
 .nx-offstage {
   position: absolute;
@@ -105,7 +105,7 @@
   pointer-events: none;
 }
 
-/* 홈에서 대화로 넘어올 때의 한 번 — 자리를 드러내며 nx-chat-rise 로 뜬다.
+/* 좁은 창의 서랍에서 대화로 넘어올 때의 한 번 — 자리를 드러내며 nx-chat-rise 로 뜬다.
    offstage 가 다시 입혀지면 걸음이 풀려, 다음 넘어옴에 한 번 더 산다. */
 .nx-work:not(.nx-offstage) {
   animation: nx-chat-rise 0.22s var(--drift);
@@ -117,30 +117,13 @@
   }
 }
 
-.nx-homebar {
-  height: var(--h-bar);
-  flex: none;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-}
-
-.nx-homebar-name {
-  min-width: 0;
-  margin-left: 8px;
-  font-size: var(--fs-ui);
-  font-weight: 600;
-  color: var(--ink2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .nx-body {
   position: relative;
   flex: 1;
   display: grid;
-  grid-template-columns: 400px minmax(0, 1fr);
+  /* 화면이 가운데다(S15) — 미리보기가 남은 폭을 다 쓰고 오른쪽 칸(대화)이 제 폭을 갖는다.
+     Workspace 가 그릴 때 인라인 폭으로 덮는다; 이 기본값은 첫 그림 전의 모습이다. */
+  grid-template-columns: minmax(0, 1fr) 420px;
   min-height: 0;
 }
 
@@ -284,4 +267,52 @@
 .nx--narrow .nx-body[data-tab="chat"] .nx-chat,
 .nx--narrow .nx-body[data-tab="preview"] .nx-preview {
   animation: nx-fade var(--nx-t-move) var(--drift);
+}
+
+/* 좁은 창의 입력창 시트 자리(S12) — 비어 있을 때는 자리도 차지하지 않는다. */
+.nx-sheet-host:empty {
+  display: none;
+}
+
+.nx-sheet-host {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+}
+
+/* 접힌 입력창 — 화면 탭 바닥의 한 줄(S12). 펼쳐져 있으면(시트 자리에 입력창이 서면) 물러난다. */
+.nx-fold-cmp {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 29;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  font-size: var(--fs-sm);
+  color: var(--ink2);
+  text-align: left;
+}
+
+.nx-fold-cmp:hover {
+  background: var(--bg-2);
+  color: var(--ink);
+}
+
+.nx-fold-cmp .nx-i {
+  margin-left: auto;
+  color: var(--ink3);
+}
+
+/* 시트 자리에 입력창이 서면 접힌 한 줄은 걷힌다 — 입력창이 두 줄로 겹치지 않게. */
+.nx-preview:has(.nx-sheet-host:not(:empty)) .nx-fold-cmp {
+  display: none;
 }

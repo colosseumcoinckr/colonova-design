@@ -16,6 +16,7 @@ import type { StartupRecovery } from "./queue-store.js";
 import type { RepoWorkspace } from "./repo.js";
 import { confluenceHandlers } from "./requests/confluence.js";
 import { docCommentHandlers } from "./requests/doc-comments.js";
+import { docMetaHandlers } from "./requests/doc-meta.js";
 import { docOpHandlers } from "./requests/doc-ops.js";
 import { draftHandlers } from "./requests/drafts.js";
 import { mapHandlers } from "./requests/map.js";
@@ -55,6 +56,7 @@ export class RequestRouter {
       ...docOpHandlers(deps),
       ...mapHandlers(deps),
       ...docCommentHandlers(deps),
+      ...docMetaHandlers(deps),
       ...projectHandlers(deps),
       ...repositoryHandlers(deps, (sessionId, stage) => this.briefTo(sessionId, stage)),
       ...systemHandlers(deps),

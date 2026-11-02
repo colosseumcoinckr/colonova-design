@@ -47,7 +47,7 @@ import {
 import { deriveMarkdown } from "./confluence-markdown.js";
 import { confluenceMirrorLedger, confluenceMirrorRoot } from "./confluence-mirror.js";
 import { type PlanNode, planName, planPaths } from "./confluence-path.js";
-import { type CredentialStore, loadConfluenceCredentials } from "./credentials.js";
+import { type CredentialStore, loadConfluenceCredentials, maskEmail } from "./credentials.js";
 import type { DaemonLogger } from "./log.js";
 import type { RestTransport } from "./rest-transport.js";
 
@@ -80,6 +80,40 @@ export function confluenceRootIdKey(slug: string): string {
 
 export function confluenceRootTitleKey(slug: string): string {
   return `confluenceRootTitle:${slug}`;
+}
+
+/**
+ * 연결된 계정의 가려진 이메일 키 — connect 가 쓰고 요약이 읽는다(2026-11-03). 자격 저장소는
+ * 비동기라 동기로 도는 요약이 곧장 읽지 못하니, 가려진 값만 machine.json 에 싣는다. 원문
+ * 이메일 · 토큰은 여전히 자격 저장소 밖으로 나가지 않는다.
+ */
+export function confluenceAccountKey(slug: string): string {
+  return `confluenceAccount:${slug}`;
+}
+
+/**
+ * 시작 백필 — 연결된(사이트 키가 있는) 프로젝트 중 계정 키가 없는 것마다 저장된 자격에서
+ * 가려진 이메일을 채운다(2026-11-03). 프로젝트별 자격이 생기기 전에 연결한 기계도 재연결
+ * 없이 계정 행을 보게 한다. 채운 키의 수를 돌려준다.
+ */
+export async function backfillConfluenceAccounts(
+  credentials: CredentialStore,
+  machineSetting: { get(key: string): string | null; set(key: string, value: string): void },
+  slugs: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<number> {
+  let filled = 0;
+  for (const slug of slugs) {
+    if (machineSetting.get(confluenceSiteKey(slug)) === null) continue;
+    if (machineSetting.get(confluenceAccountKey(slug)) !== null) continue;
+    const creds = await loadConfluenceCredentials(credentials, env, slug);
+    if (creds === null) continue;
+    const account = maskEmail(creds.email);
+    if (account === null) continue;
+    machineSetting.set(confluenceAccountKey(slug), account);
+    filled += 1;
+  }
+  return filled;
 }
 
 /** 가져오기의 간격 — 레포 최신화와 같은 감각의 10분(계획 A1). */
@@ -471,7 +505,7 @@ export class ConfluenceSync {
   private async link(slug: string): Promise<ConfluenceLink | null> {
     const site = this.deps.machineSetting.get(confluenceSiteKey(slug));
     const rootId = this.deps.machineSetting.get(confluenceRootIdKey(slug));
-    const creds = await loadConfluenceCredentials(this.deps.credentials, process.env);
+    const creds = await loadConfluenceCredentials(this.deps.credentials, process.env, slug);
     if (site === null || rootId === null || creds === null) return null;
     let transport = this.fixtureTransport;
     if (transport === null) {

@@ -1,6 +1,6 @@
 import type { DraftSummary } from "@colonova-design/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Daemon, PlanDocComment } from "../../lib/daemon-client";
+import type { Daemon, PlanDocRead } from "../../lib/daemon-client";
 import type { PlanDoc, PlanFolder, PlanImportEnd, PlanUnsupported } from "./plans-list";
 
 /**
@@ -12,14 +12,12 @@ import type { PlanDoc, PlanFolder, PlanImportEnd, PlanUnsupported } from "./plan
 
 export type PlanPhase = "idle" | "loading" | "ready" | "failed";
 
-/** 열린 문서의 몸 — `doc.read` 의 답. */
-export interface PlanDocBody {
-  markdown: string;
-  sections: Array<{ heading: string; macro: boolean }>;
-  /** 안 풀린 코멘트 — 읽지 못했으면 null(원장의 수가 대신하지 않고 칸이 한 줄로 알린다). id · 종류 ·
-   * 판은 코멘트 쓰기의 재료다(2026-10-23 · 최종 구현 계획 F4). */
-  comments: PlanDocComment[] | null;
-}
+/**
+ * 열린 문서의 몸 — `doc.read` 의 답. 안 풀린 코멘트는 읽지 못했으면 null 이고(칸이 한 줄로 알린다) id · 종류 ·
+ * 판은 코멘트 쓰기의 재료다(2026-10-23 · 최종 구현 계획 F4). 보기 블록 · 라벨 · 첨부는 2026-10-30 에 더한
+ * 선택 필드다(사용자 요청 — Confluence 기능 확장).
+ */
+export type PlanDocBody = PlanDocRead;
 
 export interface PlansState {
   /** 원장 목록 — 아직 읽기 전이면 null, 읽었는데 아무것도 없으면 빈 배열이다. */
@@ -37,6 +35,11 @@ export interface PlansState {
   openId: string | null;
   doc: PlanDocBody | null;
   docPhase: PlanPhase;
+  /**
+   * 마지막 문서 읽기의 실패 문장 — 실패 면이 원인별 말을 고르는 재료다(2026-11-02 실사용 관찰:
+   * 미연결인데 「인터넷 연결을 확인하고」 가 서서 사용자가 인터넷만 살폈다).
+   */
+  docError: string | null;
   importing: boolean;
   importEnd: PlanImportEnd | null;
 }
@@ -51,6 +54,7 @@ const INITIAL: PlansState = {
   openId: null,
   doc: null,
   docPhase: "idle",
+  docError: null,
   importing: false,
   importEnd: null,
 };
@@ -160,16 +164,26 @@ export function usePlans(daemon: Daemon, enabled = true): PlansHand {
   const openDoc = useCallback((pageId: string) => {
     docSeq.current += 1;
     const seq = docSeq.current;
-    setState((before) => ({ ...before, openId: pageId, doc: null, docPhase: "loading" }));
+    setState((before) => ({
+      ...before,
+      openId: pageId,
+      doc: null,
+      docPhase: "loading",
+      docError: null,
+    }));
     apiRef.current
       .docRead(pageId)
       .then((doc) => {
         if (seq !== docSeq.current) return;
         setState((before) => ({ ...before, doc, docPhase: "ready" }));
       })
-      .catch(() => {
+      .catch((err: unknown) => {
         if (seq !== docSeq.current) return;
-        setState((before) => ({ ...before, docPhase: "failed" }));
+        setState((before) => ({
+          ...before,
+          docPhase: "failed",
+          docError: err instanceof Error ? err.message : String(err),
+        }));
       });
   }, []);
 
@@ -194,7 +208,13 @@ export function usePlans(daemon: Daemon, enabled = true): PlansHand {
 
   const closeDoc = useCallback(() => {
     docSeq.current += 1;
-    setState((before) => ({ ...before, openId: null, doc: null, docPhase: "idle" }));
+    setState((before) => ({
+      ...before,
+      openId: null,
+      doc: null,
+      docPhase: "idle",
+      docError: null,
+    }));
   }, []);
 
   const importNow = useCallback(() => {

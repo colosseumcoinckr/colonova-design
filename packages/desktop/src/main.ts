@@ -379,6 +379,11 @@ async function bootApp(): Promise<void> {
     process.env.PATH = `${pathFront.join(delimiter)}${delimiter}${process.env.PATH}`;
   }
   Object.assign(process.env, tools.env);
+  // 실제 Confluence 쓰기(발행 · 문서 관리 · 코멘트)의 게이트를 데스크톱 앱은 기본으로 연다
+  // (2026-11-02 사용자 지시). 값을 미리 정해 두면(예 "0") 그 판정을 존중한다 — 단독 데몬 ·
+  // 시험의 기본은 여전히 꺼짐이다. 데몬은 이 env 를 읽어 프로젝트 요약의 confluence.writable 로
+  // 알리므로 화면의 `Confluence 쓰기 꺼짐` 칩이 저절로 걷힌다.
+  process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH ??= "1";
 
   const webDist = existsSync(join(app.getAppPath(), "web-dist"))
     ? join(app.getAppPath(), "web-dist")

@@ -349,7 +349,7 @@ export class DocComments {
     if (site === null) {
       throw new Error("먼저 연결해 주세요 — 코멘트는 연결 뒤에 쓸 수 있어요.");
     }
-    const creds = await loadConfluenceCredentials(this.#deps.credentials, process.env);
+    const creds = await loadConfluenceCredentials(this.#deps.credentials, process.env, slug);
     if (creds === null) {
       throw new Error("먼저 연결해 주세요 — 사이트 · 이메일 · 토큰을 넣어 주세요.");
     }

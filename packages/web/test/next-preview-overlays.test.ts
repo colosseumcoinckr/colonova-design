@@ -42,7 +42,7 @@ test("서랍은 막대 높이를 변수로 읽고(48px 를 베끼지 않는다) 
   // 닫힌 서랍은 눈에도 낭독에도 없고, 열린 때만 그림자가 선다(닫힌 서랍의 그림자가 가장자리에 비치지 않게).
   assert.match(hist, /visibility:\s*hidden/);
   assert.doesNotMatch(hist, /(?:^|[;\s])box-shadow\s*:/);
-  // 열린 서랍은 `visible` 이 아니라 조상을 따른다(`inherit`) — `visible` 은 숨은 조상(홈 · 가려진 탭)의 hidden 을 이겨 눈에
+  // 열린 서랍은 `visible` 이 아니라 조상을 따른다(`inherit`) — `visible` 은 숨은 조상(기획서 자리 · 가려진 탭)의 hidden 을 이겨 눈에
   // 안 보이는 서랍이 Tab 초점을 붙들었다.
   assert.match(body(".nx-hist--open"), /visibility:\s*inherit/);
   assert.match(body(".nx-hist--open"), /box-shadow:/);
@@ -123,24 +123,18 @@ test("서랍: 움직임을 줄인 창은 서랍 · 스크림의 전환을 쓰지
   assert.match(block[0], /transition:\s*none/);
 });
 
-test("서랍: 숨은 칸에서 열린 채 있지 않고 · 지난 프로젝트의 줄이 비치지 않고 · 되돌린 뒤 접힌다", () => {
-  // ① 칸이 숨는 순간(홈 · 좁은 창의 대화 탭) 열린 서랍은 `visibility: visible` 로 숨은 조상을 이겨 Tab 초점을 눈에 안 보이는
-  //    곳으로 끌어갔다 — 숨는 순간에 접고, 숨은 동안은 가두기도 돌지 않는다(숨은 칸에서 여는 길은 접지 않는다).
-  assert.match(drawer, /const hid = offstage && !wasOffstage\.current/);
-  assert.match(drawer, /if \(open && \(hid \|\| moved\)\) onClose\(\)/);
-  assert.match(
-    drawer,
-    /useModalFocus\(panel, open && !offstage, returnRef, \{ reenter: false \}\)/,
-  );
-  // ② 읽어 온 줄은 프로젝트와 함께 든다 — 옮긴 직후(열려 있는 동안) 지난 프로젝트의 줄이 비치지 않게.
-  assert.match(drawer, /loaded\.slug === slug/);
-  // ③ 되돌리기가 성공하면 서랍이 접혀 되돌린 화면이 곧바로 보인다(실패면 열린 채 카드에 알림). 오래 걸린 되돌리기가 끝났을
-  //    때 그사이 서랍을 닫았다 열었거나 프로젝트를 옮겼다면(판이 달라졌다면) 지금 보는 서랍을 닫지 않는다.
-  assert.match(
-    drawer,
-    /api\.restore\([\s\S]*?stage === "failed"[\s\S]*?onRestored\(\)[\s\S]*?if \(here\) onClose\(\)/,
-  );
-  assert.match(drawer, /const here = session\.current === started/);
+test("서랍: 숨은 칸에서 열린 채 있지 않고 · 지난 프로젝트의 줄이 비치지 않고 · 되돌린 뒤 접힌다(S10 의 갈라짐과 함께)", () => {
+  // 몸(HistoryPanel)과 껍데기(HistoryDrawer)가 갈라졌다 — 몸은 탭과 서랍이 같이 쓴다(S10).
+  assert.match(drawer, /export function HistoryPanel/);
+  assert.match(drawer, /export function HistoryDrawer/);
+  // 숨는 순간의 접힘은 껍데기가 맡는다 — 열린 채 칸이 숨으면(offstage) 접는다.
+  assert.match(drawer, /if \(open && hid\) onClose\(\)/);
+  // 프로젝트가 바뀐 순간에도 접는다 — 지난 프로젝트의 줄이 비치지 않게.
+  assert.match(drawer, /if \(open && was !== slug\) onClose\(\)/);
+  // 몸은 프로젝트를 함께 든다 — 옮겨 온 직후 지난 줄이 비치지 않게(slug 가 함께 온다).
+  assert.match(drawer, /setLoaded\(\{ slug, entries: next\.entries \}\)/);
+  // 되돌리기가 끝난 뒤 몸은 껍데기의 손(onDone)을 부른다 — 서랍은 접고 탭은 남는다.
+  assert.match(drawer, /if \(here\) onDone\?\.\(\)/);
 });
 
 test("서랍: 게스트가 다시 쏜 Esc(대상이 문서)도 서랍을 닫고, 제목 초점은 두 프레임 뒤에 선다", () => {

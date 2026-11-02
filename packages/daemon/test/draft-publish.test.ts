@@ -439,7 +439,8 @@ test("미리보기: 바뀐 수와 지워진 보존 블록과 사라진 토큰을
     changed: 2,
     inserted: 1,
     deleted: 1,
-    protectedRemoved: ["macro:status", "macro:info"],
+    // 상태 토큰은 색·값까지 실린다(2026-11-02 개체 표 정리) — 색을 정하지 않은 매크로는 grey 로 읽는다.
+    protectedRemoved: ["macro:status:grey:진행", "macro:info"],
   });
   assert.equal(preview.titleChanged, true);
   assert.equal(preview.baseVersion, 4);

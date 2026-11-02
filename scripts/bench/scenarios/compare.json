@@ -1,0 +1,12 @@
+[
+  {
+    "id": "compare-signup",
+    "kind": "compare",
+    "pageId": "000000000",
+    "sheet": "회원가입 정책서",
+    "note": "실측 전에 compare-sheet.json 의 문서 pageId 를 견본 프로젝트의 실제 값으로 채우고 같은 값을 pageId 에 넣는다(2026-11-02 · 같이 고치기 UX 계획 0단계).",
+    "expect": {
+      "sections": ["비밀번호 규칙", "휴면 전환"]
+    }
+  }
+]

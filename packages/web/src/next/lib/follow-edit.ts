@@ -22,7 +22,7 @@ export function isFreshSignal(receivedAt: number, now: number): boolean {
 
 /** 미리보기 칸이 지금 어떤 모습인가. */
 export interface FollowView {
-  /** 칸이 눈에 보인다 — 홈이 떠 있거나 좁은 창이 대화 탭에 있으면 false. */
+  /** 칸이 눈에 보인다 — 기획서 자리거나 좁은 창이 대화 탭에 있으면 false. */
   visible: boolean;
   /** 준비 중 · 다시 켜는 중 · 실패 · 고치는 중 · 서버 없음의 덮개가 무대를 가린다. */
   covered: boolean;

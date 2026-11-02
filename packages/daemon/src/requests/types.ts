@@ -19,6 +19,7 @@ import type { PreviewDrivers } from "../preview-drivers.js";
 import type { ProjectFleet } from "../project-fleet.js";
 import type { ProjectRegistry } from "../projects.js";
 import type { QueueDisk, QueueStore } from "../queue-store.js";
+import type { ScreenPlanSync } from "../screen-plan-sync.js";
 import type { SessionManager } from "../session-manager.js";
 import type { TurnStats } from "../turn-stats.js";
 
@@ -51,6 +52,8 @@ export interface RouterDeps {
   confluence: ConfluenceSync;
   /** 기획 초안의 몸 — draft.* 요청이 잇는다(2026-10-23 최종 구현 계획 F1). */
   drafts: DraftService;
+  /** 같이 고치기의 몸 — draft.syncUndo · draft.syncPick 과 화면 되돌리기가 잇는다(2026-10-30 사용자 결정). */
+  screenSync: ScreenPlanSync;
   /** 문서 관리의 몸 — doc.trash · doc.restore · doc.copy · doc.move 가 잇는다(2026-10-23 작업 D1a). */
   docOps: DocOps;
   /** 문서 코멘트의 몸 — doc.comment.* 가 잇는다(2026-10-23 작업 D2a). */

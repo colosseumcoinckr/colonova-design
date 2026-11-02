@@ -1,0 +1,365 @@
+/*
+ * 기획서 보기(2026-10-30 사용자 요청 — 기획서 칸에서 Confluence 기능을 가능한 한 온전히).
+ * 글의 눈금은 공용 마크다운(.md)과 .nx-pl-body 의 규칙을 받고, 여기는 Confluence 조각만 입힌다.
+ * 크기는 tokens.css, 색은 next.css 의 짝 이름만 쓴다.
+ */
+.nx-dv {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.nx-dv > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.nx-dv--preview {
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+}
+
+/* 상자 — info · note · warning · tip · panel · success · error */
+.nx-dv-panel {
+  --nx-dv-tone: var(--blue);
+  --nx-dv-soft: var(--blue-soft);
+  display: flex;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid color-mix(in srgb, var(--nx-dv-tone) 35%, transparent);
+  border-radius: var(--r);
+  background: var(--nx-dv-soft);
+}
+.nx-dv-panel--note {
+  --nx-dv-tone: var(--accent);
+  --nx-dv-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.nx-dv-panel--warning,
+.nx-dv-panel--error {
+  --nx-dv-tone: var(--red);
+  --nx-dv-soft: var(--red-soft);
+}
+.nx-dv-panel--tip,
+.nx-dv-panel--success {
+  --nx-dv-tone: var(--green);
+  --nx-dv-soft: var(--green-soft);
+}
+.nx-dv-panel--panel {
+  --nx-dv-tone: var(--line2);
+  --nx-dv-soft: var(--bg-2);
+}
+.nx-dv-panel-ic {
+  flex: none;
+  margin-top: var(--sp-1);
+  color: var(--nx-dv-tone);
+}
+.nx-dv-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  flex: 1;
+}
+.nx-dv-panel-body > * {
+  margin: 0;
+}
+.nx-dv-panel-title {
+  font-weight: var(--fw-semi);
+}
+
+/* 상태 알약 */
+.nx-dv-status {
+  --nx-dv-tone: var(--ink3);
+  display: inline-block;
+  padding: 0 var(--sp-1_5);
+  border-radius: var(--r-sm);
+  background: var(--nx-dv-tone);
+  color: var(--bg);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-ui);
+  text-transform: uppercase;
+  vertical-align: baseline;
+}
+.nx-dv-status--red {
+  --nx-dv-tone: var(--red);
+}
+.nx-dv-status--yellow {
+  --nx-dv-tone: var(--amber);
+}
+.nx-dv-status--green {
+  --nx-dv-tone: var(--green);
+}
+.nx-dv-status--blue {
+  --nx-dv-tone: var(--blue);
+}
+.nx-dv-status--purple {
+  --nx-dv-tone: var(--accent);
+}
+.nx-dv-status--subtle {
+  border: 1px solid var(--nx-dv-tone);
+  background: transparent;
+  color: var(--nx-dv-tone);
+}
+
+/* 펼치기 */
+.nx-dv-expand {
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+}
+.nx-dv-expand > summary {
+  padding: var(--sp-2) var(--sp-3);
+  cursor: pointer;
+  font-weight: var(--fw-medium);
+}
+.nx-dv-expand-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4) var(--sp-3);
+}
+.nx-dv-expand-body > * {
+  margin: 0;
+}
+
+/* 목차 */
+.nx-dv-toc {
+  padding: var(--sp-3) var(--sp-4);
+  border-left: 2px solid var(--line2);
+}
+.nx-dv-toc-title {
+  margin: 0 0 var(--sp-1);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
+}
+.nx-dv-toc ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nx-dv-toc-none {
+  margin: 0;
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+}
+.nx-dv-toc-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  font: inherit;
+  font-size: var(--fs-ui);
+  text-align: start;
+  cursor: pointer;
+}
+.nx-dv-toc-link:hover {
+  text-decoration: underline;
+}
+
+/* 코드 — 공용 마크다운의 코드 판을 쓰고 제목만 얹는다 */
+.nx-dv-code {
+  margin: 0;
+}
+.nx-dv-code > figcaption {
+  margin-bottom: var(--sp-1);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+}
+
+/* 그림 */
+.nx-dv-img {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r-sm);
+  vertical-align: middle;
+}
+.nx-dv-img--block {
+  display: block;
+}
+.nx-dv-img-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+}
+
+/* 단 나눔 — 좁으면 위아래로 */
+.nx-dv-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--sp-4);
+}
+.nx-dv-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+.nx-dv-col > * {
+  margin: 0;
+}
+
+/* 할 일 */
+.nx-dv-tasks {
+  padding: 0;
+  list-style: none;
+}
+.nx-dv-tasks > li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+.nx-dv-tasks > li > .nx-i {
+  flex: none;
+  margin-top: var(--sp-1);
+  color: var(--ink3);
+}
+.nx-dv-task--done > span {
+  color: var(--ink3);
+  text-decoration: line-through;
+}
+
+/* 글 속 조각 — 멘션 · 날짜 · 문서 링크 · 첨부 · 모르는 매크로 */
+.nx-dv-mention,
+.nx-dv-date {
+  padding: 0 var(--sp-1);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--ink2);
+}
+.nx-dv-page {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--blue);
+  font: inherit;
+  cursor: pointer;
+}
+.nx-dv-page:hover {
+  text-decoration: underline;
+}
+.nx-dv-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: 0 var(--sp-1_5);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  color: var(--ink2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.nx-dv-chip:disabled {
+  cursor: progress;
+}
+.nx-dv-macro {
+  font-size: var(--fs-sm);
+}
+
+/* 문서 머리의 라벨 · 본문 아래 첨부 · 판 기록 */
+.nx-dm-labels {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1_5);
+  font-size: var(--fs-sm);
+}
+.nx-dm-label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-0_5);
+  padding: 0 var(--sp-1) 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--bg-2);
+  color: var(--ink2);
+  line-height: var(--h-xs);
+}
+.nx-dm-label--plain {
+  padding-right: var(--sp-2);
+}
+.nx-dm-label-in {
+  width: 160px;
+  height: var(--h-sm);
+  font-size: var(--fs-sm);
+}
+.nx-dm-line {
+  margin: 0;
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+}
+.nx-dm-line--bad {
+  color: var(--red);
+}
+.nx-dm-att {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.nx-dm-att h4 {
+  margin: 0;
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-semi);
+}
+.nx-dm-att ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nx-dm-att-sub {
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+.nx-dm-hist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.nx-dm-hist ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nx-dm-hist-msg {
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+}
+.nx-dm-old {
+  padding: var(--sp-4);
+  border: 1px dashed var(--line2);
+  border-radius: var(--r);
+}
+
+/* 사이드바 찾기의 본문 결과 — 제목 아래 두 줄의 미리 보기 글 */
+.nx-pl-body-hits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+}
+.nx .nx-pl-row--hit {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-0_5);
+  height: auto;
+  padding: var(--sp-1) var(--sp-1_5);
+}
+.nx-pl-row--hit .nx-pl-title {
+  flex: none;
+}
+.nx-pl-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+  line-height: var(--lh-ui);
+}
+.nx-pl-snippet mark {
+  border-radius: var(--r-sm);
+  background: var(--amber-soft);
+  color: var(--ink);
+}

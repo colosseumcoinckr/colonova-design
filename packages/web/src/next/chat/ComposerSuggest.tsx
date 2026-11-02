@@ -181,7 +181,7 @@ export function useComposerSuggest({
 }
 
 /**
- * 목록의 판 — 대화 칸에서는 입력창 위로(`up`), 홈에서는 아래로 선다. 줄을 눌러도 입력칸이 초점을
+ * 목록의 판 — 대화 칸에서는 입력창 위로(`up`) 선다. 줄을 눌러도 입력칸이 초점을
  * 잃지 않게 판의 mousedown 을 막는다.
  */
 export function SuggestList({ suggest, up }: { suggest: Suggest; up: boolean }) {

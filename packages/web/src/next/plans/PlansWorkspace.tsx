@@ -1,4 +1,8 @@
-import type { DocOpResult, ProjectSummary } from "@colonova-design/protocol";
+import type {
+  DocOpResult,
+  DraftConversationSummary,
+  ProjectSummary,
+} from "@colonova-design/protocol";
 import {
   createContext,
   useCallback,
@@ -13,6 +17,7 @@ import { PLANS_OPEN_EVENT, takePlanOpen } from "../chat/plan-ref-strip";
 import { L } from "../labels";
 import { initialPlanPage, planRows, selectedPlanPage, syncLine } from "./plans-list";
 import { usePlans } from "./use-plans";
+import { useBodySearch } from "./view/use-body-search";
 
 /** 트리 · 본문 · 찾기가 한 목록을 읽는다(2026-10-23 화면 전면 재설계 §3.4 · §3.7). */
 export function usePlansWorkspace({
@@ -60,6 +65,9 @@ export function usePlansWorkspace({
   const openDraftKey = useCallback((docKey: string | null) => {
     setDraftPageId(null);
     setDraftKey(docKey);
+    // 골른 대화는 문서를 따라 산다 — 문서가 바뀌는 모든 길에서 거둔다(2026-11-03). 사이드바의
+    // 줄은 문서를 연 뒤 골라 두 번이 한 묶음이다(순서대로 쌓여 골른 값이 남는다).
+    setPickedThreadId(null);
   }, []);
   // 새 문서 창(2026-10-23 · 최종 구현 계획 F2) — 목록 머리의 `새 문서` 가 연다.
   const [newDraftOpen, setNewDraftOpen] = useState(false);
@@ -70,6 +78,19 @@ export function usePlansWorkspace({
 
   const summary = project?.confluence;
   const connected = summary !== undefined;
+  // 기획 대화 목록(2026-10-31 3단계) — 사이드바 위 묶음이 읽는다. 칸이 앞에 설 때만 읽는다.
+  const [conversations, setConversations] = useState<DraftConversationSummary[] | null>(null);
+  const refreshConversations = useCallback(() => {
+    daemon.api
+      .draftThreads()
+      .then((rows) => setConversations(rows))
+      .catch(() => setConversations(null));
+  }, [daemon.api]);
+  useEffect(() => {
+    if (enabled && connected) refreshConversations();
+  }, [enabled, connected, refreshConversations]);
+  // 본문 찾기(2026-10-30 사용자 요청) — 트리 찾기 칸의 말로 가져온 사본의 본문도 찾는다.
+  const bodySearch = useBodySearch(daemon, query, enabled && connected);
   const rows = useMemo(
     () => planRows(state.docs ?? [], state.folders, state.unsupported),
     [state.docs, state.folders, state.unsupported],
@@ -276,6 +297,18 @@ export function usePlansWorkspace({
     if (paletteOpen && connected && state.listPhase === "idle") refreshList();
   }, [paletteOpen, connected, state.listPhase, refreshList]);
 
+  // 지금 대화 칸이 보는 기획 대화의 이름표(2026-11-03) — 대화 칸(PlansColumn)이 쥔 판에서 읽어
+  // 사이드바의 선택 줄이 문서가 아니라 대화를 따라 켜진다. 아직 읽기 전이면 null 이고,
+  // 사이드바는 문서 일치로 갈라 본다.
+  const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  // 사이드바 목록에서 골른 대화(2026-11-03) — 판이 문서의 최신 대화 대신 이 대화를 읽는다.
+  // null 은 자동(최신)이다. 문서를 여는 모든 길(openDraftKey)이 거둔다 — 사이드바는 문서를
+  // 연 뒤에 골라 두 글자를 한 묶음으로 쓴다.
+  const [pickedThreadId, setPickedThreadId] = useState<string | null>(null);
+  const pickThread = useCallback((threadId: string | null) => {
+    setPickedThreadId(threadId);
+  }, []);
+
   return {
     state,
     rows,
@@ -284,6 +317,7 @@ export function usePlansWorkspace({
     connected,
     query,
     setQuery,
+    bodySearch,
     collapsed,
     toggle,
     lastViewed,
@@ -312,6 +346,12 @@ export function usePlansWorkspace({
     setNewDraftOpen,
     trashOpen,
     setTrashOpen,
+    conversations,
+    refreshConversations,
+    activeThreadId,
+    setActiveThreadId,
+    pickedThreadId,
+    pickThread,
   };
 }
 

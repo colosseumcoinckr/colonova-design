@@ -36,7 +36,6 @@ export function ConversationList({
   project,
   sessions,
   activeSessionId,
-  threadView,
   titleFor,
   onOpen,
   onRenameSession,
@@ -47,8 +46,6 @@ export function ConversationList({
   /** `useSessions` 의 결과 — 지운 대화가 열려 있으면 새 대화의 빈 자리로 돌린다. */
   sessions: Sessions;
   activeSessionId: string | null;
-  /** 대화 보기가 앞에 서 있는가 — 홈에서는 어느 행도 켜지 않는다. */
-  threadView: boolean;
   titleFor: (thread: ThreadSummary) => string;
   onOpen: (thread: ThreadSummary) => void;
   /** 이름 바꾸기 — 셸의 `onRenameSession`(설정의 대화 제목에 남는다). */
@@ -187,7 +184,7 @@ export function ConversationList({
   }, [slug]);
   // 열린 대화가 목록의 굴러간 자리 밖이면 보이는 곳으로 — 찾기(⌘K)로 연 대화나 다시 켠 뒤 돌아온 대화가
   // 아래에 묻혀 지금 어디인지 알 수 없던 것을 막는다. 이미 보이면 건드리지 않는다.
-  const openId = threadView ? activeSessionId : null;
+  const openId = activeSessionId;
   const openListed = threads.some((thread) => thread.id === openId);
   useEffect(() => {
     const list = listRef.current;
@@ -292,7 +289,7 @@ export function ConversationList({
   const rowBody = (thread: ThreadSummary) => {
     const view = daemon.sessions[thread.id];
     const failed = view?.state === "error";
-    const on = threadView && thread.id === activeSessionId;
+    const on = thread.id === activeSessionId;
     const system = Boolean(SYSTEM_THREAD_TITLES[thread.title]);
     const menuOpen = menuFor === thread.id;
     const screens = screensById.get(thread.id) ?? "";

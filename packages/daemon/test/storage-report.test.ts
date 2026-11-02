@@ -66,8 +66,9 @@ test("고치지 않은 되돌림 · 투영 되돌림 · 한 블록 편집의 세
 test("인라인 매크로도 매크로 수에 더한다", () => {
   const DOC_INLINE_MACRO = `<p>앞 <ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Blue</ac:parameter></ac:structured-macro> 뒤</p>`;
   const report = reportStorage(DOC_INLINE_MACRO);
-  assert.deepEqual(report.tokens, { "macro:status": 1 });
-  assert.deepEqual(report.macros, { status: 1 });
+  // 상태 토큰은 색·값까지 실린다(2026-11-02 개체 표 정리) — 값이 없으면 뒤칸이 비고, 대문자 색도 내려 읽는다.
+  assert.deepEqual(report.tokens, { "macro:status:blue:": 1 });
+  assert.deepEqual(report.macros, { "status:blue:": 1 });
   assert.equal(report.preserved.total, 0);
 });
 

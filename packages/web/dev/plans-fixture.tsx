@@ -572,6 +572,10 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
   let copySerial = 1;
   let commentSeq = COMMENTS.length + 1;
   const comments = COMMENTS.map((row) => ({ ...row }));
+  // 이 견본에서 지워진 기획 대화의 이름표 — draftThreads 가 목록에서 거둔다(2026-11-03).
+  const goneConvs = new Set<string>();
+  // 고른 이름 바꾸기(2026-11-03) — 줄의 `···` 이름 바꾸기가 목록의 제목을 갈아 낀다.
+  const convTitles = new Map<string, string>();
 
   /** 열쇠의 초안 — 문서 초안은 처음 열리면 견본을 만들고, 만들어진 적 없는 새 문서 초안은 없다. */
   const openDraft = (key: string): DraftView | null => {
@@ -725,67 +729,98 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
       return later(150, { discarded: true });
     },
     // 기획 대화 견본 — 사람의 요청 하나와 AI 의 답(변경안 세 걸음)이 선다.
-    draftThread: (docKey: string) =>
-      later(200, {
-        docKey,
-        threadId: "t-1",
-        running: false,
-        messages: [
-          {
-            messageId: "m-1",
-            role: "user",
-            text: "배정 실패 때의 예외를 정책에 더해 줘. 운영 담당 확인을 거치게.",
-            at: ago(6),
-            refs: [
+    // 골라 읽기(2026-11-03) — threadId 를 골랐으면 그 대화를 돌려준다(문서의 최신 대화 t-1 과 옛 대화 t-3).
+    draftThread: (docKey: string, threadId?: string) =>
+      threadId === "t-3"
+        ? later(200, {
+            docKey,
+            threadId: "t-3",
+            running: false,
+            messages: [
               {
-                pageId: DOCS[2].pageId,
-                title: DOCS[2].title,
-                version: 4,
-                sections: ["5. 세부 규칙"],
+                messageId: "m-10",
+                role: "user",
+                text: "반품 창고 규칙을 6절에 정리해 줘.",
+                at: ago(40),
+                refs: [],
+              },
+              {
+                messageId: "m-11",
+                role: "assistant",
+                text: "반품 입고 · 검수 · 재고 반영의 세 걸음으로 **6절**에 정리했어요.",
+                at: ago(39),
+                proposalId: "pr-3",
+                reads: [],
               },
             ],
-          },
-          {
-            messageId: "m-2",
-            role: "assistant",
-            text: "배정 실패의 예외를 **5절**에 맞춰 두 군데에 더했어요. 표의 권한 칸도 운영 담당(OP)으로 고쳤어요.",
-            at: ago(5),
-            proposalId: "pr-1",
-            reads: [{ pageId: DOCS[3].pageId, title: DOCS[3].title, version: 7 }],
-          },
-        ],
-        proposals: [
-          {
-            proposalId: "pr-1",
-            createdAt: ago(5),
-            draftRevision: 3,
-            summary: "배정 실패 예외와 확인 권한을 더한다",
-            ops: [
+            proposals: [],
+          })
+        : later(200, {
+            docKey,
+            threadId: "t-1",
+            running: false,
+            messages: [
               {
-                opId: "op-1",
-                type: "replace",
-                blockId: "b1",
-                view: {
-                  kind: "paragraph",
-                  text: "출고 지시는 **재고 확정** 뒤에만 만든다. 배정이 실패하면 운영 담당이 확인한 뒤 다시 배정한다.",
-                },
-                state: "open",
+                messageId: "m-1",
+                role: "user",
+                text: "배정 실패 때의 예외를 정책에 더해 줘. 운영 담당 확인을 거치게.",
+                at: ago(6),
+                refs: [
+                  {
+                    pageId: DOCS[2].pageId,
+                    title: DOCS[2].title,
+                    version: 4,
+                    sections: ["5. 세부 규칙"],
+                  },
+                ],
               },
               {
-                opId: "op-2",
-                type: "insert",
-                afterBlockId: "b2",
-                view: {
-                  kind: "paragraph",
-                  text: "예외: 긴급 출고는 확인 없이 먼저 배정하고 사후에 기록한다.",
-                },
-                state: "open",
+                messageId: "m-2",
+                role: "assistant",
+                text: "배정 실패의 예외를 **5절**에 맞춰 두 군데에 더했어요. 표의 권한 칸도 운영 담당(OP)으로 고쳤어요.",
+                at: ago(5),
+                proposalId: "pr-1",
+                reads: [{ pageId: DOCS[3].pageId, title: DOCS[3].title, version: 7 }],
               },
-              { opId: "op-3", type: "delete", blockId: "b4", state: "rejected" },
             ],
-          },
-        ],
-      }),
+            proposals: [
+              {
+                // 바로 반영(2026-10-31 2단계) — 채택 없이 초안에 들어간 고침의 문서 카드다.
+                proposalId: "pr-1",
+                createdAt: ago(5),
+                draftRevision: 3,
+                summary: "배정 실패 예외와 확인 권한을 더한다",
+                appliedAt: ago(5),
+                appliedOps: 2,
+                // 남은 고침 하나(2026-11-02 D9) — 사람이 고치던 블록에 남은 걸음이 있어 알약이 서는 견본.
+                keptOps: 1,
+                undoable: true,
+                ops: [
+                  {
+                    opId: "op-1",
+                    type: "replace",
+                    blockId: "b1",
+                    view: {
+                      kind: "paragraph",
+                      text: "출고 지시는 **재고 확정** 뒤에만 만든다. 배정이 실패하면 운영 담당이 확인한 뒤 다시 배정한다.",
+                    },
+                    state: "adopted",
+                  },
+                  {
+                    opId: "op-2",
+                    type: "insert",
+                    afterBlockId: "b2",
+                    view: {
+                      kind: "paragraph",
+                      text: "예외: 긴급 출고는 확인 없이 먼저 배정하고 사후에 기록한다.",
+                    },
+                    state: "adopted",
+                  },
+                  { opId: "op-3", type: "delete", blockId: "b4", state: "stale" },
+                ],
+              },
+            ],
+          }),
     draftAdopt: (docKey: string) => {
       log("변경안 채택");
       return later(200, draft ?? sampleDraft(docKey.slice(2), false));
@@ -799,6 +834,117 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
       return later(150, { threadId: "t-1", messageId: "m-3" });
     },
     draftCancel: () => later(100, { cancelled: true }),
+    // 기획 대화 목록 · 판 고르기 · 되돌리기(2026-10-31 2·3단계) — 견본의 가짜 데몬이 같은 모양으로 답한다.
+    // 지운 대화는 목록에서 거둔다(2026-11-03) — 줄의 `···` 지우기가 실제로 사라지는 것을 눈으로 본다.
+    draftThreads: () =>
+      later(
+        150,
+        [
+          {
+            threadId: "t-1",
+            title: convTitles.get("t-1") ?? "배정 실패 때의 예외를 정책에 더해 줘...",
+            docKey: draftKey ?? "p-2001",
+            docTitle: "[정책서] 주문 접수 v0.8",
+            at: ago(5),
+            messageCount: 2,
+            running: false,
+          },
+          {
+            threadId: "t-2",
+            title: convTitles.get("t-2") ?? "노쇼 규칙을 정리해 줘",
+            docKey: "p-3001",
+            docTitle: "[기능설계서] 주문 목록 · 검색 v0.8",
+            at: ago(30),
+            messageCount: 4,
+            running: false,
+          },
+          {
+            // 같은 문서의 옛 대화(2026-11-03) — 줄을 누르면 그 대화가 판에 다시 서는 것을 눈으로 본다.
+            threadId: "t-3",
+            title: convTitles.get("t-3") ?? "반품 창고 규칙을 6절에 정리해 줘.",
+            docKey: "p-2001",
+            docTitle: "[정책서] 주문 접수 v0.8",
+            at: ago(40),
+            messageCount: 2,
+            running: false,
+          },
+        ].filter((one) => !goneConvs.has(one.threadId)),
+      ),
+    draftThreadMove: () => {
+      log("대화 옮기기");
+      return later(150, {
+        threadId: "t-1",
+        title: "배정 실패 때의 예외를 정책에 더해 줘...",
+        docKey: "p-3001",
+        docTitle: "[기능설계서] 주문 목록 · 검색 v0.8",
+        at: ago(0),
+        messageCount: 2,
+        running: false,
+      });
+    },
+    draftThreadDelete: (threadId: string) => {
+      goneConvs.add(threadId);
+      log("대화 지우기");
+      return later(120, { deleted: true });
+    },
+    draftThreadRename: (threadId: string, title: string) => {
+      convTitles.set(threadId, title);
+      log("대화 이름 바꾸기");
+      return later(120, {
+        threadId,
+        title,
+        docKey: draftKey ?? "p-2001",
+        docTitle: "[정책서] 주문 접수 v0.8",
+        at: ago(0),
+        messageCount: 2,
+        running: false,
+      });
+    },
+    draftRevisions: () =>
+      later(150, [
+        {
+          revision: 3,
+          at: ago(5),
+          origin: "ai",
+          label: "배정 실패 예외",
+          changes: { changed: 1, inserted: 1, deleted: 0 },
+          state: "editing",
+        },
+        {
+          revision: 2,
+          at: ago(20),
+          origin: "person",
+          label: null,
+          changes: { changed: 1, inserted: 0, deleted: 0 },
+          state: "editing",
+        },
+      ]),
+    draftRevision: (_docKey: string, revision: number) => {
+      const view = openDraft(draftKey ?? "p-2001");
+      if (view === null) return failLater(120);
+      if (revision === 0) {
+        return later(200, {
+          ...view,
+          revision: 0,
+          blocks: view.blocks.map((b) => ({ ...b, status: "same" as const })),
+        });
+      }
+      return later(200, {
+        ...view,
+        revision,
+        blocks: view.blocks.map((b) => ({ ...b, status: "same" as const })),
+      });
+    },
+    draftUndo: () => {
+      log("AI 고침 되돌리기");
+      return later(200, { restored: 2, kept: 0 });
+    },
+    draftRevisionRestore: () => {
+      log("고른 판으로 되돌리기");
+      if (draft === null) return failLater(120);
+      draft = { ...draft, revision: draft.revision + 1 };
+      return later(200, draft);
+    },
     // 발행 확인 창의 손(2026-10-23 · 최종 구현 계획 F2) — 미리보기는 상태마다, 보내기는 기본 닿음.
     draftPublishPreview: (docKey: string) => {
       const view = openDraft(docKey);
@@ -934,6 +1080,13 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
   };
   const api = {
     ...draftApi,
+    // 읽는 문서 곁의 `이 문서의 화면`(2026-10-30)이 읽는다 — 견본은 이어진 화면 하나를 보인다.
+    mapRead: () =>
+      later(120, {
+        links: [{ pageId: "1006", route: "/signup", section: null }],
+        screens: [{ route: "/signup", title: "회원가입" }],
+      }),
+    mapWrite: () => later(120, []),
     docList: () => {
       if (id === "list-loading") return never();
       if (id === "list-failed") return failLater(500);
@@ -958,6 +1111,19 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
         ],
         // 코멘트 쓰기가 더한 것까지 보이게 — 견본 안의 목록을 그대로 읽는다.
         comments,
+        // Confluence 기능 확장(2026-10-30) — 상자 · 상태 · 목차 · 펼치기 · 코드 · 라벨 · 첨부의 견본.
+        view: FIXTURE_VIEW,
+        labels: fixtureLabels,
+        attachments: [
+          {
+            id: "a1",
+            title: "흐름도.png",
+            mediaType: "image/png",
+            size: 48_213,
+            createdAt: "2026-10-20T09:00:00Z",
+          },
+          { id: "a2", title: "정책표.xlsx", mediaType: null, size: 1_204_331, createdAt: null },
+        ],
       };
       return later(id === "doc-slow" ? 6000 : 450, reply);
     },
@@ -1098,6 +1264,57 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
         detail: "",
       });
     },
+    // Confluence 기능 확장(2026-10-30) — 그림은 받지 못함으로, 라벨은 바로 적용, 판 기록은 셋.
+    docAttachment: () => failLater(400),
+    docLabelAdd: (input: { commandId: string; label: string }) => {
+      log("라벨 더하기");
+      fixtureLabels = [...fixtureLabels, { name: input.label, prefix: "global" }];
+      return later(400, { commandId: input.commandId, state: "applied", detail: "" });
+    },
+    docLabelRemove: (input: { commandId: string; label: string }) => {
+      log("라벨 빼기");
+      fixtureLabels = fixtureLabels.filter((one) => one.name !== input.label);
+      return later(400, { commandId: input.commandId, state: "applied", detail: "" });
+    },
+    docVersions: () =>
+      later(300, {
+        versions: [
+          {
+            number: 3,
+            author: "김기획",
+            createdAt: "2026-10-29T09:00:00Z",
+            message: "정책 원칙 고침",
+            minorEdit: false,
+          },
+          {
+            number: 2,
+            author: "이디자인",
+            createdAt: "2026-10-25T09:00:00Z",
+            message: "",
+            minorEdit: true,
+          },
+          {
+            number: 1,
+            author: "김기획",
+            createdAt: "2026-10-20T09:00:00Z",
+            message: "처음",
+            minorEdit: false,
+          },
+        ],
+      }),
+    docVersionRead: (_pageId: string, version: number) =>
+      later(300, { version, title: "옛 판", view: FIXTURE_VIEW.slice(0, 3) }),
+    docSearch: (query: string) =>
+      later(300, {
+        results: [
+          {
+            pageId: DOCS[5]?.pageId ?? "1",
+            title: DOCS[5]?.title ?? "",
+            snippet: `…본문 속 ${query} 이(가) 맞은 자리…`,
+          },
+        ],
+      }),
+    docBlockPreview: () => later(200, { previews: {} }),
     docCommentResolve: (input: {
       pageId: string;
       commandId: string;
@@ -1123,6 +1340,59 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
   };
   return { api, connection: "open", onDraftEvent: () => () => {} } as unknown as Daemon;
 }
+
+/** 라벨 견본 — 더하기 · 빼기가 바꾼다(2026-10-30). */
+let fixtureLabels = [
+  { name: "정책", prefix: "global" },
+  { name: "v0-8", prefix: "global" },
+];
+
+/** 보기 블록 견본(2026-10-30) — 데몬의 confluence-view 가 내는 모양. */
+const FIXTURE_VIEW = [
+  {
+    t: "toc",
+    entries: [
+      { level: 2, text: "1. 목적" },
+      { level: 2, text: "2. 정책 원칙" },
+      { level: 3, text: "2.1 예외" },
+    ],
+  },
+  { t: "heading", level: 2, children: [{ t: "text", text: "1. 목적" }] },
+  {
+    t: "p",
+    children: [
+      { t: "text", text: "이 문서는 " },
+      { t: "status", text: "검토 중", color: "yellow", subtle: false },
+      { t: "text", text: " 상태다. 담당 " },
+      { t: "mention", name: "김기획" },
+    ],
+  },
+  {
+    t: "panel",
+    tone: "info",
+    title: null,
+    blocks: [{ t: "p", children: [{ t: "text", text: "정보 상자의 글이 그대로 보인다." }] }],
+  },
+  {
+    t: "panel",
+    tone: "warning",
+    title: "주의",
+    blocks: [{ t: "p", children: [{ t: "text", text: "노쇼 정책은 법무 검토가 필요하다." }] }],
+  },
+  { t: "heading", level: 2, children: [{ t: "text", text: "2. 정책 원칙" }] },
+  {
+    t: "expand",
+    title: "자세히",
+    blocks: [{ t: "p", children: [{ t: "text", text: "펼치면 보이는 글." }] }],
+  },
+  { t: "code", language: "json", title: "예시", text: '{ "noShow": 3 }' },
+  { t: "heading", level: 3, children: [{ t: "text", text: "2.1 예외" }] },
+  { t: "macro", name: "jira" },
+  {
+    t: "image",
+    image: { source: { kind: "attachment", filename: "흐름도.png" }, alt: null, width: 320 },
+  },
+];
 
 function Frame({ id }: { id: string }) {
   const [line, setLine] = useState("—");
@@ -1158,7 +1428,7 @@ function Frame({ id }: { id: string }) {
         >
           {!NARROW && (
             <aside className="nx-sidebar" style={{ width: 320 }}>
-              <PlansSidebar nav={nav} />
+              <PlansSidebar nav={nav} daemon={daemon} />
             </aside>
           )}
           <main className="nx-main">

@@ -31,7 +31,11 @@ import {
 } from "./common-instructions.js";
 import { emptyConfluenceLedger, readConfluenceLedger } from "./confluence-ledger.js";
 import { confluenceMirrorLedger } from "./confluence-mirror.js";
-import { confluenceRootTitleKey, confluenceSiteKey } from "./confluence-sync.js";
+import {
+  confluenceAccountKey,
+  confluenceRootTitleKey,
+  confluenceSiteKey,
+} from "./confluence-sync.js";
 import { mergeNpmrc, npmrcPath } from "./credentials.js";
 import { DEFAULT_KEEP_REJECTED_DAYS } from "./cycle-hygiene.js";
 import { cycleLedgerFile } from "./cycle-ledger.js";
@@ -487,7 +491,8 @@ export class ProjectFleet {
   /**
    * 기획서(Confluence) 연결의 한 끳이 — 미러(machine.json 슬러그 키)와 원장
    * (프로젝트 폴더 사본의 `confluence/confluence.json`)에서 읽는다. 미연결은 undefined — 키가
-   * 없는 것이다. 자격(이메일 · 토큰)은 여기에 절대 실리지 않는다.
+   * 없는 것이다. 자격(이메일 · 토큰)은 여기에 절대 실리지 않는다 — `account` 는 가려진
+   * 이메일만(connect 가 machine.json 에 써 둔 값 · 2026-11-03).
    */
   private confluenceSummary(slug: string): ProjectSummary["confluence"] {
     const site = this.deps.machineSetting?.get(confluenceSiteKey(slug)) ?? null;
@@ -500,6 +505,7 @@ export class ProjectFleet {
     } catch {
       // 등록부가 아직 이 프로젝트의 자리를 모른다 — 빈 원장으로 답한다.
     }
+    const account = this.deps.machineSetting?.get(confluenceAccountKey(slug));
     return {
       site,
       connected: true,
@@ -507,6 +513,7 @@ export class ProjectFleet {
       rootTitle: this.deps.machineSetting?.get(confluenceRootTitleKey(slug)) ?? null,
       lastImportAt: ledger.lastSyncAt,
       pages: Object.keys(ledger.pages).length,
+      ...(account !== null && account !== undefined ? { account } : {}),
       // 발행 게이트 — 화면이 누르기 전에 꺼짐을 알린다(2026-10-23 기획자 화면 손질 U2). 막는 것은 각 쓰기 경로다.
       writable: this.deps.confluenceWritable?.() ?? false,
     };

@@ -105,7 +105,8 @@ export interface ProjectSummary {
    * 기획서(Confluence) 연결의 프로젝트 스코프 상태 — 설정 · 뷰어는 활성 프로젝트의
    * 이 칸만 말한다(2026-10-18 기획서 동기화 · 두 프로젝트가 각각 다른 루트를 고른다).
    * 미연결 프로젝트는 키가 없다. 자격(이메일 · 토큰)은 여기에 절대 실리지 않는다 —
-   * 데몬의 자격 저장소만 안다.
+   * 데몬의 자격 저장소만 안다. `account` 는 그 원칙의 유일한 예외다 — 가려진 이메일
+   * (예: `i***@company.com`)만 실린다(2026-11-03 사용자 승인 · 프로젝트별 자격).
    */
   confluence?: {
     site: string;
@@ -115,6 +116,11 @@ export interface ProjectSummary {
     rootTitle: string | null;
     lastImportAt: string | null;
     pages: number;
+    /**
+     * 연결된 계정의 가려진 이메일 — 프로젝트마다 다른 계정으로 연결했을 때 누구의 연결인지
+     * 보인다. 선택 필드다 — 없으면 모른다(옛 데몬 · 가릴 수 없는 값).
+     */
+    account?: string;
     /**
      * 이 앱이 Confluence 에 쓸 수 있는가 — 발행 게이트(`COLONOVA_DESIGN_CONFLUENCE_PUBLISH=1`). 발행 · 문서 관리 ·
      * 코멘트 쓰기가 같은 게이트를 지난다. 화면은 누르기 전에 꺼짐을 알린다(2026-10-23 기획자 화면 손질 U2). 선택

@@ -304,19 +304,136 @@ function ChatTable({ children }: { children?: ReactNode }) {
   );
 }
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+/**
+ * 기획 초안의 토큰 칩(2026-10-31 기획서 칸 개선 4단계) — `⟦t1⟧` 글자 대신 사람의 말 칩으로 그린다.
+ * 누르면 그 조각을 지우는 것이다(onTokenRemove). 이름표가 없으면(닫힘 표시 `⟦/c1⟧` 등) 글자조차
+ * 남기지 않는다.
+ */
+const TOKEN_PATTERN = /⟦(?:\/?)([^⟧]+)⟧/gu;
+const TOKEN_HREF = /^#token-(.+)$/u;
+
+/** 상태 토큰의 기계 이름표 — `macro:status:색:값`(storage-blocks 의 wireTokenLabel)을 찾는 꼴이다. */
+const STATUS_MACHINE = /^macro:status:([^:]+):(.*)$/u;
+
+function TokenChip({
+  name,
+  label,
+  machine,
+  onRemove,
+}: {
+  name: string;
+  label: string;
+  /** 토큰의 기계 이름표 — 상태 표시는 색 알약으로 그린다(GUIDE · 2026-11-03 실앱 감사). */
+  machine?: string;
+  onRemove?: (name: string) => void;
+}) {
+  // 상태 표시 — 읽기 화면과 같은 색 알약으로 서고, 지우는 손이 있을 때만 눌린다.
+  const status = machine === undefined ? null : STATUS_MACHINE.exec(machine);
+  if (status !== null) {
+    return (
+      <button
+        type="button"
+        className="nx-dr-tokenchip nx-dr-tokenchip--status"
+        data-token={name}
+        title={onRemove === undefined ? label : `${label} — 누르면 이 조각을 지워요`}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onRemove?.(name);
+        }}
+      >
+        <span className={`nx-dv-status nx-dv-status--${status[1]}`}>{status[2] || label}</span>
+      </button>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="nx-dr-tokenchip"
+      data-token={name}
+      title={onRemove === undefined ? label : `${label} — 누르면 이 조각을 지워요`}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onRemove?.(name);
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function TokenLink({
+  href,
+  children,
+  machine,
+  onTokenRemove,
+}: {
+  href: string;
+  children?: ReactNode;
+  machine?: string;
+  onTokenRemove?: (name: string) => void;
+}) {
+  const name = TOKEN_HREF.exec(href)?.[1] ?? "";
+  const label =
+    (Array.isArray(children) ? children.join("") : typeof children === "string" ? children : "")
+      .toString()
+      .trim() || name;
+  return <TokenChip name={name} label={label} machine={machine} onRemove={onTokenRemove} />;
+}
+
+/** 토큰을 마크다운 링크로 바꿔 놓는다 — 칩으로 그리기 전의 다리다. 닫힘 표시는 조용히 걷는다. */
+export function markTokens(text: string, labels: Record<string, string>): string {
+  return text.replace(TOKEN_PATTERN, (_whole: string, name: string) => {
+    const label = labels[name];
+    if (label === undefined) return "";
+    // 마크다운 링크의 글 자리에 각괄호가 그대로 서면 문단의 해석이 흔들린다 — 겹화살괄호로 읽듯 남긴다.
+    return `[${label}](#token-${name})`;
+  });
+}
+
+export const Markdown = memo(function Markdown({
+  text,
+  tokens,
+  machineTokens,
+  onTokenRemove,
+}: {
+  text: string;
+  /** 초안 토큰의 사람의 이름표 — 있으면 `⟦t1⟧` 글자 대신 칩으로 그린다(2026-10-31 4단계). */
+  tokens?: Record<string, string>;
+  /** 초안 토큰의 기계 이름표 — 상태 표시를 색 알약으로 그리는 재료다(2026-11-03 실앱 감사). */
+  machineTokens?: Record<string, string>;
+  /** 토큰 칩을 눌렀을 때 — 그 조각을 지우는 손이다. 없으면 칩이 눌리지 않는다. */
+  onTokenRemove?: (name: string) => void;
+}) {
+  const marked = tokens === undefined ? text : markTokens(text, tokens);
+  const link =
+    onTokenRemove === undefined && machineTokens === undefined
+      ? ChatLink
+      : (props: ComponentPropsWithoutRef<"a"> & { node?: unknown }) =>
+          TOKEN_HREF.test(props.href ?? "") ? (
+            <TokenLink
+              href={props.href ?? ""}
+              machine={machineTokens?.[TOKEN_HREF.exec(props.href ?? "")?.[1] ?? ""]}
+              onTokenRemove={onTokenRemove}
+            >
+              {props.children}
+            </TokenLink>
+          ) : (
+            <ChatLink {...props} />
+          );
   return (
     <div className="md">
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         urlTransform={urlTransform}
         components={{
-          a: ChatLink,
+          a: link,
           pre: ChatPre,
           table: ChatTable,
         }}
       >
-        {text}
+        {marked}
       </ReactMarkdown>
     </div>
   );

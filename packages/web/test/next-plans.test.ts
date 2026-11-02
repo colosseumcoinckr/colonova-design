@@ -450,15 +450,14 @@ test("문서 주소 — 사이트가 호스트로 읽힐 때만, 페이지 번�
   assert.equal(docUrl("colosseum.atlassian.net", ""), null);
 });
 
-test("세 자리 — 문서를 읽다가 대화를 열면 화면 자리로 간다", () => {
+test("두 자리 — 문서를 읽다가 대화를 열면 화면 자리로 간다(2026-10-31 홈 걷기)", () => {
   let s = navReducer(initialNav(false), { type: "plans" });
   // 대화는 화면 자리에 선다. 문서 상태의 보존은 공유 칸이 맡는다.
   s = navReducer(s, { type: "thread" });
   assert.equal(s.pane, "preview");
-  // 홈으로 가면 끝난다 — 홈에서 새 요청을 시작해 넘어올 때 AI 가 고치는 미리보기가 앞에 선다.
-  s = navReducer(s, { type: "home" });
-  assert.equal(s.view, "home");
-  assert.equal(s.pane, "preview");
+  // 다시 기획서로 돌아와도 같은 자리다.
+  s = navReducer(s, { type: "plans" });
+  assert.equal(s.pane, "plans");
 });
 
 test("세 자리 — 초안 여부와 무관하게 대화를 열면 화면으로 가고 초안 표식은 남는다", () => {
@@ -469,7 +468,6 @@ test("세 자리 — 초안 여부와 무관하게 대화를 열면 화면으로
   assert.equal(navReducer(s, { type: "plan-draft", open: true }), s);
   // 대화를 연다(사이드바 · ⌘T · 찾기 · 알림) — 화면 대화 칸이 비켜서 있으니 미리보기 쪽으로 돌아온다. 초안은 칸에 남는다.
   s = navReducer(s, { type: "thread" });
-  assert.equal(s.view, "thread");
   assert.equal(s.pane, "preview");
   assert.equal(s.planDraft, true);
   // 기획서로 돌아가면 다시 집중 배치다(초안이 열린 채다).
@@ -480,30 +478,40 @@ test("세 자리 — 초안 여부와 무관하게 대화를 열면 화면으로
   s = navReducer(s, { type: "thread" });
   assert.equal(s.pane, "preview");
   // 프로젝트가 바뀌면 처음으로.
-  s = navReducer(navReducer(s, { type: "plan-draft", open: true }), { type: "project-changed" });
+  // 프로젝트가 바뀌면 그 프로젝트의 기억 자리로 — 기억이 기획서면 기획서, 없으면 화면이다(2026-10-31 홈 걷기 §2).
+  s = navReducer(navReducer(s, { type: "plan-draft", open: true }), {
+    type: "project-changed",
+    pane: "preview",
+  });
   assert.equal(s.planDraft, false);
+  assert.equal(s.pane, "preview");
+  assert.equal(s.tab, "chat");
+  // 기억이 기획서인 프로젝트로 옮겨 오면 기획서 자리가 선다.
+  const plans = navReducer(navReducer(initialNav(false), { type: "plans" }), {
+    type: "project-changed",
+    pane: "plans",
+  });
+  assert.equal(plans.pane, "plans");
+  assert.equal(plans.tab, "preview", "기획서 자리는 좁은 창에서 화면 탭으로 온다");
 });
 
-test("오른쪽 칸 전환 — 기획서 항목은 대화 틀 위에 서고, 프로젝트가 바뀌면 닫힌다", () => {
+test("오른쪽 칸 전환 — 기획서 항목은 대화 틀 위에 서고, 프로젝트가 바뀌면 그 프로젝트의 자리로 온다", () => {
   let s = initialNav(false);
   s = navReducer(s, { type: "plans" });
-  assert.equal(s.view, "thread");
   assert.equal(s.tab, "preview");
   assert.equal(s.pane, "plans");
   // 돌아오는 길 — 미리보기 칸이 같은 자리를 다시 쓴다.
   s = navReducer(s, { type: "pane", pane: "preview" });
   assert.equal(s.pane, "preview");
   s = navReducer(s, { type: "plans" });
-  s = navReducer(s, { type: "project-changed" });
+  s = navReducer(s, { type: "project-changed", pane: "preview" });
   assert.equal(s.pane, "preview");
-  assert.equal(s.view, "home");
 });
 
-test("세 자리 — 기획서를 거듭 열어도 자리는 기획서이고 화면 이동은 별개다", () => {
+test("두 자리 — 기획서를 거듭 열어도 자리는 기획서이고 화면 이동은 별개다", () => {
   const plans = navReducer(initialNav(false), { type: "plans" });
   const again = navReducer(plans, { type: "plans" });
   assert.equal(again.pane, "plans");
-  assert.equal(again.view, "thread");
   const screen = navReducer(again, { type: "screen" });
   assert.equal(screen.pane, "preview");
   assert.equal(screen.tab, "preview");
@@ -521,7 +529,6 @@ test("근거 담기 — 문서에서 기존 화면 대화로 옮기면 좁은 �
   const plans = navReducer(initialNav(true), { type: "plans" });
   const chat = navReducer(plans, { type: "tab", tab: "chat" });
   const screen = navReducer(chat, { type: "pane", pane: "preview" });
-  assert.equal(screen.view, "thread");
   assert.equal(screen.pane, "preview");
   assert.equal(screen.tab, "chat");
   assert.equal(screen.collapsed, true);

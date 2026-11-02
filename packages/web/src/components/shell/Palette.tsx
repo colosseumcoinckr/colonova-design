@@ -17,7 +17,6 @@ import { useClosing } from "../../next/lib/use-closing";
 import {
   ChatLineIcon,
   GearIcon,
-  HomeIcon,
   KeyDownIcon,
   KeyEnterIcon,
   KeyUpIcon,
@@ -133,7 +132,6 @@ export function Palette({
   projectSlug = null,
   onOpenThread,
   onCreateSession,
-  onOpenHome,
   onActivateProject,
   onOpenSettings,
   onClose,
@@ -148,7 +146,7 @@ export function Palette({
   titleForThread: (thread: ThreadSummary) => string;
   activeSessionId: string | null;
   projects: ProjectSummary[];
-  /** 낙관 삭제가 이미 거둔 행 — 사이드바·홈과 같은 규칙이 팔레트에도
+  /** 낙관 삭제가 이미 거둔 행 — 사이드바·기획서 목록과 같은 규칙이 팔레트에도
       산다. 숨김을 모르면 지운 대화가 ⌘K 걸음에 되살아난다. */
   hiddenThreads: HiddenThreads;
   /** 읽어 둔 대화 줄 — 제목이 안 맞으면 내용에서 맞은 줄을 보인다. */
@@ -160,8 +158,6 @@ export function Palette({
   /** 대화를 연다 — 다른 프로젝트의 것이면 먼저 옮긴다. */
   onOpenThread: (slug: string, thread: ThreadSummary) => void;
   onCreateSession: () => void;
-  /** 홈으로 — 사이드바의 `홈` 행과 같은 걸음. */
-  onOpenHome: () => void;
   /** 등록부가 옮겨 앉으면 true — 거절되면 false(또는 거부)로 알리고 판은 열린 채 남는다. */
   onActivateProject: (slug: string) => Promise<boolean>;
   onOpenSettings: () => void;
@@ -355,7 +351,8 @@ export function Palette({
   // 감독자가 확인한다. 말이 칩에 맞으면 칩도 줄처럼 좁혀지고, 빈 말은 나머지를 손 닿는 곳에 둔다.
   const allCommands = useMemo(() => {
     const all: Command[] = [
-      // 사이드바의 세 걸음(새 대화 · 홈 · 설정)은 여기서도 닿는다 — 「홈」을 쳐도 빈손이 아니게.
+      // 사이드바의 세 걸음(새 대화 · 기획서 · 설정)은 여기서도 닿는다 — `홈` 칩은
+      // 2026-10-31 홈 걷기로 걷혔다.
       {
         key: "new",
         label: L.sidebar.newConv,
@@ -363,14 +360,6 @@ export function Palette({
         keys: keyHint("⌘T"),
         Icon: PlusIcon,
         run: onCreateSession,
-      },
-      {
-        key: "home",
-        label: L.sidebar.home,
-        hint: L.palette.homeHint,
-        keys: null,
-        Icon: HomeIcon,
-        run: onOpenHome,
       },
       {
         key: "settings",
@@ -382,7 +371,7 @@ export function Palette({
       },
     ];
     if (onOpenPlans)
-      all.splice(2, 0, {
+      all.splice(1, 0, {
         key: "plans",
         label: L.plans.listHeading,
         hint: L.palette.plansHint,
@@ -391,7 +380,7 @@ export function Palette({
         run: onOpenPlans,
       });
     return all;
-  }, [onCreateSession, onOpenHome, onOpenSettings, onOpenPlans]);
+  }, [onCreateSession, onOpenSettings, onOpenPlans]);
   const matchedCommands = useMemo(
     () => allCommands.filter((command) => rank(query, command.label) >= 0),
     [allCommands, query],

@@ -40,6 +40,21 @@ function presentableTitle(summary: string | undefined | null): string {
     );
   return (human ?? "").replace(/\s+/g, " ").trim();
 }
+
+/**
+ * 기록이 말하는 대화 이름 — 도구가 연 대화(첫 프롬프트가 표식으로 시작)는 CLI 의 요약 제목을 받지 않는다
+ * (2026-11-03 실앱 감사: 미리보기 오류 고침 대화가 CLI 가 요약한 영어 문장 「Login page instant navigation
+ * error」로 불렸다). CLI 는 대화 요약을 `ai-title` 로 남기고 SDK 는 그것을 customTitle 로 돌려주므로,
+ * 첫 프롬프트의 표식만이 도구가 연 대화의 판별자다. 빈 이름을 돌려 살아 있는 세션의 이름(또는 제목 없음)이 이기게 한다.
+ */
+function storedTitle(info: {
+  customTitle?: string;
+  summary?: string;
+  firstPrompt?: string;
+}): string {
+  if (info.firstPrompt?.trimStart().startsWith("<!--")) return "";
+  return info.customTitle || presentableTitle(info.summary) || "제목 없는 대화";
+}
 const CLAUDE_CAPABILITIES = {
   branch: true,
   usage: true,
@@ -157,7 +172,7 @@ export class ClaudeDriver implements AgentDriver {
       const stored = await listSessions({ dir: cwd, limit }).catch(() => []);
       return stored.map((info) => ({
         id: info.sessionId,
-        title: info.customTitle || presentableTitle(info.summary) || "제목 없는 대화",
+        title: storedTitle(info),
         lastModified: info.lastModified,
         provider: "claude",
       }));
@@ -170,7 +185,7 @@ export class ClaudeDriver implements AgentDriver {
 
     title: async (id, cwd) => {
       const info = await getSessionInfo(id, { dir: cwd }).catch(() => null);
-      return info ? info.customTitle || presentableTitle(info.summary) || null : null;
+      return info ? storedTitle(info) || null : null;
     },
 
     import: async (id, cwd, limit = 1000) => {

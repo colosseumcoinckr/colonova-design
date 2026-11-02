@@ -21,6 +21,7 @@ export function Splitter({
   bounds,
   label,
   active,
+  resetHint,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -32,6 +33,11 @@ export function Splitter({
   bounds: { readonly min: number; readonly max: number };
   label: string;
   active: boolean;
+  /**
+   * Enter · 두 번 누름이 무엇을 하는지의 말 — 기본은 원래 폭으로 돌아오는 것이고,
+   * 오른쪽 칸(S11)은 폭 프리셋을 도는 것이라 다르게 말한다.
+   */
+  resetHint?: string;
   onPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void;
   onPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void;
   onPointerUp: (event: React.PointerEvent<HTMLDivElement>) => void;
@@ -47,7 +53,7 @@ export function Splitter({
       aria-orientation="vertical"
       // 접근 이름에 되돌림 힌트를 붙인다 — 더블클릭만 보면 키보드의 길이 숨는다
       // (2026-10-04 ux-review).
-      aria-label={`${label} · ${L.shell.chatWidthReset}`}
+      aria-label={`${label} · ${resetHint ?? L.shell.chatWidthReset}`}
       aria-valuemin={bounds.min}
       aria-valuemax={bounds.max}
       aria-valuenow={width}

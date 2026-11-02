@@ -1,5 +1,5 @@
 import type { ColoNovaDesignPinEnvelope, SessionState } from "@colonova-design/protocol";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ShortcutsSheet } from "../../components/dialogs/ShortcutsSheet";
 import type { PreviewOverlaySkin } from "../../components/preview/PreviewFrame";
@@ -19,11 +19,13 @@ import {
   titleOfPath,
 } from "../../lib/turn-screens";
 import { L } from "../labels";
+import { setComposerSheetHost } from "../lib/composer-sheet";
 import { routePath } from "../lib/follow-edit";
 import { arriveOnTurnEnd, refreshOnTurnEnd } from "../lib/preview-geometry";
+import { requestResults } from "../lib/request-results";
 import { useDiagnosticsText } from "../lib/use-diagnostics";
 import type { PreviewColumnProps } from "../slots";
-import { clockOf, HISTORY_OPEN_EVENT, HistoryDrawer } from "./HistoryDrawer";
+import { clockOf, HISTORY_DRAWER_EVENT, HistoryDrawer } from "./HistoryDrawer";
 import { ArrowIcon, PinSmallIcon } from "./icons";
 import { LiveLayer } from "./LiveLayer";
 import { PINS_SEND_EVENT, PinBubble } from "./PinBubble";
@@ -72,7 +74,10 @@ export const PINS_TOGGLE_EVENT = "nx:pins:toggle";
  * 입력창이 받으면 `preventDefault()` 로 답한다. 아무도 받지 않으면 옛 셸처럼
  * 그 화면을 곧장 AI 에게 보여 주는 기계 턴으로 물러선다.
  */
-export const COMPOSER_ATTACH_EVENT = "nx:composer:attach";
+export { COMPOSER_ATTACH_EVENT } from "../lib/composer-attach";
+
+import { PREVIEW_RECOVERY_TITLE } from "../../lib/thread-visibility";
+import { COMPOSER_ATTACH_EVENT } from "../lib/composer-attach";
 
 const LIVE = new Set<SessionState>([
   "starting",
@@ -106,6 +111,7 @@ export function PreviewColumn({
   narrow,
   offstage = false,
   onScreenName,
+  onScreenRoute,
 }: PreviewColumnProps) {
   const { api, repo, connection } = daemon;
   const native = nativePreview();
@@ -131,7 +137,17 @@ export function PreviewColumn({
 
   const sectionRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  /** 서랍을 연 시계 단추 — 닫히면 초점이 그곳으로 돌아간다. */
+  /** 좁은 창의 입력창 시트 자리(S12) — 대화 칸이 입력창을 옮겨 그리는 곳이다. */
+  const sheetHostRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!narrow) {
+      setComposerSheetHost(null);
+      return undefined;
+    }
+    setComposerSheetHost(sheetHostRef.current);
+    return () => setComposerSheetHost(null);
+  }, [narrow]);
+  /** 서랍을 연 단추 — 닫히면 초점이 그곳으로 돌아간다(막대의 `···` — S6). */
   const historyBtn = useRef<HTMLButtonElement | null>(null);
   /** 시계 단추가 `aria-controls` 로 가리키는 서랍. */
   const drawerId = useId();
@@ -331,6 +347,11 @@ export function PreviewColumn({
   useEffect(() => {
     onScreenName(hasScreen ? screenName : null);
   }, [hasScreen, screenName, onScreenName]);
+  // 지금 화면의 주소도 보낸다 — 오른쪽 칸의 기획서 탭이 이 화면에 이어진 문서를 가른다(S10).
+  const screenRoute = hasScreen ? herePath : null;
+  useEffect(() => {
+    onScreenRoute?.(screenRoute);
+  }, [screenRoute, onScreenRoute]);
   // 지금 보는 화면의 경로를 보내기에 실리게 알린다 — 말로만 부탁한 요청도 이 화면의 수정 전 사진을
   // 얻는다(2026-10-06 UX 점검). 링크 너머 페이지를 보거나 서버가 없는 동안은 비운다.
   // 쿼리와 해시는 떼고 경로만 — 수정 전 사진은 바뀐 화면의 경로로 짝을 찾고, 쿼리의 값은 선로에 나갈 일이 없다.
@@ -512,7 +533,11 @@ export function PreviewColumn({
       setFrozen(null);
       const next = on ?? !commentsRef.current;
       setCommentsOn(next);
-      if (next) showScreenPane();
+      if (next) {
+        showScreenPane();
+        // 찍기를 켰다는 신호 — 셸이 오른쪽 칸이 가장 넓을 때 화면을 내어 주자 한 번 제안한다(S11).
+        window.dispatchEvent(new Event("nx:pins:on"));
+      }
       if (next && narrowRef.current) showTab("preview");
     },
     [pinLocked, toast, showTab, showScreenPane, noteUser],
@@ -687,7 +712,8 @@ export function PreviewColumn({
       ].filter(Boolean);
       const delivered = await machineTurn(
         lookToTurn(herePath, lines.join("\n\n"), count),
-        undefined,
+        // 대화를 처음 열 때 도구의 이름을 붙인다(2026-11-03 실앱 감사 — 이름 없이 열면 CLI 의 영어 요약이 대화 이름이 된다).
+        PREVIEW_RECOVERY_TITLE,
         attachment ? [attachment] : undefined,
         [{ screen: herePath }],
       );
@@ -700,10 +726,12 @@ export function PreviewColumn({
     }
   };
 
-  // --- 서랍 · 단축키 -----------------------------------------------
+  // --- 서랍(좁은 창의 몫) · 단축키 ------------------------------------
+  // 넓은 창의 작업 기록은 오른쪽 칸의 탭이 맡는다(S10) — 서랍은 좁은 창의 화면 덮는 시트다.
+  // 대화 칸이 `nx:history:open` 을 받아 좁은 창이면 `nx:history:drawer` 로 돌려 여기 닿는다.
   const [historyOpen, setHistoryOpen] = useState(false);
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
-  // 결과 카드의 `방금 한 것 되돌리기` 가 서랍을 열며 건넨 되돌아갈 곳 — 서랍이 그 줄의 확인을 미리 연다.
+  // 결과 띠의 `방금 한 것 되돌리기` 가 서랍을 열며 건넨 되돌아갈 곳 — 서랍이 그 줄의 확인을 미리 연다.
   const [arm, setArm] = useState<{ sha: string; count: number } | null>(null);
   const clearArm = useCallback(() => setArm(null), []);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -721,9 +749,15 @@ export function PreviewColumn({
       showScreenPane();
       if (narrowRef.current) showTab("preview");
     };
-    window.addEventListener(HISTORY_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(HISTORY_OPEN_EVENT, onOpen);
+    window.addEventListener(HISTORY_DRAWER_EVENT, onOpen);
+    return () => window.removeEventListener(HISTORY_DRAWER_EVENT, onOpen);
   }, [showTab, showScreenPane]);
+  // 작업 기록 탭의 되돌리기가 끝났다 — 미리보기를 다시 읽는다(서랍은 onRestored 로 같은 일을 한다).
+  useEffect(() => {
+    const onRestored = () => reload();
+    window.addEventListener("nx:history:restored", onRestored);
+    return () => window.removeEventListener("nx:history:restored", onRestored);
+  }, [reload]);
 
   // 입력창의 보내기(⌘↵ 포함)와 좁은 창의 `찍기` 단추가 부르는 두 이음매.
   useEffect(() => {
@@ -833,6 +867,32 @@ export function PreviewColumn({
     },
     [go],
   );
+  // 결과 띠의 화면 칩에 손이 올 때 주소창이 그 이름으로 잠깐 빛난다(S9의 거꾸로 — 옮기지는 않는다).
+  const [hintTick, setHintTick] = useState(0);
+  useEffect(() => {
+    const onHint = (event: Event) => {
+      const route = (event as CustomEvent<{ route?: unknown }>).detail?.route;
+      if (typeof route !== "string") return;
+      setHintTick((tick) => tick + 1);
+    };
+    window.addEventListener("nx:addr:hint", onHint);
+    return () => window.removeEventListener("nx:addr:hint", onHint);
+  }, []);
+  // 이 화면을 바꾼 말(S9) — 이 대화의 답이 지금 화면을 바꿨으면 그 답의 차례를 안다.
+  // 거꾸로 표는 웹에서 대화록을 읽어 만든다 — 선로는 바꾸지 않는다.
+  const changedByTurnId = useMemo(() => {
+    if (!hasScreen || blocks === null) return null;
+    const here = routePath(herePath);
+    const results_ = requestResults(blocks, repo?.cycleScreens);
+    let found: string | null = null;
+    for (const block of blocks) {
+      if (block.type !== "turn") continue;
+      const result = results_.get(block.id);
+      if (!result) continue;
+      if (result.screens.some((screen) => routePath(screen.route) === here)) found = block.id;
+    }
+    return found;
+  }, [hasScreen, blocks, repo?.cycleScreens, herePath]);
   const live = useLiveFollow({
     sessionId: activeSessionId,
     turnLive,
@@ -880,7 +940,7 @@ export function PreviewColumn({
         mine={rows.mine}
         others={rows.others}
         currentPath={hasScreen ? (location?.path ?? "") : ""}
-        arrivePulse={arriveTick + followTick}
+        arrivePulse={arriveTick + followTick + hintTick}
         onGo={(path) => {
           noteUser();
           go(path);
@@ -892,13 +952,17 @@ export function PreviewColumn({
         pinCount={pinCount}
         pinLocked={pinLocked}
         onPin={() => togglePins()}
-        historyOpen={historyOpen}
-        historyBtn={historyBtn}
-        drawerId={drawerId}
         onHistory={() => {
           noteUser();
           ++viewEpoch.current;
           setHistoryOpen((open) => !open);
+        }}
+        changedBy={changedByTurnId !== null}
+        onChangedBy={() => {
+          if (changedByTurnId === null) return;
+          window.dispatchEvent(
+            new CustomEvent("nx:thread:goto", { detail: { turnId: changedByTurnId } }),
+          );
         }}
         native={native}
         zoom={zoom}
@@ -938,7 +1002,9 @@ export function PreviewColumn({
         onBusy={setStageBusy}
         stageRef={stageRef}
       >
-        <LiveLayer line={live.line} ring={live.ring} />
+        {/* 고치는 중의 글 줄은 작업 독이 같은 말을 하므로 걷었다(S8) — 무대 가장자리의
+            옅은 빛(`ring`)과 `옮겼어요` · `직접 눌러 보는 중` 만 남는다. 판정(pickLiveLine)은 그대로다. */}
+        <LiveLayer line={live.line?.kind === "editing" ? null : live.line} ring={live.ring} />
         {frozen && (
           <div className="nx-frozen">
             <img
@@ -997,6 +1063,21 @@ export function PreviewColumn({
           onClose={() => setBubble(null)}
           toast={toast}
         />
+      )}
+
+      {/* 좁은 창의 입력창 시트 자리(S12) — 대화 칸이 같은 입력창을 여기로 옮겨 그린다.
+          펼쳐져 있을 때만 자리가 살아 보인다(접힌 한 줄은 아래의 접힌 입력창이 대신한다). */}
+      {narrow && <div className="nx-sheet-host" ref={sheetHostRef} aria-hidden={!sheetOpen} />}
+      {narrow && (
+        // 접힌 입력창(S12) — 화면 탭 바닥의 한 줄. 누르면 대화 칸이 같은 입력창을 위의 자리로 펼친다.
+        <button
+          type="button"
+          className="nx-fold-cmp"
+          onClick={() => window.dispatchEvent(new CustomEvent("nx:composer:sheet"))}
+        >
+          {pinCount > 0 ? L.narrow.composeFoldPins(pinCount) : L.narrow.composeFold}
+          <ArrowIcon />
+        </button>
       )}
 
       <HistoryDrawer

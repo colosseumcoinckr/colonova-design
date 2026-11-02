@@ -22,6 +22,7 @@ import {
   collectRows,
   compareResults,
   judge,
+  judgeCompare,
   loadScenarios,
   pinHints,
   pinsOf,
@@ -140,6 +141,21 @@ async function runScenario({ client, scenario, repo, logDir, meta }) {
     entry.startSha = await git(repo, ["rev-parse", "HEAD"]);
   } catch (error) {
     entry.reasons.push(`클론의 HEAD 를 읽지 못했습니다 — ${error.message}`);
+    return entry;
+  }
+
+  // 맞춰 보기 한 편(2026-11-02 · 같이 고치기 UX 계획 0단계) — 세션을 만들지 않고 문서 하나의
+  // 어긋남을 바로 재고 돌아간다. 판정은 정답표의 절과 견준다(judgeCompare).
+  if (scenario.kind === "compare") {
+    try {
+      const result = await client.request({ type: "draft.compare", pageId: scenario.pageId });
+      const verdict = judgeCompare(scenario, result);
+      entry.pass = verdict.pass;
+      entry.reasons = verdict.reasons;
+      entry.compare = { rows: (result?.rows ?? []).length, note: result?.note ?? null };
+    } catch (error) {
+      entry.reasons.push(error instanceof Error ? error.message : String(error));
+    }
     return entry;
   }
 

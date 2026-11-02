@@ -1,3 +1,4 @@
+import type { DocAttachment, DocBlock, DocLabel } from "@colonova-design/protocol";
 import { commentIsPlain, commentText, mentionIds } from "../comment-text.js";
 import {
   ConfluenceClient,
@@ -7,8 +8,14 @@ import {
 import { readConfluenceLedger } from "../confluence-ledger.js";
 import { deriveMarkdown } from "../confluence-markdown.js";
 import { confluenceMirrorLedger } from "../confluence-mirror.js";
-import { confluenceSiteKey, resetLedgerOnRootChange } from "../confluence-sync.js";
-import { CONFLUENCE_PAT_ITEM, loadConfluenceCredentials } from "../credentials.js";
+import {
+  confluenceAccountKey,
+  confluenceSiteKey,
+  resetLedgerOnRootChange,
+} from "../confluence-sync.js";
+import { storageView } from "../confluence-view.js";
+import { loadConfluenceCredentials, maskEmail, saveConfluenceCredential } from "../credentials.js";
+import { namedView } from "../doc-meta.js";
 import type { RequestHandlers, RouterDeps } from "./types.js";
 
 type ConfluenceDeps = Pick<
@@ -41,8 +48,9 @@ export function confluenceHandlers(deps: ConfluenceDeps): RequestHandlers<Conflu
 
 /**
  * 기획서(Confluence) 연결 — 활성 프로젝트(slug)에 묶는다(2026-10-18 기획서 동기화).
- * 이메일·토큰은 한 번만 받는다: 검증(/user/current)이 이기면 자격은 저장소의
- * `confluence-pat` 한 몸으로, 연결 미러는 machine.json 의 슬러그 붙은 키로 둔다 —
+ * 검증(/user/current)이 이기면 자격은 이 프로젝트의 아이템(`confluence-pat:<slug>`)으로,
+ * 머신 기본이 비어 있을 때만 기본에도 올라간다 — 프로젝트마다 다른 계정의 Confluence 를
+ * 함께 쓴다(2026-11-03 사용자 결정). 연결 미러는 machine.json 의 슬러그 붙은 키로 둔다 —
  * 다른 프로젝트의 연결을 덮어쓰지 않고, 응답 어디에도 자격이 다시 나오지 않는다.
  * 이미 저장된 자격으로 뿌리만 고를 때는 이메일·토큰을 비우고 보낸다. 연결은 사본 폴더를
  * 만들지 않는다(2026-10-23 · 기획서 사본 이동 계획 §5) — 첫 가져오기가 만든다.
@@ -74,7 +82,7 @@ async function confluenceConnect(
     // 선로의 짝 규칙이 이미 걸지만, 처리기의 방어도 같은 말을 한다.
     throw new Error("이메일과 토큰은 짝입니다 — 둘 다 넣어 주세요.");
   } else {
-    creds = await loadConfluenceCredentials(deps.credentials, process.env);
+    creds = await loadConfluenceCredentials(deps.credentials, process.env, slug);
   }
   if (creds === null) {
     throw new Error("Confluence 연결이 없습니다 — 이메일과 토큰을 넣어 연결해 주세요.");
@@ -91,8 +99,12 @@ async function confluenceConnect(
     }
     rootTitle = root.value.title;
   }
-  // 자격은 저장소로, 미러는 이 프로젝트의 키로 — 저장이 이겨야 다음 connect 이 자격 없이 온다.
-  await deps.credentials.save(CONFLUENCE_PAT_ITEM, `${creds.email}\n${creds.token}`);
+  // 자격은 이 프로젝트의 아이템으로(기본이 비어 있으면 첫 자격으로 기본에도), 미러는 이
+  // 프로젝트의 키로 — 저장이 이겨야 다음 connect 이 자격 없이 온다. 계정 키는 가려진
+  // 이메일만 — 요약이 자격 저장소(비동기) 없이 계정을 보이게 한다(2026-11-03).
+  await saveConfluenceCredential(deps.credentials, slug, creds);
+  const account = maskEmail(creds.email);
+  if (account !== null) deps.machineSetting.set(confluenceAccountKey(slug), account);
   deps.machineSetting.set(`confluenceSite:${slug}`, site);
   if (message.rootPageId !== undefined) {
     deps.machineSetting.set(`confluenceRootId:${slug}`, message.rootPageId);
@@ -135,8 +147,9 @@ async function confluenceSuggestRoots(
   query: string,
 ): Promise<{ roots: Array<{ id: string; title: string }> }> {
   const slug = deps.registry.activeSlug();
-  const site = slug === null ? null : deps.machineSetting.get(`confluenceSite:${slug}`);
-  const creds = await loadConfluenceCredentials(deps.credentials, process.env);
+  const site = slug === null ? null : deps.machineSetting.get(confluenceSiteKey(slug));
+  const creds =
+    slug === null ? null : await loadConfluenceCredentials(deps.credentials, process.env, slug);
   if (site === null || creds === null) {
     throw new Error(
       "먼저 연결해 주세요 — 사이트 · 이메일 · 토큰을 넣으면 기준 페이지를 찾을 수 있어요.",
@@ -214,7 +227,8 @@ interface DocReadComment {
 }
 
 /**
- * 기획서 한 문서 — 파생 마크다운과 절(매크로 표식). 코멘트는 정본인 Confluence 에서
+ * 기획서 한 문서 — 파생 마크다운과 절(매크로 표식), 화면이 그리는 보기 블록 · 라벨 · 첨부 목록
+ * (2026-10-30 사용자 요청 — 라벨 · 첨부를 읽지 못하면 null). 코멘트는 정본인 Confluence 에서
  * 그 자리에 읽어 실는다(안 풀린 것만 · 읽기 실패면 null — 원장의 수가 대신한다).
  * 코멘트 본문은 맨 글로 풀어 싣고(멘션은 `@이름`), 고치기의 재료(내 것 · 고칠 수 있음)를 붙인다.
  * 자격은 이 답의 어디에도 실리지 않는다.
@@ -226,10 +240,14 @@ async function docRead(
   markdown: string;
   sections: Array<{ heading: string; macro: boolean }>;
   comments: DocReadComment[] | null;
+  view: DocBlock[];
+  labels: DocLabel[] | null;
+  attachments: DocAttachment[] | null;
 }> {
   const slug = deps.registry.activeSlug();
   const site = slug === null ? null : deps.machineSetting.get(confluenceSiteKey(slug));
-  const creds = await loadConfluenceCredentials(deps.credentials, process.env);
+  const creds =
+    slug === null ? null : await loadConfluenceCredentials(deps.credentials, process.env, slug);
   if (site === null || creds === null) {
     throw new Error("먼저 연결해 주세요 — 기획서는 연결 뒤에 읽혀요.");
   }
@@ -243,8 +261,25 @@ async function docRead(
     version: read.value.version,
     updatedAt: read.value.updatedAt,
   });
-  const footer = await client.listFooterComments(pageId);
-  const inline = await client.listInlineComments(pageId);
+  // 코멘트 · 라벨 · 첨부는 서로 기대지 않는다 — 한꺼번에 묻는다(2026-10-30).
+  const [footer, inline, labelRead, attachmentRead] = await Promise.all([
+    client.listFooterComments(pageId),
+    client.listInlineComments(pageId),
+    client.listLabels(pageId),
+    client.listAttachments(pageId),
+  ]);
+  const view = await namedView(client, storageView(read.value.storage));
+  const labels = labelRead.readable ? labelRead.value : null;
+  // 받는 주소(downloadLink)는 화면에 싣지 않는다 — 받기는 doc.attachment.read 가 데몬 안에서 한다.
+  const attachments = attachmentRead.readable
+    ? attachmentRead.value.map(({ id, title, mediaType, size, createdAt }) => ({
+        id,
+        title,
+        mediaType,
+        size,
+        createdAt,
+      }))
+    : null;
   let comments: DocReadComment[] | null = null;
   if (footer.readable && inline.readable) {
     const names = new Map<string, string>();
@@ -286,7 +321,14 @@ async function docRead(
       }
     }
   }
-  return { markdown: derived.markdown, sections: derived.sections, comments };
+  return {
+    markdown: derived.markdown,
+    sections: derived.sections,
+    comments,
+    view,
+    labels,
+    attachments,
+  };
 }
 
 /** 저장된 전송 규약 — 전송은 env 가 고른다(fixture · API 재지정 · 실사이트). */

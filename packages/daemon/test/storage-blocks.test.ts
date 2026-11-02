@@ -327,7 +327,18 @@ test("코멘트 닻은 쌍 토큰으로 자리를 지킨다", () => {
 test("문단 안 매크로 · 링크 · 멘션은 홑 토큰으로 보인다", () => {
   const proj = projectBlock(soloBlock(DOC_INLINE_RICH));
   assert.deepEqual(proj.view, { kind: "paragraph", text: "상태 ⟦t1⟧ 링크 ⟦t2⟧ 멘션 ⟦t3⟧" });
-  assert.deepEqual(proj.tokens, { t1: "macro:status", t2: "link:page", t3: "link:user" });
+  // 상태 표시는 값을 함께 실린다 — 초안 편집기의 칩이 값 · 색으로 서게(2026-11-03 실앱 감사).
+  assert.deepEqual(proj.tokens, {
+    t1: "macro:status:grey:진행",
+    t2: "link:page",
+    t3: "link:user",
+  });
+});
+
+test("상태 표시의 색 · 값이 이름표에 실린다", () => {
+  const doc = `<p><ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">확정</ac:parameter></ac:structured-macro></p>`;
+  const proj = projectBlock(soloBlock(doc));
+  assert.deepEqual(proj.tokens, { t1: "macro:status:green:확정" });
 });
 
 test("속성이 있는 문단도 문단 투영을 얻고 병합 · 중첩은 보존 전용이다", () => {

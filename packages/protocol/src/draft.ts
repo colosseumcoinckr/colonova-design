@@ -130,6 +130,8 @@ export interface DraftSummary {
   baseVersion: number | null;
   observedVersion: number | null;
   updatedAt: string;
+  /** 들어갈 자리의 이름(2026-10-31 E) — 아직 Confluence 에 없는 새 문서 초안이 사이드바의 그 자리에 흐린 줄로 서게 한다. */
+  parentTitle?: string | null;
 }
 
 /** 사람이 초안을 고치는 한 걸음 — 여러 걸음을 한 요청에 싣고, 하나라도 맞지 않으면 전부 거절한다. */
@@ -169,6 +171,17 @@ export interface DraftProposal {
   draftRevision: number;
   summary: string;
   ops: DraftOp[];
+  /**
+   * AI 고침이 바로 초안에 들어간 때(2026-10-31 기획서 칸 개선 2단계 — 채택 없이 바로 반영). 없으면
+   * 걸음이 변경안으로 남아 사람이 고르는 몫이다.
+   */
+  appliedAt?: string;
+  /** 바로 반영에서 들어간 걸음 수. */
+  appliedOps?: number;
+  /** 바로 반영하지 못하고 남은 걸음 수 — 사람이 고치던 블록의 걸음이다. */
+  keptOps?: number;
+  /** 바로 반영을 되돌릴 수 있는가 — 그 뒤 사람이 고친 블록이 있으면 꺼진다(같이 고치기와 같은 판정). */
+  undoable?: boolean;
 }
 
 export interface DraftReadRef {
@@ -188,6 +201,16 @@ export interface DraftMessage {
   /** AI 가 범위 안 캐시에서 스스로 찾아 읽은 문서(assistant). */
   reads?: DraftReadRef[];
   error?: string;
+  /**
+   * 화면 요청에서 온 말(user) — 같이 고치기(2026-10-30 사용자 결정)가 남긴 기록이다. 글은 그 화면 요청이고, 대화는
+   * 「화면 요청에서 같이 고쳤어요」로 그린다.
+   */
+  origin?: "screen";
+  /**
+   * 화면 제안 카드(2026-11-02 · 같이 고치기 UX 계획 C8) — 정책을 바꾼 고침이 초안에 들어간 뒤 화면이 옛 규칙이면
+   * 답 아래에 선다. 손은 `화면을 기획서대로`(사람이 보낸다)와 `안 받기` 뿐이다 — 되돌리기는 판에 이미 있다.
+   */
+  mismatch?: { rows: DraftMismatchRow[] };
 }
 
 export interface DraftThread {
@@ -195,6 +218,49 @@ export interface DraftThread {
   threadId: string;
   messages: DraftMessage[];
   proposals: DraftProposal[];
+  running: boolean;
+}
+
+// ————— 판 고르기(2026-10-31 기획서 칸 개선 2단계) — 초안의 지난 판을 읽고 되돌린다 —————
+
+/** 초안 판의 만든 이 — 판 고르기 줄에 사람의 말로 그린다. */
+export type DraftRevisionOrigin = "person" | "ai" | "screen" | "system";
+
+/** 초안 판 한 줄 — 문서 판 머리의 판 고르기 목록의 재료. */
+export interface DraftRevisionSummary {
+  revision: number;
+  at: string;
+  origin: DraftRevisionOrigin;
+  /** 만든 이의 이름 — AI 가 만든 판은 대화 이름이고, 나머지는 null(웹이 종류의 말로 그린다). */
+  label: string | null;
+  /** 이 판이 기준에서 바꾼 것 — 고침 · 새로 · 지움 수. */
+  changes: { changed: number; inserted: number; deleted: number };
+  state: DraftState;
+}
+
+/** `draft.revision` 의 답 — 옛 판의 읽기 전용 모습. */
+export interface DraftRevisionView {
+  docKey: string;
+  revision: number;
+  at: string;
+  origin: DraftRevisionOrigin;
+  label: string | null;
+  title: string;
+  blocks: DraftBlock[];
+}
+
+// ————— 기획 대화 목록(2026-10-31 기획서 칸 개선 3단계) — 대화가 문서를 옮겨 다닌다 —————
+
+/** 기획 대화 한 줄 — 사이드바의 기획 대화 목록의 재료. */
+export interface DraftConversationSummary {
+  threadId: string;
+  /** 대화의 이름 — 첫 말에서 짓는다(첫 말의 머리). */
+  title: string;
+  /** 지금 다루는 문서 — 아직 문서에 붙지 않은 대화는 null. */
+  docKey: string | null;
+  docTitle: string;
+  at: string;
+  messageCount: number;
   running: boolean;
 }
 
@@ -313,6 +379,11 @@ const pageIdSchema = z.string().regex(/^\d{1,20}$/);
 
 /** 발행 명령의 열쇠 — 소문자 UUID(재전송이 같은 발행을 두 번 하지 않게 하는 멱등 키). */
 const commandIdSchema = z
+  .string()
+  .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+
+/** 기획 대화의 열쇠 — 소문자 UUID. 대화 기록 파일의 이름이 되므로 모양을 좁힌다. */
+const threadIdSchema = z
   .string()
   .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
 
@@ -445,6 +516,8 @@ export const draftClientMessageSchemas = [
     ...withId,
     type: z.literal("draft.ask"),
     docKey: z.string().regex(DRAFT_KEY_PATTERN),
+    /** 이어 가는 대화(2026-10-31 3단계) — 없으면 이 문서의 대화를 이어 받고, null 이면 새 기획 대화를 만든다. */
+    threadId: threadIdSchema.nullable().optional(),
     text: z.string().min(1).max(8_000),
     refs: z.array(refInputSchema).max(20),
     /** 기획 AI 의 모델 · 생각 시간(2026-10-26 사용자 요청) — 화면 대화의 칩과 같은 값. 없으면 CLI 기본. */
@@ -460,6 +533,15 @@ export const draftClientMessageSchemas = [
     ...withId,
     type: z.literal("draft.thread"),
     docKey: z.string().regex(DRAFT_KEY_PATTERN),
+    /** 골라 읽는 대화(2026-11-03) — 사이드바 목록의 줄이 옛 대화를 다시 연다. 없으면 이 문서의 최신 대화. */
+    threadId: threadIdSchema.optional(),
+  }),
+  /** 기획 대화의 이름 바꾸기(2026-11-03) — 첫 말의 머리로 지은 자동 제목을 사람이 고친다. 답은 `DraftConversationSummary`. */
+  z.object({
+    ...withId,
+    type: z.literal("draft.threadRename"),
+    threadId: threadIdSchema,
+    title: z.string().min(1).max(200),
   }),
   z.object({
     ...withId,
@@ -507,4 +589,145 @@ export const draftClientMessageSchemas = [
   }),
   snapshotSchema,
   refsSchema,
+  /**
+   * 같이 고친 초안 되돌리기(2026-10-30 사용자 결정 · 같이 고치기 계획 §5) — 화면 요청이 고친 기획서 초안의 블록을
+   * 그 전으로 돌린다. 그 뒤 사람이 고친 블록은 그대로 둔다. 답은 `DraftSyncUndoResult`.
+   */
+  z.object({ ...withId, type: z.literal("draft.syncUndo"), entryId: z.string().uuid() }),
+  /**
+   * 이어진 기획서가 없던 화면 요청에 문서를 고른다(같이 고치기 계획 §3) — 그 턴의 화면과 문서를 잇고 같이 고치기를
+   * 다시 돈다. 결과는 대화의 `plans.synced` 로 온다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("draft.syncPick"),
+    sessionId: z.string().min(1).max(200),
+    requestId: z.string().min(1).max(200),
+    pageId: pageIdSchema,
+  }),
+  /**
+   * 초안 판 목록(2026-10-31 2단계) — 문서 판 머리의 판 고르기가 읽는다. 답은 새것부터의
+   * `DraftRevisionSummary[]` 다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("draft.revisions"),
+    docKey: z.string().regex(DRAFT_KEY_PATTERN),
+  }),
+  /** 옛 판의 읽기 전용 모습 — 판 고르기에서 앞 판을 볼 때. */
+  z.object({
+    ...withId,
+    type: z.literal("draft.revision"),
+    docKey: z.string().regex(DRAFT_KEY_PATTERN),
+    revision: revisionSchema,
+  }),
+  /**
+   * AI 고침 되돌리기(2026-10-31 2단계) — 바로 반영된 변경안의 판 직전으로 돌린다. 그 사이 사람이 고친
+   * 블록은 남긴다(같이 고치기의 되돌리기와 같은 판정). 답은 `DraftSyncUndoResult`.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("draft.undo"),
+    docKey: z.string().regex(DRAFT_KEY_PATTERN),
+    proposalId: z.string().min(1),
+  }),
+  /** 고른 옛 판으로 되돌리기 — 판 고르기의 `이 판으로 되돌리기`. 답은 새 `DraftView`. */
+  z.object({
+    ...withId,
+    type: z.literal("draft.revisionRestore"),
+    docKey: z.string().regex(DRAFT_KEY_PATTERN),
+    revision: revisionSchema,
+  }),
+  /** 기획 대화 목록(2026-10-31 3단계) — 사이드바 위 묶음이 읽는다. 답은 `DraftConversationSummary[]`. */
+  z.object({ ...withId, type: z.literal("draft.threads") }),
+  /** 대화가 다룰 문서를 옮긴다(2026-10-31 3단계) — 문서 판이 그 문서로 따라 간다. */
+  z.object({
+    ...withId,
+    type: z.literal("draft.threadMove"),
+    threadId: threadIdSchema,
+    docKey: z.string().regex(DRAFT_KEY_PATTERN),
+  }),
+  /** 기획 대화를 지운다(2026-10-31 3단계) — 이 컴퓨터의 기록만 지우고 초안은 남는다. */
+  z.object({ ...withId, type: z.literal("draft.threadDelete"), threadId: threadIdSchema }),
+  /**
+   * 화면과 맞춰 보기(2026-11-02 · 같이 고치기 UX 계획 C7) — 문서 하나와 지금 화면을 읽어 어긋난 곳을 목록으로
+   * 돌려준다. 판정만 돌고 초안 · 화면 어디에도 쓰지 않는다 — 손을 눌렀을 때만 그 방향으로 간다. 답은 `DraftCompareResult`.
+   */
+  z.object({ ...withId, type: z.literal("draft.compare"), pageId: pageIdSchema }),
+  /**
+   * 어긋남 카드 안 받기(같은 계획 §2 의 손 하나) — 이 화면 · 문서 짝의 카드를 다시 띄우지 않는다. C1 의 거부
+   * 신호와 같은 저장이다(프로젝트 데이터 `plans/`).
+   */
+  z.object({
+    ...withId,
+    type: z.literal("draft.compareDecline"),
+    pageId: pageIdSchema,
+    screenName: z.string().min(1).max(200),
+  }),
+  /**
+   * 같이 고친 기록 도출(같은 계획 C4) — 이 화면 대화에서 같이 고쳐진 문서들. 기획서 탭의 `초안에서 바뀐 곳`
+   * 묶음이 읽는다. 답은 `{ docs: DraftSyncDocRow[] }`.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("draft.syncDocs"),
+    sessionId: z.string().min(1).max(200),
+  }),
+  /**
+   * 이 문서가 같이 고침으로 닿은 화면(같은 계획 C4) — `이 문서의 화면` 서랍이 연결 파일 줄과 함께 보인다.
+   * 답은 `{ screens: DraftSyncScreenRow[] }`.
+   */
+  z.object({ ...withId, type: z.literal("draft.syncScreens"), pageId: pageIdSchema }),
 ] as const;
+
+/** `draft.syncUndo` 의 답 — 돌린 블록 수와, 사람이 그 뒤 고쳐 둔 블록 수. */
+export interface DraftSyncUndoResult {
+  restored: number;
+  kept: number;
+}
+
+// ————— 화면과 맞춰 보기(2026-11-02 · 같이 고치기 UX 계획 C7 · C8) — 어긋남 카드의 재료 —————
+
+/** 어긋남 한 줄 — 한 문서의 한 절 · 한 규칙에서 기획서와 화면의 말이 다르다. */
+export interface DraftMismatchRow {
+  /** 절 머리 — 규칙이 사는 절. */
+  section: string;
+  /** 기획서 쪽 말 — 정본은 초안 우선이라 어느 판인지 카드의 출처 줄이 말한다(같은 계획 §2). */
+  plan: string;
+  /** 화면 쪽 말 — 사람이 보는 모습으로만. */
+  screen: string;
+  /** 화면의 이름 — 사람이 읽는 제목. */
+  screenName: string;
+}
+
+/** `draft.compare` 의 답 — 판정만 돌려주고 초안 · 화면 어디에도 쓰지 않는다. */
+export interface DraftCompareResult {
+  docKey: string | null;
+  pageId: string | null;
+  title: string;
+  /** 기획서 쪽 말을 어느 판에서 읽었는지 — 카드의 출처 줄에 선다. */
+  source: string;
+  /** 어긋난 줄 — 비면 지금 화면과 같다. */
+  rows: DraftMismatchRow[];
+  /** 절 상한에 걸려 앞의 절만 봤다는 한 줄 안내 — 아니면 null. */
+  note: string | null;
+}
+
+/** `draft.syncDocs` 의 답 한 줄 — 이 화면 대화에서 같이 고쳐진 문서. */
+export interface DraftSyncDocRow {
+  pageId: string | null;
+  docKey: string;
+  title: string;
+  /** 초안에 들어간 걸음 수. */
+  changes: number;
+  /** 걸음이 닿은 절 머리 — `보기` 가 스크롤 · 하이라이트할 자리(못 찾으면 문서 맨 위). */
+  sections: string[];
+  at: string;
+}
+
+/** `draft.syncScreens` 의 답 한 줄 — 이 문서가 같이 고침으로 닿은 화면. */
+export interface DraftSyncScreenRow {
+  route: string;
+  title: string | null;
+  at: string;
+}

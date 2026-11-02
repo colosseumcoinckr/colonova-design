@@ -20,12 +20,21 @@ import { CONFIG_DIR } from "./environment.js";
 export const CREDENTIAL_SERVICE = "ColoNova Design";
 /** The credential-store item holding the machine-wide GitHub token. */
 export const REPO_PAT_ITEM = "pat";
-/** The credential-store item holding the machine-wide Confluence 자격(이메일+토큰 짝). */
+/**
+ * The credential-store item holding the machine-wide Confluence 자격(이메일+토큰 짝) —
+ * 머신 기본 자격이다. 프로젝트별 자격은 `confluencePatItem(slug)` 아래에 따로 살고
+ * 기본이 비어 있을 때 대신 답한다(2026-11-03 사용자 결정 · 프로젝트별 Confluence 자격).
+ */
 export const CONFLUENCE_PAT_ITEM = "confluence-pat";
 
 /** The per-project item an installation before the machine-wide token filed its PAT under. */
 export function repoPatItem(slug: string): string {
   return `pat:${slug}`;
+}
+
+/** 프로젝트별 Confluence 자격 아이템 — 슬러그 키 규약은 `repoPatItem` 과 같다(2026-11-03). */
+export function confluencePatItem(slug: string): string {
+  return `${CONFLUENCE_PAT_ITEM}:${slug}`;
 }
 
 /** Thrown when the platform has no store yet (Windows before the desktop story). */
@@ -170,19 +179,24 @@ export async function loadRepoPat(
 }
 
 /**
- * The machine-wide Confluence 자격 — 이메일과 토큰이 한 몸이다(`email\ntoken` 두 줄,
- * 이메일도 개인 식별자라 비밀 취급). COLONOVA_DESIGN_CONFLUENCE_EMAIL+TOKEN 오버라이드가
- * 저장소보다 이긴다(loadRepoPat 과 같은 순서). 둘째 줄 없는 값(옛 값 · 반쯤 쓴 값)은
+ * Confluence 자격 읽기 — 이메일과 토큰이 한 몸이다(`email\ntoken` 두 줄, 이메일도 개인
+ * 식별자라 비밀 취급). COLONOVA_DESIGN_CONFLUENCE_EMAIL+TOKEN 오버라이드가 저장소보다
+ * 이긴다(loadRepoPat 과 같은 순서). slug 를 주면 프로젝트 아이템(`confluence-pat:<slug>`)이
+ * 머신 기본(`confluence-pat`)보다 앞선다 — 두 프로젝트가 서로 다른 계정의 Confluence 를
+ * 한 머신에서 함께 쓴다(2026-11-03 사용자 결정). 둘째 줄 없는 값(옛 값 · 반쯤 쓴 값)은
  * 버린다 — 반쪽 자격으로 실사이트를 두드리지 않는다.
  */
 export async function loadConfluenceCredentials(
   store: CredentialStore,
   env: NodeJS.ProcessEnv = process.env,
+  slug?: string,
 ): Promise<{ email: string; token: string } | null> {
   const email = env.COLONOVA_DESIGN_CONFLUENCE_EMAIL;
   const token = env.COLONOVA_DESIGN_CONFLUENCE_TOKEN;
   if (email && token) return { email, token };
-  const stored = await safeLoad(store, CONFLUENCE_PAT_ITEM);
+  const stored =
+    (slug === undefined ? null : await safeLoad(store, confluencePatItem(slug))) ??
+    (await safeLoad(store, CONFLUENCE_PAT_ITEM));
   if (stored === null) return null;
   const separator = stored.indexOf("\n");
   if (separator <= 0) return null;
@@ -190,6 +204,38 @@ export async function loadConfluenceCredentials(
   const storedToken = stored.slice(separator + 1);
   if (storedEmail === "" || storedToken === "") return null;
   return { email: storedEmail, token: storedToken };
+}
+
+/**
+ * Confluence 자격 저장 — 이 프로젝트의 아이템으로 쓰고, 머신 기본이 비어 있으면 첫 자격을
+ * 기본에도 올린다. 기본이 채워진 뒤의 프로젝트별 자격은 기본을 건드리지 않는다 — 프로젝트2 의
+ * 계정이 프로젝트1 의 자격을 덮어쓰던 일이 사라진다(2026-11-03 사용자 결정). 같은 계정을 쓰는
+ * 둘째 프로젝트는 이메일·토큰 없이 연결해 기본을 물려받는다.
+ */
+export async function saveConfluenceCredential(
+  store: CredentialStore,
+  slug: string,
+  creds: { email: string; token: string },
+): Promise<void> {
+  const value = `${creds.email}\n${creds.token}`;
+  await store.save(confluencePatItem(slug), value);
+  if ((await safeLoad(store, CONFLUENCE_PAT_ITEM)) === null) {
+    await store.save(CONFLUENCE_PAT_ITEM, value);
+  }
+}
+
+/**
+ * 계정 표시용 가려진 이메일 — 로컬부 첫 글자와 도메인만 남긴다(예: `i***@company.com`).
+ * 원문 자격은 자격 저장소 밖으로 나가지 않고, 요약과 machine.json 에 실리는 건 이 가려진
+ * 값뿐이다(2026-11-03 사용자 승인 · 「자격은 요약에 절대 실리지 않는다」의 유일한 예외).
+ * @ 이 없거나 빈 값이면 null — 가릴 수 없는 값은 아예 싣지 않는다.
+ */
+export function maskEmail(email: string): string | null {
+  const trimmed = email.trim();
+  if (trimmed === "") return null;
+  const at = trimmed.lastIndexOf("@");
+  if (at <= 0 || at === trimmed.length - 1) return null;
+  return `${trimmed.slice(0, 1)}***${trimmed.slice(at)}`;
 }
 
 /**

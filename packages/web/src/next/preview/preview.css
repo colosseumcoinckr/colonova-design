@@ -206,41 +206,6 @@
   color: var(--accent);
 }
 
-/* 기록 — 넓으면 글자를 입는다(아이콘만으로는 시계가 무엇인지 모른다). 열려 있는 동안 선택의 진하기. */
-.nx .nx-hist-t[aria-expanded="true"] {
-  background: var(--nx-selected);
-  color: var(--ink);
-}
-
-/* 서랍이 열리는 순간 시계가 한 바퀴 되감긴다 — 누른 단추에서 「기록을 거슬러 간다」 는 뜻이 한 번 읽힌다.
-   닫을 때는 말없이 선다(끝난 뒤에도 남는 transform 이 아니라 한 번의 애니메이션이다). */
-@keyframes nx-hist-rewind {
-  to {
-    transform: rotate(-360deg);
-  }
-}
-
-.nx-hist-ic {
-  display: inline-flex;
-}
-
-.nx .nx-hist-t[aria-expanded="true"] .nx-hist-ic {
-  animation: nx-hist-rewind 520ms var(--drift);
-}
-
-/* 배율이 100% 가 아닐 때만 서는 알약 — 누르면 실제 크기로. */
-.nx .nx-zoom-t {
-  border-radius: var(--r-pill);
-  background: var(--nx-hover);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semi);
-  font-variant-numeric: tabular-nums;
-}
-
-.nx .nx-zoom-t:hover {
-  background: var(--nx-selected);
-}
-
 /* 입력창 칩(`nx-tbtn` — chat.css 가 정의하고 입력창 · 모델 칩이 쓴다)이 기대는 한 줄 — 막대는 더 쓰지 않는다. 특이도를 0 에 둬서
    chat.css 의 값이 늘 이긴다(2026-10-23: 막대의 단추를 공통 부품으로 옮기며 이 파일의 복제 규칙을 걷었다). */
 :where(.nx) .nx-tbtn {
@@ -253,20 +218,7 @@
    (2026-10-04 ux-review). 모든 조절은 끝까지 32px 다 — 줄이는 것은 간격과 글자뿐이다. 선택자는 위 규칙과 같은
    두께로 쓴다 — 얇으면 질의 안에서도 지고 만다. */
 @container nxpv (max-width: 780px) {
-  .nx .nx-hist-w,
   .nx .nx-addr-k {
-    display: none;
-  }
-
-  /* 글자가 접힌 기록은 아이콘만 — 정사각 32px. */
-  .nx .nx-hist-t {
-    width: var(--h-md);
-    padding: 0;
-  }
-}
-
-@container nxpv (max-width: 700px) {
-  .nx .nx-zoom-t {
     display: none;
   }
 }
@@ -1916,8 +1868,50 @@
     transition: none;
   }
 
-  .nx-hist-skelrow > i,
-  .nx .nx-hist-t[aria-expanded="true"] .nx-hist-ic {
+  .nx-hist-skelrow > i {
     animation: none;
   }
+}
+
+/* ── 2026-10-31 화면 자리 개선안 ── */
+
+/* 이 화면을 바꾼 말(S9) — 주소창 곁에 서는 이어 보기 단추다. */
+.nx-changedby {
+  flex: none;
+  color: var(--accent);
+  gap: 5px;
+}
+
+.nx-changedby .nx-i {
+  color: var(--accent);
+}
+
+/* 배율의 숫자 배지(S6) — 100% 가 아닐 때만 `···` 단추 위에 붙는다. */
+.nx-more-btn {
+  position: relative;
+}
+
+.nx-zoom-badge {
+  position: absolute;
+  top: -7px;
+  right: -6px;
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  color: var(--accent);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+/* 막대의 접힘 차례(S6) — 폭을 잰 data-tier 가 정한다. ⌘L 감김 → 기기 마디를 한 단추로 → 앞으로. */
+.nx-pvbar[data-tier="tiny"] .nx-changedby .nx-pin-w,
+.nx-pvbar[data-tier="tiny"] .nx-pin-w {
+  display: none;
 }

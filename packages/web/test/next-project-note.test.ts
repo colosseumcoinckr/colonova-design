@@ -93,29 +93,35 @@ test("사이클 한 단어 — 제출 전 · 개발자 확인을 기다려요 ·
   assert.equal(projectStatus({ ...BASE, working: true }, L).spin, true);
 });
 
-test("셸 이동 — 대화를 열면 서랍이 닫히고, 프로젝트가 바뀌면 홈부터", () => {
+test("셸 이동 — 대화를 열면 서랍이 닫히고, 프로젝트가 바뀌면 그 프로젝트의 기억 자리로", () => {
   let s = initialNav(false);
-  assert.equal(s.view, "home");
+  assert.equal(s.pane, "preview", "기억 없는 첫 자리는 화면이다(2026-10-31 홈 걷기 §2)");
   s = navReducer(s, { type: "drawer", open: true });
   s = navReducer(s, { type: "thread" });
-  assert.equal(s.view, "thread");
+  assert.equal(s.pane, "preview");
   assert.equal(s.drawer, false);
   s = navReducer(s, { type: "tab", tab: "preview" });
   assert.equal(s.tab, "preview");
-  s = navReducer(s, { type: "project-changed" });
+  // 기억이 화면인 프로젝트로 옮겨 온다 — 화면 자리의 새 대화부터.
+  s = navReducer(s, { type: "project-changed", pane: "preview" });
   assert.deepEqual(s, {
-    view: "home",
     tab: "chat",
     // 기획서 칸도 전환과 함께 닫힌다(2026-10-18 동기화 1단계 · M4).
     pane: "preview",
+    // 오른쪽 칸의 탭도 대화부터다(2026-10-31 화면 자리 개선안 S10).
+    rightTab: "chat",
     // 초안 편집기의 알림도 처음으로 — 칸이 편집기를 거두며 다시 알린다(2026-10-23 기획자 화면 손질 D2).
     planDraft: false,
     drawer: false,
     collapsed: false,
     discardableInvitePath: null,
   });
+  // 기억이 기획서인 프로젝트로 옮겨 오면 기획서 자리가 선다.
+  s = navReducer(s, { type: "project-changed", pane: "plans" });
+  assert.equal(s.pane, "plans");
+  assert.equal(s.tab, "preview", "기획서 자리는 좁은 창에서 화면 탭으로 온다");
   // 같은 값은 같은 객체 — 렌더를 더 부르지 않는다.
-  assert.equal(navReducer(s, { type: "tab", tab: "chat" }), s);
+  assert.equal(navReducer(s, { type: "pane", pane: "plans" }), s);
 });
 
 test("셸 이동 — 지울 수 있는 초대 파일의 자리는 세우고 거둔다(U11)", () => {
@@ -124,7 +130,7 @@ test("셸 이동 — 지울 수 있는 초대 파일의 자리는 세우고 거�
   s = navReducer(s, { type: "invite-path", path: "/tmp/a.colonova-invite" });
   assert.equal(s.discardableInvitePath, "/tmp/a.colonova-invite");
   // 프로젝트가 바뀌어도 남는다 — 파일은 프로젝트의 것이 아니다.
-  s = navReducer(s, { type: "project-changed" });
+  s = navReducer(s, { type: "project-changed", pane: "preview" });
   assert.equal(s.discardableInvitePath, "/tmp/a.colonova-invite");
   assert.equal(navReducer(s, { type: "invite-path", path: "/tmp/a.colonova-invite" }), s);
   s = navReducer(s, { type: "invite-path", path: null });

@@ -1,0 +1,440 @@
+import type { DocBlock, DocImage, DocInline, DocPanelTone } from "@colonova-design/protocol";
+import {
+  CircleCheck,
+  CircleX,
+  Info,
+  Lightbulb,
+  type LucideIcon,
+  Paperclip,
+  Square,
+  SquareCheck,
+  StickyNote,
+  TriangleAlert,
+} from "lucide-react";
+import { createContext, type ReactNode, type RefObject, useContext, useRef, useState } from "react";
+import { Markdown } from "../../../components/Markdown";
+import type { Daemon } from "../../../lib/daemon-client";
+import { linkClick } from "../../../lib/open-link";
+import { L } from "../../labels";
+import { Spin } from "../../ui/icons";
+import { fencedCode, isImageType, tocDepths } from "./doc-view-model";
+import { downloadAttachment, useAttachment } from "./use-attachment";
+import "./doc-view.css";
+
+/**
+ * 기획서 보기(2026-10-30 사용자 요청 — 기획서 칸에서 Confluence 기능을 가능한 한 온전히). 데몬이 저장
+ * 포맷에서 내린 블록 나무를 그린다 — 정보 상자 · 상태 알약 · 펼치기 · 코드 · 목차 · 그림 · 단 나눔 ·
+ * 할 일 · 병합 셀. 모르는 매크로는 `Confluence 전용 · 이름` 자리로 남는다. 읽는 글의 눈금은 공용
+ * 마크다운(`.md`)의 규칙을 그대로 받는다.
+ */
+
+interface ViewContext {
+  api: Daemon["api"];
+  pageId: string;
+  /** 다른 기획 문서로 가는 링크 — 목록에서 제목으로 찾아 연다. 못 찾으면 false. */
+  openPage?: (title: string) => boolean;
+}
+
+const Ctx = createContext<ViewContext | null>(null);
+
+function useView(): ViewContext {
+  const value = useContext(Ctx);
+  if (value === null) throw new Error("DocView context is required");
+  return value;
+}
+
+const PANEL_ICON: Record<DocPanelTone, LucideIcon> = {
+  info: Info,
+  note: StickyNote,
+  warning: TriangleAlert,
+  tip: Lightbulb,
+  success: CircleCheck,
+  error: CircleX,
+  panel: Info,
+};
+
+export function DocView({
+  blocks,
+  api,
+  pageId,
+  openPage,
+}: {
+  blocks: readonly DocBlock[];
+  api: Daemon["api"];
+  pageId: string;
+  openPage?: (title: string) => boolean;
+}) {
+  const root = useRef<HTMLDivElement>(null);
+  return (
+    <Ctx.Provider value={{ api, pageId, openPage }}>
+      <div className="md nx-dv" ref={root}>
+        <Blocks blocks={blocks} root={root} />
+      </div>
+    </Ctx.Provider>
+  );
+}
+
+/** 편집기의 보존 블록 — 같은 그림을 작게(목차 · 그림 받기는 같은 길). */
+export function DocPreview({
+  blocks,
+  api,
+  pageId,
+}: {
+  blocks: readonly DocBlock[];
+  api: Daemon["api"];
+  pageId: string;
+}) {
+  const root = useRef<HTMLDivElement>(null);
+  return (
+    <Ctx.Provider value={{ api, pageId }}>
+      <div className="md nx-dv nx-dv--preview" ref={root}>
+        <Blocks blocks={blocks} root={root} />
+      </div>
+    </Ctx.Provider>
+  );
+}
+
+type Root = RefObject<HTMLDivElement | null>;
+
+function Blocks({ blocks, root }: { blocks: readonly DocBlock[]; root: Root }) {
+  return (
+    <>
+      {blocks.map((block, at) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 본문 블록은 순서가 곧 자리다
+        <Block key={at} block={block} root={root} />
+      ))}
+    </>
+  );
+}
+
+function Block({ block, root }: { block: DocBlock; root: Root }): ReactNode {
+  switch (block.t) {
+    case "heading": {
+      const Tag = `h${block.level}` as "h1";
+      return (
+        <Tag>
+          <Inlines list={block.children} />
+        </Tag>
+      );
+    }
+    case "p":
+      return (
+        <p>
+          <Inlines list={block.children} />
+        </p>
+      );
+    case "list": {
+      const Tag = block.ordered ? "ol" : "ul";
+      return (
+        <Tag>
+          {block.items.map((item, at) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 목록 항목은 순서가 곧 자리다
+            <li key={at}>
+              <ItemBody blocks={item} root={root} />
+            </li>
+          ))}
+        </Tag>
+      );
+    }
+    case "tasks":
+      return (
+        <ul className="nx-dv-tasks">
+          {block.items.map((item, at) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 할 일은 순서가 곧 자리다
+            <li key={at} className={item.done ? "nx-dv-task--done" : undefined}>
+              {item.done ? (
+                <SquareCheck className="nx-i" size={16} aria-label={L.confluence.taskDone} />
+              ) : (
+                <Square className="nx-i" size={16} aria-label={L.confluence.taskOpen} />
+              )}
+              <span>
+                <Inlines list={item.children} />
+              </span>
+            </li>
+          ))}
+        </ul>
+      );
+    case "table":
+      return (
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: 넓은 표는 키보드로도 옆으로 굴린다(공용 마크다운과 같다)
+        <section className="md__table-scroll" tabIndex={0}>
+          <table>
+            <tbody>
+              {block.rows.map((row, r) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 표의 줄은 순서가 곧 자리다
+                <tr key={r}>
+                  {row.cells.map((cell, c) => {
+                    const Tag = cell.header ? "th" : "td";
+                    return (
+                      // biome-ignore lint/suspicious/noArrayIndexKey: 칸은 순서가 곧 자리다
+                      <Tag key={c} colSpan={cell.colspan} rowSpan={cell.rowspan}>
+                        <ItemBody blocks={cell.blocks} root={root} />
+                      </Tag>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      );
+    case "quote":
+      return (
+        <blockquote>
+          <Blocks blocks={block.blocks} root={root} />
+        </blockquote>
+      );
+    case "hr":
+      return <hr />;
+    case "code":
+      return (
+        <figure className="nx-dv-code">
+          {block.title !== null && <figcaption>{block.title}</figcaption>}
+          <Markdown text={fencedCode(block.text, block.language)} />
+        </figure>
+      );
+    case "panel": {
+      const Icon = PANEL_ICON[block.tone];
+      return (
+        <aside
+          className={`nx-dv-panel nx-dv-panel--${block.tone}`}
+          aria-label={block.title ?? L.confluence.panelTone(block.tone)}
+        >
+          <Icon className="nx-i nx-dv-panel-ic" size={16} aria-hidden="true" />
+          <div className="nx-dv-panel-body">
+            {block.title !== null && <p className="nx-dv-panel-title">{block.title}</p>}
+            <Blocks blocks={block.blocks} root={root} />
+          </div>
+        </aside>
+      );
+    }
+    case "expand":
+      return (
+        <details className="nx-dv-expand">
+          <summary>{block.title ?? L.confluence.expandDefault}</summary>
+          <div className="nx-dv-expand-body">
+            <Blocks blocks={block.blocks} root={root} />
+          </div>
+        </details>
+      );
+    case "toc":
+      return <Toc entries={block.entries} root={root} />;
+    case "image":
+      return <ImageView image={block.image} block />;
+    case "columns":
+      return (
+        <div className="nx-dv-cols">
+          {block.columns.map((column, at) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 단은 순서가 곧 자리다
+            <div key={at} className="nx-dv-col">
+              <Blocks blocks={column} root={root} />
+            </div>
+          ))}
+        </div>
+      );
+    case "macro":
+      return (
+        <p className="nx-pl-note-box">
+          {block.name === "" ? L.confluence.truncated : L.plans.macroInline(block.name)}
+        </p>
+      );
+  }
+}
+
+/** 목록 항목 · 표 칸의 몸 — 문단 하나뿐이면 문단 여백 없이 글만 선다. */
+function ItemBody({ blocks, root }: { blocks: readonly DocBlock[]; root: Root }) {
+  const only = blocks.length === 1 ? blocks[0] : undefined;
+  if (only?.t === "p") return <Inlines list={only.children} />;
+  return <Blocks blocks={blocks} root={root} />;
+}
+
+function Toc({ entries, root }: { entries: Array<{ level: number; text: string }>; root: Root }) {
+  const depths = tocDepths(entries);
+  // 같은 이름의 제목이 여럿이면 목차의 몇 번째 같은 이름인지로 고른다.
+  const jump = (index: number) => {
+    const entry = entries[index];
+    if (entry === undefined || root.current === null) return;
+    const same = entries.slice(0, index).filter((one) => one.text === entry.text).length;
+    const headings = Array.from(
+      root.current.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"),
+    ).filter((node) => (node.textContent ?? "").replace(/\s+/gu, " ").trim() === entry.text);
+    headings[same]?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  return (
+    <nav className="nx-dv-toc" aria-label={L.confluence.tocTitle}>
+      <p className="nx-dv-toc-title">{L.confluence.tocTitle}</p>
+      {entries.length === 0 ? (
+        <p className="nx-dv-toc-none">{L.confluence.tocEmpty}</p>
+      ) : (
+        <ol>
+          {entries.map((entry, at) => (
+            <li
+              // biome-ignore lint/suspicious/noArrayIndexKey: 목차는 순서가 곧 자리다
+              key={at}
+              style={{ paddingInlineStart: `calc(var(--sp-4) * ${depths[at] ?? 0})` }}
+            >
+              <button type="button" className="nx-dv-toc-link" onClick={() => jump(at)}>
+                {entry.text}
+              </button>
+            </li>
+          ))}
+        </ol>
+      )}
+    </nav>
+  );
+}
+
+function Inlines({ list }: { list: readonly DocInline[] }) {
+  return (
+    <>
+      {list.map((item, at) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: 글 조각은 순서가 곧 자리다
+        <Inline key={at} item={item} />
+      ))}
+    </>
+  );
+}
+
+function Inline({ item }: { item: DocInline }): ReactNode {
+  const view = useView();
+  switch (item.t) {
+    case "text":
+      return item.text;
+    case "br":
+      return <br />;
+    case "mark": {
+      const inner = <Inlines list={item.children} />;
+      if (item.mark === "b") return <strong>{inner}</strong>;
+      if (item.mark === "i") return <em>{inner}</em>;
+      if (item.mark === "u") return <u>{inner}</u>;
+      if (item.mark === "s") return <del>{inner}</del>;
+      if (item.mark === "sub") return <sub>{inner}</sub>;
+      if (item.mark === "sup") return <sup>{inner}</sup>;
+      return <code>{inner}</code>;
+    }
+    case "link":
+      return (
+        <a href={item.href} target="_blank" rel="noreferrer" onClick={linkClick}>
+          <Inlines list={item.children} />
+        </a>
+      );
+    case "page": {
+      const title = item.title;
+      if (view.openPage === undefined || title === "") return <Inlines list={item.children} />;
+      return (
+        <PageLink title={title} open={view.openPage}>
+          <Inlines list={item.children} />
+        </PageLink>
+      );
+    }
+    case "attachment":
+      return <AttachmentChip filename={item.filename} />;
+    case "mention":
+      return <span className="nx-dv-mention">@{item.name ?? L.confluence.mentionUnknown}</span>;
+    case "status":
+      return (
+        <span
+          className={`nx-dv-status nx-dv-status--${item.color}${item.subtle ? " nx-dv-status--subtle" : ""}`}
+        >
+          {item.text}
+        </span>
+      );
+    case "image":
+      return <ImageView image={item.image} block={false} />;
+    case "date":
+      return <time className="nx-dv-date">{item.value}</time>;
+    case "emoji":
+      return item.text;
+    case "macro":
+      return (
+        <code className="nx-dv-macro">
+          {item.name === "" ? L.confluence.truncated : L.plans.macroInline(item.name)}
+        </code>
+      );
+  }
+}
+
+function PageLink({
+  title,
+  open,
+  children,
+}: {
+  title: string;
+  open: (title: string) => boolean;
+  children: ReactNode;
+}) {
+  const [missing, setMissing] = useState(false);
+  return (
+    <button
+      type="button"
+      className="nx-dv-page"
+      title={missing ? L.confluence.pageMissing : L.confluence.pageOpen(title)}
+      onClick={() => setMissing(!open(title))}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AttachmentChip({ filename }: { filename: string }) {
+  const view = useView();
+  const [phase, setPhase] = useState<"idle" | "busy" | "failed" | "too-large">("idle");
+  const note =
+    phase === "failed"
+      ? L.confluence.downloadFailed
+      : phase === "too-large"
+        ? L.confluence.tooLarge
+        : L.confluence.downloadOf(filename);
+  return (
+    <button
+      type="button"
+      className="nx-dv-chip"
+      title={note}
+      aria-label={note}
+      disabled={phase === "busy"}
+      onClick={() => {
+        setPhase("busy");
+        void downloadAttachment(view.api, view.pageId, filename).then((done) =>
+          setPhase(done === "ok" ? "idle" : done),
+        );
+      }}
+    >
+      {phase === "busy" ? <Spin /> : <Paperclip className="nx-i" size={13} aria-hidden="true" />}
+      {L.plans.attachInline(filename)}
+    </button>
+  );
+}
+
+function ImageView({ image, block }: { image: DocImage; block: boolean }) {
+  const view = useView();
+  const source = image.source;
+  const filename = source.kind === "attachment" && source.other !== true ? source.filename : null;
+  const state = useAttachment(view.api, view.pageId, filename);
+  const alt = image.alt ?? L.confluence.imageAlt;
+  const style = image.width === null ? undefined : { width: `${image.width}px` };
+  const className = block ? "nx-dv-img nx-dv-img--block" : "nx-dv-img";
+  if (source.kind === "url") {
+    return <img className={className} src={source.url} alt={alt} style={style} loading="lazy" />;
+  }
+  if (source.other === true) {
+    return <span className="nx-dv-img-note">{L.confluence.imageOther(source.filename)}</span>;
+  }
+  if (state.phase === "loading") {
+    return (
+      <span className="nx-dv-img-note" role="status">
+        <Spin /> {L.confluence.imageLoading}
+      </span>
+    );
+  }
+  if (state.phase === "ready" && isImageType(state.mediaType)) {
+    return <img className={className} src={state.url} alt={alt} style={style} />;
+  }
+  if (state.phase === "ready") return <AttachmentChip filename={source.filename} />;
+  return (
+    <span className="nx-dv-img-note">
+      {state.phase === "too-large"
+        ? L.confluence.imageTooLarge(source.filename)
+        : L.confluence.imageFailed(source.filename)}
+    </span>
+  );
+}

@@ -4,12 +4,13 @@ import type { DraftSummary } from "@colonova-design/protocol";
 // 순수 모듈 — src 에서 곧장 읽는다(next-plans.test.ts 와 같은 모양).
 import { takePlanOpen } from "../src/next/chat/plan-ref-strip.ts";
 import { L } from "../src/next/labels.ts";
-import { draftRowStatus, draftsInProgress } from "../src/next/plans/home-drafts.ts";
+import { draftsInProgress } from "../src/next/plans/drafts-in-progress.ts";
 import { openPlanTarget } from "../src/next/plans/open-plan.ts";
 
 /**
- * 기획자 화면 손질(2026-10-23 · docs/planner-ux-2026-10-23.md)의 순수 판정 — 홈 · 사이드바가 세는 「작성 중인 초안」,
- * 홈 줄의 한 줄 상태, 초안 머리의 상태 줄, 그리고 기획서 칸의 한 자리를 여는 길(받든 맡기든 칸을 세운다).
+ * 기획자 화면 손질(2026-10-23 · docs/plans-tab-ux-overhaul-2026-10-31.md)의 순수 판정 — 사이드바 · 기획서 목록이
+ * 세는 「작성 중인 초안」, 그리고 기획서 칸의 한 자리를 여는 길(받든 맡기든 칸을 세운다). 홈 줄의 한 줄 상태
+ * (`draftRowStatus`)는 2026-10-31 홈 걷기로 걷혔다 — 마지막 손님인 홈 기획서 카드와 함께.
  */
 
 const MIN = 60_000;
@@ -54,29 +55,6 @@ test("작성 중인 초안 — 손이 더 갈 초안만, 새것부터(발행을 
     input.map((row) => row.docKey),
     ["p-2", "p-9"],
   );
-});
-
-test("홈 줄의 한 줄 상태 — 손이 필요한 처지는 warn 이고 글로도 말한다", () => {
-  assert.deepEqual(draftRowStatus(draft("p-5", "5", 0, "result-unknown", 1)), {
-    text: L.drafts.resultUnknownTitle,
-    warn: true,
-  });
-  assert.deepEqual(draftRowStatus(draft("p-6", "6", 1, "conflict", 1)), {
-    text: L.home.draftConflict,
-    warn: true,
-  });
-  assert.deepEqual(draftRowStatus(draft("p-8", "8", 2, "publishing", 1)), {
-    text: L.drafts.publishing,
-    warn: false,
-  });
-  assert.deepEqual(draftRowStatus(draft("p-2", "2", 3, "editing", 1)), {
-    text: `${L.home.draftChanged(3)} · ${L.drafts.unpublished}`,
-    warn: false,
-  });
-  assert.deepEqual(draftRowStatus(draft("n-3", null, 0, "editing", 1)), {
-    text: `${L.home.draftNewDoc} · ${L.drafts.unpublished}`,
-    warn: false,
-  });
 });
 
 test("초안 머리의 상태 줄 — 어디서 시작했고 무엇이 바뀌었는지(기계의 개정 번호 대신)", () => {

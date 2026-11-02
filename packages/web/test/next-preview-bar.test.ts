@@ -55,7 +55,8 @@ test("막대: 풍선에 쓰는 단축키의 열쇠는 모두 단축키 표에 �
 
 test("막대 CSS: 컨테이너 질의는 이름 붙은 컨테이너(nxpv · hday)만 부른다", () => {
   const found = allQueries();
-  assert.ok(queries().length >= 5, `막대의 질의가 너무 적다: ${queries().length}`);
+  // 2026-10-31 S6 으로 배율 알약이 `···` 위의 배지가 되어 700px 질의가 걷혔다 — 남은 폭 질의는 넷이다.
+  assert.ok(queries().length >= 4, `막대의 질의가 너무 적다: ${queries().length}`);
   for (const { head } of found) {
     // 이름이 없으면 가장 가까운 조상 컨테이너가 무엇이든 거기에 걸린다. 이름은 둘뿐이다 — 막대의 폭 질의,
     // 서랍의 날 머리(스크롤 상태) 질의.
@@ -93,14 +94,11 @@ test("막대 CSS: 질의의 기준 폭은 한 번씩만 서고 소스에서 위�
   );
 });
 
-test("막대: 작업 기록 단추는 서랍을 여닫는 단추다 — aria-expanded 와 aria-controls, aria-pressed 가 아니다", () => {
-  // 눌림 단추(aria-pressed)는 켜고 끄는 값이고, 서랍은 펼침이다 — 낭독기가 `펼침 · 접힘` 으로 읽고 서랍을 가리킨다.
-  const button = /<button[^>]*nx-hist-t[^>]*>/.exec(bar)?.[0] ?? "";
-  assert.match(button, /aria-expanded=\{historyOpen\}/);
-  assert.match(button, /aria-controls=\{drawerId\}/);
-  assert.doesNotMatch(button, /aria-pressed/);
-  // 이름은 열림 여부에 따라 바뀌지 않는다(낭독기가 같은 단추로 안다) — 풍선만 열려 있으면 `닫기` 로 바뀐다.
-  assert.match(button, /aria-label=\{L\.preview\.history\}/);
+test("막대: 작업 기록은 `···` 메뉴의 항목이다 — 옛 막대 단추(nx-hist-t)가 돌아오지 않는다(S6)", () => {
+  // 넓은 창의 기록은 오른쪽 칸의 탭(S10), 좁은 창은 화면 덮는 시트가 맡는다 — 막대의 단추는 빠졌다.
+  assert.doesNotMatch(bar, /nx-hist-t|aria-controls=\{drawerId\}/);
+  const menu = /<button[^>]*nx-mi[^>]*>[\s\S]*?<HistoryIcon \/>/.exec(bar)?.[0] ?? "";
+  assert.match(menu, /onHistory/);
 });
 
 // ── 2026-10-23 화면 전면 재설계 §4 F — 조절 세 묶음 · 32px · 공통 부품
@@ -142,9 +140,9 @@ test("막대: 단추는 공통 부품이다 — 포인트 바탕은 찍기가 �
   assert.doesNotMatch(bar, /nx-tbtn/);
   // 찍기 — 보통 단추(`nx-btn`)이고 켜짐에서만 `nx-btn--accent`.
   assert.match(bar, /nx-btn nx-pin-t\$\{pinOn \? " nx-btn--accent" : ""\}/);
-  // 기록 — 서랍을 여닫는 단추라 고스트다. 열려 있는 동안의 진하기는 aria-expanded 가 칠한다.
-  assert.match(bar, /className="nx-btn nx-btn--ghost nx-hist-t"/);
-  assert.match(css, /\.nx \.nx-hist-t\[aria-expanded="true"\]\s*\{/);
+  // 기록 단추는 막대에서 빠졌다(S6 · S10) — 옛 고스트 단추의 옷도 함께 걷혔다.
+  assert.doesNotMatch(bar, /nx-hist-t(?!ile)/);
+  assert.doesNotMatch(css, /nx-hist-t(?!ile)/);
   // 입력창 칩(chat.css 의 `nx-tbtn`)이 기대던 `flex: none` 한 줄만 특이도 0 으로 남는다 — chat.css 의 값이 늘 이긴다.
   assert.match(css, /:where\(\.nx\) \.nx-tbtn\s*\{\s*flex:\s*none;\s*\}/);
   assert.doesNotMatch(css, /\.nx \.nx-tbtn/);

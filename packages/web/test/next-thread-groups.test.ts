@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ThreadSummary } from "@colonova-design/protocol";
 // 순수 모듈 — src 에서 곧장 읽는다(next-motion.test.ts 와 같은 모양).
-import { bucketOf, groupThreadsByDay, startOfDay } from "../src/next/lib/thread-groups.ts";
+import {
+  bucketOf,
+  groupByDay,
+  groupThreadsByDay,
+  startOfDay,
+} from "../src/next/lib/thread-groups.ts";
 
 /** 지역 시간 2026-10-06 15:30 — 달력의 날 단위로 셈하므로 시험이 어느 시간대에서 돌아도 같다. */
 const NOW = new Date(2026, 9, 6, 15, 30).getTime();
@@ -108,4 +113,22 @@ test("groupThreadsByDay: 읽을 수 없는 시각은 가장 오래된 묶음 끝
 
 test("groupThreadsByDay: 빈 목록은 묶음이 없다", () => {
   assert.deepEqual(groupThreadsByDay([], NOW), []);
+});
+
+test("groupByDay: 시각을 꺼내는 길만 맡기면 어떤 줄도 같은 규칙으로 묶인다", () => {
+  // 기획 대화의 줄 — `updatedAt` 이 아니라 `at` 필드를 쓴다(2026-11-03).
+  const conv = (id: string, at: string) => ({ threadId: id, at });
+  const groups = groupByDay(
+    [conv("a", at(0, 14)), conv("b", at(1, 9)), conv("c", at(1, 20)), conv("d", at(40, 10))],
+    (one) => one.at,
+    NOW,
+  );
+  assert.deepEqual(
+    groups.map((group) => [group.bucket, group.rows.map((one) => one.threadId)]),
+    [
+      ["today", ["a"]],
+      ["yesterday", ["c", "b"]],
+      ["older", ["d"]],
+    ],
+  );
 });

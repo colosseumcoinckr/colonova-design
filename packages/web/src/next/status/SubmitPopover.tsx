@@ -45,6 +45,12 @@ interface SubmitPopoverProps {
   note: string;
   onNote: (note: string) => void;
   onPreview: (screen: CycleScreen) => void;
+  /**
+   * 아직 발행하지 않은 기획서 초안(2026-10-30 같이 고치기) — 화면 요청이 같이 고친 초안도 여기 선다. 발행은 제출과
+   * 따로 기획서에서 한다. 없거나 비면 절이 서지 않는다.
+   */
+  unpublishedPlans?: Array<{ docKey: string; title: string }>;
+  onOpenPlans?: () => void;
 }
 
 /**
@@ -105,6 +111,8 @@ function SubmitBody({
   note,
   onNote,
   onPreview,
+  unpublishedPlans = [],
+  onOpenPlans,
 }: SubmitPopoverProps & { leaving: boolean; summaryId: string }) {
   const close = useModalClose();
   const closeNow = useRef(close);
@@ -388,6 +396,31 @@ function SubmitBody({
             <h3 className="nx-sub-h">{L.submitConfirm.outsideScreens(outsideFiles)}</h3>
             <p className="nx-sub-note">{L.submitConfirm.outsideDetail}</p>
             <ul>{outside.map(outsideRow)}</ul>
+          </section>
+        )}
+        {/* 발행 전 기획서 초안(2026-10-30) — 제출과 발행은 따로다. 여기서는 알리고 기획서로 데려간다. */}
+        {unpublishedPlans.length > 0 && (
+          <section className="nx-sub-list nx-sub-plans">
+            <h3 className="nx-sub-h">
+              {L.submitConfirm.plansUnpublished(unpublishedPlans.length)}
+            </h3>
+            <p className="nx-sub-note">{L.submitConfirm.plansNote}</p>
+            <ul>
+              {unpublishedPlans.slice(0, 5).map((plan) => (
+                <li key={plan.docKey} className="nx-sub-plan">
+                  {plan.title}
+                </li>
+              ))}
+            </ul>
+            {onOpenPlans !== undefined && (
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm nx-btn--ghost"
+                onClick={onOpenPlans}
+              >
+                {L.submitConfirm.plansOpen}
+              </button>
+            )}
           </section>
         )}
       </ModalBody>

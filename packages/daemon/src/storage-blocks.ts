@@ -916,9 +916,68 @@ export function serializeStorage(doc: StorageDoc): string {
 export function projectBlock(block: StorageBlock): BlockProjection {
   const proj = projectXml(block.xml, block.kind);
   const tokens: Record<string, string> = {};
-  for (const token of proj.tokens) tokens[token.name] = token.label;
+  for (const token of proj.tokens) tokens[token.name] = wireTokenLabel(token);
   return { view: proj.view, editable: proj.editable, tokens };
 }
+
+/**
+ * 조각의 기계 이름표 — 상태 표시만 값을 함께 실는다(2026-11-03 실앱 감사: 초안 편집기의 상태 칩이
+ * 종류만 보여 값 · 색이 사라졌다). 기록(`TokenInfo.label`)은 종류만 남겨 보고(`storage-report`)와
+ * 게시 대조가 그대로 읽히게 하고, 화면에 나가는 이름표만 `macro:status:색:값` 꼴로 넉긴다.
+ */
+function wireTokenLabel(token: TokenInfo): string {
+  if (token.label !== "macro:status" || !token.single) return token.label;
+  const parsed = statusOfSource(token.source);
+  return parsed === null ? token.label : parsed;
+}
+
+/** 상태 매크로의 원문 → `macro:status:색:값` — 읽지 못하면 null 로 물러난다. */
+function statusOfSource(src: string): string | null {
+  const nodes = scanContent(src, 0, src.length, null).nodes;
+  const el = nodes.find((node): node is ScanElem => node.kind === "elem");
+  if (el === undefined || attrOf(el, "ac:name") !== "status") return null;
+  // Confluence 는 색을 `Green` 처럼 대문자로 실어 온다 — 집합은 소문자라 내려서 읽는다(2026-11-03).
+  const colour =
+    STATUS_COLORS[
+      (readParameter(el, "colour") ?? readParameter(el, "color") ?? "").toLowerCase()
+    ] ?? "grey";
+  const text = readParameter(el, "title") ?? "";
+  return `macro:status:${colour}:${text}`;
+}
+
+/** 매크로의 `<ac:parameter ac:name="…">값</ac:parameter>` — 없으면 null. */
+function readParameter(node: ScanElem, name: string): string | null {
+  for (const child of elementChildren(node)) {
+    if (child.name.toLowerCase() !== "ac:parameter") continue;
+    if (attrOf(child, "ac:name") !== name) continue;
+    return textContentOf(child);
+  }
+  return null;
+}
+
+/** 요소 안의 글자 — 매개변수의 값은 보통 한 덩이의 글자다. */
+function textContentOf(node: ScanElem): string {
+  let out = "";
+  const stack: ScanNode[] = [...node.children];
+  while (stack.length > 0) {
+    const cur = stack.shift();
+    if (cur === undefined) break;
+    if (cur.kind === "text") out += cur.src;
+    else if (cur.kind === "elem") stack.push(...cur.children);
+  }
+  return out;
+}
+
+/** 상태 매크로의 색 — `confluence-view` 의 STATUS_COLORS 와 같은 집합이다. */
+const STATUS_COLORS: Record<string, string> = {
+  grey: "grey",
+  gray: "grey",
+  red: "red",
+  yellow: "yellow",
+  green: "green",
+  blue: "blue",
+  purple: "purple",
+};
 
 export function blockFingerprint(xml: string): string {
   return createHash("sha256").update(xml, "utf8").digest("hex").slice(0, 16);

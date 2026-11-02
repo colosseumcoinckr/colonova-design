@@ -36,6 +36,13 @@
  *   GET /wiki/api/v2/pages/{id}/operations           — 문서에 걸린 동작(F2)
  *   GET /wiki/api/v2/pages/{id}/ancestors?limit=250  — 윗문서 줄(id 들 · F2)
  *   GET /wiki/api/v2/pages?space-id=…&title=…&status=current&limit=25 — 제목으로 문서 찾기(F2)
+ *   GET /wiki/api/v2/pages/{id}/attachments?limit=100 — 첨부 목록(2026-10-30 사용자 요청 · 실사이트 실측 전)
+ *   GET /wiki/download/attachments/{id}/{파일}        — 첨부 바이트(목록의 downloadLink · 자격은 헤더로만)
+ *   GET /wiki/api/v2/pages/{id}/labels?limit=100      — 라벨 목록(2026-10-30)
+ *   POST /wiki/rest/api/content/{id}/label            — 라벨 더하기(v1 · 몸은 [{prefix, name}] · 2026-10-30)
+ *   DELETE /wiki/rest/api/content/{id}/label?name=…   — 라벨 빼기(v1 · 2026-10-30)
+ *   GET /wiki/api/v2/pages/{id}/versions?limit=50&sort=-modified-date — 판 기록(2026-10-30)
+ *   GET /wiki/api/v2/pages/{id}?version=N&body-format=storage — 옛 판 한 장(2026-10-30)
  */
 
 import { BUDGETS, backoffDelay } from "./budgets.js";
@@ -115,6 +122,46 @@ export interface ConfluenceComment {
    * 응답이 안 주면 모른다 — 부르는 쪽은 고치기를 거절한다.
    */
   version: number | null;
+}
+
+/** 첨부 한 줄 — 받는 주소(downloadLink)는 데몬 안에서만 쓴다(웹에는 이름 · 크기 · 종류만 · 2026-10-30). */
+export interface ConfluenceAttachment {
+  id: string;
+  title: string;
+  mediaType: string | null;
+  size: number | null;
+  downloadLink: string | null;
+  createdAt: string | null;
+}
+
+/** 판 기록 한 줄(2026-10-30) — 쓴 사람은 id 로 온다. */
+export interface ConfluenceVersion {
+  number: number;
+  authorId: string | null;
+  createdAt: string | null;
+  message: string;
+  minorEdit: boolean;
+}
+
+/**
+ * 첨부의 받는 주소를 transport 의 길로 — `/download/…` 는 `/wiki` 아래에 붙이고, 이미 `/wiki/download/…` 면
+ * 그대로, 절대 주소는 길과 쿼리만 쓴다. 다운로드 길이 아니면 null — 자격을 실은 요청이 다른 길로
+ * 가지 않게 한다(2026-10-30).
+ */
+export function attachmentDownloadPath(link: string): string | null {
+  let path = link.trim();
+  if (/^https?:\/\//iu.test(path)) {
+    try {
+      const url = new URL(path);
+      path = `${url.pathname}${url.search}`;
+    } catch {
+      return null;
+    }
+  }
+  if (path.startsWith("/download/")) path = `/wiki${path}`;
+  if (!path.startsWith("/wiki/download/")) return null;
+  if (path.includes("..")) return null;
+  return path;
 }
 
 /** 인증 검증의 답 — github.ts 의 whoAmI 선례. 실패 문장은 재연결의 길을 가리킨다. */
@@ -758,6 +805,126 @@ export class ConfluenceClient {
   }
 
   /**
+   * 첨부 목록 — 이 문서에 달린 파일(2026-10-30 사용자 요청). 바이트는 downloadLink 로 따로 받는다.
+   * 판 · 크기 · 종류는 응답이 줄 때만 실린다.
+   */
+  async listAttachments(pageId: string): Promise<ConfluenceRead<ConfluenceAttachment[]>> {
+    const first = `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/attachments?limit=100`;
+    return await this.listRows(first, "첨부 읽기", {}, (row) => {
+      const id = asString(row.id);
+      if (!id) return null;
+      const version = asRecord(row.version);
+      return {
+        id,
+        title: asString(row.title) ?? "",
+        mediaType: asString(row.mediaType),
+        size: asNumber(row.fileSize),
+        downloadLink: asString(row.downloadLink) ?? asString(asRecord(row._links)?.download),
+        createdAt: asString(version?.createdAt) ?? asString(row.createdAt),
+      };
+    });
+  }
+
+  /**
+   * 첨부 바이트 — 목록의 downloadLink(`/download/attachments/…`)를 사이트의 `/wiki` 아래에서 받는다.
+   * 자격은 헤더로만 탄다. 다른 곳을 가리키는 주소는 받지 않는다(attachmentDownloadPath).
+   */
+  async downloadAttachment(
+    downloadLink: string,
+    maxBytes: number,
+  ): Promise<ConfluenceRead<{ bytes: Uint8Array; contentType: string | null }>> {
+    const path = attachmentDownloadPath(downloadLink);
+    if (path === null) {
+      return {
+        readable: false,
+        reason: "unavailable",
+        detail: "첨부 받기에 실패했습니다 — 받을 주소를 알아보지 못했습니다.",
+      };
+    }
+    return await this.requestBytes(path, "첨부 받기", maxBytes);
+  }
+
+  /** 라벨 목록 — 이름과 접두(global · my · team)만(2026-10-30). */
+  async listLabels(
+    pageId: string,
+  ): Promise<ConfluenceRead<Array<{ name: string; prefix: string }>>> {
+    const first = `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/labels?limit=100`;
+    return await this.listRows(first, "라벨 읽기", {}, (row) => {
+      const name = asString(row.name);
+      if (!name) return null;
+      return { name, prefix: asString(row.prefix) ?? "global" };
+    });
+  }
+
+  /** 라벨 더하기 — v1 의 content label 길(2026-10-30). 이미 있는 라벨도 Confluence 는 그대로 받는다. */
+  async addLabel(pageId: string, name: string): Promise<ConfluenceWrite<{ name: string }>> {
+    const write = await this.requestWrite(
+      "POST",
+      `/wiki/rest/api/content/${encodeURIComponent(pageId)}/label`,
+      "라벨 더하기",
+      [{ prefix: "global", name }],
+    );
+    if (write.written === false) return write;
+    return { written: true, value: { name } };
+  }
+
+  /** 라벨 빼기 — 이름을 쿼리로 싣는 v1 길(이름에 `/` 가 있어도 된다 · 2026-10-30). 204 는 빈 몸이다. */
+  async removeLabel(pageId: string, name: string): Promise<ConfluenceWrite<{ name: string }>> {
+    const write = await this.requestWrite(
+      "DELETE",
+      `/wiki/rest/api/content/${encodeURIComponent(pageId)}/label?name=${encodeURIComponent(name)}`,
+      "라벨 빼기",
+    );
+    if (write.written === false) return write;
+    return { written: true, value: { name } };
+  }
+
+  /** 판 기록 — 최근 것부터 한 쪽(50개)만 읽는다(2026-10-30). 그 너머는 Confluence 에서 본다. */
+  async listVersions(pageId: string): Promise<ConfluenceRead<ConfluenceVersion[]>> {
+    const read = await this.requestRead(
+      `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/versions?limit=50&sort=-modified-date`,
+      "판 기록 읽기",
+    );
+    if (read.readable === false) return read;
+    const list = read.value.results;
+    const versions: ConfluenceVersion[] = [];
+    if (Array.isArray(list)) {
+      for (const row of list) {
+        const record = asRecord(row);
+        const number = asNumber(record?.number);
+        if (record === null || number === null) continue;
+        versions.push({
+          number,
+          authorId: asString(record.authorId),
+          createdAt: asString(record.createdAt),
+          message: typeof record.message === "string" ? record.message : "",
+          minorEdit: record.minorEdit === true,
+        });
+      }
+    }
+    versions.sort((a, b) => b.number - a.number);
+    return { readable: true, value: versions };
+  }
+
+  /** 옛 판 한 장 — 읽는 해석은 readPage 와 같다(2026-10-30). */
+  async readPageVersion(pageId: string, version: number): Promise<ConfluenceRead<ConfluencePage>> {
+    const read = await this.requestRead(
+      `/wiki/api/v2/pages/${encodeURIComponent(pageId)}?version=${version}&body-format=storage`,
+      "옛 판 읽기",
+    );
+    if (read.readable === false) return read;
+    const page = pageOf(read.value);
+    if (page === null) {
+      return {
+        readable: false,
+        reason: "unavailable",
+        detail: "옛 판 읽기에 실패했습니다 — 응답에 본문이 없습니다.",
+      };
+    }
+    return { readable: true, value: page };
+  }
+
+  /**
    * 목록 한 끝까지 — 첫 주소에서 시작해 다음 쪽 표지(v2 는 `_links.next`, v1 CQL 은 Link 헤더)를 상한(PAGE_CAP)까지
    * 따라간다. 모양을 다르게 읽는 것은 `pick` 이고, 아이가 없는 줄은 거른다. 실패는 전체의 실패로 돌아온다 —
    * 빈 목록은 「읽었는데 없다」 일 때만 나온다(github-ci 선례). `requireComplete` 는 상한에서 끊긴 목록을
@@ -990,6 +1157,67 @@ export class ConfluenceClient {
       return opts.headers
         ? { readable: true, value: record, headers }
         : { readable: true, value: record };
+    }
+  }
+
+  /**
+   * 바이트 읽기 — 첨부 받기의 한 끝(2026-10-30). requestRead 와 같은 분류 · 사다리를 타고, 몸은
+   * JSON 으로 풀지 않는다. 상한을 넘는 몸은 읽은 뒤에도 버린다(선로 한 번의 크기를 지킨다).
+   */
+  private async requestBytes(
+    url: string,
+    label: string,
+    maxBytes: number,
+  ): Promise<ConfluenceRead<{ bytes: Uint8Array; contentType: string | null }>> {
+    for (let attempt = 1; ; attempt += 1) {
+      let status: number;
+      let body: Uint8Array;
+      let headers: Record<string, string> | undefined;
+      try {
+        ({ status, body, headers } = await this.transport.request({
+          method: "GET",
+          url,
+          headers: { ...this.headers(), accept: "*/*" },
+        }));
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        return {
+          readable: false,
+          reason: "unavailable",
+          detail: `${label}에 실패했습니다 — Confluence에 연결하지 못했습니다 (${firstLine(reason)})`,
+        };
+      }
+      if (status === 429 && attempt < LIMIT_ATTEMPTS) {
+        await this.sleep(
+          backoffDelay(attempt, BUDGETS.limitRetry.baseMs, BUDGETS.limitRetry.capMs),
+        );
+        continue;
+      }
+      if (status < 200 || status >= 300) {
+        return {
+          readable: false,
+          reason:
+            status === 401
+              ? "unauthorized"
+              : status === 403
+                ? "forbidden"
+                : status === 429
+                  ? "limit"
+                  : "unavailable",
+          detail: httpError(label, status, body),
+        };
+      }
+      if (body.byteLength > maxBytes) {
+        return {
+          readable: false,
+          reason: "unavailable",
+          detail: `${label}에 실패했습니다 — 파일이 너무 큽니다.`,
+        };
+      }
+      return {
+        readable: true,
+        value: { bytes: body, contentType: headers?.["content-type"] ?? null },
+      };
     }
   }
 

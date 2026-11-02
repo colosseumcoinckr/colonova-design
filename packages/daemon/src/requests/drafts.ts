@@ -1,8 +1,9 @@
 import { join } from "node:path";
+import { appendCompareDecline } from "../plan-compare.js";
 import { PLAN_REFS_LIMIT, readPlanRefs, recentPlanRefs } from "../plan-refs.js";
 import type { RequestHandlers, RouterDeps } from "./types.js";
 
-type DraftDeps = Pick<RouterDeps, "drafts" | "registry">;
+type DraftDeps = Pick<RouterDeps, "drafts" | "registry" | "screenSync" | "fleet">;
 
 type DraftRequest = Extract<keyof RequestHandlers, `draft.${string}`>;
 
@@ -16,6 +17,18 @@ export function draftHandlers(deps: DraftDeps): RequestHandlers<DraftRequest> {
   const drafts = deps.drafts;
   return {
     "draft.list": () => drafts.list(),
+    // 같이 고치기(2026-10-30) — 되돌리기는 활성 프로젝트의 기록, 문서 고르기는 그 대화의 프로젝트다.
+    "draft.syncUndo": (message) => {
+      const slug = deps.registry.activeSlug();
+      if (slug === null) throw new Error("프로젝트를 먼저 골라 주세요.");
+      return deps.screenSync.undo(slug, message.entryId);
+    },
+    "draft.syncPick": (message) => {
+      const slug = deps.fleet.workspaceOfSession(message.sessionId)?.slug ?? null;
+      if (slug === null)
+        throw new Error("이 대화의 프로젝트를 찾지 못했어요 — 대화를 다시 열어 주세요.");
+      return deps.screenSync.pick(slug, message.sessionId, message.requestId, message.pageId);
+    },
     "draft.open": (message) => drafts.open(message.pageId),
     "draft.create": (message) =>
       drafts.create({
@@ -28,18 +41,35 @@ export function draftHandlers(deps: DraftDeps): RequestHandlers<DraftRequest> {
     "draft.edit": (message) => drafts.edit(message.docKey, message.expectedRevision, message.edits),
     "draft.discard": (message) => drafts.discard(message.docKey),
     "draft.ask": (message) =>
-      drafts.ask(message.docKey, message.text, message.refs, {
-        ...(message.model !== undefined ? { model: message.model } : {}),
-        ...(message.effort !== undefined ? { effort: message.effort } : {}),
-      }),
+      drafts.ask(
+        message.docKey,
+        message.text,
+        message.refs,
+        {
+          ...(message.model !== undefined ? { model: message.model } : {}),
+          ...(message.effort !== undefined ? { effort: message.effort } : {}),
+        },
+        message.threadId,
+      ),
     "draft.cancel": (message) => drafts.cancel(message.docKey),
-    "draft.thread": (message) => drafts.thread(message.docKey),
+    // 골라 읽는 대화(2026-11-03) — 목록 줄이 옛 대화를 다시 연다.
+    "draft.thread": (message) => drafts.thread(message.docKey, message.threadId),
+    // 기획 대화 목록 · 옮기기 · 지우기 · 이름 바꾸기(2026-10-31 3단계 · 2026-11-03 이름) — 사이드바 위 묶음이 쓴다.
+    "draft.threads": () => drafts.threadsList(),
+    "draft.threadMove": (message) => drafts.moveThread(message.threadId, message.docKey),
+    "draft.threadDelete": (message) => drafts.deleteThread(message.threadId),
+    "draft.threadRename": (message) => drafts.renameThread(message.threadId, message.title),
     "draft.adopt": (message) =>
       drafts.adopt(message.docKey, message.proposalId, message.opIds, message.expectedRevision),
     "draft.reject": (message) =>
       message.opIds === undefined
         ? drafts.reject(message.docKey, message.proposalId)
         : drafts.reject(message.docKey, message.proposalId, message.opIds),
+    // 바로 반영의 되돌리기와 판 고르기(2026-10-31 2단계).
+    "draft.undo": (message) => drafts.undoProposal(message.docKey, message.proposalId),
+    "draft.revisions": (message) => drafts.revisions(message.docKey),
+    "draft.revision": (message) => drafts.revision(message.docKey, message.revision),
+    "draft.revisionRestore": (message) => drafts.restoreRevision(message.docKey, message.revision),
     "draft.publish.preview": (message) => drafts.publishPreview(message.docKey),
     "draft.publish": (message) =>
       drafts.publish({
@@ -67,5 +97,20 @@ export function draftHandlers(deps: DraftDeps): RequestHandlers<DraftRequest> {
       const file = join(deps.registry.paths(slug).root, "plans", "refs.jsonl");
       return { refs: recentPlanRefs(readPlanRefs(file, null), message.sessionId, PLAN_REFS_LIMIT) };
     },
+    // 화면과 맞춰 보기(2026-11-02 · 같이 고치기 UX 계획 C7 · C8) — 판정만 돌고 어디에도 쓰지 않는다.
+    "draft.compare": (message) => drafts.compare(message.pageId),
+    "draft.compareDecline": (message) => {
+      const slug = deps.registry.activeSlug();
+      if (slug === null) throw new Error("프로젝트를 먼저 골라 주세요.");
+      appendCompareDecline(
+        deps.registry.paths(slug).root,
+        message.pageId,
+        message.screenName,
+        new Date().toISOString(),
+      );
+      return { ok: true };
+    },
+    "draft.syncDocs": (message) => drafts.syncDocs(message.sessionId),
+    "draft.syncScreens": (message) => drafts.syncScreens(message.pageId),
   };
 }

@@ -836,22 +836,28 @@ test("묻기 — 사람 메시지 · AI 답 · 변경안 · 방송 순서 · 절
     assert.equal(assistant?.role, "assistant");
     assert.equal(assistant?.proposalId, doneBroadcast?.proposalId);
     assert.deepEqual(assistant?.reads, [{ pageId: PAGE_ID, title: "로그인 화면", version: 4 }]);
+    // 바로 반영(2026-10-31 2단계) — 채택 없이 초안에 들어가고, 개정이 오르며, 되돌릴 재료가 남는다.
     assert.deepEqual(
       thread.proposals[0]?.ops.map((op) => [op.type, op.state]),
-      [["replace", "open"]],
+      [["replace", "adopted"]],
     );
-    // 채택 — 블록이 바뀌고 개정이 오른다.
-    const adopted = await rig1.service.adopt(
-      KEY,
-      thread.proposals[0]?.proposalId ?? "",
-      ["op-1"],
-      0,
-    );
-    assert.equal(adopted.revision, 1);
-    assert.equal(adopted.blocks[1]?.status, "changed");
-    assert.equal(paragraphText(adopted.blocks[1]), "AI가 고친 문단이다.");
+    assert.equal(typeof thread.proposals[0]?.appliedAt, "string");
+    assert.equal(thread.proposals[0]?.appliedOps, 1);
+    assert.equal(thread.proposals[0]?.keptOps, 0);
+    assert.equal(thread.proposals[0]?.undoable, true);
+    const applied = await rig1.service.get(KEY);
+    assert.equal(applied.revision, 1);
+    assert.equal(applied.blocks[1]?.status, "changed");
+    assert.equal(paragraphText(applied.blocks[1]), "AI가 고친 문단이다.");
+    // 바로 반영의 되돌리기 — 그 판 직전으로 돌리고 걸음은 거절로 적힌다.
+    const undone = await rig1.service.undoProposal(KEY, thread.proposals[0]?.proposalId ?? "");
+    assert.deepEqual(undone, { restored: 1, kept: 0 });
+    const reverted = await rig1.service.get(KEY);
+    assert.equal(reverted.revision, 2);
+    assert.equal(reverted.blocks[1]?.status, "same");
     const after = rig1.service.thread(KEY);
-    assert.equal(after.proposals[0]?.ops[0]?.state, "adopted");
+    assert.equal(after.proposals[0]?.ops[0]?.state, "rejected");
+    assert.equal(after.proposals[0]?.undoable, undefined);
   } finally {
     rig1.cleanup();
   }
@@ -1041,33 +1047,44 @@ test("묻기 — cancel 은 cancelled 방송으로 끝내고 변경안이 생기
 });
 
 test("대화 보기 — 사람이 고친 블록의 걸음은 stale 다", async () => {
-  const ai = fakeAi(async () => ({
-    reply: "고쳐 보았다.",
-    summary: "첫 문단 다듬기",
-    ops: [
-      {
-        opId: "op-1",
-        type: "replace",
-        blockId: "b1",
-        view: { kind: "paragraph", text: "AI 문단이다." },
-      },
-    ],
-    sdkSessionId: "sess-3",
-  }));
+  // 생성이 도는 사이에 사람이 고친다 — 바로 반영은 그 블록을 덮지 않고 걸음을 남긴다(2026-10-31 2단계).
+  const gate = Promise.withResolvers<void>();
+  const ai = fakeAi(async () => {
+    await gate.promise;
+    return {
+      reply: "고쳐 보았다.",
+      summary: "첫 문단 다듬기",
+      ops: [
+        {
+          opId: "op-1",
+          type: "replace",
+          blockId: "b1",
+          view: { kind: "paragraph", text: "AI 문단이다." },
+        },
+      ],
+      sdkSessionId: "sess-3",
+    };
+  });
   const rig1 = rig(ai.runner);
   try {
     await rig1.service.open(PAGE_ID);
     rig1.service.ask(KEY, "다듬어 줘", []);
     await until(
-      () => aiMessages(rig1.messages).some((message) => message.phase === "done"),
-      "done 방송",
+      () => aiMessages(rig1.messages).some((message) => message.phase === "started"),
+      "started 방송",
     );
-    // 사람이 같은 블록을 고친다 — 걸음은 stale 다.
+    // 사람이 같은 블록을 고친다 — 걸음은 오래되고 바로 반영에서 덮이지 않는다.
     await rig1.service.edit(KEY, 0, [
       { type: "set", blockId: "b1", view: { kind: "paragraph", text: "사람이 고친 문단이다." } },
     ]);
+    gate.resolve();
+    await until(
+      () => aiMessages(rig1.messages).some((message) => message.phase === "done"),
+      "done 방송",
+    );
     const thread = rig1.service.thread(KEY);
     assert.equal(thread.proposals[0]?.ops[0]?.state, "stale");
+    assert.equal(thread.proposals[0]?.appliedAt, undefined);
     // stale 걸음의 채택은 적용되지 않고 stale 로 표시된다 — 개정도 오르지 않는다.
     const view = await rig1.service.adopt(KEY, thread.proposals[0]?.proposalId ?? "", ["op-1"], 1);
     assert.equal(view.revision, 1);
@@ -1078,83 +1095,82 @@ test("대화 보기 — 사람이 고친 블록의 걸음은 stale 다", async (
   }
 });
 
-test("채택 — 일부만 채택하고 남은 걸음은 열린 채로 둔다", async () => {
-  const ai = fakeAi(async () => ({
-    reply: "세 걸음이다.",
-    summary: "제목과 문단",
-    ops: [
-      { opId: "op-title", type: "title", title: "AI가 지은 제목이다." },
-      {
-        opId: "op-insert",
-        type: "insert",
-        afterBlockId: "b2",
-        view: { kind: "paragraph", text: "덧붙는 문단이다." },
-      },
-    ],
-    sdkSessionId: "sess-4",
-  }));
+test("판 고르기 — 바로 반영이 쌓은 판을 읽고 고른 판으로 되돌린다", async () => {
+  const ai = heldAi();
   const rig1 = rig(ai.runner);
   try {
     await rig1.service.open(PAGE_ID);
-    rig1.service.ask(KEY, "제목을 지어 줘", []);
-    await until(
-      () => aiMessages(rig1.messages).some((message) => message.phase === "done"),
-      "done 방송",
-    );
-    const thread = rig1.service.thread(KEY);
-    const proposalId = thread.proposals[0]?.proposalId ?? "";
-    // 첫 채택 — 제목만. 남은 걸음은 열려 있고, 반복 채택은 두 번 적용하지 않는다.
-    const first = await rig1.service.adopt(KEY, proposalId, ["op-title"], 0);
-    assert.equal(first.revision, 1);
-    assert.equal(first.title, "AI가 지은 제목이다.");
-    assert.equal(rig1.service.thread(KEY).proposals[0]?.ops[0]?.state, "adopted");
-    assert.equal(rig1.service.thread(KEY).proposals[0]?.ops[1]?.state, "open");
-    const repeated = await rig1.service.adopt(KEY, proposalId, ["op-title"], 1);
-    assert.equal(repeated.revision, 1);
-    // 나머지 채택 — 문단이 붙는다.
-    const second = await rig1.service.adopt(KEY, proposalId, ["op-insert"], 1);
-    assert.equal(second.revision, 2);
-    assert.equal(second.blocks[3]?.status, "new");
-    // 거절 — 열린 걸음은 이미 없고, 상태는 그대로다.
-    const threadView = await rig1.service.reject(KEY, proposalId);
+    rig1.service.ask(KEY, "첫 문단을 다듬고 문단을 덧붙여 줘", []);
+    await until(() => ai.calls.length === 1, "생성이 AI 를 불렀다");
+    ai.release(threeSteps("sess-revs"));
+    await untilDone(rig1.messages);
+    // 바로 반영이 판 하나를 쌓는다 — 만든 이는 AI · 대화 이름이다.
+    await rig1.service.edit(KEY, 1, [
+      { type: "set", blockId: "b2", view: { kind: "paragraph", text: "사람이 고친 문단이다." } },
+    ]);
+    const rows = await rig1.service.revisions(KEY);
     assert.deepEqual(
-      threadView.proposals[0]?.ops.map((op) => op.state),
-      ["adopted", "adopted"],
+      rows.map((row) => [row.revision, row.origin, row.label]),
+      [
+        [2, "person", null],
+        [1, "ai", "첫 문단을 다듬고 문단을 덧붙여 줘"],
+      ],
     );
+    // 기준 대조의 셈 — 사람이 고친 판은 AI 문단과 사람 문단이 모두 바뀐 곳이고, 덧붙인 블록은 두 판에서 새 블록이다.
+    assert.deepEqual(rows[0]?.changes, { changed: 2, inserted: 1, deleted: 0 });
+    assert.deepEqual(rows[1]?.changes, { changed: 1, inserted: 1, deleted: 0 });
+    // 옛 판의 읽기 전용 모습 — AI 문단이 보인다.
+    const old = await rig1.service.revision(KEY, 1);
+    assert.equal(old.title, "AI가 지은 제목이다.");
+    assert.equal(paragraphText(old.blocks[1]), "AI가 다듬은 첫 문단이다.");
+    // 고른 판으로 되돌린다 — 제목과 문단이 그 판으로 돌아온다.
+    const restored = await rig1.service.restoreRevision(KEY, 1);
+    assert.equal(restored.revision, 3);
+    assert.equal(restored.title, "AI가 지은 제목이다.");
+    assert.equal(paragraphText(restored.blocks[1]), "AI가 다듬은 첫 문단이다.");
+    assert.equal(paragraphText(restored.blocks[3]), "AI가 덧붙인 문단이다.");
+    // 없는 판은 거절이다.
+    await assert.rejects(rig1.service.revision(KEY, 99), /그 개정의 판이 없습니다/);
   } finally {
     rig1.cleanup();
   }
 });
 
-test("거절 — 열린 걸음을 rejected 로 두고 초안은 그대로다", async () => {
-  const ai = fakeAi(async () => ({
-    reply: "지운다.",
-    summary: "둘째 문단 지우기",
-    ops: [{ opId: "op-del", type: "delete", blockId: "b2" }],
-    sdkSessionId: "sess-5",
-  }));
+test("거절 — 바로 반영된 걸음은 거절이 닿지 않고 초안도 그대로다", async () => {
+  const ai = heldAi();
   const rig1 = rig(ai.runner);
   try {
     await rig1.service.open(PAGE_ID);
     rig1.service.ask(KEY, "둘째 문단을 지워 줘", []);
-    await until(
-      () => aiMessages(rig1.messages).some((message) => message.phase === "done"),
-      "done 방송",
-    );
+    await until(() => ai.calls.length === 1, "생성이 AI 를 불렀다");
+    ai.release({
+      reply: "지운다.",
+      summary: "둘째 문단 지우기",
+      ops: [{ opId: "op-del", type: "delete", blockId: "b2" }],
+      sdkSessionId: "sess-5",
+    });
+    await untilDone(rig1.messages);
+    // 바로 반영 — 둘째 문단은 이미 지워졌다.
     const view = await rig1.service.get(KEY);
+    assert.equal(view.revision, 1);
+    assert.deepEqual(
+      view.blocks.map((block) => block.id),
+      ["b0", "b1"],
+    );
+    // 채택 없는 흐름에서 거절은 열린 걸음에만 닿는다 — 이미 들어간 걸음과 초안은 그대로다.
     const threadView = await rig1.service.reject(
       KEY,
       rig1.service.thread(KEY).proposals[0]?.proposalId ?? "",
     );
     assert.deepEqual(
       threadView.proposals[0]?.ops.map((op) => op.state),
-      ["rejected"],
+      ["adopted"],
     );
     const after = await rig1.service.get(KEY);
     assert.equal(after.revision, view.revision);
     assert.deepEqual(
       after.blocks.map((block) => block.id),
-      ["b0", "b1", "b2"],
+      ["b0", "b1"],
     );
   } finally {
     rig1.cleanup();
@@ -1739,21 +1755,27 @@ test("발행 뒤 재구성 — 넣고 · 빼고 · 옮긴 발행 뒤에 초안�
   }
 });
 
-test("발행 뒤 재구성 — 발행 전의 AI 변경안은 발행 뒤에 채택하면 오래됨으로 거절된다", async () => {
-  const ai = fakeAi(async () => ({
-    reply: "첫 문단을 다듬고 둘째 문단을 지운다.",
-    summary: "발행 전 변경안",
-    ops: [
-      {
-        opId: "op-fix",
-        type: "replace",
-        blockId: "b1",
-        view: { kind: "paragraph", text: "AI가 다듬은 첫 문단이다." },
-      },
-      { opId: "op-cut", type: "delete", blockId: "b2" },
-    ],
-    sdkSessionId: "sess-rebuild",
-  }));
+test("발행 뒤 재구성 — 발행 전의 AI 변경안은 발행 뒤에 오래됨으로 저장되고 적용되지 않는다", async () => {
+  // 생성이 도는 사이에 사람이 구조를 고치고 발행한다 — 답이 오면 변경안은 처음부터 오래됨이다
+  // (바로 반영도 어긋난 초안에는 아무것도 넣지 않는다 · 2026-10-31 2단계).
+  const gate = Promise.withResolvers<void>();
+  const ai = fakeAi(async () => {
+    await gate.promise;
+    return {
+      reply: "첫 문단을 다듬고 둘째 문단을 지운다.",
+      summary: "발행 전 변경안",
+      ops: [
+        {
+          opId: "op-fix",
+          type: "replace",
+          blockId: "b1",
+          view: { kind: "paragraph", text: "AI가 다듬은 첫 문단이다." },
+        },
+        { opId: "op-cut", type: "delete", blockId: "b2" },
+      ],
+      sdkSessionId: "sess-rebuild",
+    };
+  });
   const previous = process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH;
   process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH = "1";
   const rig1 = rebuildRig(ai.runner);
@@ -1761,14 +1783,8 @@ test("발행 뒤 재구성 — 발행 전의 AI 변경안은 발행 뒤에 채�
     await rig1.service.open(PAGE_ID);
     rig1.service.ask(KEY, "첫 문단을 다듬고 둘째 문단을 지워 줘", []);
     await until(
-      () => aiMessages(rig1.messages).some((message) => message.phase === "done"),
-      "done 방송",
-    );
-    const proposalId = rig1.service.thread(KEY).proposals[0]?.proposalId ?? "";
-    // 발행 전 — 지금 초안과 맞으니 열린 걸음이다.
-    assert.deepEqual(
-      rig1.service.thread(KEY).proposals[0]?.ops.map((op) => op.state),
-      ["open", "open"],
+      () => aiMessages(rig1.messages).some((message) => message.phase === "started"),
+      "started 방송",
     );
     await rig1.service.edit(KEY, 0, [
       {
@@ -1785,11 +1801,18 @@ test("발행 뒤 재구성 — 발행 전의 AI 변경안은 발행 뒤에 채�
       expectedRevision: 1,
     });
     assert.equal(applied.state, "applied");
-    // 대화를 다시 읽으면 — 발행된 초안의 자리 번호에서 이미 오래됨으로 보인다.
+    gate.resolve();
+    await until(
+      () => aiMessages(rig1.messages).some((message) => message.phase === "done"),
+      "done 방송",
+    );
+    // 대화를 다시 읽으면 — 발행된 초안의 자리 번호에서 처음부터 오래됨이다.
+    const proposalId = rig1.service.thread(KEY).proposals[0]?.proposalId ?? "";
     assert.deepEqual(
       rig1.service.thread(KEY).proposals[0]?.ops.map((op) => op.state),
       ["stale", "stale"],
     );
+    assert.equal(rig1.service.thread(KEY).proposals[0]?.appliedAt, undefined);
     const view = await rig1.service.get(KEY);
     const refused = await rig1.service.adopt(KEY, proposalId, ["op-fix", "op-cut"], view.revision);
     // 아무것도 적용되지 않았다 — 이제 머리말인 b1 에 AI 문단이 가지 않는다.
@@ -2092,7 +2115,7 @@ test("변경안 — 묻는 사이에 사람이 AI 가 고칠 그 블록을 고�
   }
 });
 
-test("변경안 — 묻는 사이에 아무도 초안을 고치지 않으면 걸음은 열린 채 저장되고 채택하면 적용된다", async () => {
+test("변경안 — 묻는 사이에 아무도 초안을 고치지 않으면 걸음은 바로 반영된다", async () => {
   const ai = heldAi();
   const rig1 = rig(ai.runner);
   try {
@@ -2103,44 +2126,46 @@ test("변경안 — 묻는 사이에 아무도 초안을 고치지 않으면 걸
     assert.equal((await rig1.service.get(KEY)).revision, 0);
     ai.release(threeSteps("sess-held-calm"));
     await untilDone(rig1.messages);
-    assert.deepEqual(storedOps(rig1.store), [
-      ["op-fix", "open"],
-      ["op-add", "open"],
-      ["op-title", "open"],
-    ]);
-    assert.deepEqual(viewedOps(rig1.service), [
-      ["op-fix", "open"],
-      ["op-add", "open"],
-      ["op-title", "open"],
-    ]);
-    // 채택 — 세 걸음이 한 번에 적용되고 개정이 한 오른다.
-    const adopted = await rig1.service.adopt(
-      KEY,
-      rig1.store.proposals(KEY)[0]?.proposalId ?? "",
-      ["op-fix", "op-add", "op-title"],
-      0,
-    );
-    assert.equal(adopted.revision, 1);
-    assert.equal(paragraphText(adopted.blocks[1]), "AI가 다듬은 첫 문단이다.");
-    assert.equal(adopted.blocks.length, 4);
-    assert.equal(paragraphText(adopted.blocks[3]), "AI가 덧붙인 문단이다.");
-    assert.equal(adopted.blocks[3]?.status, "new");
-    assert.equal(adopted.title, "AI가 지은 제목이다.");
+    // 바로 반영(2026-10-31 2단계) — 세 걸음이 채택 없이 초안에 들어간다.
     assert.deepEqual(storedOps(rig1.store), [
       ["op-fix", "adopted"],
       ["op-add", "adopted"],
       ["op-title", "adopted"],
     ]);
+    const applied = await rig1.service.get(KEY);
+    assert.equal(applied.revision, 1);
+    assert.equal(paragraphText(applied.blocks[1]), "AI가 다듬은 첫 문단이다.");
+    assert.equal(applied.blocks.length, 4);
+    assert.equal(paragraphText(applied.blocks[3]), "AI가 덧붙인 문단이다.");
+    assert.equal(applied.blocks[3]?.status, "new");
+    assert.equal(applied.title, "AI가 지은 제목이다.");
+    // 변경안의 표시 — 들어간 걸음 수와 되돌릴 수 있는지가 함께 실린다(되돌림 표시는 대화 보기의 몫이다).
+    const proposal = rig1.store.proposals(KEY)[0];
+    assert.equal(typeof proposal?.appliedAt, "string");
+    assert.equal(rig1.service.thread(KEY).proposals[0]?.undoable, true);
+    // 되돌리기 — 세 걸음이 그 판 직전으로 돌아간다.
+    const undone = await rig1.service.undoProposal(KEY, proposal?.proposalId ?? "");
+    assert.deepEqual(undone, { restored: 3, kept: 0 });
+    const reverted = await rig1.service.get(KEY);
+    assert.equal(reverted.revision, 2);
+    assert.equal(reverted.title, "로그인 화면");
+    assert.equal(reverted.blocks.length, 3);
+    assert.equal(paragraphText(reverted.blocks[1]), "첫 문단이다.");
   } finally {
     rig1.cleanup();
   }
 });
 
-test("변경안 — 다시 맞추기 뒤에는 그 전의 열린 걸음이 모두 오래됨으로 저장되고 이어서 받은 변경안은 열린 채다", async () => {
+test("변경안 — 다시 맞추기 뒤에는 그 전의 걸음이 오래됨으로 저장되고 이어서 받은 변경안은 바로 반영된다", async () => {
+  // 첫 생성이 도는 사이에 원격이 바뀌고 다시 맞춘다 — 답이 오면 걸음은 처음부터 오래됨이다.
+  const gate = Promise.withResolvers<void>();
   let asked = 0;
   const ai = fakeAi(async () => {
     asked += 1;
-    if (asked === 1) return threeSteps("sess-rebase-1");
+    if (asked === 1) {
+      await gate.promise;
+      return threeSteps("sess-rebase-1");
+    }
     return {
       reply: "마지막 문단을 다듬었다.",
       summary: "마지막 문단 다듬기",
@@ -2159,13 +2184,10 @@ test("변경안 — 다시 맞추기 뒤에는 그 전의 열린 걸음이 모�
   try {
     await rig1.service.open(PAGE_ID);
     rig1.service.ask(KEY, "첫 문단을 다듬고 문단을 덧붙여 줘", []);
-    await untilDone(rig1.messages);
-    // 다시 맞추기 전 — 지금 초안과 맞는 열린 걸음이다.
-    assert.deepEqual(storedOps(rig1.store), [
-      ["op-fix", "open"],
-      ["op-add", "open"],
-      ["op-title", "open"],
-    ]);
+    await until(
+      () => aiMessages(rig1.messages).some((message) => message.phase === "started"),
+      "started 방송",
+    );
     // 원격이 걸음이 겨누지 않는 목록 블록만 바꾼 다음 판이다.
     rig1.mirror.version = 5;
     rig1.mirror.storage = REBUILD_STORAGE.replace(
@@ -2175,9 +2197,12 @@ test("변경안 — 다시 맞추기 뒤에는 그 전의 열린 걸음이 모�
     const rebased = await rig1.service.rebase(KEY);
     assert.equal(rebased.state, "editing");
     assert.equal(rebased.baseVersion, 5);
-    // 걸음이 겨눈 블록은 그대로다 — 지문으로는 맞아 보여도 기준이 바뀌었으니 디스크의 걸음은 오래됨이다.
+    // 다시 맞추기가 기준을 옮겼다 — 초안은 새 기준이다.
     assert.equal(paragraphText(rebased.blocks[1]), "첫 문단이다.");
     assert.equal(rig1.store.readBase(KEY), rig1.mirror.storage);
+    gate.resolve();
+    await untilDone(rig1.messages);
+    // 걸음이 겨눈 블록은 그대로여도 기준이 바뀌었으니 디스크의 걸음은 오래됨이다 — 바로 반영도 하지 않는다.
     assert.deepEqual(storedOps(rig1.store), [
       ["op-fix", "stale"],
       ["op-add", "stale"],
@@ -2188,48 +2213,60 @@ test("변경안 — 다시 맞추기 뒤에는 그 전의 열린 걸음이 모�
       ["op-add", "stale"],
       ["op-title", "stale"],
     ]);
-    // 새 기준에서 물어 받은 변경안은 열린 채 저장된다 — 그 사이에 바뀐 것이 없고 앞 변경안은 그대로 오래됨이다.
+    assert.equal(rig1.store.proposals(KEY)[0]?.appliedAt, undefined);
+    // 새 기준에서 물어 받은 변경안은 바로 반영된다 — 그 사이에 바뀐 것이 없기 때문이다.
     rig1.service.ask(KEY, "마지막 문단을 다듬어 줘", []);
     await untilDone(rig1.messages, 2);
-    assert.deepEqual(storedOps(rig1.store, 1), [["op-last", "open"]]);
+    assert.deepEqual(storedOps(rig1.store, 1), [["op-last", "adopted"]]);
     assert.deepEqual(storedOps(rig1.store, 0), [
       ["op-fix", "stale"],
       ["op-add", "stale"],
       ["op-title", "stale"],
     ]);
-    const adopted = await rig1.service.adopt(
-      KEY,
-      rig1.store.proposals(KEY)[1]?.proposalId ?? "",
-      ["op-last"],
-      rebased.revision,
-    );
-    assert.equal(adopted.revision, rebased.revision + 1);
-    assert.equal(paragraphText(adopted.blocks[4]), "AI가 다듬은 마지막 문단이다.");
+    const after = await rig1.service.get(KEY);
+    assert.equal(paragraphText(after.blocks[4]), "AI가 다듬은 마지막 문단이다.");
   } finally {
     rig1.cleanup();
   }
 });
 
-test("변경안 — 발행이 적용되면 그 전의 열린 걸음이 모두 오래됨으로 저장된다", async () => {
-  const ai = fakeAi(async () => threeSteps("sess-publish"));
+test("변경안 — 묻는 사이에 고친 초안의 발행 뒤에도 걸음은 오래됨이고 바로 반영은 없었다", async () => {
+  // 첫 생성이 도는 사이에 사람이 첫 문단을 고친다 — 걸음은 모두 오래됨이고 바로 반영은 아무것도 넣지 않는다.
+  const gate = Promise.withResolvers<void>();
+  const ai = fakeAi(async () => {
+    await gate.promise;
+    return threeSteps("sess-publish");
+  });
   const previous = process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH;
   process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH = "1";
   const rig1 = rebuildRig(ai.runner);
   try {
     await rig1.service.open(PAGE_ID);
     rig1.service.ask(KEY, "첫 문단을 다듬고 문단을 덧붙여 줘", []);
-    await untilDone(rig1.messages);
-    // 발행 전 — 지금 초안과 맞는 열린 걸음이다.
-    assert.deepEqual(storedOps(rig1.store), [
-      ["op-fix", "open"],
-      ["op-add", "open"],
-      ["op-title", "open"],
+    await until(
+      () => aiMessages(rig1.messages).some((message) => message.phase === "started"),
+      "started 방송",
+    );
+    await rig1.service.edit(KEY, 0, [
+      { type: "set", blockId: "b1", view: { kind: "paragraph", text: "사람이 고친 첫 문단이다." } },
     ]);
-    // 사람이 걸음이 겨누지 않는 마지막 문단만 고쳐 발행한다 — 넣고 · 빼고 · 옮기지 않으니 블록 번호는 그대로다.
-    const edited = await rig1.service.edit(KEY, 0, [
+    gate.resolve();
+    await untilDone(rig1.messages);
+    // 초안이 달라졌으니 디스크의 걸음은 모두 오래됨이다 — 바로 반영도 하지 않는다.
+    assert.deepEqual(storedOps(rig1.store), [
+      ["op-fix", "stale"],
+      ["op-add", "stale"],
+      ["op-title", "stale"],
+    ]);
+    assert.equal(rig1.store.proposals(KEY)[0]?.appliedAt, undefined);
+    // 사람이 마지막 문단만 고쳐 발행한다 — 넣고 · 빼고 · 옮기지 않는다.
+    const before = await rig1.service.get(KEY);
+    const last = before.blocks.at(-1);
+    assert.ok(last);
+    const edited = await rig1.service.edit(KEY, before.revision, [
       {
         type: "set",
-        blockId: "b4",
+        blockId: last.id,
         view: { kind: "paragraph", text: "사람이 고친 마지막 문단이다." },
       },
     ]);
@@ -2240,27 +2277,11 @@ test("변경안 — 발행이 적용되면 그 전의 열린 걸음이 모두 �
     });
     assert.equal(applied.state, "applied");
     assert.equal(rig1.putBodies.length, 1);
-    // 발행이 기준을 옮겼다 — 초안은 발행본 기준이고 블록 번호는 그대로다.
+    // 발행이 기준을 옮겼다 — 초안은 발행본 기준이고 걸음은 여전히 오래됨이다.
     const view = await rig1.service.get(KEY);
     assert.equal(view.state, "published");
     assert.equal(view.baseVersion, 5);
-    assert.deepEqual(
-      view.blocks.map((block) => block.id),
-      ["b0", "b1", "b2", "b3", "b4"],
-    );
-    // 걸음이 겨눈 블록은 지문으로도 그대로다 — 그래도 기준이 바뀌었으니 디스크의 걸음은 오래됨이다.
-    const record = rig1.store.read(KEY);
-    assert.ok(record);
-    assert.equal(
-      blockFingerprint(record.blocks[1]?.xml ?? ""),
-      rig1.store.proposals(KEY)[0]?.ops[0]?.baseFingerprint,
-    );
     assert.deepEqual(storedOps(rig1.store), [
-      ["op-fix", "stale"],
-      ["op-add", "stale"],
-      ["op-title", "stale"],
-    ]);
-    assert.deepEqual(viewedOps(rig1.service), [
       ["op-fix", "stale"],
       ["op-add", "stale"],
       ["op-title", "stale"],
@@ -2268,6 +2289,224 @@ test("변경안 — 발행이 적용되면 그 전의 열린 걸음이 모두 �
   } finally {
     if (previous === undefined) delete process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH;
     else process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH = previous;
+    rig1.cleanup();
+  }
+});
+
+// ————— 기획 대화 목록(2026-10-31 3단계) — 대화가 문서를 옮겨 다닌다 —————
+
+test("기획 대화 목록 — 물기마다 대화가 생기고 이름은 첫 말이며, 문서를 옮기고 지울 수 있다", async () => {
+  const ai = fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null }));
+  const rig1 = rig(ai.runner);
+  try {
+    await rig1.service.open(PAGE_ID);
+    // 같은 문서에 두 번 물으면 같은 대화를 이어 받는다.
+    const first = rig1.service.ask(KEY, "노쇼 규칙을 정리해 줘", []);
+    await untilDone(rig1.messages);
+    const second = rig1.service.ask(KEY, "예외도 더해 줘", [], {}, first.threadId);
+    await untilDone(rig1.messages, 2);
+    assert.equal(second.threadId, first.threadId);
+    const rows = rig1.service.threadsList();
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]?.title, "노쇼 규칙을 정리해 줘");
+    assert.equal(rows[0]?.docKey, KEY);
+    assert.equal(rows[0]?.docTitle, "로그인 화면");
+    assert.equal(rows[0]?.messageCount, 4);
+    // 대화가 다른 문서로 옮겨 간다 — 옮겨진 줄의 문서 이름이 바뀐다.
+    await rig1.service.open("55");
+    const moved = rig1.service.moveThread(first.threadId, "p-55");
+    assert.equal(moved.docKey, "p-55");
+    assert.equal(moved.docTitle, "매크로 문서");
+    assert.equal(rig1.service.threadsList()[0]?.docKey, "p-55");
+    // 옮겨진 대화에 물으면 그 문서의 대화로 이어진다.
+    const third = rig1.service.ask("p-55", "매크로 절을 다듬어 줘", [], {}, first.threadId);
+    assert.equal(third.threadId, first.threadId);
+    await untilDone(rig1.messages, 3);
+    // 지운 대화는 목록에서 사라진다 — 초안은 남는다.
+    assert.deepEqual(rig1.service.deleteThread(first.threadId), { deleted: true });
+    assert.deepEqual(rig1.service.threadsList(), []);
+    assert.ok(await rig1.service.get("p-55"));
+    // threadId 로 찾지 못하는 대화의 물기는 거절이다.
+    await assert.rejects(
+      Promise.resolve().then(() =>
+        rig1.service.ask("p-55", "또 물어 본다", [], {}, first.threadId),
+      ),
+      /이어 가는 대화를 찾지 못했습니다/,
+    );
+  } finally {
+    rig1.cleanup();
+  }
+});
+
+test("기획 대화 지우기 — 도는 중에 지운 대화는 답이 끝나도 부활하지 않는다", async () => {
+  const gate = Promise.withResolvers<void>();
+  const ai = fakeAi(async () => {
+    await gate.promise;
+    return { reply: "늦게 도착한 답이다.", summary: "늦은 답", ops: [], sdkSessionId: null };
+  });
+  const rig1 = rig(ai.runner);
+  try {
+    await rig1.service.open(PAGE_ID);
+    rig1.service.ask(KEY, "오래 걸리는 질문이다", []);
+    await until(
+      () => aiMessages(rig1.messages).some((message) => message.phase === "started"),
+      "started 방송",
+    );
+    const rows = rig1.service.threadsList();
+    assert.equal(rows.length, 1);
+    assert.ok(rows[0]);
+    // 답이 도는 사이 대화를 지운다 — 도는 생성은 끊긴다(deleteThread 의 abort).
+    rig1.service.deleteThread(rows[0].threadId);
+    assert.deepEqual(rig1.service.threadsList(), []);
+    gate.resolve();
+    await until(
+      () => aiMessages(rig1.messages).some((message) => message.phase === "cancelled"),
+      "cancelled 방송",
+    );
+    // 끝난 답이 지워진 대화를 다시 쓰지 않는다 — 저장 가드의 몫이다(2026-11-03).
+    assert.deepEqual(rig1.service.threadsList(), []);
+  } finally {
+    rig1.cleanup();
+  }
+});
+
+// ————— 같이 고치기(2026-10-30 사용자 결정 · 같이 고치기 계획 §4 · §5) —————
+
+test("같이 고치기 — 바꿀 것이 있으면 초안에 바로 들어가고, 되돌리면 그 전으로 돌아온다", async () => {
+  const ai = fakeAi(async (request) => {
+    assert.match(request.prompt, /같이 고치기/);
+    return {
+      reply: "비밀번호 길이를 고쳤다.",
+      summary: "비밀번호 길이",
+      ops: [
+        {
+          opId: "op-1",
+          type: "replace",
+          blockId: "b1",
+          view: { kind: "paragraph", text: "10자 이상이다." },
+        },
+        {
+          opId: "op-2",
+          type: "insert",
+          afterBlockId: "b2",
+          view: { kind: "paragraph", text: "새 규칙이다." },
+        },
+      ],
+      sdkSessionId: "sess-sync",
+    };
+  });
+  const rig1 = rig(ai.runner);
+  try {
+    const result = await rig1.service.screenSync({
+      slug: "demo",
+      pageId: PAGE_ID,
+      docKey: null,
+      displayText: "비밀번호를 10자 이상으로",
+      promptText: "[화면 요청에서 같이 고치기] …",
+    });
+    assert.equal(result.outcome, "adopted");
+    assert.equal(result.changes, 2);
+    const after = await rig1.service.get(KEY);
+    assert.equal(paragraphText(after.blocks[1]), "10자 이상이다.");
+    assert.equal(paragraphText(after.blocks[3]), "새 규칙이다.");
+    // 대화에는 화면 요청에서 온 말과 AI 답이 남고, 걸음은 채택이다.
+    const thread = rig1.service.thread(KEY);
+    assert.equal(thread.messages[0]?.origin, "screen");
+    assert.equal(thread.messages[0]?.text, "비밀번호를 10자 이상으로");
+    assert.deepEqual(
+      thread.proposals[0]?.ops.map((op) => op.state),
+      ["adopted", "adopted"],
+    );
+    // 되돌리기 — 고친 문단과 더한 문단이 그 전으로.
+    const undone = await rig1.service.screenSyncUndo({
+      slug: "demo",
+      docKey: KEY,
+      proposalId: result.proposalId ?? "",
+      opIds: result.opIds ?? [],
+      inverse: result.inverse ?? [],
+    });
+    assert.deepEqual(undone, { restored: 2, kept: 0 });
+    const back = await rig1.service.get(KEY);
+    assert.equal(paragraphText(back.blocks[1]), "첫 문단이다.");
+    assert.equal(back.blocks.length, 3);
+    assert.deepEqual(
+      rig1.service.thread(KEY).proposals[0]?.ops.map((op) => op.state),
+      ["rejected", "rejected"],
+    );
+  } finally {
+    rig1.cleanup();
+  }
+});
+
+test("같이 고치기 — 바꿀 것이 없으면 대화도 초안도 그대로다", async () => {
+  const ai = fakeAi(async () => ({
+    reply: "꾸밈만 바뀌었다.",
+    summary: "",
+    ops: [],
+    sdkSessionId: "sess-x",
+  }));
+  const rig1 = rig(ai.runner);
+  try {
+    const result = await rig1.service.screenSync({
+      slug: "demo",
+      pageId: PAGE_ID,
+      docKey: null,
+      displayText: "버튼 색을 바꿔 줘",
+      promptText: "[화면 요청에서 같이 고치기] …",
+    });
+    assert.equal(result.outcome, "unchanged");
+    assert.equal((await rig1.service.get(KEY)).revision, 0);
+    assert.equal(rig1.service.thread(KEY).messages.length, 0);
+  } finally {
+    rig1.cleanup();
+  }
+});
+
+test("같이 고치기 되돌리기 — 그 뒤 사람이 고친 블록은 그대로 두고 수만 센다", async () => {
+  const ai = fakeAi(async () => ({
+    reply: "고쳤다.",
+    summary: "두 문단",
+    ops: [
+      {
+        opId: "op-1",
+        type: "replace",
+        blockId: "b1",
+        view: { kind: "paragraph", text: "AI 첫 문단." },
+      },
+      {
+        opId: "op-2",
+        type: "replace",
+        blockId: "b2",
+        view: { kind: "paragraph", text: "AI 둘째 문단." },
+      },
+    ],
+    sdkSessionId: "sess-y",
+  }));
+  const rig1 = rig(ai.runner);
+  try {
+    const result = await rig1.service.screenSync({
+      slug: "demo",
+      pageId: PAGE_ID,
+      docKey: null,
+      displayText: "규칙 두 개를 바꿔 줘",
+      promptText: "[화면 요청에서 같이 고치기] …",
+    });
+    const view = await rig1.service.get(KEY);
+    await rig1.service.edit(KEY, view.revision, [
+      { type: "set", blockId: "b2", view: { kind: "paragraph", text: "사람이 다시 고쳤다." } },
+    ]);
+    const undone = await rig1.service.screenSyncUndo({
+      slug: "demo",
+      docKey: KEY,
+      proposalId: result.proposalId ?? "",
+      opIds: result.opIds ?? [],
+      inverse: result.inverse ?? [],
+    });
+    assert.deepEqual(undone, { restored: 1, kept: 1 });
+    const back = await rig1.service.get(KEY);
+    assert.equal(paragraphText(back.blocks[1]), "첫 문단이다.");
+    assert.equal(paragraphText(back.blocks[2]), "사람이 다시 고쳤다.");
+  } finally {
     rig1.cleanup();
   }
 });

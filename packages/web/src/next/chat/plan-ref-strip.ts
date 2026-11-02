@@ -10,7 +10,7 @@ import { L } from "../labels.ts";
 export const PLANS_OPEN_EVENT = "nx:plans:open";
 
 /**
- * 칩이 돌아가는 곳 — 가져온 문서는 pageId, 초안은 docKey 다(초안이 앞선다). `newDoc` 은 홈의 기획서 묶음이 청하는
+ * 칩이 돌아가는 곳 — 가져온 문서는 pageId, 초안은 docKey 다(초안이 앞선다). `newDoc` 은 기획서의 `새 문서` 가 청하는
  * 새 문서 창이다(2026-10-23 기획자 화면 손질 D4).
  */
 export type PlanOpenTarget = { pageId: string } | { docKey: string } | { newDoc: true };

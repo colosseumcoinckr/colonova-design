@@ -412,6 +412,19 @@ function Frame({ spec }: { spec: Case }) {
           ],
         }),
         docRead: async () => ({ markdown: "# 기획서", sections: [], comments: [] }),
+        draftThreads: async () => [],
+        draftThreadMove: async () => {
+          throw new Error("견본은 옮기지 않는다");
+        },
+        draftThreadDelete: async () => ({ deleted: true }),
+        draftRevisions: async () => [],
+        draftRevision: async () => {
+          throw new Error("견본은 옛 판을 읽지 않는다");
+        },
+        draftUndo: async () => ({ restored: 0, kept: 0 }),
+        draftRevisionRestore: async () => {
+          throw new Error("견본은 판을 되돌리지 않는다");
+        },
         draftList: async () => [
           {
             docKey: "p-1001",

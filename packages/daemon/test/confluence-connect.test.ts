@@ -5,7 +5,12 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { readConfluenceLedger, writeConfluenceLedger } from "../dist/confluence-ledger.js";
 import { confluenceMirrorLedger } from "../dist/confluence-mirror.js";
-import { MemoryCredentialStore } from "../dist/credentials.js";
+import { backfillConfluenceAccounts } from "../dist/confluence-sync.js";
+import {
+  loadConfluenceCredentials,
+  MemoryCredentialStore,
+  maskEmail,
+} from "../dist/credentials.js";
 import { RequestRouter, type RouterDeps } from "../dist/dispatch.js";
 import { MachineSetting } from "../dist/machine-setting.js";
 import { pageIdFromQuery } from "../dist/requests/confluence.js";
@@ -121,6 +126,117 @@ test("연결 — 검증이 이기면 자격은 저장소로, 미러는 슬러그
     assert.ok(!text.includes(TOKEN));
   } finally {
     rig1.cleanup();
+  }
+});
+
+test("연결 — 자격은 이 프로젝트의 아이템으로, 첫 자격은 머신 기본으로도 오른다(2026-11-03)", async () => {
+  const rig9 = rig([fixture("연결 확인", WHO_URL, 200, AUTH_USER)]);
+  try {
+    await rig9.router.dispatch(connect());
+    assert.equal(await rig9.store.load("confluence-pat:demo"), `${EMAIL}\n${TOKEN}`);
+    assert.equal(await rig9.store.load("confluence-pat"), `${EMAIL}\n${TOKEN}`);
+    // 계정 키 — 가려진 이메일만, 원문은 machine.json 에도 없다.
+    assert.equal(rig9.machine.get("confluenceAccount:demo"), "m***@example.com");
+    assert.ok(!JSON.stringify(rig9.machine).includes(EMAIL));
+  } finally {
+    rig9.cleanup();
+  }
+});
+
+test("두 프로젝트가 서로 다른 계정 — 둘째 연결이 첫째의 자격과 계정을 덮지 않는다(2026-11-03 사용자 결정)", async () => {
+  const rig10 = rig(
+    [fixture("연결 확인", WHO_URL, 200, AUTH_USER), fixture("연결 확인", WHO_URL, 200, AUTH_USER)],
+    "demo",
+  );
+  try {
+    await rig10.router.dispatch(connect());
+    const routerBeta = new RequestRouter({
+      registry: {
+        activeSlug: () => "beta",
+        get: () => ({ slug: "beta" }),
+        paths: () => ({ root: rig10.projectRoot, repoRoot: rig10.cloneRoot }),
+      },
+      credentials: rig10.store,
+      machineSetting: rig10.machine,
+      fleet: { workspaces: new Map() },
+      confluence: {
+        clearExpired() {},
+        importNow: async () => ({ imported: 0, skipped: 0, capped: false }),
+      },
+    } as unknown as RouterDeps);
+    await routerBeta.dispatch(
+      connect({ site: "other.atlassian.net", email: "other@other.com", token: "tok2" }),
+    );
+    // 각자의 자격 · 계정이 따로 살고, 머신 기본은 첫 자격 그대로다.
+    assert.equal(await rig10.store.load("confluence-pat:demo"), `${EMAIL}\n${TOKEN}`);
+    assert.equal(await rig10.store.load("confluence-pat:beta"), "other@other.com\ntok2");
+    assert.equal(await rig10.store.load("confluence-pat"), `${EMAIL}\n${TOKEN}`);
+    assert.equal(rig10.machine.get("confluenceAccount:demo"), "m***@example.com");
+    assert.equal(rig10.machine.get("confluenceAccount:beta"), "o***@other.com");
+  } finally {
+    rig10.cleanup();
+  }
+});
+
+test("재연결 빈 자격 — 슬러그 자격이 먼저, 슬러그에 없으면 머신 기본을 물려받는다", async () => {
+  const rig11 = rig(
+    [fixture("연결 확인", WHO_URL, 200, AUTH_USER), fixture("연결 확인", WHO_URL, 200, AUTH_USER)],
+    "demo",
+  );
+  try {
+    await rig11.router.dispatch(connect());
+    const store = rig11.store;
+    // 읽기 순서 — 슬러그 아이템 > 머신 기본. env 오버라이드는 그 위에.
+    assert.deepEqual(await loadConfluenceCredentials(store, {}, "demo"), {
+      email: EMAIL,
+      token: TOKEN,
+    });
+    // 슬러그 아이템을 지우면 기본으로 내려앉는다 — 같은 계정의 둘째 프로젝트가 물려받는 길.
+    await store.delete("confluence-pat:demo");
+    assert.deepEqual(await loadConfluenceCredentials(store, {}, "demo"), {
+      email: EMAIL,
+      token: TOKEN,
+    });
+    assert.deepEqual(
+      await loadConfluenceCredentials(store, {
+        COLONOVA_DESIGN_CONFLUENCE_EMAIL: "env@env.com",
+        COLONOVA_DESIGN_CONFLUENCE_TOKEN: "envtok",
+      }),
+      { email: "env@env.com", token: "envtok" },
+    );
+  } finally {
+    rig11.cleanup();
+  }
+});
+
+test("maskEmail — 로컬부 첫 글자와 도메인만 남기고, 가릴 수 없으면 null", () => {
+  assert.equal(maskEmail("me@example.com"), "m***@example.com");
+  assert.equal(maskEmail("inkwonjung@colosseum.co.kr"), "i***@colosseum.co.kr");
+  assert.equal(maskEmail(" a@b.org "), "a***@b.org");
+  assert.equal(maskEmail(""), null);
+  assert.equal(maskEmail("no-at-mark"), null);
+  assert.equal(maskEmail("@domain.com"), null);
+  assert.equal(maskEmail("a@"), null);
+});
+
+test("시작 백필 — 연결된 프로젝트의 빈 계정 키만 저장된 자격으로 채운다", async () => {
+  const home = mkdtempSync(join(tmpdir(), "confluence-backfill-"));
+  try {
+    const machine = new MachineSetting(join(home, "machine.json"));
+    machine.load();
+    machine.set("confluenceSite:demo", "colosseum.atlassian.net");
+    machine.set("confluenceSite:beta", "other.atlassian.net");
+    machine.set("confluenceAccount:beta", "k***@keep.com");
+    const store = new MemoryCredentialStore();
+    await store.save("confluence-pat", `${EMAIL}\n${TOKEN}`);
+    const filled = await backfillConfluenceAccounts(store, machine, ["demo", "beta", "ghost"]);
+    // demo 만 채워진다 — beta 는 이미 있고 ghost 는 연결이 없다.
+    assert.equal(filled, 1);
+    assert.equal(machine.get("confluenceAccount:demo"), "m***@example.com");
+    assert.equal(machine.get("confluenceAccount:beta"), "k***@keep.com");
+    assert.equal(machine.get("confluenceAccount:ghost"), null);
+  } finally {
+    rmSync(home, { recursive: true, force: true });
   }
 });
 

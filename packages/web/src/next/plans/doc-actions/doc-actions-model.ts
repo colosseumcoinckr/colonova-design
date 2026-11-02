@@ -12,9 +12,11 @@ import { L } from "../../labels.ts";
  * `labels.ts` 를 확장자와 함께 읽는다(publish-model.ts 와 같은 모양).
  */
 
-/** 입력창 첨부 한 장 — `nx:composer:attach` 이벤트의 detail 이 바로 이 모양이다. */
+/** 입력창 첨부 한 장 — `nx:composer:attach` 이벤트의 detail 이 바로 이 모양이다.
+ * `text` 는 함께 미리 채우는 말(2026-11-02 · 같이 고치기 UX 계획 C8 — 화면을 기획서대로의 브리프)이다. */
 export interface ComposerAttachDetail {
   attachments: Array<{ kind: "file"; name: string; mediaType: string; data: string }>;
+  text?: string;
 }
 
 /** 스냅샷의 첨부를 입력창의 첨부 모양으로 옮긴다 — 마크다운 한 장은 파일 첨부로 실린다. */

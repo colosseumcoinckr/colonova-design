@@ -9,18 +9,14 @@ import {
 } from "react";
 import { L } from "../labels";
 import { ChevronRightIcon, CloseIcon, SearchIcon, Spin } from "../ui/icons";
-import { draftsInProgress } from "./home-drafts";
 import { PlansEmpty as Empty } from "./PlansEmpty";
-import { filterPlanRows, type PlanListRow, visiblePlanRows } from "./plans-list";
+import { draftMarkOf, filterPlanRows, type PlanListRow, visiblePlanRows } from "./plans-list";
 import type { PlanPhase } from "./use-plans";
+import { bodyOnlyHits, highlightParts } from "./view/doc-view-model";
+import type { BodySearch } from "./view/use-body-search";
+import "./view/doc-view.css";
 
 /** 찾기 · 작성 중인 초안 · 문서 트리. 자리를 옮겨도 접힘과 스크롤을 지킨다(2026-10-23 화면 전면 재설계 §3.2). */
-
-/** 줄에 붙일 초안 칩의 글 — 결과를 모르면 `결과 확인 필요` 로, 바뀜이 있으면 수를 더한다. */
-function draftChipText(draft: DraftSummary): string {
-  if (draft.state === "result-unknown") return L.drafts.resultUnknownTitle;
-  return draft.changedBlocks > 0 ? L.drafts.chipCount(draft.changedBlocks) : L.drafts.chip;
-}
 
 export function PlansList({
   rows,
@@ -32,6 +28,7 @@ export function PlansList({
   importing,
   query,
   onQuery,
+  bodySearch,
   collapsed,
   onToggle,
   lastViewed,
@@ -59,6 +56,8 @@ export function PlansList({
   importing: boolean;
   query: string;
   onQuery: (next: string) => void;
+  /** 본문 찾기의 처지(2026-10-30 사용자 요청) — 없으면 제목 찾기만 선다. */
+  bodySearch?: BodySearch;
   collapsed: ReadonlySet<string>;
   onToggle: (pageId: string) => void;
   lastViewed: string | null;
@@ -81,11 +80,18 @@ export function PlansList({
   const savedTop = useRef(0);
   const filtering = query.trim() !== "";
   const shown = filtering ? filterPlanRows(rows, query) : visiblePlanRows(rows, collapsed);
+  // 본문에서 찾은 문서 — 제목 찾기가 이미 보인 문서는 빼고 따로 묶는다.
+  const bodyHits =
+    filtering && bodySearch?.phase === "ready"
+      ? bodyOnlyHits(bodySearch.hits, new Set(shown.map((row) => row.pageId)))
+      : [];
+  const bodyBusy = filtering && bodySearch?.phase === "loading";
   // 문서 수는 문서 줄만 센다 — 폴더 · Confluence 전용 항목은 문서가 아니다.
   const docTotal = rows.reduce((count, row) => (row.kind === "doc" ? count + 1 : count), 0);
-  // 초안 요약 — 문서 줄의 칩은 pageId 로 걷고, 아직 Confluence 에 없는 초안은 맨 위 묶음으로 선다.
+  // 초안 요약 — 문서 줄의 끝 표시는 pageId 로 걷고, 아직 Confluence 에 없는 새 문서 초안은 그 자리에
+  // 흐린 줄로 선다(2026-10-31 E — `작성 중인 초안` 묶음은 걸었다).
   const draftByPage = new Map<string, DraftSummary>();
-  const freshDrafts = draftsInProgress(drafts).slice(0, 5);
+  const freshDrafts = drafts.filter((draft) => draft.pageId === null).slice(0, 5);
   for (const draft of drafts) {
     if (draft.pageId !== null) draftByPage.set(draft.pageId, draft);
   }
@@ -134,41 +140,6 @@ export function PlansList({
     buttons[to]?.focus();
   };
 
-  const draftGroup = freshDrafts.length > 0 && (
-    <details className="nx-pl-fresh" open>
-      <summary className="nx-pl-fresh-t">
-        <ChevronRightIcon />
-        {L.plans.draftsInProgress}
-      </summary>
-      <ul className="nx-pl-fresh-list">
-        {freshDrafts.map((draft) => {
-          const current = activeDraftKey === draft.docKey;
-          const inTree = rows.some((row) => row.kind === "doc" && row.pageId === draft.pageId);
-          return (
-            <li key={draft.docKey}>
-              <button
-                type="button"
-                className={`nx-pl-row${current ? (inTree ? " nx-pl-row--current" : " nx-pl-row--on") : ""}`}
-                aria-current={current && !inTree ? "true" : undefined}
-                aria-label={
-                  draft.pageId === null ? `${draft.title} · ${L.drafts.newDraftGroup}` : undefined
-                }
-                title={draft.title}
-                onClick={() => onOpenDraft(draft.docKey)}
-              >
-                <span className="nx-pl-title">{draft.title}</span>
-                <span
-                  className={`nx-pill ${draft.state === "result-unknown" ? "nx-pill--amber" : "nx-pill--accent"}`}
-                >
-                  {draftChipText(draft)}
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </details>
-  );
   let body: ReactNode;
   // 안내 한 장(연결 전 · 비었을 때 · 읽지 못했을 때)은 칸의 세로 한가운데에 선다 — 목록은 위에서부터 선다.
   let centered = true;
@@ -252,7 +223,9 @@ export function PlansList({
             className="nx-input nx-pl-find-in"
             type="search"
             value={query}
-            placeholder={L.plans.filterPlaceholder}
+            placeholder={
+              bodySearch === undefined ? L.plans.filterPlaceholder : L.confluence.filterPlaceholder
+            }
             aria-label={L.plans.filterLabel}
             autoComplete="off"
             spellCheck={false}
@@ -283,9 +256,8 @@ export function PlansList({
         <p className="nx-pl-count" role="status">
           {filtering ? L.plans.filterResult(shown.length) : L.plans.docCount(docTotal)}
         </p>
-        {draftGroup}
         {shown.length === 0 ? (
-          <p className="nx-pl-note">{L.plans.filterNone}</p>
+          bodyHits.length === 0 && !bodyBusy && <p className="nx-pl-note">{L.plans.filterNone}</p>
         ) : (
           // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 줄 단추들 사이의 화살표 걸음을 한 곳에서 받는다(위임) — 누르는 것은 안의 단추의 몫이다
           <ul
@@ -355,17 +327,80 @@ export function PlansList({
                       )}
                       {draft !== null && (
                         <span
-                          className={`nx-pill ${draft.state === "result-unknown" ? "nx-pill--amber" : "nx-pill--accent"}`}
-                        >
-                          {draftChipText(draft)}
-                        </span>
+                          className={`nx-pl-dot nx-pl-dot--${draftMarkOf(draft).tone}`}
+                          title={draftMarkOf(draft).label}
+                          aria-label={draftMarkOf(draft).label}
+                          role="img"
+                        />
                       )}
                     </button>
                   )}
                 </li>
               );
             })}
+            {/* 아직 Confluence 에 없는 새 문서 초안(2026-10-31 E) — 놓을 자리를 알리는 흐린 줄로 선다. */}
+            {!filtering &&
+              freshDrafts.map((draft) => (
+                <li key={draft.docKey}>
+                  <button
+                    type="button"
+                    className={`nx-pl-row nx-pl-row--ghost${activeDraftKey === draft.docKey ? " nx-pl-row--on" : ""}`}
+                    aria-label={`${draft.title} · ${L.drafts.newDraftGroup}`}
+                    title={draft.title}
+                    onClick={() => onOpenDraft(draft.docKey)}
+                  >
+                    <span className="nx-pl-title">{draft.title}</span>
+                    {draft.parentTitle != null && (
+                      <span className="nx-pl-folder">{draft.parentTitle}</span>
+                    )}
+                  </button>
+                </li>
+              ))}
           </ul>
+        )}
+        {filtering && bodySearch !== undefined && bodySearch.phase !== "idle" && (
+          <section className="nx-pl-body-hits" aria-label={L.confluence.bodyHeading}>
+            {bodyBusy && (
+              <p className="nx-pl-note" role="status">
+                <Spin /> {L.confluence.bodySearching}
+              </p>
+            )}
+            {bodySearch.phase === "failed" && (
+              <p className="nx-pl-note" role="status">
+                {L.confluence.bodyFailed}
+              </p>
+            )}
+            {bodyHits.length > 0 && (
+              <>
+                <p className="nx-pl-count">{L.confluence.bodyHeading}</p>
+                <ul className="nx-pl-tree">
+                  {bodyHits.map((hit) => (
+                    <li key={hit.pageId} className="nx-pl-item">
+                      <button
+                        type="button"
+                        className={`nx-pl-row nx-pl-row--hit${lastViewed === hit.pageId ? " nx-pl-row--on" : ""}`}
+                        data-page-id={hit.pageId}
+                        title={hit.title}
+                        onClick={() => onOpen(hit.pageId)}
+                      >
+                        <span className="nx-pl-title">{hit.title}</span>
+                        <span className="nx-pl-snippet">
+                          {highlightParts(hit.snippet, query).map((part, at) =>
+                            part.hit ? (
+                              // biome-ignore lint/suspicious/noArrayIndexKey: 조각은 순서가 곧 자리다
+                              <mark key={at}>{part.text}</mark>
+                            ) : (
+                              part.text
+                            ),
+                          )}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </section>
         )}
       </>
     );
@@ -380,7 +415,6 @@ export function PlansList({
         if (!hidden) savedTop.current = event.currentTarget.scrollTop;
       }}
     >
-      {rows.length === 0 && draftGroup}
       {body}
     </div>
   );

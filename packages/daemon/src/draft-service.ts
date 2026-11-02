@@ -13,8 +13,11 @@ import type {
   DraftBlock,
   DraftBlockStatus,
   DraftBlockView,
+  DraftCompareResult,
+  DraftConversationSummary,
   DraftEdit,
   DraftMessage,
+  DraftMismatchRow,
   DraftOp,
   DraftOpState,
   DraftPlanRef,
@@ -22,8 +25,12 @@ import type {
   DraftPublishResult,
   DraftReadRef,
   DraftRefInput,
+  DraftRevisionSummary,
+  DraftRevisionView,
   DraftSnapshot,
   DraftSummary,
+  DraftSyncDocRow,
+  DraftSyncScreenRow,
   DraftThread,
   DraftView,
   EffortLevel,
@@ -43,17 +50,30 @@ import {
   type DraftPublisher,
 } from "./draft-publish.js";
 import {
+  type ConversationRecord,
+  conversationTitleOf,
   type DraftRecord,
   type DraftRecordBlock,
   DraftStore,
   type ProposalOpRecord,
   type ProposalRecord,
-  type ThreadRecord,
+  type RevisionMeta,
+  // 되돌릴 재료의 모양은 저장소의 것 — 변경안 기록과 같이 고치기가 한 모양을 쓴다(2026-10-31 2단계).
+  type ScreenSyncInverse,
 } from "./draft-store.js";
 import type { DaemonLogger } from "./log.js";
 import { realpathBestEffort } from "./paths.js";
+import {
+  clipSections,
+  comparePrompt,
+  compareScreens,
+  parseCompareRows,
+  readCompareDeclines,
+} from "./plan-compare.js";
 import { planRefHeader } from "./plan-refs.js";
 import type { RestTransport } from "./rest-transport.js";
+// 같이 고치기 기록 읽기(2026-11-02 C4 · C7) — 반대 방향은 type import 뿐이라 순환 없이 쓴다.
+import { liveEntries, readSyncLines, screenSyncFile } from "./screen-plan-sync.js";
 import {
   blockFingerprint,
   newBlockXml,
@@ -78,6 +98,27 @@ export interface DraftServiceDeps {
   now?: () => Date;
   /** 저장 전송 — 시험이 기록된 fixture 를 넣는다. 없으면 env 가 고른다. */
   transport?: (site: string) => RestTransport;
+}
+
+/**
+ * 되돌릴 재료의 모양 — 정의는 저장소에 있다(변경안 기록과 같이 고치기가 한 모양을 쓴다 · 2026-10-31
+ * 2단계). 여기서는 같이 고치기의 옛 길이 그대로 쓰도록 다시 내놓는다.
+ */
+export type { ScreenSyncInverse };
+
+/** 같이 고치기 한 문서의 결과 — 웹의 `PlanSyncDoc` 재료와 되돌리기 기록의 재료. */
+export interface ScreenSyncResult {
+  docKey: string | null;
+  title: string;
+  outcome: "adopted" | "proposed" | "unchanged" | "failed";
+  changes: number;
+  summary?: string;
+  detail?: string;
+  proposalId?: string;
+  opIds?: string[];
+  inverse?: ScreenSyncInverse[];
+  /** 오래돼 들어가지 못하고 변경안으로 남은 걸음 수. */
+  kept?: number;
 }
 
 /** 새 블록의 열쇠 — `n` + 소문자 12자 16진(공통 계약 §4). */
@@ -175,8 +216,12 @@ export class DraftService {
   readonly #stores = new Map<string, DraftStore>();
   /** `<slug>:<docKey>` → 도는 생성의 손. cancel 이 끊고, stop 이 전부 끊는다. */
   readonly #running = new Map<string, AbortController>();
+  /** `<slug>:<docKey>` → 도는 생성의 끝 — 같이 고치기가 사람의 질문이 끝나기를 기다린다(2026-10-30). */
+  readonly #runs = new Map<string, Promise<unknown>>();
   /** 이 프로세스에서 도는 발행의 명령 아이디 — 재시작이 물려받은 잠금과 구별한다(2026-10-23 작업 B7). */
   readonly #sending = new Set<string>();
+  /** 이 프로세스에서 지워진 대화의 묘비(2026-11-03) — 도는 생성이 끝날 때 지워진 대화를 다시 쓰지 않게 가린다. */
+  readonly #goneThreads = new Set<string>();
 
   constructor(deps: DraftServiceDeps) {
     this.#deps = deps;
@@ -203,8 +248,9 @@ export class DraftService {
     return rows;
   }
 
-  async open(pageId: string): Promise<DraftView> {
-    const slug = this.#slug();
+  /** `slug` 는 같이 고치기가 배경 프로젝트의 초안을 열 때만 준다(2026-10-30) — 없으면 활성 프로젝트다. */
+  async open(pageId: string, slugOf?: string): Promise<DraftView> {
+    const slug = slugOf ?? this.#slug();
     const store = this.#store(slug);
     const docKey = `p-${pageId}`;
     const site = this.#requireSite(slug);
@@ -348,7 +394,8 @@ export class DraftService {
       // 하나라도 맞지 않으면 전부 거절이다 — 걸음을 차례로 복사본에 적용한다.
       for (const edit of edits) this.#applyEdit(store, work, edit);
       if (work.state === "published" || work.state === "closed-unconfirmed") work.state = "editing";
-      return store.save(work, expectedRevision);
+      // 사람의 손 — 판 고르기 줄에 「직접 고침」으로 서는 판이다(2026-10-31 2단계).
+      return store.save(work, expectedRevision, { origin: "person", label: null });
     });
     this.#broadcast(saved);
     return this.#view(saved);
@@ -380,13 +427,16 @@ export class DraftService {
   /**
    * 묻기 — 사람 메시지를 붙이고 답의 자리를 마련해 바로 돌려주고, 뒤에서 생성을 돈다(2026-10-23 · D3).
    * 같은 초안에 도는 생성이 있으면 거절이다. `pick` 은 기획 AI 의 모델 · 생각 시간(2026-10-26 사용자 요청) —
-   * 없으면 CLI 기본으로 돈다.
+   * 없으면 CLI 기본으로 돈다. `threadId` 는 이어 가는 기획 대화(2026-10-31 3단계) — 없으면 이 문서에 붙은
+   * 대화를 이어 받고, 그것도 없으면 새 대화를 만든다(이름은 첫 말의 머리). AI 의 변경안은 채택 없이 바로
+   * 초안에 들어가고 되돌릴 재료가 변경안 기록에 남는다(2026-10-31 2단계 · 사용자 결정 — 추천안 채택).
    */
   ask(
     docKey: string,
     text: string,
     refs: DraftRefInput[],
     pick: { model?: string | null; effort?: EffortLevel | null } = {},
+    threadId?: string | null,
   ): { threadId: string; messageId: string } {
     const slug = this.#slug();
     const store = this.#store(slug);
@@ -407,14 +457,9 @@ export class DraftService {
     // 근거의 파생 마크다운을 못 읽으면 묻기를 거절한다 — 빈 몸을 AI 에게 주지 않고 사람의 말로
     // 알린다(2026-10-23 2차 검토 R3 발견 5). 절을 골랐을 때와 문서 전체일 때가 같은 급의 오류이다.
     for (const row of refRows) this.#markdown(slug, row.path);
-    const thread: ThreadRecord = store.thread(docKey) ?? {
-      format: 1,
-      threadId: randomUUID(),
-      docKey,
-      sdkSessionId: null,
-      messages: [],
-    };
-    const history = thread.messages;
+    // 대화 — 이어 가는 대화가 이 문서로 옮겨 오고, 없으면 이 문서의 대화를 이어 받고, 그것도 없으면 새로 만든다.
+    const conversation = this.#threadForAsk(store, threadId, docKey, text);
+    const history = conversation.messages;
     const userMessage: DraftMessage = {
       messageId: randomUUID(),
       role: "user",
@@ -428,26 +473,65 @@ export class DraftService {
       })),
     };
     const aiMessageId = randomUUID();
-    thread.messages = [...thread.messages, userMessage];
-    store.saveThread(thread);
+    conversation.messages = [...history, userMessage];
+    store.saveConversation(conversation);
     // 도는 생성 — cancel 이 끊는 손이다.
     const controller = new AbortController();
     this.#running.set(runKey, controller);
-    void this.#generate({
+    const run = this.#generate({
       slug,
       store,
       record,
-      thread,
+      conversation,
       text,
       history,
       refs: refRows,
       aiMessageId,
       pick,
       signal: controller.signal,
+      autoApply: true,
     }).finally(() => {
       if (this.#running.get(runKey) === controller) this.#running.delete(runKey);
+      if (this.#runs.get(runKey) === run) this.#runs.delete(runKey);
     });
-    return { threadId: thread.threadId, messageId: aiMessageId };
+    this.#runs.set(runKey, run);
+    return { threadId: conversation.threadId, messageId: aiMessageId };
+  }
+
+  /**
+   * 묻기가 쓸 대화 — 이어 가는 대화(threadId)가 있으면 이 문서로 옮겨 오고, null 이면 새 대화를
+   * 만든다(`새 기획 대화` · 2026-10-31 3단계), undefined 면 이 문서에 붙은 대화를 이어 받고, 그것도
+   * 없으면 새 대화를 만든다. 이름은 첫 말의 머리로 짓는다(2026-10-31 3단계 — AI 가 짓는 이름표는
+   * 생성을 한 번 더 도는 일이라 두지 않았다).
+   */
+  #threadForAsk(
+    store: DraftStore,
+    threadId: string | null | undefined,
+    docKey: string,
+    text: string,
+  ): ConversationRecord {
+    if (typeof threadId === "string") {
+      const conversation = store.conversation(threadId);
+      if (conversation === null) {
+        throw new Error("이어 가는 대화를 찾지 못했습니다 — 대화 목록에서 다시 골라 주세요.");
+      }
+      conversation.docKey = docKey;
+      return conversation;
+    }
+    // null 은 `새 기획 대화` — 붙은 대화가 있어도 새로 만든다(2026-10-31 3단계).
+    const attached = threadId === undefined ? store.conversationOfDoc(docKey) : null;
+    if (attached !== null) return attached;
+    const now = this.#now().toISOString();
+    return {
+      format: 1,
+      threadId: randomUUID(),
+      title: conversationTitleOf(text),
+      docKey,
+      sdkSessionId: null,
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   cancel(docKey: string): { cancelled: boolean } {
@@ -457,11 +541,286 @@ export class DraftService {
     return { cancelled: true };
   }
 
-  thread(docKey: string): DraftThread {
+  /**
+   * 기획 대화의 판 — `threadId` 를 골랐으면 그 대화를, 없으면 이 문서의 최신 대화를 읽는다(2026-11-03).
+   * 사이드바 목록의 줄이 옛 대화를 다시 여는 길이다 — 문서의 최신 대화만 읽던 동안에는 옛 대화를
+   * 다시 볼 · 이어 말할 길이 없었다. 골른 대화가 이 문서의 것이 아니면 거절한다 — 옮겨졌거나
+   * 지워진 대화를 여는 눌어 있는 고름이 낡은 문서에 붙지 않게.
+   */
+  thread(docKey: string, threadId?: string): DraftThread {
     const slug = this.#slug();
     const store = this.#store(slug);
     this.#requireRecord(docKey, store);
-    return this.#threadView(slug, docKey, store);
+    if (threadId === undefined) return this.#threadView(slug, docKey, store);
+    const conversation = store.conversation(threadId);
+    if (conversation === null || conversation.docKey !== docKey) {
+      throw new Error("이어 가는 대화를 찾지 못했습니다 — 대화 목록에서 다시 골라 주세요.");
+    }
+    return this.#threadView(slug, docKey, store, conversation);
+  }
+
+  /** 기획 대화의 이름 바꾸기(2026-11-03) — 첫 말의 머리로 지은 자동 제목을 사람이 고친다. 답은 고쳐진 줄. */
+  renameThread(threadId: string, title: string): DraftConversationSummary {
+    const slug = this.#slug();
+    const store = this.#store(slug);
+    const conversation = store.conversation(threadId);
+    if (conversation === null) {
+      throw new Error("대화를 찾지 못했습니다 — 목록에서 다시 골라 주세요.");
+    }
+    const name = title.trim();
+    if (name === "") {
+      throw new Error("대화의 이름이 비어 있습니다 — 한 글자라도 써 주세요.");
+    }
+    conversation.title = name;
+    store.saveConversation(conversation);
+    const ledger = this.#ledger(slug);
+    return {
+      threadId: conversation.threadId,
+      title: conversation.title,
+      docKey: conversation.docKey,
+      docTitle: this.#docTitleOf(store, ledger, conversation.docKey),
+      at: conversation.updatedAt,
+      messageCount: conversation.messages.length,
+      running:
+        conversation.docKey !== null && this.#running.has(this.#runKey(slug, conversation.docKey)),
+    };
+  }
+
+  /** 기획 대화 목록(2026-10-31 3단계) — 사이드바 위 묶음이 읽는다. 도는 대화의 표시까지 여기서 얹는다. */
+  threadsList(): DraftConversationSummary[] {
+    const slug = this.#slug();
+    const store = this.#store(slug);
+    const ledger = this.#ledger(slug);
+    return store.conversations().map((conversation) => ({
+      threadId: conversation.threadId,
+      title: conversation.title,
+      docKey: conversation.docKey,
+      docTitle: this.#docTitleOf(store, ledger, conversation.docKey),
+      at: conversation.updatedAt,
+      messageCount: conversation.messages.length,
+      running:
+        conversation.docKey !== null && this.#running.has(this.#runKey(slug, conversation.docKey)),
+    }));
+  }
+
+  /** 대화가 다룰 문서를 옮긴다(2026-10-31 3단계) — 답은 옮겨진 대화의 줄이다. */
+  moveThread(threadId: string, docKey: string): DraftConversationSummary {
+    const slug = this.#slug();
+    const store = this.#store(slug);
+    this.#requireRecord(docKey, store);
+    const conversation = store.conversation(threadId);
+    if (conversation === null) {
+      throw new Error("대화를 찾지 못했습니다 — 목록에서 다시 골라 주세요.");
+    }
+    conversation.docKey = docKey;
+    conversation.updatedAt = this.#now().toISOString();
+    store.saveConversation(conversation);
+    const ledger = this.#ledger(slug);
+    return {
+      threadId: conversation.threadId,
+      title: conversation.title,
+      docKey: conversation.docKey,
+      docTitle: this.#docTitleOf(store, ledger, conversation.docKey),
+      at: conversation.updatedAt,
+      messageCount: conversation.messages.length,
+      running: this.#running.has(this.#runKey(slug, docKey)),
+    };
+  }
+
+  /** 기획 대화를 지운다 — 이 컴퓨터의 기록만 지우고 초안은 남는다(영구 삭제 길이 아니다). */
+  deleteThread(threadId: string): { deleted: boolean } {
+    const slug = this.#slug();
+    const store = this.#store(slug);
+    const conversation = store.conversation(threadId);
+    if (conversation === null) {
+      throw new Error("대화를 찾지 못했습니다 — 목록에서 다시 골라 주세요.");
+    }
+    // 도는 생성이 있으면 끊는다(2026-11-03) — 버리기의 419 줄과 같은 결. 묘비를 먼저 새겨
+    // 끊긴 답의 마지막 저장이 지워진 대화를 부활시키지 않게 한다(abort 를 지나쳐 저장이 나가도).
+    this.#goneThreads.add(threadId);
+    if (conversation.docKey !== null) {
+      this.#running.get(this.#runKey(slug, conversation.docKey))?.abort();
+    }
+    store.removeConversation(threadId);
+    return { deleted: true };
+  }
+
+  /** 대화 줄의 문서 이름 — 초안 요약이 이기고, 사라진 초안은 원장의 제목으로 대신한다. */
+  #docTitleOf(store: DraftStore, ledger: ConfluenceLedger, docKey: string | null): string {
+    if (docKey === null) return "";
+    const record = store.read(docKey);
+    if (record !== null) return record.title;
+    if (docKey.startsWith("p-")) return ledger.pages[docKey.slice(2)]?.title ?? "";
+    return "";
+  }
+
+  /** 초안 판 목록(2026-10-31 2단계) — 새것부터. 스냅숏의 기준 대조로 바뀐 곳의 수를 센다. */
+  async revisions(docKey: string): Promise<DraftRevisionSummary[]> {
+    const store = this.#storeFor(docKey);
+    const record = this.#requireRecord(docKey, store);
+    const snapshots = store.revisions(docKey);
+    // 스냅숏이 없는 옛 초안은 지금 모습을 한 판으로 내준다 — 목록이 텅 비면 판 고르기가 서지 않는다.
+    if (snapshots.length === 0) {
+      return [
+        {
+          revision: record.revision,
+          at: record.updatedAt,
+          origin: "person",
+          label: null,
+          changes: await this.#revisionChanges(store, record, record.blocks),
+          state: record.state,
+        },
+      ];
+    }
+    const rows: DraftRevisionSummary[] = [];
+    for (const snapshot of snapshots) {
+      rows.push({
+        revision: snapshot.revision,
+        at: snapshot.at,
+        origin: snapshot.origin,
+        label: snapshot.label,
+        changes: await this.#revisionChanges(store, record, snapshot.blocks),
+        state: snapshot.state,
+      });
+    }
+    return rows;
+  }
+
+  /** 옛 판의 읽기 전용 모습(2026-10-31 2단계) — 판 고르기에서 앞 판을 볼 때. 판 0 은 Confluence 출발점이다. */
+  async revision(docKey: string, revision: number): Promise<DraftRevisionView> {
+    const store = this.#storeFor(docKey);
+    const record = this.#requireRecord(docKey, store);
+    if (revision === 0) {
+      // 출발점 — 기준 원문의 블록을 그대로 투영한다(Confluence 판과 견주기의 앞쪽 · 2026-10-31 2단계).
+      const base = store.readBase(docKey);
+      if (base === null) {
+        throw new Error("기준 원문이 없습니다 — 새 문서 초안은 Confluence 판이 없어요.");
+      }
+      const blocks = parseStorage(base).blocks.map((block) =>
+        this.#wireBlock({ ...block, baseFingerprint: blockFingerprint(block.xml) }),
+      );
+      return {
+        docKey,
+        revision: 0,
+        at: record.createdAt,
+        origin: "system",
+        label: null,
+        title: record.baseTitle ?? record.title,
+        blocks,
+      };
+    }
+    const snapshot = store.revision(docKey, revision);
+    if (snapshot === null) {
+      throw new Error("그 개정의 판이 없습니다 — 판 목록에서 다시 골라 주세요.");
+    }
+    return {
+      docKey,
+      revision: snapshot.revision,
+      at: snapshot.at,
+      origin: snapshot.origin,
+      label: snapshot.label,
+      title: snapshot.title,
+      blocks: snapshot.blocks.map((block) => this.#wireBlock(block)),
+    };
+  }
+
+  /** 고른 옛 판으로 되돌린다 — 판 고르기의 `이 판으로 되돌리기`. 스냅숏의 모습을 그대로 붙인다. */
+  async restoreRevision(docKey: string, revision: number): Promise<DraftView> {
+    const store = this.#storeFor(docKey);
+    const saved = await store.withLock(docKey, () => {
+      const record = this.#requireRecord(docKey, store);
+      if (record.state === "publishing" || record.state === "result-unknown") {
+        throw new Error("발행이 도는 동안에는 되돌릴 수 없어요 — 끝난 뒤 다시 눌러 주세요.");
+      }
+      if (revision === record.revision) return record;
+      const snapshot = store.revision(docKey, revision);
+      if (snapshot === null) {
+        throw new Error("그 개정의 판이 없습니다 — 판 목록에서 다시 골라 주세요.");
+      }
+      const work: DraftRecord = {
+        ...record,
+        title: snapshot.title,
+        blocks: snapshot.blocks.map((block) => ({ ...block })),
+      };
+      if (work.state === "published" || work.state === "closed-unconfirmed") work.state = "editing";
+      return store.save(work, record.revision, { origin: "person", label: null });
+    });
+    this.#broadcast(saved);
+    return this.#view(saved);
+  }
+
+  /** 판이 기준에서 바꾼 것 — 고침 · 새로 · 지움 수(요약의 셈과 같은 판정). */
+  async #revisionChanges(
+    store: DraftStore,
+    record: DraftRecord,
+    blocks: DraftRecordBlock[],
+  ): Promise<{ changed: number; inserted: number; deleted: number }> {
+    const base = store.readBase(record.docKey);
+    let deleted = 0;
+    if (base !== null) {
+      const current = new Set(blocks.map((block) => block.id));
+      for (const block of parseStorage(base).blocks) {
+        if (!current.has(block.id)) deleted += 1;
+      }
+    }
+    let changed = 0;
+    let inserted = 0;
+    for (const block of blocks) {
+      if (block.theirsXml !== undefined) continue;
+      if (block.baseFingerprint === null) inserted += 1;
+      else if (blockFingerprint(block.xml) !== block.baseFingerprint) changed += 1;
+    }
+    return { changed, inserted, deleted };
+  }
+
+  /**
+   * 바로 반영된 AI 고침을 되돌린다(2026-10-31 2단계) — 변경안 기록에 남은 재료로 그 판 직전으로 돌린다.
+   * 그 사이 사람이 고친 블록은 남긴다(같이 고치기의 되돌리기와 같은 판정). 돌린 걸음은 거절로 적는다.
+   */
+  async undoProposal(
+    docKey: string,
+    proposalId: string,
+  ): Promise<{ restored: number; kept: number }> {
+    const store = this.#storeFor(docKey);
+    const result = await store.withLock(docKey, () => {
+      const proposals = store.proposals(docKey);
+      const proposal = proposals.find((row) => row.proposalId === proposalId);
+      if (proposal === undefined) {
+        throw new Error("변경안을 찾지 못했습니다 — 대화를 다시 읽어 주세요.");
+      }
+      const inverse = proposal.inverse ?? [];
+      if (proposal.appliedAt === undefined || inverse.length === 0) {
+        throw new Error("바로 반영된 고침이 아니어서 되돌릴 수 없어요.");
+      }
+      if (proposal.undoneAt !== undefined) {
+        throw new Error("이미 되돌린 고침이에요.");
+      }
+      const record = this.#requireRecord(docKey, store);
+      if (record.state === "publishing" || record.state === "result-unknown") {
+        throw new Error("발행이 도는 동안에는 되돌릴 수 없어요 — 끝난 뒤 다시 눌러 주세요.");
+      }
+      const work: DraftRecord = { ...record, blocks: record.blocks.map((block) => ({ ...block })) };
+      let restored = 0;
+      let kept = 0;
+      for (const step of [...inverse].reverse()) {
+        if (this.#revertStep(work, step)) restored += 1;
+        else kept += 1;
+      }
+      proposal.undoneAt = this.#now().toISOString();
+      if (restored > 0) {
+        if (work.state === "published" || work.state === "closed-unconfirmed")
+          work.state = "editing";
+        store.save(work, record.revision, { origin: "person", label: null });
+      }
+      // 되돌린 걸음은 거절로 적는다 — 대화의 카드가 「들어간 고침」으로 남지 않게(같이 고치기의 되돌리기와 같다).
+      for (const op of proposal.ops) {
+        if (op.state === "adopted") op.state = "rejected";
+      }
+      store.saveProposals(docKey, proposals);
+      return { restored, kept, record: store.read(docKey) ?? work };
+    });
+    if (result.restored > 0) this.#broadcast(result.record);
+    return { restored: result.restored, kept: result.kept };
   }
 
   /**
@@ -552,12 +911,12 @@ export class DraftService {
     };
   }
 
-  /** 생성의 몸 — 시작 방송 → 답 → 걸음 검사 → 변경안 · AI 메시지 저장 → done 방송. */
+  /** 생성의 몸 — 시작 방송 → 답 → 걸음 검사 → 변경안 저장(바로 반영) → 대화 저장 → done 방송. */
   async #generate(input: {
     slug: string;
     store: DraftStore;
     record: DraftRecord;
-    thread: ThreadRecord;
+    conversation: ConversationRecord;
     text: string;
     history: DraftMessage[];
     refs: Array<{ input: DraftRefInput; title: string; version: number; path: string }>;
@@ -565,8 +924,19 @@ export class DraftService {
     /** 고른 모델 · 생각 시간 — 없으면 CLI 기본(2026-10-26 사용자 요청). */
     pick: { model?: string | null; effort?: EffortLevel | null };
     signal: AbortSignal;
-  }): Promise<void> {
-    const { slug, store, record, thread, text, history, refs, aiMessageId, pick, signal } = input;
+    /**
+     * 같이 고치기(2026-10-30) — 변경안이 없으면 대화에 아무것도 남기지 않는다. 화면의 색 · 간격 같은 요청이 기획 대화를
+     * 「바꿀 것 없음」 기록으로 채우지 않게.
+     */
+    quiet?: boolean;
+    /**
+     * 바로 반영(2026-10-31 2단계 · 사용자 결정) — 변경안을 채택 없이 초안에 곧바로 넣는다. 사람이 고치던 블록의
+     * 걸음은 덮지 않고 변경안으로 남긴다. 되돌릴 재료는 변경안 기록에 남는다.
+     */
+    autoApply?: boolean;
+  }): Promise<string | null> {
+    const { slug, store, record, conversation, text, history, refs, aiMessageId, pick, signal } =
+      input;
     const docKey = record.docKey;
     const announce = (
       phase: "started" | "text" | "read" | "done" | "failed" | "cancelled",
@@ -575,7 +945,7 @@ export class DraftService {
       this.#deps.broadcast({
         type: "draft.ai",
         docKey,
-        threadId: thread.threadId,
+        threadId: conversation.threadId,
         messageId: aiMessageId,
         phase,
         ...extra,
@@ -624,7 +994,7 @@ export class DraftService {
           executable,
           readRoot,
           ...(cloneRoot !== null ? { extraRoots: [cloneRoot] } : {}),
-          resume: thread.sdkSessionId,
+          resume: conversation.sdkSessionId,
           prompt,
           ...(pick.model ? { model: pick.model } : {}),
           ...(pick.effort ? { effort: pick.effort } : {}),
@@ -648,7 +1018,7 @@ export class DraftService {
       // 옛 기록이 붙는다(2026-10-23 검토 B10).
       if (store.read(docKey) === null) {
         announce("cancelled", {});
-        return;
+        return null;
       }
       // 걸음은 물을 때의 초안(AI 가 본 것)으로 검사한다 — 지금 초안으로 재면 생성 중에 사람이 고친 블록의 지문이 실려,
       // AI 의 옛 내용이 그 위에 채택될 수 있다(2026-10-23 오케스트레이터 검토 · 계획 §6).
@@ -659,7 +1029,7 @@ export class DraftService {
         proposalId = randomUUID();
         const proposal: ProposalRecord = {
           proposalId,
-          threadId: thread.threadId,
+          threadId: conversation.threadId,
           createdAt: this.#now().toISOString(),
           draftRevision: record.revision,
           baseVersion: record.baseVersion,
@@ -667,7 +1037,8 @@ export class DraftService {
           ops,
         };
         // 저장도 문서 잠금 안에서 — 같은 순간의 채택이 저장한 표시를 덮지 않게 저장 직전에
-        // 지금 목록을 다시 읽어 합친다(2026-10-23 · 검토 발견 6).
+        // 지금 목록을 다시 읽어 합친다(2026-10-23 · 검토 발견 6). 바로 반영도 같은 잠금 안에서 —
+        // 검사와 반영 사이에 사람의 고침이 끼지 않게(2026-10-31 2단계).
         await store.withLock(docKey, () => {
           // 생성 중에 초안의 개정이나 기준 판이 바뀌었으면(사람의 고침 · 채택 · 발행 · 다시 맞추기) 이 변경안은 처음부터
           // 오래됨이다 — 계획 §6 「생성 중 사람이 초안을 고쳤으면 변경안을 오래된 것으로 표시한다」.
@@ -677,11 +1048,37 @@ export class DraftService {
             for (const op of proposal.ops) op.state = "stale";
           }
           store.saveProposals(docKey, [...store.proposals(docKey), proposal]);
+          if (input.autoApply === true) {
+            this.#applyProposalLocked(store, docKey, proposal, {
+              origin: "ai",
+              label: conversation.title,
+            });
+          }
         });
+        // 바로 반영으로 초안이 바뀌었다 — 다른 창도 다시 읽게 방송한다(편집의 방송과 같은 길).
+        const after = store.read(docKey);
+        if (input.autoApply === true && after !== null && after.revision !== record.revision) {
+          this.#broadcast(after);
+        }
       }
-      thread.sdkSessionId = answer.sdkSessionId;
-      thread.messages = [
-        ...thread.messages,
+      // 화면 제안(2026-11-02 · 같이 고치기 UX 계획 C8) — 정책을 바꾼 고침이 들어가면 같은 문서로 화면을 견준다.
+      // 화면이 옛 규칙이면 답 아래에 어긋남 카드가 선다. 같이 고치기(quiet — autoApply 없이 #adoptFromScreen 이
+      // 넣는 길)에는 돌지 않는다 — 한 방향의 고침이 반대 방향의 카드를 부르지 않게(같은 계획 §2 핑퐁 막기).
+      let mismatch: { rows: DraftMismatchRow[] } | null = null;
+      if (input.autoApply === true && answer.policy === true && proposalId !== null) {
+        const after = store.read(docKey);
+        if (after !== null && after.revision !== record.revision) {
+          mismatch = await this.#mismatchOf(slug, after);
+        }
+      }
+      if (input.quiet === true && proposalId === null) {
+        // 바꿀 것이 없었다 — 대화 · 세션 열쇠를 남기지 않는다(다음 사람의 질문이 이 맞춰 보기를 이어받지 않게).
+        announce("done", {});
+        return null;
+      }
+      conversation.sdkSessionId = answer.sdkSessionId;
+      conversation.messages = [
+        ...conversation.messages,
         {
           messageId: aiMessageId,
           role: "assistant",
@@ -689,23 +1086,27 @@ export class DraftService {
           at: this.#now().toISOString(),
           ...(proposalId !== null ? { proposalId } : {}),
           ...(reads.length > 0 ? { reads } : {}),
+          ...(mismatch !== null ? { mismatch } : {}),
         },
       ];
       // 대화도 문서 잠금 안에서, 초안이 아직 있을 때만 쓴다 — 버리기와 엇갈려 지운 열쇠에 다시 쓰지 않게.
+      // 지워진 대화도 다시 쓰지 않는다(2026-11-03) — 도는 중 지운 대화는 묘비(#goneThreads)가 가린다.
       const kept = await store.withLock(docKey, () => {
         if (store.read(docKey) === null) return false;
-        store.saveThread(thread);
+        if (this.#goneThreads.has(conversation.threadId)) return false;
+        store.saveConversation(conversation);
         return true;
       });
       if (!kept) {
         announce("cancelled", {});
-        return;
+        return null;
       }
       announce("done", proposalId !== null ? { proposalId } : {});
+      return proposalId;
     } catch (error) {
       if (signal.aborted) {
         announce("cancelled", {});
-        return;
+        return null;
       }
       this.#deps.logger.error("기획 AI 생성 실패", { err: error });
       // 짧은 한국어만 대화에 남긴다 — 바깥 오류 문장은 그대로 두지 않는다(session.asPlannerFacingError 와 같은 감각).
@@ -713,8 +1114,8 @@ export class DraftService {
       const sentence = /[\p{Script=Hangul}]/u.test(detail)
         ? detail
         : "생성이 끊겼습니다 — 잠시 뒤 다시 물어 주세요.";
-      thread.messages = [
-        ...thread.messages,
+      conversation.messages = [
+        ...conversation.messages,
         {
           messageId: aiMessageId,
           role: "assistant",
@@ -724,10 +1125,15 @@ export class DraftService {
         },
       ];
       // 버려진 초안의 대화는 다시 쓰지 않는다(2026-10-23 검토 B10) — 잠금 안에서 확인하고 쓴다.
+      // 지워진 대화도 같다(2026-11-03) — 끊긴 답의 오류 줄이 묘비에 가려 지워진 대화를 부활시키지 않게.
       await store.withLock(docKey, () => {
-        if (store.read(docKey) !== null) store.saveThread(thread);
+        if (store.read(docKey) === null) return;
+        if (this.#goneThreads.has(conversation.threadId)) return;
+        store.saveConversation(conversation);
       });
       announce("failed", { detail: sentence });
+      if (input.quiet === true) throw error instanceof Error ? error : new Error(sentence);
+      return null;
     } finally {
       if (tempRoot !== null) rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -823,6 +1229,561 @@ export class DraftService {
     return false;
   }
 
+  // ————— 같이 고치기 — 화면 요청이 바꾼 기획을 초안에(2026-10-30 사용자 결정 · 같이 고치기 계획 §4 · §5) —————
+
+  /**
+   * 화면 요청에서 같이 고치기 — 기획 AI 가 이 화면 변경이 문서의 정책 · 규칙 · 조건을 바꾸는지 보고, 바꾸면 그 걸음을
+   * 초안에 바로 채택한다. 사람이 고치던 블록은 덮지 않고 오래됨으로 남긴다. 발행은 하지 않는다. 바꿀 것이 없으면
+   * 대화에도 아무것도 남기지 않는다. 같은 초안의 질문이 돌면 끝나기를 기다린다.
+   */
+  async screenSync(input: {
+    slug: string;
+    /** 기존 문서면 pageId, 아직 발행하지 않은 새 문서 초안이면 docKey 로 고른다. */
+    pageId: string | null;
+    docKey: string | null;
+    /** 대화에 남는 말 — 화면 요청 그대로. */
+    displayText: string;
+    /** 기획 AI 에게 가는 말 — 요청 · 바뀐 화면 · 판정 기준. */
+    promptText: string;
+  }): Promise<ScreenSyncResult> {
+    const { slug } = input;
+    const store = this.#store(slug);
+    let docKey = input.docKey ?? (input.pageId !== null ? `p-${input.pageId}` : null);
+    if (docKey === null) {
+      return {
+        docKey: null,
+        title: "",
+        outcome: "failed",
+        changes: 0,
+        detail: "문서를 찾지 못했어요",
+      };
+    }
+    let record = store.read(docKey);
+    if (record === null && input.pageId !== null) {
+      try {
+        docKey = (await this.open(input.pageId, slug)).docKey;
+        record = store.read(docKey);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        return {
+          docKey: null,
+          title: this.#ledger(slug).pages[input.pageId]?.title ?? "",
+          outcome: "failed",
+          changes: 0,
+          detail: /[\p{Script=Hangul}]/u.test(detail) ? detail : "문서를 열지 못했어요",
+        };
+      }
+    }
+    if (record === null) {
+      return { docKey, title: "", outcome: "failed", changes: 0, detail: "초안을 찾지 못했어요" };
+    }
+    const runKey = this.#runKey(slug, docKey);
+    // 사람의 질문이 돌면 끝까지 기다린다 — 그 사이 다른 같이 고치기가 끼면 한 번 더 기다린다.
+    for (
+      let waited = this.#runs.get(runKey);
+      waited !== undefined;
+      waited = this.#runs.get(runKey)
+    ) {
+      await waited.catch(() => undefined);
+    }
+    record = store.read(docKey);
+    if (record === null) {
+      return { docKey, title: "", outcome: "failed", changes: 0, detail: "초안이 버려졌어요" };
+    }
+    const title = record.title;
+    // 대화 — 이 문서에 붙은 대화를 이어 받고, 없으면 새로 만든다(옮기기와 같은 규칙 · 2026-10-31 3단계).
+    const conversation =
+      store.conversationOfDoc(docKey) ??
+      ({
+        format: 1,
+        threadId: randomUUID(),
+        title: conversationTitleOf(input.displayText),
+        docKey,
+        sdkSessionId: null,
+        messages: [],
+        createdAt: this.#now().toISOString(),
+        updatedAt: this.#now().toISOString(),
+      } satisfies ConversationRecord);
+    const history = conversation.messages;
+    conversation.messages = [
+      ...history,
+      {
+        messageId: randomUUID(),
+        role: "user",
+        text: input.displayText,
+        at: this.#now().toISOString(),
+        origin: "screen",
+      },
+    ];
+    const controller = new AbortController();
+    this.#running.set(runKey, controller);
+    const run = this.#generate({
+      slug,
+      store,
+      record,
+      conversation,
+      text: input.promptText,
+      history,
+      refs: [],
+      aiMessageId: randomUUID(),
+      pick: {},
+      signal: controller.signal,
+      quiet: true,
+    });
+    this.#runs.set(runKey, run);
+    let proposalId: string | null;
+    try {
+      proposalId = await run;
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      return { docKey, title, outcome: "failed", changes: 0, detail };
+    } finally {
+      if (this.#running.get(runKey) === controller) this.#running.delete(runKey);
+      if (this.#runs.get(runKey) === run) this.#runs.delete(runKey);
+    }
+    if (proposalId === null) return { docKey, title, outcome: "unchanged", changes: 0 };
+    return await this.#adoptFromScreen(store, docKey, proposalId, title);
+  }
+
+  /**
+   * 변경안의 열린 걸음을 초안에 바로 넣는다(2026-10-31 2단계 · 문서 잠금 안에서 부른다) — 채택과 같은 판정에
+   * 되돌릴 재료를 함께 적는다. 사람이 고치던 블록의 걸음은 덮지 않고 변경안으로 남긴다(오래됨 표시는
+   * 대화가 읽을 때 지금 초안과 다시 대 보는 몫이다). 발행이 도는 동안엔 아무것도 넣지 않는다.
+   */
+  #applyProposalLocked(
+    store: DraftStore,
+    docKey: string,
+    proposal: ProposalRecord,
+    meta: RevisionMeta,
+  ): {
+    summary: string;
+    record: DraftRecord;
+    applied: number;
+    inverse: ScreenSyncInverse[];
+    opIds: string[];
+    total: number;
+  } | null {
+    const found = store.read(docKey);
+    if (found === null) return null;
+    // 발행이 도는 동안은 초안을 건드리지 않는다 — 변경안으로 남는다.
+    if (found.state === "publishing" || found.state === "result-unknown") {
+      return {
+        summary: proposal.summary,
+        record: found,
+        applied: 0,
+        inverse: [],
+        opIds: [],
+        total: proposal.ops.length,
+      };
+    }
+    const work: DraftRecord = { ...found, blocks: found.blocks.map((block) => ({ ...block })) };
+    const inverse: ScreenSyncInverse[] = [];
+    const opIds: string[] = [];
+    for (const op of proposal.ops) {
+      if (op.state !== "open") continue;
+      if (this.#opStale(op, work)) continue;
+      const step = this.#applyWithInverse(work, op);
+      if (step === null) continue;
+      op.state = "adopted";
+      inverse.push(step);
+      opIds.push(op.opId);
+    }
+    if (inverse.length > 0) {
+      if (work.state === "published" || work.state === "closed-unconfirmed") {
+        work.state = "editing";
+      }
+      store.save(work, found.revision, meta);
+      proposal.appliedAt = this.#now().toISOString();
+      proposal.appliedOpIds = opIds;
+      proposal.inverse = inverse;
+    }
+    store.saveProposals(docKey, [
+      ...store.proposals(docKey).filter((row) => row.proposalId !== proposal.proposalId),
+      proposal,
+    ]);
+    return {
+      summary: proposal.summary,
+      record: store.read(docKey) ?? work,
+      applied: inverse.length,
+      inverse,
+      opIds,
+      total: proposal.ops.length,
+    };
+  }
+
+  /** 같이 고치기의 채택 — 바로 반영과 같은 판정(2026-10-31 2단계부터 #applyProposalLocked 가 같이 쓴다). */
+  async #adoptFromScreen(
+    store: DraftStore,
+    docKey: string,
+    proposalId: string,
+    title: string,
+  ): Promise<ScreenSyncResult> {
+    const outcome = await store.withLock(docKey, () => {
+      const proposals = store.proposals(docKey);
+      const proposal = proposals.find((row) => row.proposalId === proposalId);
+      if (proposal === undefined) return null;
+      return this.#applyProposalLocked(store, docKey, proposal, {
+        origin: "screen",
+        label: null,
+      });
+    });
+    if (outcome === null) {
+      return { docKey, title, outcome: "failed", changes: 0, detail: "변경안을 찾지 못했어요" };
+    }
+    if (outcome.applied === 0) {
+      return {
+        docKey,
+        title,
+        outcome: "proposed",
+        changes: outcome.total,
+        summary: outcome.summary,
+        proposalId,
+      };
+    }
+    this.#broadcast(outcome.record);
+    return {
+      docKey,
+      title: outcome.record.title,
+      outcome: "adopted",
+      changes: outcome.applied,
+      summary: outcome.summary,
+      proposalId,
+      opIds: outcome.opIds,
+      inverse: outcome.inverse,
+      kept: outcome.total - outcome.applied,
+    };
+  }
+
+  /** 한 걸음을 적용하고 되돌릴 재료를 돌려준다 — 못 적용하면 null(그 걸음은 오래됨). */
+  #applyWithInverse(work: DraftRecord, op: ProposalOpRecord): ScreenSyncInverse | null {
+    switch (op.type) {
+      case "replace": {
+        const before = work.blocks.find((block) => block.id === op.blockId);
+        if (before === undefined || !this.#applyOp(work, op)) return null;
+        const after = work.blocks.find((block) => block.id === op.blockId);
+        if (after === undefined) return null;
+        return {
+          type: "replace",
+          blockId: op.blockId,
+          before: { kind: before.kind, xml: before.xml },
+          after: blockFingerprint(after.xml),
+        };
+      }
+      case "insert": {
+        const known = new Set(work.blocks.map((block) => block.id));
+        if (!this.#applyOp(work, op)) return null;
+        const made = work.blocks.find((block) => !known.has(block.id));
+        if (made === undefined) return null;
+        return { type: "insert", blockId: made.id, after: blockFingerprint(made.xml) };
+      }
+      case "delete": {
+        const index = work.blocks.findIndex((block) => block.id === op.blockId);
+        const block = work.blocks[index];
+        if (block === undefined || !this.#applyOp(work, op)) return null;
+        return {
+          type: "delete",
+          block: { ...block },
+          afterBlockId: work.blocks[index - 1]?.id ?? null,
+        };
+      }
+      case "title": {
+        const before = work.title;
+        if (!this.#applyOp(work, op)) return null;
+        return { type: "title", before, after: op.title };
+      }
+    }
+  }
+
+  /**
+   * 같이 고친 초안 되돌리기(같이 고치기 계획 §5) — 들어간 모습 그대로인 블록만 그 전으로 돌린다. 그 뒤 사람이 고친
+   * 블록은 그대로 두고 수만 센다. 발행한 뒤라도 Confluence 는 건드리지 않는다 — 초안이 공식본과 달라질 뿐이다.
+   */
+  async screenSyncUndo(input: {
+    slug: string;
+    docKey: string;
+    proposalId: string;
+    opIds: string[];
+    inverse: ScreenSyncInverse[];
+  }): Promise<{ restored: number; kept: number }> {
+    const store = this.#store(input.slug);
+    const { docKey } = input;
+    const result = await store.withLock(docKey, () => {
+      const record = store.read(docKey);
+      if (record === null) return { restored: 0, kept: input.inverse.length, record: null };
+      if (record.state === "publishing" || record.state === "result-unknown") {
+        throw new Error("발행이 도는 동안에는 되돌릴 수 없어요 — 끝난 뒤 다시 눌러 주세요.");
+      }
+      const work: DraftRecord = { ...record, blocks: record.blocks.map((block) => ({ ...block })) };
+      let restored = 0;
+      let kept = 0;
+      for (const step of [...input.inverse].reverse()) {
+        if (this.#revertStep(work, step)) restored += 1;
+        else kept += 1;
+      }
+      if (restored === 0) return { restored, kept, record: null };
+      if (work.state === "published" || work.state === "closed-unconfirmed") work.state = "editing";
+      store.save(work, record.revision);
+      // 되돌린 걸음은 거절로 적는다 — 기획 대화의 변경안 카드가 「채택」으로 남지 않게.
+      const proposals = store.proposals(docKey);
+      const proposal = proposals.find((row) => row.proposalId === input.proposalId);
+      if (proposal !== undefined) {
+        const undone = new Set(input.opIds);
+        for (const op of proposal.ops) {
+          if (undone.has(op.opId) && op.state === "adopted") op.state = "rejected";
+        }
+        store.saveProposals(docKey, proposals);
+      }
+      return { restored, kept, record: store.read(docKey) ?? work };
+    });
+    if (result.record !== null) this.#broadcast(result.record);
+    return { restored: result.restored, kept: result.kept };
+  }
+
+  // ————— 화면과 맞춰 보기 · 화면 제안(2026-11-02 · 같이 고치기 UX 계획 C7 · C8) —————
+
+  /**
+   * 화면과 맞춰 보기(C7) — 문서 하나와 지금 화면을 읽어 어긋난 곳을 돌려준다. 판정만 돌고 초안 · 화면 어디에도
+   * 쓰지 않는다. 기획서 쪽 말의 정본은 초안 우선(계획 §2)이라 초안이 없으면 공식본 사본을 읽는데, 그 길에서 초안을
+   * 만들지 않는다(같은 계획 C1 의 「판정만으로 초안이 생기지 않는다」와 같은 규칙).
+   */
+  async compare(pageId: string): Promise<DraftCompareResult> {
+    const slug = this.#slug();
+    const store = this.#store(slug);
+    const docKey = `p-${pageId}`;
+    const record = store.read(docKey);
+    const page = this.#ledger(slug).pages[pageId];
+    let markdown: string;
+    let source: string;
+    let title: string;
+    if (record !== null) {
+      markdown = this.#draftMarkdown(record);
+      source = `초안 개정 ${record.revision}`;
+      title = record.title;
+    } else if (page !== undefined) {
+      try {
+        markdown = readFileSync(join(this.#mirrorRoot(slug), `${page.path}.md`), "utf8");
+      } catch {
+        throw new Error("기획서 본문을 읽지 못했어요 — 가져오기를 다시 돌려 주세요.");
+      }
+      source = `Confluence 판 ${page.version}`;
+      title = page.title;
+    } else {
+      throw new Error("문서를 찾지 못했어요");
+    }
+    const parsed = await this.#runCompare(slug, {
+      title,
+      source,
+      markdown,
+      pageId,
+    });
+    return {
+      docKey: record !== null ? docKey : null,
+      pageId,
+      title,
+      source,
+      rows: parsed.rows,
+      note: parsed.note,
+    };
+  }
+
+  /**
+   * 맞춰 보기의 몸 — 절 상한 자르기 · 프롬프트 · 기획 AI 호출(도구 없는 읽기 러너) · 안 받은 짝 걷기. 대화나
+   * 변경안을 남기지 않는다 — #generate 의 앞부분(러너 호출)만 베낀 읽기 판정이다.
+   */
+  async #runCompare(
+    slug: string,
+    doc: { title: string; source: string; markdown: string; pageId: string | null },
+  ): Promise<{ rows: DraftMismatchRow[]; note: string | null }> {
+    const executable = this.#deps.claudeExecutable();
+    if (executable === null) {
+      throw new Error("기획 AI 를 찾지 못했습니다 — Claude Code CLI 를 먼저 설치해 주세요.");
+    }
+    const mirrorRoot = this.#mirrorRoot(slug);
+    // 사본이 없을 때의 임시 읽기 폴더 — #generate 와 같은 규칙.
+    const tempRoot = existsSync(mirrorRoot) ? null : mkdtempSync(join(tmpdir(), "draft-ai-"));
+    try {
+      const { root } = this.#deps.registry.paths(slug);
+      const cloneRoot = this.#deps.cloneRoot?.(slug) ?? null;
+      const screens =
+        doc.pageId === null
+          ? []
+          : await compareScreens({ root, repoRoot: cloneRoot, pageId: doc.pageId });
+      const clipped = clipSections(doc.markdown);
+      const answer = await this.#deps.ai(
+        {
+          executable,
+          readRoot: tempRoot ?? mirrorRoot,
+          ...(cloneRoot !== null ? { extraRoots: [cloneRoot] } : {}),
+          resume: null,
+          prompt: comparePrompt({
+            title: doc.title,
+            source: doc.source,
+            markdown: clipped.body,
+            partial: clipped.partial,
+            screens,
+          }),
+          signal: new AbortController().signal,
+        },
+        { onText: () => undefined, onRead: () => undefined },
+      );
+      const parsed = answer.compare === undefined ? null : parseCompareRows(answer.compare);
+      if (parsed === null) {
+        throw new Error("맞춤 보기가 답을 끝내지 못했어요 — 잠시 뒤 다시 눌러 주세요.");
+      }
+      const declined =
+        doc.pageId === null ? new Set<string>() : readCompareDeclines(root, doc.pageId);
+      return {
+        rows: parsed.rows.filter((row) => !declined.has(row.screenName)),
+        note: clipped.partial ? "절이 많아 앞의 절만 봤어요" : null,
+      };
+    } finally {
+      if (tempRoot !== null) rmSync(tempRoot, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * 화면 제안의 판정(C8) — 기획 고침이 초안에 들어간 뒤 같은 문서로 조용히 견준다. 화면이 옛 규칙이면 줄을
+   * 돌려준다. 실패는 조용히 사라진다 — 제안은 덤이고 사람의 고침 자체는 이미 끝났다.
+   */
+  async #mismatchOf(
+    slug: string,
+    record: DraftRecord,
+  ): Promise<{ rows: DraftMismatchRow[] } | null> {
+    try {
+      const parsed = await this.#runCompare(slug, {
+        title: record.title,
+        source: `초안 개정 ${record.revision}`,
+        markdown: this.#draftMarkdown(record),
+        pageId: record.pageId,
+      });
+      return parsed.rows.length > 0 ? { rows: parsed.rows } : null;
+    } catch (error) {
+      this.#deps.logger.info("화면 견주기 실패", { err: error });
+      return null;
+    }
+  }
+
+  /** 초안의 지금 몸 — 저장 포맷을 파생 마크다운으로 내린다(#snapshotOfDraft 와 같은 길). */
+  #draftMarkdown(record: DraftRecord): string {
+    return deriveMarkdown(composeDraftBody(record), {
+      pageId: record.pageId ?? "",
+      space: null,
+      title: record.title,
+      version: record.baseVersion ?? 0,
+      updatedAt: null,
+    }).markdown;
+  }
+
+  /**
+   * 같이 고친 기록 도출(C4) — 이 화면 대화에서 같이 고쳐진 문서들. 기획서 탭의 `초안에서 바뀐 곳` 묶음의 재료다.
+   * 걸음이 닿은 절 머리를 함께 풀어 `보기` 가 스크롤 · 하이라이트할 자리를 안다.
+   */
+  syncDocs(sessionId: string): { docs: DraftSyncDocRow[] } {
+    const slug = this.#slug();
+    const { root } = this.#deps.registry.paths(slug);
+    const store = this.#store(slug);
+    const docs: DraftSyncDocRow[] = [];
+    for (const entry of liveEntries(readSyncLines(screenSyncFile(root)))) {
+      if (entry.sessionId !== sessionId) continue;
+      // 기록 읽기는 관용이다(readSyncLines 검사가 최소) — opIds 가 없는 줄은 빈 걸음으로 센다.
+      const opIds = Array.isArray(entry.opIds) ? entry.opIds : [];
+      docs.push({
+        pageId: entry.docKey.startsWith("p-") ? entry.docKey.slice(2) : null,
+        docKey: entry.docKey,
+        title: entry.title,
+        changes: opIds.length,
+        sections: this.#sectionsOf(store, { ...entry, opIds }),
+        at: entry.at,
+      });
+    }
+    return { docs };
+  }
+
+  /** 이 문서가 같이 고침으로 닿은 화면(C4) — `이 문서의 화면` 이 연결 파일 줄과 함께 보인다. */
+  syncScreens(pageId: string): { screens: DraftSyncScreenRow[] } {
+    const slug = this.#slug();
+    const { root } = this.#deps.registry.paths(slug);
+    const screens: DraftSyncScreenRow[] = [];
+    const seen = new Set<string>();
+    for (const line of readSyncLines(screenSyncFile(root))) {
+      if (line.kind !== "card") continue;
+      if (!line.sync.docs.some((doc) => doc.pageId === pageId)) continue;
+      for (const screen of line.turn.screens) {
+        if (screen.route === "" || seen.has(screen.route)) continue;
+        seen.add(screen.route);
+        screens.push({
+          route: screen.route,
+          title: screen.title.trim() === "" ? null : screen.title,
+          at: line.at,
+        });
+      }
+    }
+    return { screens };
+  }
+
+  /** 걸음의 열쇠(opIds)가 닿은 절 머리 — 블록이 사라졌으면 빈 목록(보기는 문서 맨 위로 연다 · 계획 §3 C4 검토). */
+  #sectionsOf(
+    store: DraftStore,
+    entry: { docKey: string; proposalId: string; opIds: string[] },
+  ): string[] {
+    const record = store.read(entry.docKey);
+    if (record === null) return [];
+    const proposal = store
+      .proposals(entry.docKey)
+      .find((row) => row.proposalId === entry.proposalId);
+    if (proposal === undefined) return [];
+    const opIds = new Set(entry.opIds);
+    const wanted = new Set<string>();
+    for (const op of proposal.ops) {
+      if (!opIds.has(op.opId)) continue;
+      if (op.type === "replace" || op.type === "delete") wanted.add(op.blockId);
+      else if (op.type === "insert" && op.afterBlockId !== null) wanted.add(op.afterBlockId);
+    }
+    const sections = new Set<string>();
+    let heading: string | null = null;
+    for (const block of this.#view(record).blocks) {
+      if (block.view.kind === "heading") heading = block.view.text;
+      if (wanted.has(block.id) && heading !== null) sections.add(heading);
+    }
+    return [...sections].slice(0, 3);
+  }
+
+  /** 되돌리기의 한 걸음 — 들어간 모습 그대로일 때만 돌린다. */
+  #revertStep(work: DraftRecord, step: ScreenSyncInverse): boolean {
+    switch (step.type) {
+      case "replace": {
+        const index = work.blocks.findIndex((block) => block.id === step.blockId);
+        const block = work.blocks[index];
+        if (block === undefined || blockFingerprint(block.xml) !== step.after) return false;
+        work.blocks[index] = { ...block, kind: step.before.kind, xml: step.before.xml };
+        return true;
+      }
+      case "insert": {
+        const index = work.blocks.findIndex((block) => block.id === step.blockId);
+        const block = work.blocks[index];
+        if (block === undefined || blockFingerprint(block.xml) !== step.after) return false;
+        work.blocks.splice(index, 1);
+        return true;
+      }
+      case "delete": {
+        if (work.blocks.some((block) => block.id === step.block.id)) return false;
+        if (
+          step.afterBlockId !== null &&
+          !work.blocks.some((block) => block.id === step.afterBlockId)
+        ) {
+          return false;
+        }
+        work.blocks.splice(this.#indexAfter(work, step.afterBlockId), 0, { ...step.block });
+        return true;
+      }
+      case "title": {
+        if (work.title !== step.after) return false;
+        work.title = step.before;
+        return true;
+      }
+    }
+  }
+
   // ————— 채택 · 거절 —————
 
   async adopt(
@@ -860,8 +1821,9 @@ export class DraftService {
       if (applied > 0) {
         if (work.state === "published" || work.state === "closed-unconfirmed")
           work.state = "editing";
-        // 개정이 다르면 DraftStaleError — 처리기가 코드 draft.stale 로 낸다.
-        store.save(work, expectedRevision);
+        // 개정이 다르면 DraftStaleError — 처리기가 코드 draft.stale 로 낸다. 남은 걸음의 채택도
+        // AI 의 고침이다(2026-10-31 2단계 — 사람이 고친 블록 위의 단추로 들어간다).
+        store.save(work, expectedRevision, { origin: "ai", label: null });
         store.saveProposals(docKey, proposals);
       } else if (proposal.ops.some((op) => op.state === "stale" && wanted.has(op.opId))) {
         // 아무것도 적용되지 않았어도 stale 표시는 남긴다 — 대화가 다시 읽힐 때 보인다.
@@ -946,7 +1908,7 @@ export class DraftService {
     let client: ConfluenceClient | null = null;
     let accountId: string | null = null;
     if (site !== null) {
-      const creds = await loadConfluenceCredentials(this.#deps.credentials, process.env);
+      const creds = await loadConfluenceCredentials(this.#deps.credentials, process.env, slug);
       if (creds !== null) {
         client = new ConfluenceClient(
           { site, email: creds.email, token: creds.token },
@@ -1099,7 +2061,7 @@ export class DraftService {
 
   async #confluence(slug: string): Promise<{ client: ConfluenceClient; site: string }> {
     const site = this.#requireSite(slug);
-    const creds = await loadConfluenceCredentials(this.#deps.credentials, process.env);
+    const creds = await loadConfluenceCredentials(this.#deps.credentials, process.env, slug);
     if (creds === null) {
       throw new Error("먼저 연결해 주세요 — 사이트 · 이메일 · 토큰을 넣어 주세요.");
     }
@@ -1287,7 +2249,11 @@ export class DraftService {
     const mirrorRoot = realpathBestEffort(this.#mirrorRoot(slug));
     const resolved = realpathBestEffort(absPath);
     if (!resolved.startsWith(`${mirrorRoot}${sep}`)) return null;
-    const relative = resolved.slice(mirrorRoot.length + 1);
+    // 원장의 경로는 `/` 로 나눈다 — Windows 의 `\` 표기로는 어느 문서와도 맞지 않았다(2026-10-30 시험에서 찾음).
+    const relative = resolved
+      .slice(mirrorRoot.length + 1)
+      .split(sep)
+      .join("/");
     const withoutSuffix = relative.endsWith(".md") ? relative.slice(0, -".md".length) : relative;
     for (const [pageId, page] of Object.entries(ledger.pages)) {
       if (page.path === withoutSuffix) return { pageId, title: page.title, version: page.version };
@@ -1393,21 +2359,40 @@ export class DraftService {
       baseVersion: record.baseVersion,
       observedVersion: record.observedVersion,
       updatedAt: record.updatedAt,
+      parentTitle: record.parent?.title ?? null,
     };
   }
 
-  #threadView(slug: string, docKey: string, store: DraftStore): DraftThread {
+  #threadView(
+    slug: string,
+    docKey: string,
+    store: DraftStore,
+    picked?: ConversationRecord,
+  ): DraftThread {
     const record = this.#requireRecord(docKey, store);
-    const thread = store.thread(docKey);
+    const conversation = picked ?? store.thread(docKey);
     return {
       docKey,
-      threadId: thread?.threadId ?? "",
-      messages: thread?.messages ?? [],
+      threadId: conversation?.threadId ?? "",
+      messages: conversation?.messages ?? [],
       proposals: store.proposals(docKey).map((proposal) => ({
         proposalId: proposal.proposalId,
         createdAt: proposal.createdAt,
         draftRevision: proposal.draftRevision,
         summary: proposal.summary,
+        // 바로 반영(2026-10-31 2단계) — 들어간 고침의 표시와 되돌릴 수 있는지를 함께 실은다.
+        ...(proposal.appliedAt !== undefined ? { appliedAt: proposal.appliedAt } : {}),
+        ...(proposal.appliedOpIds !== undefined && proposal.appliedOpIds.length > 0
+          ? { appliedOps: proposal.appliedOpIds.length }
+          : {}),
+        ...(proposal.appliedAt !== undefined
+          ? { keptOps: proposal.ops.filter((op) => op.state === "open").length }
+          : {}),
+        ...(proposal.appliedAt !== undefined &&
+        proposal.undoneAt === undefined &&
+        (proposal.inverse?.length ?? 0) > 0
+          ? { undoable: true }
+          : {}),
         // 열린 걸음은 지금 초안과 다시 대 본다 — 사람이 고친 블록의 걸음은 stale 다.
         ops: proposal.ops.map((op): DraftOp => {
           const state: DraftOpState =

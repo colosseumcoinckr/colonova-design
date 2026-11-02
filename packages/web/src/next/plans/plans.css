@@ -574,169 +574,390 @@
   font-size: var(--fs-cap);
 }
 
-/* 연결 지도 칸(2026-10-24 사용자 결정) — 사이드바 자리로 옮겨 칸 전체 폭에 선다. */
-.nx-map-col {
+/* ————— 기획서 칸 개선(2026-10-31) — 문서 판 · 기획 대화의 두 칸 ————— */
+
+/* 두 칸 배치(§4) — 왼쪽 문서 판(약 60%), 오른쪽 기획 대화(약 40%). 대화 칸의 폭은 끌어 기억한다. */
+.nx-pl-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+/* 문서 판은 칸이 구른다(2026-11-02 사용자 지적 — 카드가 구르던 판은 스크롤 막대가 760px 카드의
+   오른 끝에 떠 칸 가장자리와 베이지 사이로 갈라졌다). 칸이 구르면 막대가 칸의 오른가에 딱 붙고
+   가운데 카드는 제 자리를 지킨다 — 두 칸이 따로 구르는 것(2026-10-31 §4)은 그대로다. */
+.nx-pl-docpane {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
-  background: var(--bg);
+  overflow-y: auto;
+  /* 스크롤 자리를 늘 남겨 본문이 짧아질 때 카드의 가운데가 흔들리지 않게 한다. */
+  scrollbar-gutter: stable;
 }
-.nx-map-col-title {
+.nx-pl-docpane > * {
+  min-height: 0;
+}
+/* 카드는 제 몸집(본문 길이)만큼 서고 칸 안에서 가운데를 지킨다. */
+.nx-pl-docpane .nx-pl-doc,
+.nx-pl-docpane .nx-dr {
+  flex: none;
+}
+/* 빈 판은 칸을 다 써 가운데 문장을 세운다 — 스크롤은 칸의 몫이다(제 스크롤을 거둔다). */
+.nx-pl-docpane .nx-pl-state {
+  flex: 1;
+  overflow: visible;
+}
+.nx-pl-split {
+  flex: none;
+  width: var(--sp-2);
+  margin-inline: var(--sp-1);
+  border-radius: var(--r-sm);
+  cursor: col-resize;
+  background: transparent;
+}
+.nx-pl-view[data-chat="off"] .nx-pl-split {
+  display: none;
+}
+.nx-pl-split:hover,
+.nx-pl-view:has(.nx-pl-split:active) .nx-pl-split {
+  background: var(--line);
+}
+.nx-pl-chat {
+  flex: none;
+  width: auto;
+  min-width: var(--sp-64, 300px);
+}
+.nx-pl-view[data-chat="on"] .nx-pl-chat {
+  width: clamp(300px, var(--nx-pl-chat-w, 380px), 560px);
+}
+
+/* 좁은 칸의 두 탭(§H) — 1100px 아래에서 문서 · 대화가 나뉜다. */
+.nx-pl-tabs {
+  display: none;
+  flex: none;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-4) 0;
+}
+.nx-pl-tabs [role="tab"] {
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  border: none;
+  background: transparent;
+  color: var(--ink2);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+}
+.nx-pl-tabs [role="tab"].nx-tab--on {
+  background: var(--bg-2, var(--bg));
+  color: var(--ink);
+  font-weight: var(--fw-semi);
+}
+@container nxpl (max-width: 1100px) {
+  .nx-pl-view[data-chat="on"] .nx-pl-tabs {
+    display: flex;
+  }
+  /* 탭이 서면 한쪽만 보인다 — data-tab 이 고른다. */
+  .nx-pl-view[data-chat="on"][data-tab="doc"] .nx-pl-chat,
+  .nx-pl-view[data-chat="on"][data-tab="doc"] .nx-pl-split {
+    display: none;
+  }
+  .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-pl-docpane {
+    display: none;
+  }
+  .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-pl-chat {
+    width: 100%;
+  }
+  /* 좁은 대화 탭에서는 머리를 줄인다(2026-11-02 D6) — 안내문을 숨기고 제목 · 문서 이름만 남는다. */
+  .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-dr-thread-scope {
+    display: none;
+  }
+}
+@container nxpl (min-width: 1101px) {
+  .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-pl-docpane {
+    display: flex;
+  }
+}
+
+/* 사이드바의 기획 대화 목록(§A) — 위에 대화, 아래 기획서. 날짜 묶음 머리와 줄 끝 `···` 는
+   화면 대화 목록(sidebar.css 의 .nx-cg-h · .nx-conv-menu)과 같은 규칙이다(2026-11-03). */
+.nx-pl-conv {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  max-height: 40%;
+  min-height: 0;
+  border-bottom: 1px solid var(--line);
+}
+.nx-pl-conv-head :is(h2) {
+  font-size: var(--fs-ui);
+}
+.nx-pl-conv-list {
+  flex: 1;
+  padding: 0 var(--sp-2) var(--sp-2);
+  overflow-y: auto;
+  min-height: 0;
+}
+.nx-pl-conv-cg:not(:first-child) {
+  margin-top: var(--sp-1);
+}
+/* 묶음 머리 — 굴러도 맨 위에 붙어 지금 어느 날을 지나는지 말한다(.nx-cg-h 와 같은 결).
+   붙어 있는 동안 줄이 머리 밑으로 지나가므로 사이드바 바탕(--side)으로 가린다. */
+.nx-pl-conv-g {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   margin: 0;
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--side, inherit);
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
+}
+.nx-pl-conv-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nx-pl-conv-none {
+  margin: 0 var(--sp-2) var(--sp-2);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+}
+/* 줄은 감싸개가 강조를 든다 — 제목 단추와 `···` 가 한 상자 안에 있어야 눌린 줄이 하나로 읽힌다
+   (.nx-conv-row 와 같은 결). */
+.nx-pl-conv-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-sm);
+}
+.nx-pl-conv-row:hover {
+  background: var(--bg-2, var(--hover, rgba(0, 0, 0, 0.04)));
+}
+.nx-pl-conv-row--on {
+  background: var(--sel, rgba(15, 98, 254, 0.1));
+}
+.nx-pl-conv-row--on:hover {
+  background: var(--sel, rgba(15, 98, 254, 0.1));
+}
+.nx-pl-conv-btn {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--sp-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.nx-pl-conv-t {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-semi);
+}
+.nx-pl-conv-t > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-pl-conv-t .nx-i,
+.nx-pl-conv-t svg {
+  flex: none;
+}
+.nx-pl-conv-m {
+  overflow: hidden;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 줄 끝 `···` — 손이 닿을 때만 서고, 켜진 줄도 쉬는 동안은 다른 줄과 같은 모양이다.
+   키보드는 줄 안에 초점이 서면(:has(:focus-visible)) 곧바로 보인다(.nx-conv-menu 와 같은 규칙). */
+.nx-pl-conv-menu {
+  flex: none;
+  margin-right: 4px;
+  color: var(--ink3);
+  opacity: 0;
+  pointer-events: none;
+}
+.nx-pl-conv-row:hover .nx-pl-conv-menu,
+.nx-pl-conv-row--menu .nx-pl-conv-menu,
+.nx-pl-conv-row:has(:focus-visible) .nx-pl-conv-menu {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* `···` 가 선 동안 제목 · 문서 줄의 오른쪽 끝은 옅어져 자리를 내준다 — 줄바꿈 없이 잘리며 출렁이지 않게. */
+.nx-pl-conv-row:hover .nx-pl-conv-btn,
+.nx-pl-conv-row--menu .nx-pl-conv-btn,
+.nx-pl-conv-row:has(:focus-visible) .nx-pl-conv-btn {
+  mask-image: linear-gradient(to right, black calc(100% - 40px), transparent calc(100% - 20px));
+}
+/* 호버가 없는 입력(터치)에서는 `···` 가 늘 서 있다 — 손이 닿기를 기다리면 메뉴에 닿을 길이 없다. */
+@media (hover: none) {
+  .nx-pl-conv-row .nx-pl-conv-menu {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* 읽기 문서의 머리 — 동작 줄이 자리를 고정한다(§C). */
+.nx-pl-doc-titleline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+.nx-pl-doc-titleline .nx-pl-doc-title {
+  flex: 1;
+}
+.nx-pl-doc-acts {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+.nx-dr-writeoff {
+  color: var(--ink2);
+  cursor: help;
+}
+
+/* 판 바닥의 두 줄 단추(§C)와 서랍(§D). */
+.nx-pl-foot {
+  display: flex;
+  flex: none;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-8);
+  border-top: 1px solid var(--line);
+}
+.nx-pl-footbtn {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink2);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+}
+.nx-pl-footbtn--on,
+.nx-pl-footbtn:hover {
+  color: var(--ink);
+  border-color: var(--ink3);
+}
+.nx-pl-drawer {
+  position: absolute;
+  inset: 0 0 0 40%;
+  z-index: var(--z-pop, 30);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--bg);
+  box-shadow: var(--shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.14));
+}
+.nx-pl-drawer-hd {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.nx-pl-drawer-hd :is(h3) {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-ui);
+}
+.nx-pl-drawer-note {
+  margin: var(--sp-3) var(--sp-4);
+}
+.nx-pl-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  min-height: 0;
+}
+.nx-pl-scrlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nx-pl-scrrow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+}
+.nx-pl-scrname {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: var(--fs-ui);
-  color: var(--ink2);
 }
-.nx-map {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  flex: 1;
-}
-.nx-map-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2);
-  margin: var(--sp-1) var(--sp-1) var(--sp-3);
-  color: var(--ink3);
-  font-size: var(--fs-cap);
-}
-.nx-map-head p {
-  margin: 0;
-  flex: 1;
-}
-.nx .nx-map-retry {
-  flex: none;
-  padding: var(--sp-1) var(--sp-2);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  font-size: var(--fs-cap);
-  color: var(--ink2);
-}
-.nx-map-note {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  margin: var(--sp-3) var(--sp-1);
-  color: var(--ink3);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-ui);
-}
-.nx-map-note p {
-  margin: 0;
-}
-.nx-map-hint {
-  flex: 1 1 100%;
-  margin: 0;
+.nx-pl-scrsub {
+  margin-left: var(--sp-2);
   color: var(--ink3);
   font-size: var(--fs-cap);
 }
 
-/* 그림판 — @xyflow/react. 손으로 쓰는 모양은 이 안의 토큰만 읽는다. */
-.nx-map-flow {
-  flex: 1 1 100%;
-  min-height: 220px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg);
-}
-.nx-map-node {
+/* 고른 글의 작은 판(§4단계) — 본문 위에 뜬다. */
+.nx-pl-selpick {
+  position: absolute;
+  z-index: var(--z-pop, 30);
   display: flex;
   align-items: center;
   gap: var(--sp-1);
-  width: 240px;
-  padding: var(--sp-1) var(--sp-2);
+  padding: var(--sp-1);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: var(--card);
-  color: var(--ink);
-  font-size: var(--fs-sm);
-}
-.nx-map-node--doc {
-  cursor: pointer;
-}
-.nx-map-node--doc:hover {
-  border-color: var(--accent-line);
-}
-.nx-map-node--docGroup,
-.nx-map-node--screenGroup {
-  justify-content: flex-start;
-  width: auto;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--ink3);
-  font-size: var(--fs-cap);
-  font-weight: var(--fw-semi);
-}
-.nx-map-node--goneDoc,
-.nx-map-node--goneScreen {
-  flex-direction: column;
-  align-items: flex-start;
-  border-style: dashed;
-  color: var(--ink3);
-}
-.nx-map-node-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-.nx-map-node-t {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.nx-map-node-sub {
-  color: var(--ink3);
-  font-size: var(--fs-cap);
-}
-.nx-map-observed {
-  flex: none;
-  padding-inline: var(--sp-1);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  color: var(--ink3);
-  font-size: var(--fs-cap);
+  background: var(--bg);
+  box-shadow: var(--shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.14));
 }
 
-/* 잇기의 손잡이와 연결 선 — 그릇의 기본 모양을 토큰에 맞춘다. */
-.nx .nx-map-node .react-flow__handle {
-  width: 12px;
-  height: 12px;
-  border: 1px solid var(--line);
+/* 줄 끝의 상태 점(2026-10-31 E) — 하나만 선다. 색만으로 말하지 않게 이름표 글을 함께 건넨다. */
+.nx-pl-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+.nx-pl-dot--draft {
   background: var(--accent);
 }
-/* 문서에 손을 올리면 나가는 손잡이가 부풀어 잇기 시작을 알린다. */
-.nx-map-node--doc:hover .react-flow__handle {
-  border-color: var(--accent-line);
-  transform: scale(1.35);
+.nx-pl-dot--conflict {
+  background: var(--red, #d0342c);
 }
-.nx-map-flow .react-flow__edge-path {
-  stroke: var(--line2);
-  stroke-width: 1.5;
+.nx-pl-dot--unknown {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid var(--amber);
+  border-radius: 0;
 }
-.nx-map-flow .react-flow__edge.selected .react-flow__edge-path,
-.nx-map-flow .react-flow__edge:focus .react-flow__edge-path {
-  stroke: var(--accent);
+/* 아직 Confluence 에 없는 새 문서 초안의 흐린 줄(2026-10-31 E). */
+.nx-pl-row--ghost {
+  opacity: 0.55;
+  border: 1px dashed var(--line);
 }
-.nx-map-flow .react-flow__edge-text {
-  fill: var(--ink2);
+.nx-pl-view[data-chat="off"] .nx-pl-tabs {
+  display: none;
+}
+
+/* 같이 고침으로 닿은 화면의 묶음 머리(2026-11-02 · 같이 고치기 UX 계획 C4). */
+.nx-pl-scrhead {
+  margin: var(--sp-3) 0 var(--sp-1);
   font-size: var(--fs-cap);
-}
-.nx-map-flow .react-flow__edge-textbg {
-  fill: var(--bg);
-}
-.nx-map-flow .react-flow__minimap {
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--card);
+  font-weight: 600;
+  color: var(--ink3);
 }

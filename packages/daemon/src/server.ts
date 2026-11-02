@@ -3,10 +3,12 @@ export { daemonOwnedPorts } from "./preview-claim.js";
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { arch, homedir, release } from "node:os";
+import { isAbsolute, relative, sep } from "node:path";
 import {
   type ClientMessage,
   composeAttention,
   type GateChecked,
+  type PlanSync,
   PROTOCOL_VERSION,
   type ProjectSummary,
   parseClientMessage,
@@ -21,7 +23,13 @@ import { DriverRegistry } from "./agent/registry.js";
 import { AgentInstall } from "./agent-install.js";
 import { AgentUpdates } from "./agent-update.js";
 import { CommandDedupe } from "./command-dedupe.js";
-import { ConfluenceSync } from "./confluence-sync.js";
+import { readConfluenceLedger } from "./confluence-ledger.js";
+import { confluenceMirrorLedger } from "./confluence-mirror.js";
+import {
+  backfillConfluenceAccounts,
+  ConfluenceSync,
+  confluenceSiteKey,
+} from "./confluence-sync.js";
 import {
   type CredentialStore,
   createCredentialStore,
@@ -62,6 +70,7 @@ import { repoSettingsWarning, sanitizeRepoAgentSettings, trustWorkspace } from "
 import { scopeOf } from "./repo-config.js";
 import { routesForFiles } from "./route-index.js";
 import { readScreenMap } from "./screen-map.js";
+import { ScreenPlanSync, type ScreenTurn } from "./screen-plan-sync.js";
 import { asPlannerFacingError, NEW_SESSION_TITLE } from "./session.js";
 import { SessionManager } from "./session-manager.js";
 import { appendTape, readTape } from "./session-tape.js";
@@ -195,6 +204,8 @@ export class DaemonServer {
   private confluence!: ConfluenceSync;
   /** 기획 초안의 몸 — start() 가 만들고 stop() 이 도는 생성을 끊는다(2026-10-23 작업 B2). */
   private drafts: DraftService | null = null;
+  /** 같이 고치기 — 화면 보관 뒤 이어진 기획서 초안을 기획 AI 가 고친다(2026-10-30 사용자 결정). */
+  private screenSync: ScreenPlanSync | null = null;
   /** 커미티 B1 (2026-09-15): 열린 넘김 폴링 타이머 — stop() 이 끊는다. */
   private handoffTimer: NodeJS.Timeout | null = null;
   /**
@@ -771,6 +782,13 @@ export class DaemonServer {
       this.registry.activeSlug(),
     );
     await this.github.load();
+    // 프로젝트별 자격이 생기기 전에 연결한 기계의 계정 행 백필 — 종류와 수만 기록한다(2026-11-03).
+    const backfilled = await backfillConfluenceAccounts(
+      this.credentials,
+      this.machineSetting,
+      this.registry.list().map((project) => project.slug),
+    );
+    if (backfilled > 0) this.logger.info("confluence account backfilled", { count: backfilled });
     // 슬라이스 5: 저장된 웹훅을 읽는다 — 상태 방송은 그 뒤에 일어난다.
     await this.escalation.load();
     lap("loadMs");
@@ -797,6 +815,21 @@ export class DaemonServer {
         const workspaces = this.fleet?.workspaces.get(slug);
         return workspaces?.repo.isCloned() ? workspaces.repo.root : null;
       },
+    });
+    // 같이 고치기 — 초안 서비스 위에 선다(2026-10-30 사용자 결정 · 같이 고치기 계획 §4).
+    const registry = this.registry;
+    this.screenSync = new ScreenPlanSync({
+      drafts: this.drafts,
+      paths: (slug) => {
+        const paths = registry.paths(slug);
+        return { root: paths.root, repoRoot: paths.repoRoot };
+      },
+      connected: (slug) => this.machineSetting.get(confluenceSiteKey(slug)) !== null,
+      titleOf: (slug, pageId) =>
+        readConfluenceLedger(confluenceMirrorLedger(registry.paths(slug).root)).pages[pageId]
+          ?.title ?? null,
+      emit: (turn, sync) => this.emitPlanSync(turn, sync),
+      logger: this.logger,
     });
     // 문서 관리 — 기획 초안 바로 옆에서 만든다(2026-10-23 작업 D1a). 적용 · 결과 불명 뒤에는 트리를
     // 걷게 한다 — 이동 · 휴지통은 증분이 못 본다(2026-10-23 · 최종 구현 계획 F2 · 작업 B5).
@@ -839,6 +872,7 @@ export class DaemonServer {
       credentials: this.credentials,
       confluence: this.confluence,
       drafts: this.drafts,
+      screenSync: this.screenSync,
       docOps,
       docComments,
       machineTurns: this.machineTurns,
@@ -1394,12 +1428,50 @@ export class DaemonServer {
           },
         });
         this.broadcast({ type: "repo.status", status: workspaces.repo.repoCore().snapshot() });
+        // 같이 고치기(2026-10-30) — 보관이 내려앉은 화면 요청이 기획을 바꿨으면 이어진 초안도 고친다.
+        const request =
+          prompt && prompt.event.kind === "user.echo" ? planRequestOf(prompt.event.text) : "";
+        if (changedScreens.length > 0 && request !== "") {
+          const repoRoot = workspaces.paths.repoRoot;
+          void this.screenSync?.onSaved({
+            slug: workspaces.slug,
+            sessionId,
+            requestId: saved.requestId,
+            request,
+            screens: changedScreens,
+            files: (this.changedTurnFiles.get(sessionId) ?? []).map((file) =>
+              relativeToRepo(repoRoot, file),
+            ),
+            sha: saved.sha,
+          });
+        }
       })
       .catch(() => this.logger.info("Turn save record unavailable"))
       .finally(() => {
         // 턴이 idle 이 되어 자동 보관이 끝난 뒤 — 감독자가 사이클을 한 번 본다.
         void workspaces?.supervisor.tick("turn-idle");
       });
+  }
+
+  /**
+   * 같이 고치기의 결과를 그 대화로 — 방송하고, 다시 연 대화에도 곁줄이 서게 대화록의 그 요청 줄에 싣는다
+   * (screens.saved 의 user.echo 다시 적기와 같은 길).
+   */
+  private emitPlanSync(turn: ScreenTurn, sync: PlanSync): void {
+    this.broadcast({
+      type: "session.event",
+      sessionId: turn.sessionId,
+      event: { kind: "plans.synced", requestId: turn.requestId, sync },
+    });
+    if (sync.phase !== "done") return;
+    const root = this.fleet.workspaces.get(turn.slug)?.paths.root;
+    if (root === undefined) return;
+    const prompt = readTape(root, turn.sessionId).find(
+      (row) => row.event.kind === "user.echo" && row.event.requestId === turn.requestId,
+    );
+    if (prompt && prompt.event.kind === "user.echo") {
+      appendTape(root, { ...prompt, event: { ...prompt.event, planSync: sync } });
+    }
   }
 
   private async status() {
@@ -1661,4 +1733,28 @@ function linksOf(text: string): string[] {
   return [...text.matchAll(/https?:\/\/[^\s<>)\]]+/g)].map((match) =>
     match[0].replace(/[.,;:!?"'`]+$/, ""),
   );
+}
+
+/**
+ * 같이 고치기에 넘길 사람의 요청(2026-10-30) — 표식을 걷은 본문. 핀 코멘트로 연 턴은 메모나 코멘트를 잇고, 기계가 연
+ * 다른 턴(게이트 · 브리프)은 빈 글이라 같이 고치지 않는다. 결과 카드의 요청 줄과 같은 판정이다.
+ */
+function planRequestOf(text: string): string {
+  const marked = readTurn(text);
+  const marker = marked.marker;
+  if (marker === null) return marked.body.trim();
+  if (marker.kind !== "comments") return "";
+  return (
+    marker.note?.trim() ||
+    marker.items
+      .map((item) => item.comment.trim() || item.label.trim())
+      .filter(Boolean)
+      .join(" · ")
+  );
+}
+
+/** 클론 기준 상대 경로 — 이미 상대면 그대로, 구분자는 `/` 로. */
+function relativeToRepo(repoRoot: string, file: string): string {
+  const rel = isAbsolute(file) ? relative(repoRoot, file) : file;
+  return rel.split(sep).join("/");
 }

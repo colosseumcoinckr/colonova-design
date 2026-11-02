@@ -285,7 +285,6 @@ function Row({ spec }: { spec: Case }) {
   const [zoom, setZoom] = useState(spec.zoom ?? 1);
   const [addrSignal, setAddrSignal] = useState(0);
   const [pulse, setPulse] = useState(0);
-  const historyBtn = useRef<HTMLButtonElement | null>(null);
   const width = spec.width ?? WIDE;
   const height = spec.height ?? 300;
 
@@ -331,9 +330,9 @@ function Row({ spec }: { spec: Case }) {
             pinCount={spec.pinCount ?? 0}
             pinLocked={spec.pinLocked ?? null}
             onPin={() => setPinOn((on) => !on)}
-            historyOpen={historyOpen}
-            historyBtn={historyBtn}
             onHistory={() => setHistoryOpen((open) => !open)}
+            changedBy={false}
+            onChangedBy={() => {}}
             native
             zoom={zoom}
             onZoom={(kind) =>
@@ -345,7 +344,6 @@ function Row({ spec }: { spec: Case }) {
             showAiBusy={false}
             onShortcuts={() => {}}
             addrSignal={addrSignal}
-            drawerId={`fixture-${spec.id}-drawer`}
           />
           <div className="nx-pvstage" data-device={device}>
             <div className="nx-pvdevice">
@@ -363,7 +361,6 @@ function Row({ spec }: { spec: Case }) {
             submits={SUBMITS}
             onRestored={reload}
             toast={() => {}}
-            returnRef={historyBtn}
           />
         </section>
       </div>
@@ -389,7 +386,6 @@ function LiveRow({ spec }: { spec: Case }) {
   );
   const [pinOn, setPinOn] = useState(live.pin ?? spec.pinOn ?? false);
   const [pulse, setPulse] = useState(0);
-  const historyBtn = useRef<HTMLButtonElement | null>(null);
 
   const result = useLiveFollow({
     sessionId: "fixture",
@@ -486,9 +482,9 @@ function LiveRow({ spec }: { spec: Case }) {
               touch();
               setPinOn((on) => !on);
             }}
-            historyOpen={false}
-            historyBtn={historyBtn}
             onHistory={() => {}}
+            changedBy={false}
+            onChangedBy={() => {}}
             native
             zoom={1}
             onZoom={() => {}}
@@ -498,7 +494,6 @@ function LiveRow({ spec }: { spec: Case }) {
             showAiBusy={false}
             onShortcuts={() => {}}
             addrSignal={0}
-            drawerId={`fixture-${spec.id}-drawer`}
           />
           <div className="nx-pvstage" data-device="desktop">
             <div className="nx-pvdevice">

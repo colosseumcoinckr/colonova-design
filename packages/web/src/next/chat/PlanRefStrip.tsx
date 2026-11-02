@@ -33,6 +33,8 @@ export function PlanRefStrip({
   sessionId,
   sentCount,
   nav,
+  entries: controlled = null,
+  forceOpen = false,
 }: {
   daemon: Daemon;
   /** 지금 보는 대화 — 근거는 대화마다다. */
@@ -40,9 +42,17 @@ export function PlanRefStrip({
   /** 이 대화의 사람 말 수 — 늘면(보낸 직후) 근거를 다시 읽는다. */
   sentCount: number;
   nav: ShellNav;
+  /**
+   * 밖에서 읽어 온 근거(2026-10-31 화면 자리 개선안 S4) — 작업 독이 칩과 줄이 같은
+   * 목록을 읽게 한 번만 부를 때 건넨다. 없으면 이 줄이 스스로 읽는다(옛 길).
+   */
+  entries?: DraftRefEntry[] | null;
+  /** 늘 펼친 모양 — 작업 독의 칩이 여는 두 번째 줄이다. */
+  forceOpen?: boolean;
 }) {
   const api = daemon.api;
-  const [entries, setEntries] = useState<DraftRefEntry[]>([]);
+  const [own, setOwn] = useState<DraftRefEntry[]>([]);
+  const entries = controlled ?? own;
   const [open, setOpen] = useState(false);
   // 줄의 폭 — 둘째 칩이 읽히지 않을 만큼 좁은 칸에서는 첫 칩 하나와 `+N` 만 세운다(칩 수 셈이 실제 폭을 읽는다 — 2026-10-24 QA 12).
   const strip = useRef<HTMLDivElement>(null);
@@ -54,23 +64,23 @@ export function PlanRefStrip({
   // 아니면 버린다(이음이 풀리며 취소 표식이 선다). 못 읽으면 아무것도 서지 않는다.
   // biome-ignore lint/correctness/useExhaustiveDependencies: 사람 말 수는 다시 읽는 방아쇠일 뿐 — 몸에서 쓰지 않는다.
   useEffect(() => {
-    if (sessionId === null) {
-      setEntries([]);
+    if (controlled !== null || sessionId === null) {
+      if (controlled === null) setOwn([]);
       return undefined;
     }
     let cancelled = false;
     api
       .draftRefs(sessionId)
       .then(({ refs }) => {
-        if (!cancelled) setEntries(refs);
+        if (!cancelled) setOwn(refs);
       })
       .catch(() => {
-        if (!cancelled) setEntries([]);
+        if (!cancelled) setOwn([]);
       });
     return () => {
       cancelled = true;
     };
-  }, [api, sessionId, sentCount]);
+  }, [api, sessionId, sentCount, controlled]);
 
   // 줄이 서 있는 동안 폭을 읽는다 — 칸을 끌어 좁히면 그 자리에서 칩 수가 바뀐다. 줄이 없으면(근거 0) 읽을 것이 없다.
   useLayoutEffect(() => {
@@ -90,8 +100,9 @@ export function PlanRefStrip({
   }, [sessionId]);
 
   if (entries.length === 0) return null;
+  const shown_ = forceOpen ? entries.length : open ? entries.length : 0;
   const fit = Math.min(CHIPS_SHOWN, chipsShownAt(width));
-  const { shown } = stripRows(entries, open ? entries.length : fit);
+  const { shown } = stripRows(entries, shown_ === 0 ? fit : shown_);
   // 접힌 줄이 가리는 칩의 수 — 좁은 칸에서는 둘째 칩도 센다. 하나도 가리지 않으면 `+N` 도 없다.
   const foldable = entries.length - fit;
 
@@ -133,11 +144,13 @@ export function PlanRefStrip({
       </div>
       {foldable > 0 && (
         // 칩의 칸 밖 — 칩이 줄어들거나 굴러가도 `+N` 은 오른쪽 끝에서 늘 보인다.
+        // 늘 펼친 독의 두 번째 줄에서는 접을 일이 없다.
         <button
           type="button"
           className="nx-pref-more"
-          aria-expanded={open}
+          aria-expanded={forceOpen || open}
           onClick={() => setOpen((before) => !before)}
+          hidden={forceOpen}
         >
           {L.planRefs.more(foldable)}
         </button>

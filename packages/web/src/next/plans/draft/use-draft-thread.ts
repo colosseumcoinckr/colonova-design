@@ -6,7 +6,6 @@ import type {
 } from "@colonova-design/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../../lib/daemon-client";
-import { L } from "../../labels";
 
 /**
  * 기획 대화의 판(2026-10-23 · 최종 구현 계획 F1) — 한 초안의 대화와 변경안을 읽고 옮기는 손.
@@ -26,38 +25,32 @@ export interface DraftThreadHand {
   /** 도는 중 AI 가 스스로 읽은 문서 — 알림이 올 때마다 더한다. */
   reads: DraftReadRef[];
   error: string | null;
-  /** 개정이 어긋나 채택이 무산했을 때의 한 줄 — 판이 토스트로 옮기고 거둔다. */
-  notice: string | null;
   /** 기획 AI 의 모델 · 생각 시간 — 없으면 CLI 기본(2026-10-26 사용자 요청). */
   ask: (
     text: string,
     refs: DraftRefInput[],
     pick?: { model?: string | null; effort?: EffortLevel | null },
+    /** 이어 가는 대화 — null 이면 새 기획 대화를 만든다(2026-10-31 3단계). */
+    threadId?: string | null,
   ) => Promise<boolean>;
   cancel: () => void;
-  /** 채택은 이 컴퓨터의 초안에만 닿는다 — 성패와 무관하게 초안을 다시 읽는 것은 부른 쪽의 몫이다. */
-  adopt: (proposalId: string, opIds: string[], revision: number) => Promise<boolean>;
   reject: (proposalId: string, opIds?: string[]) => Promise<boolean>;
   reload: () => void;
   retry: () => void;
-  clearNotice: () => void;
 }
 
-/** 오류 객체에서 기계 코드를 읽는다 — 문장만 오는 답도 있어 코드가 실리지 않으면 null 이다. */
-function errorCodeOf(error: unknown): string | null {
-  if (typeof error !== "object" || error === null || !("code" in error)) return null;
-  const code: unknown = error.code;
-  return typeof code === "string" && code !== "" ? code : null;
-}
-
-export function useDraftThread(daemon: Daemon, docKey: string | null): DraftThreadHand {
+export function useDraftThread(
+  daemon: Daemon,
+  docKey: string | null,
+  /** 골라 읽는 대화(2026-11-03) — 사이드바 목록의 줄이 옛 대화를 다시 열 때 쓴다. null · undefined 면 문서의 최신 대화. */
+  pickedThreadId?: string | null,
+): DraftThreadHand {
   const [thread, setThread] = useState<DraftThread | null>(null);
   const [phase, setPhase] = useState<DraftThreadPhase>("idle");
   const [running, setRunning] = useState(false);
   const [streamText, setStreamText] = useState<string | null>(null);
   const [reads, setReads] = useState<DraftReadRef[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
 
   const apiRef = useRef(daemon.api);
   apiRef.current = daemon.api;
@@ -81,12 +74,15 @@ export function useDraftThread(daemon: Daemon, docKey: string | null): DraftThre
     seqRef.current += 1;
     const seq = seqRef.current;
     apiRef.current
-      .draftThread(key)
+      .draftThread(key, pickedThreadId ?? undefined)
       .then((next) => {
         if (seq !== seqRef.current || keyRef.current !== next.docKey) return;
         haveRef.current = true;
         setThread(next);
         setPhase("ready");
+        // 읽기가 성공했으면 지난 실패 문장은 거둔다 — 성공한 읽기가 실패의 말보다 새로운 것이다
+        // (2026-11-02 실사용 관찰: 고치기 첫 진입의 실패 문장이 초안이 생긴 뒤에도 남았다).
+        setError(null);
       })
       .catch((err: unknown) => {
         if (seq !== seqRef.current) return;
@@ -94,7 +90,8 @@ export function useDraftThread(daemon: Daemon, docKey: string | null): DraftThre
         // 처음 읽기가 실패했을 때만 실패 면으로 — 이미 읽은 대화는 지우지 않는다.
         if (!haveRef.current) setPhase("failed");
       });
-  }, [fail]);
+    // 골른 대화가 바뀌면 읽기 자체가 달라진다 — 사이드바의 줄이 옛 대화를 다시 여는 길이다(2026-11-03).
+  }, [fail, pickedThreadId]);
 
   // 문서가 열릴 때(문서가 없을 때는 아무것도 하지 않는다) — 편집기가 docKey 를 알아낸 뒤에 연다.
   useEffect(() => {
@@ -153,12 +150,13 @@ export function useDraftThread(daemon: Daemon, docKey: string | null): DraftThre
       text: string,
       refs: DraftRefInput[],
       pick?: { model?: string | null; effort?: EffortLevel | null },
+      threadId?: string | null,
     ): Promise<boolean> => {
       const key = keyRef.current;
       if (key === null) return Promise.resolve(false);
       setError(null);
       return apiRef.current
-        .draftAsk(key, text, refs, pick)
+        .draftAsk(key, text, refs, pick, threadId)
         .then(() => {
           reload(); // 사람의 말이 곧 대화에 선다
           return true;
@@ -178,32 +176,6 @@ export function useDraftThread(daemon: Daemon, docKey: string | null): DraftThre
       setError(fail(err));
     });
   }, [fail]);
-
-  const adopt = useCallback(
-    (proposalId: string, opIds: string[], revision: number): Promise<boolean> => {
-      const key = keyRef.current;
-      if (key === null) return Promise.resolve(false);
-      setError(null);
-      return apiRef.current
-        .draftAdopt(key, proposalId, opIds, revision)
-        .then((view) => {
-          if (keyRef.current === view.docKey) reload();
-          return true;
-        })
-        .catch((err: unknown) => {
-          if (keyRef.current !== key) return false;
-          if (errorCodeOf(err) === "draft.stale") {
-            // 기대 개정이 어긋났다 — 초안과 대화를 다시 읽고 한 줄로 알린다(2026-10-23 · 최종 구현 계획 F1).
-            reload();
-            setNotice(L.drafts.staleReloaded);
-          } else {
-            setError(fail(err));
-          }
-          return false;
-        });
-    },
-    [fail, reload],
-  );
 
   const reject = useCallback(
     (proposalId: string, opIds?: string[]): Promise<boolean> => {
@@ -228,8 +200,6 @@ export function useDraftThread(daemon: Daemon, docKey: string | null): DraftThre
     [fail],
   );
 
-  const clearNotice = useCallback(() => setNotice(null), []);
-
   return {
     thread,
     phase,
@@ -237,13 +207,10 @@ export function useDraftThread(daemon: Daemon, docKey: string | null): DraftThre
     streamText,
     reads,
     error,
-    notice,
     ask,
     cancel,
-    adopt,
     reject,
     reload,
     retry: reload,
-    clearNotice,
   };
 }

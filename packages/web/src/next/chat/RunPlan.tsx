@@ -47,27 +47,39 @@ export function RunPlan({ plan, initialOpen = false }: { plan: Plan; initialOpen
           label={L.chat.plan.title}
           className="nx-plan-pop"
         >
-          {plan.todos && (
-            <ul className="nx-plan-list">
-              {plan.todos.map((item, index) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: 할 일의 정체성은 목록에서의 위치다 — 상태만 바뀔 뿐 재배치가 없다.
-                <TodoRow key={index} item={item} />
-              ))}
-            </ul>
-          )}
-          {plan.agents.length > 0 && (
-            <>
-              <div className="nx-plan-head">{L.chat.plan.agentsTitle}</div>
-              <ul className="nx-plan-list">
-                {plan.agents.map((agent) => (
-                  <AgentRow key={agent.id} agent={agent} />
-                ))}
-              </ul>
-            </>
-          )}
+          <RunPlanList plan={plan} />
         </Popover>
       )}
     </div>
+  );
+}
+
+/**
+ * 할 일 · 보조 작업의 목록 — 알약(`RunPlan`)과 작업 독(`WorkDock`)의 팝이 같은 몸을
+ * 쓴다(2026-10-31 화면 자리 개선안 S4 — 어느 쪽에서 펼쳐도 같은 목록이다).
+ */
+export function RunPlanList({ plan }: { plan: Plan }) {
+  return (
+    <>
+      {plan.todos && (
+        <ul className="nx-plan-list">
+          {plan.todos.map((item, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: 할 일의 정체성은 목록에서의 위치다 — 상태만 바뀔 뿐 재배치가 없다.
+            <TodoRow key={index} item={item} />
+          ))}
+        </ul>
+      )}
+      {plan.agents.length > 0 && (
+        <>
+          <div className="nx-plan-head">{L.chat.plan.agentsTitle}</div>
+          <ul className="nx-plan-list">
+            {plan.agents.map((agent) => (
+              <AgentRow key={agent.id} agent={agent} />
+            ))}
+          </ul>
+        </>
+      )}
+    </>
   );
 }
 

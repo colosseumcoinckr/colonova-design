@@ -169,3 +169,16 @@ test("인용 · 수평선 — 인용은 `>` 로, 수평선은 `---` 로 읽힌�
     ["> 인용 첫째.", ">", "> 인용 둘째.", "", "---", "", "끝."].join("\n"),
   );
 });
+
+test("이름 개체 — 본문의 &mdash; · &middot; 가 글자로 풀린다(2026-11-02 실사용 관찰)", () => {
+  const storage =
+    "<h1>부록. 회의록 &mdash; 2026-10-24 기획 리뷰</h1>" +
+    "<p>2026-10-24 &middot; 참석: 정인권, 개발 리드, 디자이너 &notanentity;</p>" +
+    "<ul><li>알림 채널 &mdash; 푸시와 문자 비교</li></ul>";
+  const body = bodyOf(deriveMarkdown(storage, META).markdown);
+  assert.ok(body.includes("부록. 회의록 — 2026-10-24 기획 리뷰"));
+  assert.ok(body.includes("2026-10-24 · 참석: 정인권, 개발 리드, 디자이너"));
+  assert.ok(body.includes("알림 채널 — 푸시와 문자 비교"));
+  // 모르는 참조는 그대로 둔다 — 양쪽 모듈이 같은 판정이다.
+  assert.ok(body.includes("&notanentity;"));
+});

@@ -25,6 +25,7 @@ import type {
   DraftOpState,
   DraftParent,
   DraftReadRef,
+  DraftRevisionOrigin,
   DraftState,
   DraftTableCell,
   DraftTableRow,
@@ -76,14 +77,69 @@ export interface ProposalRecord {
   baseVersion: number | null;
   summary: string;
   ops: ProposalOpRecord[];
+  /**
+   * 바로 반영(2026-10-31 기획서 칸 개선 2단계) — AI 고침이 초안에 들어간 때. 없으면 변경안으로 남아
+   * 사람이 고르는 몫이다.
+   */
+  appliedAt?: string;
+  /** 바로 반영에서 들어간 걸음의 열쇠 — 되돌리기가 거절 표시를 다시 적을 때 본다. */
+  appliedOpIds?: string[];
+  /** 바로 반영을 되돌릴 재료 — 들어간 모습 그 전(2026-10-30 같이 고치기와 같은 모양). */
+  inverse?: ScreenSyncInverse[];
+  /** 되돌려진 때 — 되돌리기가 한 번만 먹게 한다. */
+  undoneAt?: string;
 }
 
-export interface ThreadRecord {
+/**
+ * 되돌릴 재료의 한 걸음(2026-10-30 같이 고치기 계획 §5 · 같이 고치기의 것을 변경안 기록에도 쓴다) —
+ * `after` 는 들어간 뒤 블록의 지문이다. 지금도 그 지문이면 사람이 그 뒤 고치지 않은 것이라 돌린다.
+ */
+export type ScreenSyncInverse =
+  | {
+      type: "replace";
+      blockId: string;
+      before: { kind: DraftRecordBlock["kind"]; xml: string };
+      after: string;
+    }
+  | { type: "insert"; blockId: string; after: string }
+  | { type: "delete"; block: DraftRecordBlock; afterBlockId: string | null }
+  | { type: "title"; before: string; after: string };
+
+/** 판 스냅숏의 머리 — 이 판을 누가 언제 만들었는가(2026-10-31 2단계 · 판 고르기). */
+export interface RevisionMeta {
+  origin: DraftRevisionOrigin;
+  label: string | null;
+}
+
+/** 저장할 때마다 남기는 판 스냅숏 — `revisions/<docKey>/<개정>.json` 으로 산다. */
+export interface RevisionSnapshotRecord {
+  format: 1;
+  revision: number;
+  at: string;
+  origin: DraftRevisionOrigin;
+  label: string | null;
+  title: string;
+  baseTitle: string | null;
+  baseVersion: number | null;
+  state: DraftState;
+  blocks: DraftRecordBlock[];
+}
+
+/**
+ * 기획 대화의 기록(2026-10-31 3단계) — 대화가 문서를 옮겨 다니므로 기록은 초안 열쇠에서 떨어져
+ * 나온 대화 열쇠(UUID)로 산다. 옛 기록(`threads/<docKey>.json`)은 문서마다 대화 하나로 옮긴다.
+ */
+export interface ConversationRecord {
   format: 1;
   threadId: string;
-  docKey: string;
+  /** 대화의 이름 — 첫 말의 머리로 짓는다. */
+  title: string;
+  /** 지금 다루는 문서 — 문서가 버려져도 기록은 남는다(null 로 두지 않고 열쇠를 지킨다). */
+  docKey: string | null;
   sdkSessionId: string | null;
   messages: DraftMessage[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 /** 확인 뒤의 발행은 불변 기록이다 — 초안을 지워도 남는다(2026-10-23 작업 A2). */
@@ -122,6 +178,9 @@ export class DraftStaleError extends Error {
 
 /** 발행 명령의 열쇠 — 소문자 UUID 만 경로에 들어간다(2026-10-23 작업 A2). */
 const COMMAND_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** 기획 대화의 열쇠 — 소문자 UUID 만 대화 기록 파일의 이름이 된다(2026-10-31 3단계). */
+const THREAD_ID_PATTERN = COMMAND_ID_PATTERN;
 
 /** 정적 멤버 표 — 키가 곧 허용 값이고, `in` 검사가 값을 좁힌다. */
 const DRAFT_STATES: Record<DraftState, true> = {
@@ -299,7 +358,44 @@ function parseDraftMessage(raw: unknown): DraftMessage | null {
   if (refs !== null) message.refs = refs;
   const reads = parseList(record.reads, parseReadRef);
   if (reads !== null) message.reads = reads;
+  // 화면 요청에서 온 말(2026-10-30 같이 고치기) — 다른 값은 버린다.
+  if (record.origin === "screen") message.origin = "screen";
+  // 화면 제안 카드(2026-11-02 · 같이 고치기 UX 계획 C8) — 모양이 맞는 줄만 실린다.
+  const mismatch = parseMismatchCard(record.mismatch);
+  if (mismatch !== null) message.mismatch = mismatch;
   return message;
+}
+
+/** 화면 제안 카드의 해석 — 네 말이 다 문자열인 줄만 남는다(깨진 줄은 버린다). */
+function parseMismatchCard(
+  raw: unknown,
+): { rows: NonNullable<DraftMessage["mismatch"]>["rows"] } | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const rowsRaw = (raw as { rows?: unknown }).rows;
+  if (!Array.isArray(rowsRaw)) return null;
+  const rows: NonNullable<DraftMessage["mismatch"]>["rows"] = [];
+  for (const item of rowsRaw) {
+    if (typeof item !== "object" || item === null) continue;
+    const row = item as Record<string, unknown>;
+    if (
+      typeof row.section !== "string" ||
+      typeof row.plan !== "string" ||
+      typeof row.screen !== "string" ||
+      typeof row.screenName !== "string"
+    ) {
+      continue;
+    }
+    if (row.section === "" || row.plan === "" || row.screen === "" || row.screenName === "") {
+      continue;
+    }
+    rows.push({
+      section: row.section,
+      plan: row.plan,
+      screen: row.screen,
+      screenName: row.screenName,
+    });
+  }
+  return rows.length > 0 ? { rows } : null;
 }
 
 function parseProposalOp(raw: unknown): ProposalOpRecord | null {
@@ -362,7 +458,7 @@ function parseProposalRecord(raw: unknown): ProposalRecord | null {
   if (draftRevision === null) return null;
   const ops = parseList(record.ops, parseProposalOp);
   if (ops === null) return null;
-  return {
+  const parsed: ProposalRecord = {
     proposalId,
     threadId,
     createdAt,
@@ -371,16 +467,132 @@ function parseProposalRecord(raw: unknown): ProposalRecord | null {
     summary,
     ops,
   };
+  const appliedAt = asString(record.appliedAt);
+  if (appliedAt !== null) parsed.appliedAt = appliedAt;
+  const appliedOpIds = parseList(record.appliedOpIds, asString);
+  if (appliedOpIds !== null) parsed.appliedOpIds = appliedOpIds;
+  const inverse = parseList(record.inverse, parseInverseStep);
+  if (inverse !== null) parsed.inverse = inverse;
+  const undoneAt = asString(record.undoneAt);
+  if (undoneAt !== null) parsed.undoneAt = undoneAt;
+  return parsed;
 }
 
-function parseThreadRecord(raw: unknown, docKey: string): ThreadRecord | null {
+function parseThreadRecord(raw: unknown, docKey: string): ConversationRecord | null {
+  // 옛 기록(`threads/<docKey>.json`)의 읽기 — 옮기기(마이그레이션)의 재료다. 옮긴 뒤의 기록은
+  // `conversations/<threadId>.json` 이 읽는다.
   const record = asRecord(raw);
   if (record === null || record.format !== 1) return null;
   const threadId = asString(record.threadId);
   if (threadId === null || record.docKey !== docKey) return null;
   const messages = parseList(record.messages, parseDraftMessage);
   if (messages === null) return null;
-  return { format: 1, threadId, docKey, sdkSessionId: asString(record.sdkSessionId), messages };
+  return {
+    format: 1,
+    threadId,
+    title: "",
+    docKey,
+    sdkSessionId: asString(record.sdkSessionId),
+    messages,
+    createdAt: asString(record.createdAt) ?? "",
+    updatedAt: asString(record.updatedAt) ?? "",
+  };
+}
+
+/** 되돌릴 재료의 한 걸음 — 깨진 값은 버린다. */
+function parseInverseStep(raw: unknown): ScreenSyncInverse | null {
+  const record = asRecord(raw);
+  if (record === null) return null;
+  const blockId = asString(record.blockId);
+  const after = asString(record.after);
+  if (record.type === "replace") {
+    const before = asRecord(record.before);
+    const kind = before === null ? null : asString(before.kind);
+    const xml = before === null ? null : asString(before.xml);
+    if (blockId === null || after === null || kind === null || xml === null) return null;
+    if (!(kind in BLOCK_KINDS)) return null;
+    return {
+      type: "replace",
+      blockId,
+      before: { kind: kind as StorageBlockKind, xml },
+      after,
+    };
+  }
+  if (record.type === "insert") {
+    return blockId === null || after === null ? null : { type: "insert", blockId, after };
+  }
+  if (record.type === "delete") {
+    const block = parseDraftBlock(record.block);
+    if (block === null) return null;
+    return { type: "delete", block, afterBlockId: asString(record.afterBlockId) };
+  }
+  if (record.type === "title") {
+    const before = asString(record.before);
+    return before === null || after === null ? null : { type: "title", before, after };
+  }
+  return null;
+}
+
+/** 기획 대화의 기록 — 깨진 값은 버린다. 문서에 붙지 않은 대화(docKey null)도 읽는다. */
+function parseConversationRecord(raw: unknown): ConversationRecord | null {
+  const record = asRecord(raw);
+  if (record === null || record.format !== 1) return null;
+  const threadId = asString(record.threadId);
+  const title = asString(record.title);
+  const docKey = asString(record.docKey);
+  if (threadId === null || !THREAD_ID_PATTERN.test(threadId) || title === null) return null;
+  if (docKey !== null && !isDraftKey(docKey)) return null;
+  const messages = parseList(record.messages, parseDraftMessage);
+  if (messages === null) return null;
+  const createdAt = asString(record.createdAt);
+  const updatedAt = asString(record.updatedAt);
+  if (createdAt === null || updatedAt === null) return null;
+  return {
+    format: 1,
+    threadId,
+    title,
+    docKey,
+    sdkSessionId: asString(record.sdkSessionId),
+    messages,
+    createdAt,
+    updatedAt,
+  };
+}
+
+/** 대화의 이름 — 문서 제목이나 첫 말의 머리를 한 줄로 끊는다. */
+export function conversationTitleOf(source: string): string {
+  const flat = source.replace(/\s+/gu, " ").trim();
+  if (flat === "") return "기획 대화";
+  return flat.length > 40 ? `${flat.slice(0, 40)}…` : flat;
+}
+
+/** 판 스냅숏 — 깨진 값은 버린다. */
+function parseRevisionSnapshot(raw: unknown): RevisionSnapshotRecord | null {
+  const record = asRecord(raw);
+  if (record === null || record.format !== 1) return null;
+  const revision = asInt(record.revision);
+  const at = asString(record.at);
+  const origin = asString(record.origin);
+  const title = asString(record.title);
+  if (revision === null || at === null || origin === null || title === null) return null;
+  if (origin !== "person" && origin !== "ai" && origin !== "screen" && origin !== "system")
+    return null;
+  const blocks = parseList(record.blocks, parseDraftBlock);
+  if (blocks === null) return null;
+  const state = asString(record.state);
+  return {
+    format: 1,
+    revision,
+    at,
+    origin,
+    label: asString(record.label),
+    title,
+    baseTitle: asString(record.baseTitle),
+    baseVersion: asInt(record.baseVersion),
+    state:
+      state !== null && state in DRAFT_STATES ? (state as DraftState) : ("editing" as DraftState),
+    blocks,
+  };
 }
 
 function parseIntentStage(raw: unknown): { notation: string; reason: string } | null {
@@ -486,6 +698,8 @@ export class DraftStore {
   readonly #now: () => Date;
   /** docKey → 그 열쇠의 마지막 작업. 메모리 안 약속 사슬이다(2026-10-23 작업 A2). */
   readonly #locks = new Map<string, Promise<unknown>>();
+  /** 옛 기록의 옮기기를 이 저장소에서 한 번만 본다 — 기록 파일이 늘 때마다 다시 훑지 않게. */
+  #migrated = false;
 
   constructor(root: string, now: () => Date = () => new Date()) {
     this.#root = root;
@@ -540,9 +754,10 @@ export class DraftStore {
 
   /**
    * 개정을 걸고 저장한다 — 디스크의 지금 개정이 기대값과 다르면 DraftStaleError. 같으면 개정을
-   * 한 올리고 주입한 시계로 updatedAt 을 적는다.
+   * 한 올리고 주입한 시계로 updatedAt 을 적는다. 저장할 때마다 판 스냅숏을 남긴다(2026-10-31
+   * 2단계 · 판 고르기) — `meta` 가 이 판의 만든 이를 말하고, 없으면 알 수 없음의 시스템 판이다.
    */
-  save(record: DraftRecord, expectedRevision: number): DraftRecord {
+  save(record: DraftRecord, expectedRevision: number, meta?: RevisionMeta): DraftRecord {
     this.#checkDocKey(record.docKey);
     const current = parseDraftRecord(this.#readJson(this.#draftFile(record.docKey)));
     if (current === null) throw new Error("초안이 없습니다");
@@ -557,7 +772,45 @@ export class DraftStore {
       updatedAt: this.#now().toISOString(),
     };
     this.#writeJson(this.#draftFile(record.docKey), saved);
+    this.#writeJson(this.#revisionFile(record.docKey, saved.revision), {
+      format: 1,
+      revision: saved.revision,
+      at: saved.updatedAt,
+      origin: meta?.origin ?? "system",
+      label: meta?.label ?? null,
+      title: saved.title,
+      baseTitle: saved.baseTitle,
+      baseVersion: saved.baseVersion,
+      state: saved.state,
+      blocks: saved.blocks,
+    } satisfies RevisionSnapshotRecord);
     return saved;
+  }
+
+  /** 옛 판의 스냅숏 — 없거나 깨진 판은 null 이다(2026-10-31 2단계 · 판 고르기). */
+  revision(docKey: string, revision: number): RevisionSnapshotRecord | null {
+    this.#checkDocKey(docKey);
+    return this.#readRevisionFile(this.#revisionFile(docKey, revision));
+  }
+
+  /** 옛 판의 목록 — 새것부터. 깨진 스냅숏은 건너뛴다. */
+  revisions(docKey: string): RevisionSnapshotRecord[] {
+    this.#checkDocKey(docKey);
+    let names: string[];
+    try {
+      names = readdirSync(join(this.#root, "revisions", docKey));
+    } catch {
+      return [];
+    }
+    const snapshots: RevisionSnapshotRecord[] = [];
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const number = Number.parseInt(name.slice(0, -".json".length), 10);
+      if (!Number.isInteger(number)) continue;
+      const snapshot = this.#readRevisionFile(this.#revisionFile(docKey, number));
+      if (snapshot !== null) snapshots.push(snapshot);
+    }
+    return snapshots.sort((a, b) => b.revision - a.revision);
   }
 
   /**
@@ -580,16 +833,22 @@ export class DraftStore {
     if (touched) this.saveProposals(docKey, proposals);
   }
 
-  /** 초안 · 기준 · 변경안 · 대화를 지운다 — 발행 의도는 불변 기록이라 남는다. */
+  /** 초안 · 기준 · 변경안 · 대화 · 판 스냅숏을 지운다 — 발행 의도는 불변 기록이라 남는다. */
   remove(docKey: string): void {
     this.#checkDocKey(docKey);
     for (const file of [
       this.#draftFile(docKey),
       this.#baseFile(docKey),
       this.#proposalsFile(docKey),
-      this.#threadFile(docKey),
+      // 옛 기록의 자리 — 옮겨 간 뒤 남은 파일도 함께 거둔다.
+      this.#oldThreadFile(docKey),
     ]) {
       rmSync(file, { force: true });
+    }
+    rmSync(join(this.#root, "revisions", docKey), { recursive: true, force: true });
+    // 이 초안에 붙은 대화 기록도 거둔다 — 버려진 초안의 대화가 목록에 남지 않게(2026-10-31 3단계).
+    for (const conversation of this.conversations()) {
+      if (conversation.docKey === docKey) this.removeConversation(conversation.threadId);
     }
   }
 
@@ -604,14 +863,111 @@ export class DraftStore {
     this.#writeJson(this.#proposalsFile(docKey), list);
   }
 
-  thread(docKey: string): ThreadRecord | null {
+  thread(docKey: string): ConversationRecord | null {
+    // 초안 열쇠에 붙은 대화 — 옛 기록은 여기서 옮긴다(2026-10-31 3단계 · 문서마다 대화 하나).
     this.#checkDocKey(docKey);
-    return parseThreadRecord(this.#readJson(this.#threadFile(docKey)), docKey);
+    this.#migrateThreads();
+    return this.conversationOfDoc(docKey);
   }
 
-  saveThread(record: ThreadRecord): void {
+  saveThread(record: ConversationRecord): void {
+    if (record.docKey === null) throw new Error("대화가 붙을 문서가 없습니다");
     this.#checkDocKey(record.docKey);
-    this.#writeJson(this.#threadFile(record.docKey), record);
+    this.#checkThreadId(record.threadId);
+    this.saveConversation(record);
+  }
+
+  // ————— 기획 대화의 기록 — 대화 열쇠로 산다(2026-10-31 3단계) —————
+
+  /** 전체 대화 — 최근에 쓴 것부터. 처음 읽을 때 옛 기록을 문서마다 대화 하나로 옮긴다. */
+  conversations(): ConversationRecord[] {
+    this.#migrateThreads();
+    let names: string[];
+    try {
+      names = readdirSync(join(this.#root, "conversations"));
+    } catch {
+      return [];
+    }
+    const conversations: ConversationRecord[] = [];
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const conversation = parseConversationRecord(
+        this.#readJson(this.#conversationFile(name.slice(0, -".json".length))),
+      );
+      if (conversation !== null) conversations.push(conversation);
+    }
+    return conversations.sort((a, b) =>
+      a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0,
+    );
+  }
+
+  conversation(threadId: string): ConversationRecord | null {
+    this.#checkThreadId(threadId);
+    this.#migrateThreads();
+    return parseConversationRecord(this.#readJson(this.#conversationFile(threadId)));
+  }
+
+  conversationOfDoc(docKey: string): ConversationRecord | null {
+    this.#checkDocKey(docKey);
+    for (const conversation of this.conversations()) {
+      if (conversation.docKey === docKey) return conversation;
+    }
+    return null;
+  }
+
+  saveConversation(record: ConversationRecord): void {
+    this.#checkThreadId(record.threadId);
+    this.#writeJson(this.#conversationFile(record.threadId), record);
+  }
+
+  removeConversation(threadId: string): void {
+    this.#checkThreadId(threadId);
+    rmSync(this.#conversationFile(threadId), { force: true });
+  }
+
+  /**
+   * 옛 기록의 옮기기 — `threads/<docKey>.json`(초안 열쇠마다 대화 하나)을 대화 열쇠의 기록으로
+   * 옮기고 옛 파일을 거둔다(2026-10-31 3단계). 옮기는 대화의 이름은 그 문서의 제목이다.
+   * 파일을 읽지 못한 깨진 기록은 그대로 둔다 — 읽기는 절대 던지지 않는다.
+   */
+  #migrateThreads(): void {
+    if (this.#migrated) return;
+    this.#migrated = true;
+    let names: string[];
+    try {
+      names = readdirSync(join(this.#root, "threads"));
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const docKey = name.slice(0, -".json".length);
+      if (!isDraftKey(docKey)) continue;
+      const raw = this.#readJson(this.#oldThreadFile(docKey));
+      if (raw === null) continue;
+      const old = parseThreadRecord(raw, docKey);
+      if (old === null || this.conversation(old.threadId) !== null) continue;
+      const draft = this.read(docKey);
+      const lastAt = old.messages.at(-1)?.at ?? draft?.updatedAt ?? this.#now().toISOString();
+      const conversation: ConversationRecord = {
+        format: 1,
+        threadId: old.threadId,
+        title: conversationTitleOf(
+          draft?.title ?? old.messages.find((m) => m.role === "user")?.text ?? "",
+        ),
+        docKey,
+        sdkSessionId: old.sdkSessionId,
+        messages: old.messages,
+        createdAt: draft?.createdAt ?? old.messages[0]?.at ?? lastAt,
+        updatedAt: lastAt,
+      };
+      try {
+        this.saveConversation(conversation);
+        rmSync(this.#oldThreadFile(docKey), { force: true });
+      } catch {
+        // 옮기지 못한 기록은 그대로 둔다 — 다음에 다시 옮겨 본다.
+      }
+    }
   }
 
   intent(commandId: string): PublishIntentRecord | null {
@@ -688,6 +1044,16 @@ export class DraftStore {
       throw new Error("발행 명령 아이디는 소문자 UUID 여야 합니다");
   }
 
+  #checkThreadId(threadId: string): void {
+    if (!THREAD_ID_PATTERN.test(threadId))
+      throw new Error("기획 대화의 열쇠는 소문자 UUID 여야 합니다");
+  }
+
+  /** 옛 판의 파일 — 없거나 깨진 판은 null 이다. */
+  #readRevisionFile(file: string): RevisionSnapshotRecord | null {
+    return parseRevisionSnapshot(this.#readJson(file));
+  }
+
   #draftFile(docKey: string): string {
     return join(this.#root, "drafts", `${docKey}.json`);
   }
@@ -700,8 +1066,19 @@ export class DraftStore {
     return join(this.#root, "proposals", `${docKey}.json`);
   }
 
-  #threadFile(docKey: string): string {
+  /** 옛 기록의 자리 — 옮겨 간 뒤에도 거둘 이름으로 남긴다(2026-10-31 3단계). */
+  #oldThreadFile(docKey: string): string {
     return join(this.#root, "threads", `${docKey}.json`);
+  }
+
+  /** 대화 기록의 자리 — 대화 열쇠(UUID)로 산다(2026-10-31 3단계). */
+  #conversationFile(threadId: string): string {
+    return join(this.#root, "conversations", `${threadId}.json`);
+  }
+
+  /** 판 스냅숏의 자리 — 문서마다 한 폴더, 개정마다 한 파일(2026-10-31 2단계). */
+  #revisionFile(docKey: string, revision: number): string {
+    return join(this.#root, "revisions", docKey, `${revision}.json`);
   }
 
   #intentFile(commandId: string): string {

@@ -53,14 +53,35 @@ function validateScenario(item, index) {
         throw new Error(`${at} — pins[${i}] 의 text 가 없습니다 — 벤치의 핀은 글자 핀입니다.`);
       }
     }
+  } else if (item.kind === "compare") {
+    // 맞춰 보기(2026-11-02 · 같이 고치기 UX 계획 0단계) — 문서 하나의 어긋남을 재는 한 편. 정답은
+    // compare-sheet.json 이 갈고리 삼는다 — 여기선 문서와 기대 절만 받는다.
+    if (typeof item.pageId !== "string" || item.pageId.trim() === "") {
+      throw new Error(`${at} — compare 시나리오에 pageId 가 없습니다.`);
+    }
+    if (item.sheet !== undefined && typeof item.sheet !== "string") {
+      throw new Error(`${at} — sheet 는 문자열(정답표의 문서 제목)이어야 합니다.`);
+    }
   } else {
     throw new Error(
-      `${at} — kind 는 "user" 또는 "pin" 이어야 합니다(${JSON.stringify(item.kind)}).`,
+      `${at} — kind 는 "user" · "pin" · "compare" 이어야 합니다(${JSON.stringify(item.kind)}).`,
     );
   }
   const expect = item.expect;
   if (expect === null || typeof expect !== "object" || Array.isArray(expect)) {
     throw new Error(`${at} — expect 가 없습니다.`);
+  }
+  if (item.kind === "compare") {
+    if (
+      !Array.isArray(expect.sections) ||
+      expect.sections.length === 0 ||
+      expect.sections.some((s) => typeof s !== "string" || s === "")
+    ) {
+      throw new Error(
+        `${at} — compare 시나리오의 expect.sections 는 비어 있지 않은 절 목록이어야 합니다.`,
+      );
+    }
+    return;
   }
   if (
     !Array.isArray(expect.files) ||
@@ -263,6 +284,24 @@ export function judge(scenario, changed, contents, lastTurn) {
     reasons.push("끝난 턴이 없습니다");
   } else if (lastTurn.isError) {
     reasons.push(`마지막 턴이 오류로 끝났습니다(${lastTurn.failure ?? "other"})`);
+  }
+  return { pass: reasons.length === 0, reasons };
+}
+
+/**
+ * 맞춰 보기의 판정(2026-11-02 · 같이 고치기 UX 계획 0단계) — result 는 `draft.compare` 의 답.
+ * 놓친 절(expect.sections 에 있는데 rows 에 없는 것)과 잘못 짚은 절(rows 에 있는데 expect 에 없는
+ * 것)을 다 잰다 — 정확도 재는 자리다(같은 계획 §6 기준 견본).
+ */
+export function judgeCompare(scenario, result) {
+  const reasons = [];
+  const rows = result?.rows ?? [];
+  const got = rows.map((row) => row.section);
+  for (const section of scenario.expect.sections) {
+    if (!got.includes(section)) reasons.push(`놓친 절 — ${section}`);
+  }
+  for (const section of got) {
+    if (!scenario.expect.sections.includes(section)) reasons.push(`잘못 짚은 절 — ${section}`);
   }
   return { pass: reasons.length === 0, reasons };
 }

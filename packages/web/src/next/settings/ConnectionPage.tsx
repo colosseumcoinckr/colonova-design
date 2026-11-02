@@ -124,7 +124,9 @@ export function ConnectionPage({
           </button>
         </SRow>
       </SGroup>
-      <ConfluenceConnect daemon={daemon} locked={locked} />
+      {/* 프로젝트를 바꾸면 판도 새로 — 연결은 프로젝트 스코프라 옛 프로젝트의 사이트 · 연결
+          상태가 남아 있으면 안 된다(2026-11-03 · 프로젝트별 Confluence 자격). */}
+      <ConfluenceConnect key={daemon.activeSlug ?? ""} daemon={daemon} locked={locked} />
       {reset.available && (
         <SGroup danger>
           <SRow title={L.settings.resetTitle} sub={L.settings.resetSub}>

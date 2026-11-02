@@ -5,7 +5,11 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { writeConfluenceLedger } from "../dist/confluence-ledger.js";
 import { confluenceMirrorLedger } from "../dist/confluence-mirror.js";
-import { confluenceRootTitleKey, confluenceSiteKey } from "../dist/confluence-sync.js";
+import {
+  confluenceAccountKey,
+  confluenceRootTitleKey,
+  confluenceSiteKey,
+} from "../dist/confluence-sync.js";
 import { ProjectFleet } from "../dist/project-fleet.js";
 
 /**
@@ -28,6 +32,8 @@ function rig(opts: {
   legacyLedger?: boolean;
   /** 발행 게이트 — 없으면 조립이 손을 넘기지 않는다(쓸 수 없다고 말해야 한다). */
   writable?: boolean;
+  /** 가려진 계정 이메일 — 계정 키가 있을 때만 요약에 실린다(2026-11-03). */
+  account?: string;
 }): Rig {
   const home = mkdtempSync(join(tmpdir(), "fleet-confluence-"));
   const cloneRoot = join(home, "clone");
@@ -35,6 +41,7 @@ function rig(opts: {
   const machine = new Map<string, string>();
   if (opts.site !== undefined) machine.set(confluenceSiteKey("demo"), opts.site);
   if (opts.site !== undefined) machine.set(confluenceRootTitleKey("demo"), "8.8 ColoNova");
+  if (opts.account !== undefined) machine.set(confluenceAccountKey("demo"), opts.account);
   if (opts.ledger === true) {
     // 기획서 사본 — 프로젝트 폴더 아래 confluence/ 다(2026-10-23 · 기획서 사본 이동 계획 §1 D1).
     mkdirSync(join(home, "demo", "confluence"), { recursive: true });
@@ -143,6 +150,20 @@ test("연결된 프로젝트의 상태 방송 — 미러와 원장에서 채워�
     });
   } finally {
     rig1.cleanup();
+  }
+});
+
+test("계정 — 가려진 이메일이 계정 키에 있을 때만 요약에 실린다(2026-11-03 · 프로젝트별 자격)", () => {
+  const withAccount = rig({ site: "colosseum.atlassian.net", account: "m***@example.com" });
+  const without = rig({ site: "colosseum.atlassian.net" });
+  try {
+    const find = (one: Rig) => one.fleet.projectSummaries().find((row) => row.slug === "demo");
+    assert.equal(find(withAccount)?.confluence?.account, "m***@example.com");
+    // 키가 없으면 아예 실리지 않는다 — 옛 데몬 · 가릴 수 없는 값과 같은 취급.
+    assert.equal("account" in (find(without)?.confluence ?? {}), false);
+  } finally {
+    withAccount.cleanup();
+    without.cleanup();
   }
 });
 

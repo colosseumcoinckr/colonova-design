@@ -58,10 +58,11 @@ const T = {
   inviteRemoved: "초대 파일을 지웠어요",
   later: "나중에",
   newConv: "새 대화",
-  home: "홈",
   settings: "설정",
   composerPh: "만들거나 고치고 싶은 것을 말해 주세요",
-  homePh: "만들고 싶은 화면을 말해 주세요",
+  startersLabel: "요청 예시 · 누르면 입력창에 담겨요",
+  emptyTitle: "무엇을 만들까요?",
+  starterWords: "문구 다듬기",
   sendFailed: "AI에게 말을 전하지 못했어요",
   failTitle: "AI가 답을 못 했어요",
   retrying: "조금씩 기다리며 다시 묻는 중",
@@ -96,11 +97,8 @@ const T = {
   fork: "여기서 새 대화",
   settleMenu: "여기서 새 대화 · 되돌리기",
   forkRevertLink: "작업 기록에서 되돌리기",
-  greet: (name) => `${name}님, 무엇을 만들까요?`,
   waiting: "답을 기다려요",
-  calm: "기다리는 일이 없어요",
   running: "지금 진행 중",
-  recent: "방금 있던 일",
   others: "다른 프로젝트",
   prepareFirst: "처음 열 때 준비해요",
   prepTitle: "이 서비스를 이 컴퓨터에서 처음 켜요",
@@ -402,13 +400,13 @@ TASK[1] = async () => {
     await sleep(1500);
     await shot(page, 1, "after-invite");
     check(!(await visible(page, T.inviteApply, { exact: true })), "첫 가져오기인데 확인판이 섰음");
-    const greeted = await visible(page, T.greet("김기획"));
-    check(greeted, "홈 인사에 초대장의 이름(김기획)이 없음");
-    return "확인판 없이 곧바로 적용 · 「김기획님, 무엇을 만들까요?」";
+    const empty = await visible(page, T.emptyTitle);
+    check(empty, "첫 자리의 빈 대화 안내(`무엇을 만들까요?`)가 없음");
+    return "확인판 없이 곧바로 적용 · 화면 자리의 빈 대화 안내";
   });
   let landing = "";
   await step(1, "첫 화면에 `초대 파일을 가져왔어요` 줄", async () => {
-    landing = (await page.getByPlaceholder(T.homePh).first().isVisible().catch(() => false)) ? "홈" : "대화";
+    landing = (await visible(page, T.emptyTitle)) ? "빈 대화" : "대화";
     const onLanding = await visible(page, T.inviteLineTitle);
     if (!onLanding) {
       await openNewConv(page);
@@ -508,7 +506,7 @@ TASK[2] = async () => {
     const watching = (await page.evaluate(() => window.__coldNotes.length)) - before;
     if (!(await page.locator(".nx-m-user, .nx-user").count()))
       skip("가짜 claude — 턴이 running 에 들지 않아 알림 전환이 생기지 않는다");
-    // 보낸 뒤 다른 대화로 떠나면 → 불러야 한다(홈은 떠남이 아니다 — 보던 대화가 그대로 `보는 대화`다).
+    // 보낸 뒤 다른 대화로 떠나면 → 불러야 한다(보던 대화가 그대로 `보는 대화`다).
     await openNewConv(page);
     await composerSend(page, "알림 확인 둘");
     await sleep(300);
@@ -762,38 +760,41 @@ TASK[5] = async () => {
   await page.context().close();
 };
 
-// 6 — 홈 · 받은 편지함(U6)
+// 6 — 새 대화의 빈 자리 · 시작점 칩(2026-10-31 홈 걷기 — 옛 홈 과제를 새 자리로 옮겼다)
 TASK[6] = async () => {
   const page = await openPage(URL0);
   page.__task = 6;
   await workReady(page);
-  await step(6, "홈 — 인사 · 큰 입력창 · 받은 편지함 셋", async () => {
-    await btn(page, T.home).click();
-    await sleep(1200);
-    await shot(page, 6, "home");
-    const text = await bodyText(page);
-    const greet = text.match(/(\S+님, )?무엇을 만들까요\?/)?.[0] ?? "";
-    check(await page.getByPlaceholder(T.homePh).first().isVisible().catch(() => false), "큰 입력창 없음");
-    check((await visible(page, T.waiting)) || (await visible(page, T.calm)), "`답을 기다려요` 칸 없음");
-    check(await visible(page, T.running), "`지금 진행 중` 없음");
-    check(await visible(page, T.recent), "`방금 있던 일` 없음");
-    return `인사: 「${greet}」`;
+  await step(6, "빈 자리 — 안내 · 시작점 칩 · 입력창", async () => {
+    await openNewConv(page);
+    await sleep(600);
+    await shot(page, 6, "empty");
+    check(await visible(page, T.emptyTitle), "빈 대화 안내 없음");
+    check(await visible(page, T.startersLabel), "시작점 칩 묶음 이름 없음");
+    check(await visible(page, T.starterWords), "`문구 다듬기` 칩 없음");
+    check(
+      await page.getByPlaceholder(T.composerPh).first().isVisible().catch(() => false),
+      "입력창 없음",
+    );
+    return "안내 · 칩 넷 · 입력창이 한 자리에 선다";
   });
-  await step(6, "홈에서 보냄 → 새 대화로 넘어감", async () => {
+  await step(6, "칩을 누르면 초안이 담기고, 보내면 새 대화가 태어난다", async () => {
     if (REAL) skip("--real 에서는 턴을 아낀다");
-    const box = page.getByPlaceholder(T.homePh);
-    await box.fill("홈에서 보낸 말");
+    await btn(page, T.starterWords).click();
+    await sleep(400);
+    await shot(page, 6, "starter-filled");
+    const box = page.getByPlaceholder(T.composerPh).first();
+    const draft = await box.inputValue();
+    check(draft.includes("문구를 더 쉽고 부드럽게 다듬어 줘"), `칩의 초안이 담기지 않았다: 「${draft}」`);
     await box.press("Enter");
     await sleep(2500);
-    await shot(page, 6, "home-sent");
-    const moved = await page.getByPlaceholder(T.composerPh).first().isVisible().catch(() => false);
-    check(moved, "작업 화면으로 넘어가지 않음");
-    const inThread = await visible(page, "홈에서 보낸 말");
+    await shot(page, 6, "starter-sent");
+    const inThread = await visible(page, draft);
     const failed = await waitAny(page, [T.sendFailed, T.failTitle], 20_000);
-    await shot(page, 6, "home-sent-after");
-    return `작업 화면으로 넘어감 · 보낸 말 ${inThread ? "대화록에" : "대화록에 없음"}${failed ? ` · 「${failed}」` : ""}`;
+    await shot(page, 6, "starter-sent-after");
+    return `보낸 말 ${inThread ? "대화록에" : "대화록에 없음"}${failed ? ` · 「${failed}」` : ""}`;
   });
-  await step(6, "`답을 기다려요` 카드에 홈에서 답하기", () =>
+  await step(6, "`답을 기다려요` 카드에 답하기", () =>
     skip("AI 가 묻거나 허락을 구해야 선다 — 가짜 claude 는 묻지 않는다"),
   );
   await page.context().close();
@@ -980,7 +981,7 @@ TASK[9] = async () => {
   await btn(page, /새 대화/, false).waitFor({ state: "attached", timeout: 20_000 }).catch(() => {});
   await sleep(1500);
   await step(9, "사이드바는 ≡ 뒤로, 대화 | 화면 탭", async () => {
-    await shot(page, 9, "narrow-home");
+    await shot(page, 9, "narrow-start");
     const menu = page.getByRole("button", { name: "메뉴 열기" }).first();
     check(await menu.isVisible().catch(() => false), "≡ 가 없음");
     await menu.click();

@@ -55,18 +55,22 @@ test("읽기 화면의 마크다운 — 보존 조각은 화면이 따로 그리
   assert.equal(viewToMarkdown(preserved, { t1: "macro:info" }), "");
 });
 
-test("토큰을 사람의 말로 — 혼자 오면 〔이름〕 이 되고 쌍은 안 글만 남는다", () => {
+test("토큰을 사람의 말로 — 혼자 오면 지울 수 있는 칩의 링크가 되고 쌍은 안 글만 남는다", () => {
   const single = "앞 ⟦t1⟧ 뒤";
+  // 칩의 링크 표지(2026-11-03 실앱 감사) — 〔이름〕 낱글자로 그리던 옛 모양은 마크다운이 칩을 못 세웠다.
   assert.equal(
     viewToMarkdown({ kind: "paragraph", text: single }, { t1: "macro:info" }),
-    "앞 〔정보 상자〕 뒤",
+    "앞 [정보 상자](#token-t1) 뒤",
   );
   const pair = "머리 ⟦c1⟧이 블록은 누가 쓴다⟦/c1⟧ 꼬리";
   assert.equal(
     viewToMarkdown({ kind: "paragraph", text: pair }, { c1: "comment-anchor" }),
     "머리 이 블록은 누가 쓴다 꼬리",
   );
-  assert.equal(viewToMarkdown({ kind: "paragraph", text: "⟦t9⟧" }, {}), "〔Confluence 요소〕");
+  assert.equal(
+    viewToMarkdown({ kind: "paragraph", text: "⟦t9⟧" }, {}),
+    "[Confluence 요소](#token-t9)",
+  );
 });
 
 test("토큰 안내 — 글에 나타난 토큰만, 나타난 순서대로", () => {

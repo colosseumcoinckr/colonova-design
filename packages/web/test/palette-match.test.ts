@@ -144,7 +144,7 @@ test("stepWalk: ←/→ 는 칩 위에서만 걷고, 옮길 곳이 없으면 커
   assert.equal(stepWalk("ArrowLeft", 1, 3, 2), null);
 });
 
-test("stepWalk: 줄이 없고 칩만 있어도 걷는다 — 「홈」만 맞는 검색", () => {
+test("stepWalk: 줄이 없고 칩만 있어도 걷는다 — 「설정」만 맞는 검색", () => {
   assert.equal(stepWalk("ArrowDown", 0, 0, 3), 1);
   assert.equal(stepWalk("ArrowRight", 0, 0, 3), 1);
   assert.equal(stepWalk("ArrowLeft", 0, 0, 3), null);

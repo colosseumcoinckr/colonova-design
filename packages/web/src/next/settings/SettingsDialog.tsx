@@ -15,6 +15,7 @@ import type { ChatSettings, Settings } from "../../lib/settings";
 import { L } from "../labels";
 import { connectionCopy, connectionLock, reconnectNeeds } from "../lib/connection-copy";
 import { closeGuard, pageDirection } from "../lib/settings-shell";
+import { nextTabIndex } from "../lib/tab-keys";
 import { useClosing } from "../lib/use-closing";
 import { hasNewerVersion } from "../lib/version";
 import { CloseIcon, Spin } from "../ui/icons";
@@ -235,15 +236,10 @@ export function SettingsDialog({
   };
 
   // 왼쪽 목록의 화살표 걸음 — 옮겨 가며 곧바로 그 쪽을 연다(탭 순서에는 고른 쪽 하나만 선다).
+  // 수학은 오른쪽 칸의 탭과 한 판이다(lib/tab-keys — 2026-11-03 탭 알약식과 함께).
   const railKeys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const at = PAGES.indexOf(page);
-    let next: number;
-    if (event.key === "ArrowDown" || event.key === "ArrowRight") next = (at + 1) % PAGES.length;
-    else if (event.key === "ArrowUp" || event.key === "ArrowLeft")
-      next = (at - 1 + PAGES.length) % PAGES.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = PAGES.length - 1;
-    else return;
+    const next = nextTabIndex(event.key, PAGES.length, PAGES.indexOf(page));
+    if (next === null) return;
     event.preventDefault();
     const target = PAGES[next];
     if (target) selectPage(target);

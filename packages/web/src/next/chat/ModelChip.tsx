@@ -77,8 +77,8 @@ export function ModelChip({
   target: ChipTarget;
   disabledProviders?: string[];
   /**
-   * 여는 방향 — 입력창이 화면 바닥에 붙는 대화 칸은 위로, 홈처럼 화면 가운데
-   * 있는 입력창은 아래로. 위로만 열면 홈에서 팝의 머리가 창 밖으로 나간다.
+   * 여는 방향 — 입력창이 화면 바닥에 붙는 대화 칸은 위로. 위로만 열면 좁은 창에서
+   * 팝의 머리가 창 밖으로 나가는 자리는 아래로 연다.
    */
   up?: boolean;
 }) {

@@ -37,5 +37,7 @@ test("이음매: 데몬의 기록이 선로 · 대화록 복원 · 카드까지 
     /\.\.\.\(event\.checked \? \{ checked: event\.checked \} : \{\}\),\s*id: `u\$\{\+\+noticeSeq\}`/,
   );
   const thread = read("../src/next/chat/Thread.tsx");
-  assert.match(thread, /\{result\?\.checked && \(\s*<p className="nx-results-checked">/);
+  // 확인 줄은 결과 띠(S3)의 얇은 줄이다 — 옛 `고친 화면` 카드의 옷이 돌아오지 않는다.
+  assert.match(thread, /\{result\?\.checked && \(\s*<p className="nx-band-checked">/);
+  assert.doesNotMatch(thread, /nx-results-checked/);
 });

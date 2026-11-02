@@ -1,5 +1,5 @@
 import type { ThreadSummary } from "@colonova-design/protocol";
-import { Monitor, Waypoints } from "lucide-react";
+import { Monitor } from "lucide-react";
 import { type ReactNode, type Ref, useState } from "react";
 import type { Sessions } from "../../hooks/useSessions";
 import type { Daemon } from "../../lib/daemon-client";
@@ -11,7 +11,6 @@ import { Count } from "../ui/Count";
 import {
   CloseIcon,
   GearIcon,
-  HomeIcon,
   LightbulbIcon,
   PanelIcon,
   PlansDocIcon,
@@ -28,9 +27,7 @@ export function Sidebar({
   daemon,
   sessions,
   activeSessionId,
-  view,
   plansOn = false,
-  mapOn = false,
   planDrafts = 0,
   running = false,
   plansContent,
@@ -48,9 +45,6 @@ export function Sidebar({
   /** `useSessions` 의 결과 — 대화 목록의 지우기 · 이름 바꾸기가 쓴다. */
   sessions: Sessions;
   activeSessionId: string | null;
-  view: "home" | "thread";
-  /** `plansOn` 의 형제 — 연결 지도 자리인가(2026-10-24 연결 지도 사이드바 자리 결정). */
-  mapOn?: boolean;
   /** 기획서 자리인가. 자리 표시와 목록 선택에 쓴다. */
   plansOn?: boolean;
   /** 지금 프로젝트의 작성 중인 초안 수 — `기획서` 줄 끝에 흐리게 선다(2026-10-23 기획자 화면 손질 D5). */
@@ -79,8 +73,9 @@ export function Sidebar({
   const active = projects.find((project) => project.slug === daemon.activeSlug) ?? null;
   // `프로젝트 N개 더 보기` 가 전환기 목록을 여는 신호 — 누를 때마다 한 칸 올라 목록이 열린다.
   const [openSwitcher, setOpenSwitcher] = useState(0);
-  // 홈 배지는 확인 요청만 센다 — 「내 손이 필요한 일」의 수, 모든 프로젝트에 걸쳐(U6).
-  const waiting = projects.reduce((sum, project) => sum + project.pendingCount, 0);
+  // `화면` 줄의 기다림 배지 — 지금 프로젝트의 「내 손이 필요한 일」만 센다(2026-10-31 홈 걷기 —
+  // 옛 `홈` 줄은 모든 프로젝트의 수를 섰다). 다른 프로젝트의 기다림은 `다른 프로젝트` 줄이 말한다.
+  const waiting = active?.pendingCount ?? 0;
   const author = daemon.status?.authorName?.trim() || null;
   // 설정 바퀴의 점 — 깔려 있는 AI 중 새 버전을 아는 것이 있으면 한 알(PLAN-UI U12).
   const updateReady = (daemon.status?.providers ?? []).some(
@@ -114,23 +109,12 @@ export function Sidebar({
         openSignal={openSwitcher}
       />
       <nav className="nx-side-nav" aria-label={L.sidebar.nav}>
-        <button
-          type="button"
-          className={`nx-side-row${view === "home" ? " nx-side-row--on" : ""}`}
-          aria-current={view === "home" ? "page" : undefined}
-          onClick={nav.goHome}
-        >
-          <HomeIcon />
-          {L.sidebar.home}
-          {waiting > 0 && <Count n={waiting} className="nx-r" />}
-        </button>
-        {/* 왼쪽 줄의 차례는 홈 · 찾기 · 기획서 · 연결 · 화면이다(2026-10-24 사용자 결정). */}
         <button type="button" className="nx-side-row" onClick={onPalette}>
           <SearchIcon />
           {L.sidebar.find}
           <kbd>{keyHint("⌘K")}</kbd>
         </button>
-        {/* 자리는 다시 눌러도 닫히지 않는다(2026-10-23 화면 전면 재설계 §3.1). */}
+        {/* 왼쪽 줄의 차례는 찾기 · 기획서 · 화면이다 — 홈 자리는 2026-10-31 사용자 결정으로 걷혔다. */}
         <button
           type="button"
           className={`nx-side-row${plansOn ? " nx-side-row--on" : ""}`}
@@ -147,26 +131,30 @@ export function Sidebar({
             </span>
           )}
         </button>
-        {/* 연결 지도 — 기획서와 화면 사이의 사는 자리(2026-10-24 사용자 결정). 다시 눌러도 머문다. */}
         <button
           type="button"
-          className={`nx-side-row${mapOn ? " nx-side-row--on" : ""}`}
-          aria-current={mapOn ? "page" : undefined}
-          title={L.plans.mapView}
-          onClick={nav.openMap}
-        >
-          <Waypoints className="nx-i" size={16} aria-hidden="true" />
-          {L.sidebar.map}
-        </button>
-        <button
-          type="button"
-          className={`nx-side-row${view === "thread" && !plansOn && !mapOn ? " nx-side-row--on" : ""}`}
-          aria-current={view === "thread" && !plansOn && !mapOn ? "page" : undefined}
-          aria-label={running ? L.sidebar.screenRunning : undefined}
+          className={`nx-side-row${!plansOn ? " nx-side-row--on" : ""}`}
+          aria-current={!plansOn ? "page" : undefined}
+          aria-label={
+            running
+              ? L.sidebar.screenRunning
+              : waiting > 0
+                ? L.sidebar.waitingAnswerCount(waiting)
+                : undefined
+          }
+          title={
+            running
+              ? L.sidebar.screenRunning
+              : waiting > 0
+                ? L.sidebar.waitingAnswerCount(waiting)
+                : undefined
+          }
           onClick={nav.openScreen ?? nav.showScreen}
         >
           <Monitor className="nx-i" size={16} aria-hidden="true" />
           {L.sidebar.screen}
+          {/* 옛 `홈` 줄의 기다림 배지(2026-10-31 홈 걷기) — 지금 프로젝트의 기다림만 센다. */}
+          {waiting > 0 && !running && <Count n={waiting} className="nx-r" />}
           {running && (
             <span className="nx-side-note" title={L.sidebar.screenRunning}>
               <Spin />
@@ -175,7 +163,7 @@ export function Sidebar({
         </button>
       </nav>
       {plansContent}
-      <div className="nx-side-conversations" hidden={plansOn || mapOn}>
+      <div className="nx-side-conversations" hidden={plansOn}>
         <div className="nx-side-list-head">
           <h2>{L.sidebar.convs}</h2>
           <button
@@ -199,7 +187,6 @@ export function Sidebar({
           project={active}
           sessions={sessions}
           activeSessionId={activeSessionId}
-          threadView={view === "thread"}
           titleFor={titleFor}
           onOpen={(thread) => active && nav.openThread(active.slug, thread.id)}
           onRenameSession={onRenameSession}

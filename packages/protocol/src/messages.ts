@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { docCommentClientMessageSchemas } from "./doc-comments.js";
 import { docOpClientMessageSchemas } from "./doc-ops.js";
+import { docViewClientMessageSchemas } from "./doc-view.js";
 import type { DraftAiMessage, DraftChangedMessage } from "./draft.js";
 import { draftClientMessageSchemas } from "./draft.js";
 import { featureRequestInputSchema } from "./feedback.js";
@@ -935,6 +936,11 @@ const clientMessageSchema = z.discriminatedUnion("type", [
    * doc-comments.ts 의 한 곳에 둔다.
    */
   ...docCommentClientMessageSchemas,
+  /**
+   * Confluence 기능 확장의 요청(2026-10-30 사용자 요청) — 첨부 읽기 · 라벨 · 판 기록 · 본문 찾기.
+   * 스키마와 한계값은 doc-view.ts 의 한 곳에 둔다.
+   */
+  ...docViewClientMessageSchemas,
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;

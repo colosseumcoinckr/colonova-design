@@ -21,6 +21,7 @@ import {
   HANDOFF_FILE_LIMIT,
   handoffPrompt,
   MEMO_MAX_CHARS,
+  memoLineUsable,
   memoPrompt,
 } from "./repo-prompts.js";
 import type { SubmitVersion } from "./submit-version.js";
@@ -307,7 +308,10 @@ export class RepoSummarizer {
           .replace(/^["'`]+|["'`]+$/g, "")
           .trim(),
       )
-      .filter(Boolean)[0];
+      .filter((row) => row !== "")
+      .find(memoLineUsable);
+    // 화면 코드의 흔적이 든 문장은 기본 문구로 물러난다 — 작업 기록에 개발 어휘가
+    // 오르는 것보다 겜란한 한 줄이 낫다(2026-11-02 실사용 관찰).
     return line ? line.slice(0, MEMO_MAX_CHARS) : null;
   }
 }

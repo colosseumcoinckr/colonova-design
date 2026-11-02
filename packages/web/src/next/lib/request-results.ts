@@ -1,4 +1,9 @@
-import { type GateChecked, type RepoStatus, readTurn } from "@colonova-design/protocol";
+import {
+  type GateChecked,
+  type PlanSync,
+  type RepoStatus,
+  readTurn,
+} from "@colonova-design/protocol";
 import type { Block } from "../../lib/daemon-client";
 
 export interface RequestResult {
@@ -15,6 +20,8 @@ export interface RequestResult {
   repaired: boolean;
   /** 턴 끝의 자동 확인이 문제 없이 지나갔다 — 카드가 무엇을 확인했는지 한 줄로 말한다. 없으면 말하지 않는다. */
   checked: GateChecked | null;
+  /** 같이 고치기(2026-10-30) — 이 요청이 기획서 초안도 고쳤는지. 없으면 곁줄이 서지 않는다. */
+  planSync: PlanSync | null;
 }
 
 /** One recorded user request, including its automatic repair, has one result section. */
@@ -53,6 +60,7 @@ export function requestResults(
               turnId: "",
               repaired: false,
               checked: block.checked ?? null,
+              planSync: block.planSync ?? null,
               screens:
                 block.changedScreens ??
                 saved?.filter((screen) => screen.requestId === block.requestId) ??

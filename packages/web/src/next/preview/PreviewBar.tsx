@@ -1,5 +1,5 @@
 import { APP_SHORTCUTS } from "@colonova-design/protocol";
-import { type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react";
+import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { composing } from "../../lib/ime";
 import { L } from "../labels";
 import { keyHint, tipWithKeys } from "../lib/key-hint";
@@ -44,11 +44,23 @@ export interface ScreenRow {
   modified?: boolean;
 }
 
+/** 막대의 접힘 차례(2026-10-31 화면 자리 개선안 S6) — 넓음 → ⌘L 감김 → 기기 마디를 한 단추로 → 앞으로. */
+type BarTier = "wide" | "mid" | "tight" | "tiny";
+
+function tierOf(width: number): BarTier {
+  if (width >= 640) return "wide";
+  if (width >= 540) return "mid";
+  if (width >= 430) return "tight";
+  return "tiny";
+}
+
 /**
- * 미리보기 막대 — 조절을 세 묶음으로 세운다(2026-10-23 화면 전면 재설계 §4 F). 묶음 사이 12px · 안 4px · 모든 조절 32px:
- * ① 이동 — ‹ › ⟳ ② 화면 고르기 — 주소(=화면 이름, 누르면 화면 목록) ③ 보기 도구 — PC/태블릿/휴대폰(마디 단추) · 수정할 곳 선택
- * (보통 단추 — 켜졌을 때만 포인트 바탕) · 작업 기록 · 배율 알약(100% 가 아닐 때만) · `···`(배율 · AI에게 이 화면 보여 주기 ·
- * 제출한 때의 화면 · 단축키). 넓으면 기록이 글자를 입고, 좁아지면 글자부터 감긴다(2026-10-06 막대 개편).
+ * 미리보기 막대 — 「어디 · 무엇을 · 어떻게 보나」 순으로 세운다(2026-10-31 화면 자리 개선안 S6).
+ * 왼쪽은 뒤로 · 앞으로 · 새로 고침, 가운데는 주소(화면 고르기)와 그 바로 오른쪽의 **`찍기`** —
+ * 이 칸의 가장 중요한 손이라 주소 곁으로 당겼다. 오른쪽은 기기 마디와 `···`다. 작업 기록은
+ * 막대에서 빠졌다 — 오른쪽 칸의 작업 기록 탭(S10)과 `···` 메뉴가 대신한다. 배율은 100% 가
+ * 아닐 때만 `···` 위의 숫자 배지로 접힌다. 창이 좁아지면 ⌘L 감김 → 기기 마디를 한 단추로 →
+ * 앞로 순으로 접힌다(막대 폭을 잰다).
  */
 export function PreviewBar({
   canBack,
@@ -70,9 +82,6 @@ export function PreviewBar({
   pinCount,
   pinLocked,
   onPin,
-  historyOpen,
-  historyBtn,
-  drawerId,
   onHistory,
   native,
   zoom,
@@ -83,6 +92,8 @@ export function PreviewBar({
   showAiBusy,
   onShortcuts,
   addrSignal,
+  changedBy,
+  onChangedBy,
 }: {
   canBack: boolean;
   canForward: boolean;
@@ -107,11 +118,7 @@ export function PreviewBar({
   /** 찍기가 잠긴 이유(준비 중) — 있으면 누름이 이유를 말한다. */
   pinLocked: string | null;
   onPin: () => void;
-  historyOpen: boolean;
-  /** 시계 단추의 자리 — 서랍이 닫히면 초점이 여기로 돌아간다. */
-  historyBtn?: RefObject<HTMLButtonElement | null>;
-  /** 단추가 여닫는 서랍의 id — `aria-controls` 가 가리킨다. */
-  drawerId?: string;
+  /** 작업 기록 — `···` 메뉴에서 연다(넓은 창의 탭 · 좁은 창의 서랍이 받는다). */
   onHistory: () => void;
   native: boolean;
   zoom: number;
@@ -126,9 +133,13 @@ export function PreviewBar({
   arrivePulse: number;
   /** ⌘L — 오를 때마다 주소 목록을 연다. */
   addrSignal: number;
+  /** 이 화면을 바꾼 말(S9) — 이 대화에서 바뀐 화면을 볼 때만 선다. */
+  changedBy: boolean;
+  onChangedBy: () => void;
 }) {
   const [addrOpen, setAddrOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [deviceOpen, setDeviceOpen] = useState(false);
   // 답이 끝나 도착하면 주소 알약이 강조색으로 1.2초 물든다 — 도착이 먼저
   // 말하고 색이 뒤따라 꺼진다.
   const [arriveTint, setArriveTint] = useState(false);
@@ -140,6 +151,19 @@ export function PreviewBar({
   }, [arrivePulse]);
   const addrRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
+  const deviceRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  // 막대의 폭으로 접힘 차례를 정한다 — 폭마다 보이는 것이 다르되 규칙은 하나다(S6).
+  const [tier, setTier] = useState<BarTier>("wide");
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!el) return undefined;
+    const read = () => setTier(tierOf(el.getBoundingClientRect().width));
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     if (addrSignal > 0) setAddrOpen(true);
@@ -148,15 +172,16 @@ export function PreviewBar({
   // 게스트(webview) 안의 누름은 문서의 mousedown 에 닿지 않는다 — 게스트가 포커스를
   // 가져가는 순간을 「바깥을 눌렀다」로 본다.
   useEffect(() => {
-    if (!addrOpen && !moreOpen) return;
+    if (!addrOpen && !moreOpen && !deviceOpen) return;
     const onFocusIn = (event: FocusEvent) => {
       if ((event.target as HTMLElement | null)?.tagName !== "WEBVIEW") return;
       setAddrOpen(false);
       setMoreOpen(false);
+      setDeviceOpen(false);
     };
     document.addEventListener("focusin", onFocusIn);
     return () => document.removeEventListener("focusin", onFocusIn);
-  }, [addrOpen, moreOpen]);
+  }, [addrOpen, moreOpen, deviceOpen]);
 
   const zoomState = zoomButtons(zoom);
   // 주소 목록의 체크와 같은 비교 — 이 대화에서 만든 화면 위에 서 있는가.
@@ -165,8 +190,10 @@ export function PreviewBar({
   // 점이 서 있으면 풍선이 그 뜻을 먼저 말한다 — 눈으로 보는 사람도 점의 이유를 안다.
   const addrTip = tipWith(L.preview.addrLabel, "address");
   // 잠김 상태는 이름이 말한다 — 잠긴 이유는 눌렀을 때의 토스트 몫이다(2026-10-04 ux-review).
+  // 켜진 찍기는 `찍는 중` 이라고 먼저 말한다(S6).
   let pinName: string = L.preview.pin;
   if (pinLocked) pinName = L.preview.pinLockedState;
+  else if (pinOn && pinCount === 0) pinName = L.preview.pinOnState;
   else if (pinCount > 0) pinName = L.preview.pinCountState(pinCount);
 
   const deviceButton = (value: PreviewDevice, label: string, icon: ReactNode) => (
@@ -182,8 +209,19 @@ export function PreviewBar({
     </button>
   );
 
+  const deviceIcons: Record<PreviewDevice, ReactNode> = {
+    desktop: <PcIcon />,
+    tablet: <TabletIcon />,
+    mobile: <PhoneIcon />,
+  };
+  const deviceLabel: Record<PreviewDevice, string> = {
+    desktop: L.preview.devicePc,
+    tablet: L.preview.deviceTablet,
+    mobile: L.preview.devicePhone,
+  };
+
   return (
-    <div className="nx-pvbar">
+    <div className="nx-pvbar" ref={barRef} data-tier={tier}>
       <div className="nx-pvg">
         <button
           type="button"
@@ -195,16 +233,18 @@ export function PreviewBar({
         >
           <BackIcon />
         </button>
-        <button
-          type="button"
-          className="nx-ibtn nx-fwd"
-          title={tipWith(L.preview.forward, "forward")}
-          aria-label={L.preview.forward}
-          disabled={!canForward}
-          onClick={onForward}
-        >
-          <ForwardIcon />
-        </button>
+        {tier !== "tiny" && (
+          <button
+            type="button"
+            className="nx-ibtn nx-fwd"
+            title={tipWith(L.preview.forward, "forward")}
+            aria-label={L.preview.forward}
+            disabled={!canForward}
+            onClick={onForward}
+          >
+            <ForwardIcon />
+          </button>
+        )}
         <button
           type="button"
           className={`nx-ibtn nx-reload${loading ? " nx-reload--busy" : ""}`}
@@ -239,7 +279,7 @@ export function PreviewBar({
             {mineHere && <i className="nx-addr-dot" aria-hidden="true" />}
           </span>
           {/* 이름은 위 aria-label 이 말한다 — 단축키는 눈에만 보이는 힌트다. */}
-          {addrKeys && <kbd className="nx-addr-k">{keyHint(addrKeys)}</kbd>}
+          {addrKeys && tier === "wide" && <kbd className="nx-addr-k">{keyHint(addrKeys)}</kbd>}
           <AddrChevronIcon />
         </button>
         {addrOpen && (
@@ -267,59 +307,79 @@ export function PreviewBar({
         )}
       </div>
 
-      <div className="nx-pvg nx-pvg--tools">
-        <fieldset className="nx-seg" aria-label={L.preview.device}>
-          {deviceButton("desktop", L.preview.devicePc, <PcIcon />)}
-          {deviceButton("tablet", L.preview.deviceTablet, <TabletIcon />)}
-          {deviceButton("mobile", L.preview.devicePhone, <PhoneIcon />)}
-        </fieldset>
+      {/* 이 화면을 바꾼 말(S9) — 이 대화에서 바뀐 화면을 볼 때만 주소 곁에 선다. */}
+      {changedBy && (
+        <button
+          type="button"
+          className="nx-btn nx-btn--ghost nx-changedby"
+          aria-label={L.preview.changedByAria(screenName)}
+          title={L.preview.changedBy}
+          onClick={onChangedBy}
+        >
+          {L.preview.changedBy}
+          <ForwardIcon />
+        </button>
+      )}
 
-        {/* 수정할 곳 선택 — 보통 단추이고 켜졌을 때만 포인트 바탕이다(포인트 바탕은 AI 에게 `보내기` 와 켜짐 상태뿐). */}
-        <button
-          type="button"
-          className={`nx-btn nx-pin-t${pinOn ? " nx-btn--accent" : ""}${pinLocked ? " nx-pin-t--locked" : ""}`}
-          title={pinLocked ?? keyHint(pinOn ? L.preview.pinOffTip : L.preview.pinTip)}
-          aria-label={pinName}
-          aria-pressed={pinOn}
-          aria-disabled={pinLocked !== null}
-          onClick={onPin}
-        >
-          <PinIcon />
-          <span className="nx-pin-w">{L.preview.pin}</span>
-          {pinCount > 0 && <Count n={pinCount} className={pinOn ? "nx-cnt--inv" : undefined} />}
-        </button>
-        <button
-          type="button"
-          ref={historyBtn}
-          className="nx-btn nx-btn--ghost nx-hist-t"
-          title={historyOpen ? L.history.close : L.preview.history}
-          aria-label={L.preview.history}
-          aria-expanded={historyOpen}
-          aria-controls={drawerId}
-          onClick={onHistory}
-        >
-          <span className="nx-hist-ic">
-            <HistoryIcon />
-          </span>
-          <span className="nx-hist-w">{L.preview.history}</span>
-        </button>
-        {/* 배율이 100% 가 아닐 때만 — 메뉴 안에 숨은 상태가 막대에서도 보이고, 한 번에 돌아간다. */}
-        {native && !zoomState.reset && (
-          <button
-            type="button"
-            className="nx-btn nx-btn--ghost nx-zoom-t"
-            title={L.preview.zoomReset}
-            aria-label={`${L.preview.zoomReset} · ${Math.round(zoom * 100)}%`}
-            onClick={() => onZoom("reset")}
-          >
-            {Math.round(zoom * 100)}%
-          </button>
+      {/* 찍기 — 이 칸의 가장 중요한 손이라 주소 곁에 선다(S6). 보통 단추이고 켜졌을 때만 포인트 바탕이다. */}
+      <button
+        type="button"
+        className={`nx-btn nx-pin-t${pinOn ? " nx-btn--accent" : ""}${pinLocked ? " nx-pin-t--locked" : ""}`}
+        title={pinLocked ?? keyHint(pinOn ? L.preview.pinOffTip : L.preview.pinTip)}
+        aria-label={pinName}
+        aria-pressed={pinOn}
+        aria-disabled={pinLocked !== null}
+        onClick={onPin}
+      >
+        <PinIcon />
+        <span className="nx-pin-w">{L.preview.pin}</span>
+        {pinCount > 0 && <Count n={pinCount} className={pinOn ? "nx-cnt--inv" : undefined} />}
+      </button>
+
+      <span className="nx-grow" />
+
+      <div className="nx-pvg nx-pvg--tools">
+        {/* 기기 마디 — 좁으면 한 단추로 접는다(S6). */}
+        {tier === "wide" || tier === "mid" ? (
+          <fieldset className="nx-seg" aria-label={L.preview.device}>
+            {deviceButton("desktop", L.preview.devicePc, <PcIcon />)}
+            {deviceButton("tablet", L.preview.deviceTablet, <TabletIcon />)}
+            {deviceButton("mobile", L.preview.devicePhone, <PhoneIcon />)}
+          </fieldset>
+        ) : (
+          <div className="nx-anchor" ref={deviceRef}>
+            <button
+              type="button"
+              className="nx-ibtn"
+              title={L.preview.device}
+              aria-label={`${L.preview.device} · ${deviceLabel[device]}`}
+              aria-haspopup="dialog"
+              aria-expanded={deviceOpen}
+              onClick={() => setDeviceOpen((open) => !open)}
+            >
+              {deviceIcons[device]}
+            </button>
+            {deviceOpen && (
+              <Popover
+                anchor={deviceRef}
+                onClose={() => setDeviceOpen(false)}
+                align="end"
+                label={L.preview.device}
+              >
+                <div className="nx-mseg">
+                  {deviceButton("desktop", L.preview.devicePc, <PcIcon />)}
+                  {deviceButton("tablet", L.preview.deviceTablet, <TabletIcon />)}
+                  {deviceButton("mobile", L.preview.devicePhone, <PhoneIcon />)}
+                </div>
+              </Popover>
+            )}
+          </div>
         )}
 
         <div className="nx-anchor" ref={moreRef}>
           <button
             type="button"
-            className="nx-ibtn"
+            className="nx-ibtn nx-more-btn"
             title={L.preview.more}
             aria-label={L.preview.more}
             aria-haspopup="dialog"
@@ -327,6 +387,12 @@ export function PreviewBar({
             onClick={() => setMoreOpen((open) => !open)}
           >
             <MoreIcon />
+            {/* 배율이 100% 가 아닐 때만 — `···` 위의 숫자 배지(S6). 누르면 메뉴의 배율 칸이 열린다. */}
+            {native && !zoomState.reset && (
+              <span className="nx-zoom-badge" aria-hidden="true">
+                {Math.round(zoom * 100)}%
+              </span>
+            )}
           </button>
           {moreOpen && (
             <Popover
@@ -405,6 +471,17 @@ export function PreviewBar({
                   <b>{L.preview.frozenOpen}</b>
                   <small>{frozenReady ? L.preview.frozenOpenSub : L.preview.frozenLocked}</small>
                 </span>
+              </button>
+              <button
+                type="button"
+                className="nx-mi"
+                onClick={() => {
+                  setMoreOpen(false);
+                  onHistory();
+                }}
+              >
+                <HistoryIcon />
+                {L.preview.history}
               </button>
               <div className="nx-msep" />
               <button

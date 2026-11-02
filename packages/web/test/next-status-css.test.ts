@@ -5,9 +5,13 @@ import { test } from "node:test";
 
 /**
  * 상태 줄 CSS 의 조용한 실패를 지킨다(2026-10-06). 컨테이너 질의는 컨테이너가 제 폭을 가질 때만
- * 뜻이 있다 — `container-type: inline-size` 는 내용이 정하는 폭을 0 으로 만들므로, 내용에 맡긴
+ * 뜻이 있다 — `container-type: inline-size` 는 내용이 정하는 폭을 0 으로 만드므로, 내용에 맡긴
  * flex 항목에 걸면 폭이 0 이 되어 모든 질의가 늘 `가장 좁음` 으로 읽힌다. 화면에는 오류가 없고
- * `만드는 중` 과 앞으로 올 점의 글자만 사라진다(2026-10-04 ux-review 가 이렇게 나갔다).
+ * 국면 알의 글자만 사라진다(2026-10-04 ux-review 가 이렇게 나갔다).
+ *
+ * 2026-10-31 화면 자리 개선안 S1 으로 여정 세 점이 `이번 작업` 팝의 머리로 옮겨지고 상태 줄은
+ * 국면 알 하나가 되었다 — 접힘 규칙도 「알 글자 → 배지」 두 단계로 줄었으므로 질의 수의 하한도
+ * 그에 맞춰 낮췄다(질의의 이름 · 유일 폭 · 컨테이너의 폭 규칙은 그대로 지킨다).
  */
 const css = readFileSync(join(import.meta.dirname, "../src/next/status/status.css"), "utf8");
 
@@ -29,7 +33,7 @@ test("상태 줄: 질의의 컨테이너는 내용이 아니라 남은 자리로
 
 test("상태 줄: 컨테이너 질의는 이름 붙은 컨테이너(nxwork)만 부른다", () => {
   const queries = css.match(/@container[^{]*\{/g) ?? [];
-  assert.ok(queries.length >= 5, `질의가 너무 적다: ${queries.length}`);
+  assert.ok(queries.length >= 1, `질의가 없다: ${queries.length}`);
   for (const query of queries) {
     // 이름이 없으면 가장 가까운 조상 컨테이너가 무엇이든 거기에 걸린다.
     assert.match(query, /@container\s+nxwork\s*\(/, query);
@@ -38,7 +42,7 @@ test("상태 줄: 컨테이너 질의는 이름 붙은 컨테이너(nxwork)만 �
 
 test("상태 줄: 접힘의 기준 폭은 질의마다 한 번씩만 선다", () => {
   // 같은 폭에 질의가 둘이면 어느 규칙이 이기는지 소스 순서에 맡기게 된다 — 폭마다 한 질의씩 두고,
-  // 만드는 중 · 좁은 창의 규칙은 같은 질의 안에서 선택자로 가른다.
+  // 좁은 폭의 규칙은 같은 질의 안에서 선택자로 가른다.
   const widths = [...css.matchAll(/@container nxwork \(max-width: (\d+)px\)/g)].map((m) =>
     Number(m[1]),
   );
@@ -173,8 +177,8 @@ test("제출: 공통 단추 위에 서고 이 자리의 유일한 으뜸이다 �
   );
   assert.ok(locked);
   assert.doesNotMatch(locked[1] ?? "", /panel-3/);
-  // 받아오기는 보통 단추다(으뜸이 아니다).
-  assert.match(statusLine, /className="nx-btn nx-base-pull"/);
+  // 받아오기는 알 안의 숫자 배지다(S1) — 단추가 따로 서지 않는다.
+  assert.doesNotMatch(statusLine, /nx-base-pull/);
 });
 
 test("제출: 폭은 서 있는 얼굴의 글에 맞는다 — 서 있지 않은 얼굴은 폭 0 으로 접혀 가장 긴 얼굴이 폭을 묶지 않는다(2026-10-24 QA 7)", () => {
@@ -203,14 +207,16 @@ test("제출: 폭은 서 있는 얼굴의 글에 맞는다 — 서 있지 않은
   assert.equal(statusLine.match(/className="nx-submit-face-in"/g)?.length, 5);
 });
 
-test("상태 줄 접힘: 받아오기가 서 있으면 기준 폭이 오르고, 접힘은 `.nx` 한 겹 더 써서 공통 단추를 이긴다", () => {
+test("상태 줄 접힘: 받아오기는 알 안의 배지이고(S1) 접힘은 알 글자 → 배지 · 점 두 단계다", () => {
   assert.match(statusLine, /nx-project-work--base/);
-  assert.match(css, /\.nx-project-work--base \.nx-work-scope/);
-  assert.match(css, /\.nx-project-work--base \.nx-jstep:not\(\.nx-jstep--cur\)/);
-  // `.nx .nx-btn { display: inline-flex }` 가 `.nx-base-pull { display: none }` 을 이겨 접힘이 먹지 않던 일.
+  // 받아오기 단추는 알 안의 배지(`Count`)로 접었다 — 옛 따로 단추(`nx-base-pull`)가 돌아오지 않는다.
+  assert.doesNotMatch(statusLine, /nx-base-pull/);
+  assert.doesNotMatch(css, /nx-base-pull/);
+  assert.match(statusLine, /<Count n=\{baseRow\.behind\} \/>/);
+  // 알의 글자가 접히면 점과 배지가 남는다 — 접힘의 마지막 단계는 컨테이너 질의 하나다.
   assert.match(
     css,
-    /@container nxwork \(max-width: 395px\) \{\s*\.nx \.nx-base-pull \{\s*display: none;/,
+    /@container nxwork \(max-width: \d+px\) \{\s*\.nx-pill-label \{\s*display: none;/,
   );
 });
 

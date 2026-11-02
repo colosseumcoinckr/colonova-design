@@ -534,7 +534,7 @@ export function AskCard({
   };
 
   if (request.kind === "permission") {
-    // 레포가 정한 명령은 이름으로(`레포 검사`) — 날 명령줄은 보이지 않는다(홈 인박스와 같은 판정).
+    // 레포가 정한 명령은 이름으로(`레포 검사`) — 날 명령줄은 보이지 않는다.
     const raw = (() => {
       if (request.toolName === "Bash") {
         const input = request.input as { command?: unknown } | null;

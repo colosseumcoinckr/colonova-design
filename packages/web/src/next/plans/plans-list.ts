@@ -1,3 +1,4 @@
+import type { DraftSummary } from "@colonova-design/protocol";
 import { matchRange } from "../../components/shell/palette-match.ts";
 import { timeAgo } from "../../lib/format.ts";
 import { L } from "../labels.ts";
@@ -425,4 +426,22 @@ export function docUrl(site: string, pageId: string): string | null {
     .replace(/[/?#].*$/u, "");
   if (!/^[a-z0-9.-]+$/iu.test(host) || pageId === "") return null;
   return `https://${host}/wiki/pages/viewpage.action?pageId=${encodeURIComponent(pageId)}`;
+}
+
+/**
+ * 줄 끝 표시의 종류(2026-10-31 E) — 하나만 선다. 우선순위는 결과 확인 필요(호박 삼각) > 충돌(빨강 점)
+ * > 초안(포인트 색 점)이다. 색만으로 말하지 않게 이름표 글도 함께 건넨다.
+ */
+export function draftMarkOf(draft: DraftSummary): {
+  tone: "unknown" | "conflict" | "draft";
+  label: string;
+} {
+  if (draft.state === "result-unknown") {
+    return { tone: "unknown", label: L.drafts.resultUnknownTitle };
+  }
+  if (draft.state === "conflict") return { tone: "conflict", label: L.drafts.statusConflict };
+  return {
+    tone: "draft",
+    label: draft.changedBlocks > 0 ? L.drafts.chipCount(draft.changedBlocks) : L.drafts.chip,
+  };
 }

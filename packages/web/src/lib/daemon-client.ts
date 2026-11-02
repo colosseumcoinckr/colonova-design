@@ -8,20 +8,36 @@ import type {
   DiagnosticsSummary,
   DiffFile,
   DiffStatus,
+  DocAttachment,
+  DocAttachmentData,
+  DocBlock,
+  DocBlockPreviews,
   DocCommentResult,
+  DocLabel,
+  DocLabelResult,
   DocOpKind,
   DocOpPreview,
   DocOpResult,
+  DocSearchHit,
   DocTrashEntry,
+  DocVersion,
+  DocVersionBody,
   DraftAiMessage,
   DraftChangedMessage,
+  DraftCompareResult,
+  DraftConversationSummary,
   DraftEdit,
   DraftPublishPreview,
   DraftPublishResult,
   DraftRefEntry,
   DraftRefInput,
+  DraftRevisionSummary,
+  DraftRevisionView,
   DraftSnapshot,
   DraftSummary,
+  DraftSyncDocRow,
+  DraftSyncScreenRow,
+  DraftSyncUndoResult,
   DraftThread,
   DraftView,
   EffortLevel,
@@ -81,6 +97,8 @@ export type Block =
       gateResult?: import("@colonova-design/protocol").GateResult;
       /** 턴 끝의 자동 확인이 문제 없이 지나간 기록 — 결과 카드가 무엇을 확인했는지 한 줄로 말한다. */
       checked?: import("@colonova-design/protocol").GateChecked;
+      /** 같이 고치기(2026-10-30) — 화면 요청이 기획서 초안도 고쳤는지. 결과 카드 아래 곁줄이 읽는다. */
+      planSync?: import("@colonova-design/protocol").PlanSync;
       id: string;
       text: string;
       images: number;
@@ -237,6 +255,12 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
             }
           : block,
       );
+    case "plans.synced":
+      return blocks.map((block) =>
+        block.type === "user" && block.requestId === event.requestId
+          ? { ...block, planSync: event.sync }
+          : block,
+      );
     case "user.echo":
       return [
         ...blocks,
@@ -244,6 +268,7 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
           type: "user",
           ...(event.requestId ? { requestId: event.requestId } : {}),
           ...(event.changedScreens ? { changedScreens: event.changedScreens } : {}),
+          ...(event.planSync ? { planSync: event.planSync } : {}),
           ...(event.gateResult ? { gateResult: event.gateResult } : {}),
           ...(event.checked ? { checked: event.checked } : {}),
           id: `u${++noticeSeq}`,
@@ -589,7 +614,7 @@ export interface PendingPermission {
    * 3단계 알림 위계(로그→뱃지→네이티브)의 세 번째 단계가 이 필드만 읽는다.
    */
   blocking?: boolean;
-  /** 요청이 만들어진 시각 (epoch ms) — 홈 카드의 "N분 전". */
+  /** 요청이 만들어진 시각 (epoch ms) — 확인 카드의 "N분 전". */
   requestedAt?: number;
 }
 
@@ -684,6 +709,16 @@ export interface PlanDocComment {
   mine?: boolean;
   /** 앱에서 고쳐도 잃는 것이 없는가 — 내 코멘트이고 문단 · 줄바꿈 · 글뿐일 때다. */
   editable?: boolean;
+}
+
+/** 기획서 한 문서의 답(doc.read) — view · labels · attachments 는 2026-10-30 에 더한 선택 필드다. */
+export interface PlanDocRead {
+  markdown: string;
+  sections: Array<{ heading: string; macro: boolean }>;
+  comments: PlanDocComment[] | null;
+  view?: DocBlock[];
+  labels?: DocLabel[] | null;
+  attachments?: DocAttachment[] | null;
 }
 
 /**
@@ -1042,12 +1077,33 @@ interface DaemonApi {
   mapRead: () => Promise<MapReadResult>;
   /** 연결 지도 고치기 — 잇기·끊기 묶음을 통째로 보내고 쓴 뒤의 연결 목록 전체를 받는다. */
   mapWrite: (changes: readonly MapChange[]) => Promise<MapReadResult["links"]>;
-  /** 기획서 한 문서 — 파생 마크다운과 절, 코멘트는 안 풀린 것만(읽기 실패면 null). */
-  docRead: (pageId: string) => Promise<{
-    markdown: string;
-    sections: Array<{ heading: string; macro: boolean }>;
-    comments: PlanDocComment[] | null;
-  }>;
+  /**
+   * 기획서 한 문서 — 파생 마크다운과 절, 코멘트는 안 풀린 것만(읽기 실패면 null). 보기 블록 · 라벨 ·
+   * 첨부 목록은 2026-10-30 에 더한 선택 필드다(라벨 · 첨부를 읽지 못하면 null).
+   */
+  docRead: (pageId: string) => Promise<PlanDocRead>;
+  // --- Confluence 기능 확장(2026-10-30 사용자 요청) — 첨부 · 라벨 · 판 기록 · 본문 찾기 · 보존 블록 그림.
+  /** 첨부 한 벌 — 데몬이 앱의 자격으로 받아 base64 로 건넨다(토큰은 웹에 오지 않는다). */
+  docAttachment: (pageId: string, filename: string) => Promise<DocAttachmentData>;
+  /** 라벨 더하기 · 빼기 — 발행 게이트가 켜졌을 때만 쓰고, 같은 명령 아이디는 한 번만 보낸다. */
+  docLabelAdd: (input: {
+    pageId: string;
+    commandId: string;
+    label: string;
+  }) => Promise<DocLabelResult>;
+  docLabelRemove: (input: {
+    pageId: string;
+    commandId: string;
+    label: string;
+  }) => Promise<DocLabelResult>;
+  /** 판 기록 — 최근 것부터. */
+  docVersions: (pageId: string) => Promise<{ versions: DocVersion[] }>;
+  /** 옛 판 한 장 — 읽기 전용 보기 블록. */
+  docVersionRead: (pageId: string, version: number) => Promise<DocVersionBody>;
+  /** 본문 찾기 — 가져온 사본에서 찾는다. */
+  docSearch: (query: string) => Promise<{ results: DocSearchHit[] }>;
+  /** 초안의 보존 블록 그림 — 블록 id → 보기 블록. */
+  docBlockPreview: (docKey: string) => Promise<DocBlockPreviews>;
   // --- 문서 코멘트(2026-10-23 · 최종 구현 계획 F4) — 정본인 Confluence 에 기록한다. 쓰기는
   // 발행 게이트가 켜졌을 때만 열리고, 같은 명령 아이디는 한 번만 만든다.
   /** 코멘트 만들기 — anchor 가 있으면 인라인, 없으면 바닥글이다. */
@@ -1109,15 +1165,37 @@ interface DaemonApi {
   /** 여러 걸음을 한 요청에 싣는다 — 하나라도 어긋나면 전부 거절된다. */
   draftEdit: (docKey: string, expectedRevision: number, edits: DraftEdit[]) => Promise<DraftView>;
   draftDiscard: (docKey: string) => Promise<{ discarded: boolean }>;
-  /** 초안 대화의 말 — 생성은 `draft.ai` 방송으로 이어진다. `pick` 은 기획 AI 의 모델 · 생각 시간(2026-10-26). */
+  /** 초안 대화의 말 — 생성은 `draft.ai` 방송으로 이어진다. `threadId` 는 이어 가는 기획 대화(2026-10-31 3단계). */
   draftAsk: (
     docKey: string,
     text: string,
     refs: DraftRefInput[],
     pick?: { model?: string | null; effort?: EffortLevel | null },
+    threadId?: string | null,
   ) => Promise<{ threadId: string; messageId: string }>;
   draftCancel: (docKey: string) => Promise<{ cancelled: boolean }>;
-  draftThread: (docKey: string) => Promise<DraftThread>;
+  /** 기획 대화의 판 — threadId 를 골랐으면 그 대화를, 없으면 문서의 최신 대화를 읽는다(2026-11-03). */
+  draftThread: (docKey: string, threadId?: string) => Promise<DraftThread>;
+  /** 기획 대화 목록(2026-10-31 3단계) — 사이드바 위 묶음이 읽는다. */
+  draftThreads: () => Promise<DraftConversationSummary[]>;
+  /** 대화가 다룰 문서를 옮긴다 — 답은 옮겨진 대화의 줄이다. */
+  draftThreadMove: (threadId: string, docKey: string) => Promise<DraftConversationSummary>;
+  /** 기획 대화를 지운다 — 이 컴퓨터의 기록만 지우고 초안은 남는다. */
+  draftThreadDelete: (threadId: string) => Promise<{ deleted: boolean }>;
+  /** 기획 대화의 이름 바꾸기(2026-11-03) — 답은 고쳐진 대화의 줄이다. */
+  draftThreadRename: (threadId: string, title: string) => Promise<DraftConversationSummary>;
+  /** 초안 판 목록(2026-10-31 2단계) — 문서 판 머리의 판 고르기가 읽는다. */
+  draftRevisions: (docKey: string) => Promise<DraftRevisionSummary[]>;
+  /** 옛 판의 읽기 전용 모습 — 판 고르기에서 앞 판을 볼 때. */
+  draftRevision: (docKey: string, revision: number) => Promise<DraftRevisionView>;
+  /** 바로 반영된 AI 고침의 되돌리기 — 그 사이 사람이 고친 블록은 남긴다. */
+  draftUndo: (docKey: string, proposalId: string) => Promise<DraftSyncUndoResult>;
+  /** 고른 옛 판으로 되돌리기 — 판 고르기의 `이 판으로 되돌리기`. */
+  draftRevisionRestore: (docKey: string, revision: number) => Promise<DraftView>;
+  /** 같이 고친 초안 되돌리기(2026-10-30) — 그 뒤 사람이 고친 블록은 그대로 둔다. */
+  draftSyncUndo: (entryId: string) => Promise<DraftSyncUndoResult>;
+  /** 이어진 기획서가 없던 화면 요청에 문서를 골라 잇고 같이 고친다(2026-10-30). 결과는 `plans.synced` 로 온다. */
+  draftSyncPick: (sessionId: string, requestId: string, pageId: string) => Promise<{ ok: true }>;
   draftAdopt: (
     docKey: string,
     proposalId: string,
@@ -1147,6 +1225,14 @@ interface DaemonApi {
   /** 기준을 원격 최신본으로 옮긴다 — 부딪친 블록은 화면에서 고른다. */
   draftRebase: (docKey: string) => Promise<DraftView>;
   draftResolve: (docKey: string, blockId: string, choice: "mine" | "theirs") => Promise<DraftView>;
+  /** 화면과 맞춰 보기(2026-11-02 · 같이 고치기 UX 계획 C7) — 판정만 돌고 어디에도 쓰지 않는다. */
+  draftCompare: (pageId: string) => Promise<DraftCompareResult>;
+  /** 어긋남 카드 안 받기(같은 계획 §2) — 이 화면 · 문서 짝의 카드를 다시 띄우지 않는다. */
+  draftCompareDecline: (pageId: string, screenName: string) => Promise<{ ok: true }>;
+  /** 이 화면 대화에서 같이 고쳐진 문서들(같은 계획 C4) — 기획서 탭의 초안 묶음의 재료. */
+  draftSyncDocs: (sessionId: string) => Promise<{ docs: DraftSyncDocRow[] }>;
+  /** 이 문서가 같이 고침으로 닿은 화면(같은 계획 C4) — 이 문서의 화면의 기록 도출 줄. */
+  draftSyncScreens: (pageId: string) => Promise<{ screens: DraftSyncScreenRow[] }>;
 }
 
 /**
@@ -1299,9 +1385,9 @@ function backgroundNotice(
   }
 }
 /**
- * 3단계 알림 위계(홈 계획 P3-3)의 세 번째 문: 기다림 상태는 그 원인인 요청의
+ * 3단계 알림 위계(옛 홈 계획 P3-3)의 세 번째 문: 기다림 상태는 그 원인인 요청의
  * `blocking` 판정이 true일 때만 사람을 부른다. 완료(idle)·중단(error)는 판정
- * 없이 언제나 지나간다 — 조용한 요청은 홈의 로그와 뱃지에만 남는다. 데몬이
+ * 없이 언제나 지나간다 — 조용한 요청은 목록의 배지에만 남는다. 데몬이
  * 요청을 상태보다 먼저 방송하므로(pending 생성 지점), 이 전환을 읽는 시점엔
  * 판정이 이미 도착해 있다.
  */
@@ -2319,15 +2405,37 @@ export function useDaemon(url: string | null): Daemon {
           folders?: Array<{ folderId: string; title: string; path: string }>;
           unsupported?: Array<{ contentId: string; title: string; path: string; type: string }>;
         }>({ type: "doc.list" }, 60_000),
+      draftSyncUndo: (entryId: string) =>
+        call<DraftSyncUndoResult>({ type: "draft.syncUndo", entryId }, 60_000),
+      draftSyncPick: (sessionId: string, requestId: string, pageId: string) =>
+        call<{ ok: true }>({ type: "draft.syncPick", sessionId, requestId, pageId }, 60_000),
+      // 맞춰 보기는 기획 AI 호출 한 번 — 창을 넉넉히 둔다(2026-11-02 C7).
+      draftCompare: (pageId: string) =>
+        call<DraftCompareResult>({ type: "draft.compare", pageId }, 180_000),
+      draftCompareDecline: (pageId: string, screenName: string) =>
+        call<{ ok: true }>({ type: "draft.compareDecline", pageId, screenName }, 30_000),
+      draftSyncDocs: (sessionId: string) =>
+        call<{ docs: DraftSyncDocRow[] }>({ type: "draft.syncDocs", sessionId }, 30_000),
+      draftSyncScreens: (pageId: string) =>
+        call<{ screens: DraftSyncScreenRow[] }>({ type: "draft.syncScreens", pageId }, 30_000),
       mapRead: () => call<MapReadResult>({ type: "map.read" }, 60_000),
       mapWrite: (changes: readonly MapChange[]) =>
         call<MapReadResult["links"]>({ type: "map.write", changes }, 60_000),
-      docRead: (pageId: string) =>
-        call<{
-          markdown: string;
-          sections: Array<{ heading: string; macro: boolean }>;
-          comments: PlanDocComment[] | null;
-        }>({ type: "doc.read", pageId }, 60_000),
+      docRead: (pageId: string) => call<PlanDocRead>({ type: "doc.read", pageId }, 60_000),
+      // Confluence 기능 확장(2026-10-30) — 첨부 받기는 바이트가 실려 창을 넉넉히 둔다.
+      docAttachment: (pageId: string, filename: string) =>
+        call<DocAttachmentData>({ type: "doc.attachment.read", pageId, filename }, 120_000),
+      docLabelAdd: (input) => call<DocLabelResult>({ type: "doc.label.add", ...input }, 60_000),
+      docLabelRemove: (input) =>
+        call<DocLabelResult>({ type: "doc.label.remove", ...input }, 60_000),
+      docVersions: (pageId: string) =>
+        call<{ versions: DocVersion[] }>({ type: "doc.versions", pageId }, 60_000),
+      docVersionRead: (pageId: string, version: number) =>
+        call<DocVersionBody>({ type: "doc.version.read", pageId, version }, 60_000),
+      docSearch: (query: string) =>
+        call<{ results: DocSearchHit[] }>({ type: "doc.search", query }, 30_000),
+      docBlockPreview: (docKey: string) =>
+        call<DocBlockPreviews>({ type: "doc.blockPreview", docKey }, 30_000),
       // 문서 코멘트의 네 문(2026-10-23 작업 D2a) — 원격 쓰기의 창이다(읽기의 60 초와 같은 길이).
       docCommentCreate: (input) =>
         call<DocCommentResult>({ type: "doc.comment.create", ...input }, 60_000),
@@ -2462,6 +2570,7 @@ export function useDaemon(url: string | null): Daemon {
         text: string,
         refs: DraftRefInput[],
         pick?: { model?: string | null; effort?: EffortLevel | null },
+        threadId?: string | null,
       ) =>
         call<{ threadId: string; messageId: string }>(
           {
@@ -2469,6 +2578,7 @@ export function useDaemon(url: string | null): Daemon {
             docKey,
             text,
             refs,
+            ...(threadId !== undefined ? { threadId: threadId ?? null } : {}),
             ...(pick?.model ? { model: pick.model } : {}),
             ...(pick?.effort ? { effort: pick.effort } : {}),
           },
@@ -2476,7 +2586,28 @@ export function useDaemon(url: string | null): Daemon {
         ),
       draftCancel: (docKey: string) =>
         call<{ cancelled: boolean }>({ type: "draft.cancel", docKey }, 30_000),
-      draftThread: (docKey: string) => call<DraftThread>({ type: "draft.thread", docKey }, 30_000),
+      draftThread: (docKey: string, threadId?: string) =>
+        call<DraftThread>(
+          threadId === undefined
+            ? { type: "draft.thread", docKey }
+            : { type: "draft.thread", docKey, threadId },
+          30_000,
+        ),
+      draftThreads: () => call<DraftConversationSummary[]>({ type: "draft.threads" }, 30_000),
+      draftThreadMove: (threadId: string, docKey: string) =>
+        call<DraftConversationSummary>({ type: "draft.threadMove", threadId, docKey }, 30_000),
+      draftThreadDelete: (threadId: string) =>
+        call<{ deleted: boolean }>({ type: "draft.threadDelete", threadId }, 30_000),
+      draftThreadRename: (threadId: string, title: string) =>
+        call<DraftConversationSummary>({ type: "draft.threadRename", threadId, title }, 30_000),
+      draftRevisions: (docKey: string) =>
+        call<DraftRevisionSummary[]>({ type: "draft.revisions", docKey }, 30_000),
+      draftRevision: (docKey: string, revision: number) =>
+        call<DraftRevisionView>({ type: "draft.revision", docKey, revision }, 30_000),
+      draftUndo: (docKey: string, proposalId: string) =>
+        call<DraftSyncUndoResult>({ type: "draft.undo", docKey, proposalId }, 30_000),
+      draftRevisionRestore: (docKey: string, revision: number) =>
+        call<DraftView>({ type: "draft.revisionRestore", docKey, revision }, 30_000),
       draftAdopt: (docKey: string, proposalId: string, opIds: string[], expectedRevision: number) =>
         call<DraftView>(
           { type: "draft.adopt", docKey, proposalId, opIds, expectedRevision },

@@ -1,6 +1,7 @@
 import type { ProjectSummary, RepoStatus } from "@colonova-design/protocol";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
+import { timeAgo } from "../../lib/format";
 import { openLink } from "../../lib/open-link";
 import { canOpenScreen } from "../../lib/screen-link";
 import { clockOf } from "../chat/cards";
@@ -8,13 +9,15 @@ import { L } from "../labels";
 import type { BaseSyncRow } from "../lib/base-sync";
 import { ciLine } from "../lib/ci-line";
 import type { Journey } from "../lib/journey";
+import { landedFacts, landedLines } from "../lib/landed";
 import { ledgerLine } from "../lib/submit-copy";
 import { handoffOpen } from "../lib/thread";
 import { useCopied } from "../lib/use-copied";
 import type { CycleScreen } from "../lib/work-ledger";
 import { commentRows, cycleStart, outgoingScreens, submitLogLines } from "../lib/work-ledger";
+import { Count } from "../ui/Count";
 import { InlineConfirm } from "../ui/InlineConfirm";
-import { Spin } from "../ui/icons";
+import { CheckIcon, Spin } from "../ui/icons";
 import { Popover } from "../ui/Popover";
 import { NoteBox } from "./NoteBox";
 import {
@@ -31,8 +34,8 @@ import {
 } from "./parts";
 import type { WorkLedger } from "./use-work-ledger";
 
-/** Stage 3 의 작업 기록 서랍이 듣는 신호 — 서랍은 미리보기 칸의 것이다. */
-export const HISTORY_OPEN_EVENT = "nx:history:open";
+/** Stage 3 의 작업 기록 서랍이 듣는 신호 — 정본은 preview/HistoryDrawer.tsx 의 같은 이름 상수다. */
+const HISTORY_OPEN_EVENT = "nx:history:open";
 
 /** 처음에 보이는 화면 줄의 수 — 나머지는 `바뀐 화면 N개 더 보기` 뒤에(머리 · 바닥은 서 있고 몸만 굴러간다). */
 const SCREEN_LIMIT = 4;
@@ -104,9 +107,11 @@ export function WorkPopover({
   const screens = outgoingScreens(repo?.cycleScreens, null);
   const newSince =
     cycle === "review" && since ? outgoingScreens(repo?.cycleScreens, since).length : 0;
+  // 반영된 일(2026-10-08 · A2b) — 원장의 기억을 최근 여덟 줄로 접는다(`landed.ts`). 없으면 묶음이 서지 않는다.
+  const landed = landedLines(repo?.landed);
   const [allScreens, setAllScreens] = useState(false);
   const shownScreens = allScreens ? screens : screens.slice(0, SCREEN_LIMIT);
-  // 열 수 있는 미리보기 칸이 없으면(홈에서 열었다 등) 줄은 읽기만 한다.
+  // 열 수 있는 미리보기 칸이 없으면(준비가 덜 됐다 등) 줄은 읽기만 한다.
   const open = canOpenScreen()
     ? (screen: CycleScreen) => {
         onClose();
@@ -423,11 +428,11 @@ export function WorkPopover({
           )}
         </div>
 
-        <div className="nx-wp-sec nx-wp-sec--last">
+        <div className={landed.length > 0 ? "nx-wp-sec" : "nx-wp-sec nx-wp-sec--last"}>
           <h5>
             {comments.length > 0 ? L.work.commentsCount(comments.length) : L.work.comments}
             {comments.length > 0 && <span className="nx-wp-hr">{L.work.commentsAuto}</span>}
-          </h5>
+          </h5>{" "}
           {cycle === "draft" ? (
             <div className="nx-wp-empty">{L.work.commentsEmptyDraft}</div>
           ) : ledger.status === "loading" ? (
@@ -479,6 +484,39 @@ export function WorkPopover({
             <div className="nx-wp-empty">{L.work.commentsEmpty}</div>
           )}
         </div>
+
+        {/* 반영된 일(2026-10-08 베타 준비 분석 · A2b — 2026-10-31 홈 걷기로 홈의 묶음이 여기로 왔다) —
+            병합돼 서비스가 된 요청들의 성취 기록. 새 작업이 시작돼도 지워지지 않고, 없으면 묶음이 서지 않는다. */}
+        {landed.length > 0 && (
+          <div className="nx-wp-sec nx-wp-sec--last">
+            <h5>
+              {L.landed.fold}
+              <span className="nx-wp-hr">
+                <Count n={landed.length} />
+              </span>
+            </h5>
+            <ul className="nx-wp-landed">
+              {landed.map((item) => {
+                const facts = landedFacts(item.days, item.screens, {
+                  took: L.landed.took,
+                  screens: L.landed.screens,
+                });
+                return (
+                  <li key={item.pr}>
+                    <span className="nx-wp-landed-i" aria-hidden="true">
+                      <CheckIcon />
+                    </span>
+                    <span className="nx-wp-landed-t">
+                      <b>{item.title ?? L.landed.untitled}</b>
+                      {facts && <small>{facts}</small>}
+                    </span>
+                    <span className="nx-wp-landed-at">{timeAgo(item.at)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
 
       <div className="nx-wp-foot">

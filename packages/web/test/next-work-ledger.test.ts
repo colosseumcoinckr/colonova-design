@@ -157,6 +157,23 @@ test("남은 변경 줄은 출처를 싣는다 — 그 변경을 만든 말과 �
       ["기획 페이지와 화면 경로 연결 정보 추가", "2026-10-25T12:30:00+09:00", 1],
     ],
   );
+  // 보관 제목의 종류 접두는 벗겨 나간다 — 사용자의 줄에 개발 어휘가 서지 않게(2026-11-03 실앱 감사).
+  const prefixed: RepoHistoryEntry[] = [
+    {
+      sha: "feat",
+      message: "feat: 페이지 화면 코드를 view 파일로 분리",
+      at: "2026-11-03T10:00:00+09:00",
+      files: ["login/view.tsx"],
+    },
+  ];
+  assert.deepEqual(finalOutgoingChanges(prefixed, [], ["login/view.tsx"]).outside, [
+    {
+      key: "feat",
+      note: "페이지 화면 코드를 view 파일로 분리",
+      at: "2026-11-03T10:00:00+09:00",
+      files: 1,
+    },
+  ]);
   // 어느 요청이 파일을 만졌는지 알지 못하면 말도 시각도 모른다 — 줄 제목은 부르는 쪽이 갈아 세운다.
   const unknown = finalOutgoingChanges(history, [], ["orphan.txt"]);
   assert.deepEqual(unknown.outside, [{ key: "unassociated", note: null, at: null, files: 1 }]);

@@ -40,8 +40,15 @@ export function PublishDialog({
   nav,
   onClose,
   onRefresh,
+  keptOps = 0,
+  banner = null,
 }: {
   daemon: Daemon;
+  /** 직접 고를 AI 고침의 수(2026-10-31 F) — 남은 걸음이 있으면 점검 줄이 말한다. */
+  keptOps?: number;
+  /** 창 머리의 한 줄 안내(2026-11-02 · 같이 고치기 UX 계획 C3) — 곁줄 발행 팝이 같이 고친 것 밖의
+   * 바뀐 곳을 말할 때만 쓴다. 확인 창의 절차는 이 줄이 바꾸지 않는다. */
+  banner?: string | null;
   docKey: string;
   /** Confluence 사이트 — `Confluence 에서 열기` 링크가 이 주소로 선다. */
   site: string | null;
@@ -58,6 +65,8 @@ export function PublishDialog({
   apiRef.current = daemon.api;
   const [phase, setPhase] = useState<"loading" | "ready" | "failed">("loading");
   const [preview, setPreview] = useState<DraftPublishPreview | null>(null);
+  // 안 풀린 코멘트의 수(2026-10-31 F) — 기존 문서의 발행에서만 읽는다. 모르면 점검 줄에서 뺀다.
+  const [commentCount, setCommentCount] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [result, setResult] = useState<DraftPublishResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -78,6 +87,18 @@ export function PublishDialog({
         setPreview(next);
         setPhase("ready");
         setNotation(stageInputNeeded(next) ? (nextNotation(next.stage.current) ?? "") : "");
+        // 안 풀린 코멘트의 수 — 기존 문서의 발행에서만 읽는다(2026-10-31 F). 실패는 조용히 뺀다.
+        if (next.pageId !== null) {
+          apiRef.current
+            .docRead(next.pageId)
+            .then((doc) => {
+              if (!alive) return;
+              setCommentCount((doc.comments ?? []).filter((one) => one.resolved !== true).length);
+            })
+            .catch(() => {
+              if (alive) setCommentCount(null);
+            });
+        }
       })
       .catch((err: unknown) => {
         if (!alive) return;
@@ -188,6 +209,11 @@ export function PublishDialog({
         )}
         {phase === "ready" && preview !== null && (
           <>
+            {banner !== null && (
+              <p className="nx-banner nx-banner--amber" role="note">
+                {banner}
+              </p>
+            )}
             <dl className="nx-pb-facts">
               <div className="nx-pb-fact">
                 <dt>{L.drafts.previewTarget}</dt>
@@ -210,6 +236,20 @@ export function PublishDialog({
                 </div>
               )}
             </dl>
+            {/* 발행 전 점검(2026-10-31 F) — 막지 않고 한 줄씩 알린다. */}
+            <section className="nx-pb-precheck" aria-label={L.drafts.precheckHead}>
+              <h3 className="nx-pb-sec-t">{L.drafts.precheckHead}</h3>
+              <ul className="nx-pb-precheck-list">
+                <li>
+                  {L.drafts.precheckChanges(
+                    preview.changes.changed + preview.changes.inserted + preview.changes.deleted,
+                  )}
+                </li>
+                {keptOps > 0 && <li>{L.drafts.precheckKept(keptOps)}</li>}
+                {commentCount !== null && <li>{L.drafts.precheckComments(commentCount)}</li>}
+                <li>{L.drafts.precheckScreen}</li>
+              </ul>
+            </section>
             <section className="nx-pb-changes" aria-label={L.drafts.changeHeading}>
               <h3 className="nx-pb-sec-t">{L.drafts.changeHeading}</h3>
               <p className="nx-pb-counts">

@@ -7,7 +7,7 @@ import type { RequestHandlers, RouterDeps } from "./types.js";
 
 type RepositoryDeps = Pick<
   RouterDeps,
-  "fleet" | "registry" | "manager" | "handoffPreviews" | "previewDrivers"
+  "fleet" | "registry" | "manager" | "handoffPreviews" | "previewDrivers" | "screenSync"
 >;
 type RepositoryRequest = Extract<
   keyof RequestHandlers,
@@ -216,8 +216,17 @@ export function repositoryHandlers(
     },
     "repo.restore": async (message) => {
       refuseWhileTurnRuns();
-      const restored = await deps.fleet.requireActive().repo.restore(message.sha);
-      undoLog().record({ kind: "save", slug: deps.fleet.requireActive().slug });
+      const active = deps.fleet.requireActive();
+      // 되돌리기 전의 이력 — 이 지점보다 뒤의 보관이 같이 고친 초안도 함께 돌린다(2026-10-30 같이 고치기 계획 §5).
+      const before = await active.repo
+        .history()
+        .then((history) => history.entries.map((entry) => entry.sha))
+        .catch(() => [] as string[]);
+      const restored = await active.repo.restore(message.sha);
+      undoLog().record({ kind: "save", slug: active.slug });
+      if (restored.stage !== "failed" && before.length > 0) {
+        void deps.screenSync.undoAfterRestore(active.slug, before, message.sha).catch(() => 0);
+      }
       return restored;
     },
     // --- 코멘트 저장소 (PLAN D57) ----------------------------------------

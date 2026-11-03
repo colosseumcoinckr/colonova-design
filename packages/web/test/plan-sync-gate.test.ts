@@ -50,6 +50,33 @@ test("pending 줄 — 제목 · 요약 · 바꿀 곳 수와 세 손이 함께 �
   assert.equal(pending[1]?.match(/type="button"/g)?.length, 2);
 });
 
+test("손 묶음 — 한 줄의 손은 nx-psync-hands 안에 함께 선다(작업 FC)", () => {
+  // 좁은 칸에서 단추가 낱낱의 flex 아이템이면 첫 줄 끝과 다음 줄로 갈라져 어느 문서의
+  // 손인지 헷갈린다 — 곁줄의 손은 묶음(nx-psync-hands)째 접혀야 한다.
+  const hands = [...line.matchAll(/<span className="nx-psync-hands">([\s\S]*?)<\/span>/g)].map(
+    (m) => m[1] ?? "",
+  );
+  assert.ok(hands.length >= 4, `손 묶음이 모자란다 — ${hands.length}개`);
+  const docHands = hands.find((h) => h.includes("L.planSync.apply"));
+  assert.ok(docHands, "문서 줄의 손 묶음이 없다");
+  for (const name of ["apply", "skip", "view", "undo"]) {
+    assert.match(docHands, new RegExp(`L\\.planSync\\.${name}\\b`), `${name} 손이 묶음 밖이다`);
+  }
+  // 실패 줄 · 연결 줄 · 고르기 줄도 같은 묶음을 쓴다.
+  assert.ok(
+    hands.some((h) => h.includes("L.planSync.retry")),
+    "다시 시도 손이 묶음 밖이다",
+  );
+  assert.ok(
+    hands.some((h) => h.includes("L.planSync.unlink")),
+    "끊기 손이 묶음 밖이다",
+  );
+  assert.ok(
+    hands.some((h) => h.includes("L.planSync.pick")),
+    "고르기 손이 묶음 밖이다",
+  );
+});
+
 test("declined 줄 — 말만 서고 손은 없다", () => {
   assert.match(line, /case "declined":\s*return L\.planSync\.declined\(title\);/);
   // declined 에 단추를 다는 묶음이 없고, `보기` 도 declined 에는 서지 않는다(shown 으로 잰다).

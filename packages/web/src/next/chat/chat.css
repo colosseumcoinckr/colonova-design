@@ -849,6 +849,18 @@
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
+/* 한 줄의 손 묶음(2026-11-03 — 작업 FC) — 단추들이 낱낱의 flex 아이템이면 좁은 칸에서
+   첫 줄 끝과 다음 줄로 갈라져 어느 문서의 손인지 헷갈린다. 묶음 안은 접지 않고,
+   넓으면 글 오른쪽 한 줄, 좁으면 묶음째 글 아래 한 줄(오른쪽 맞춤)로 내려간다. */
+.nx-psync-hands {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  flex-wrap: nowrap;
+  margin-left: auto;
+}
+
 .nx-psync-sub {
   font-size: var(--fs-cap);
   color: var(--ink3);

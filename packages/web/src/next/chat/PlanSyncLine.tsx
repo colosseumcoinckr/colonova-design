@@ -71,15 +71,18 @@ export function PlanSyncLine({
         <div className="nx-psync-row">
           <FileText className="nx-i" size={14} aria-hidden="true" />
           <span className="nx-psync-text">{L.planSync.failedAll}</span>
-          <button
-            type="button"
-            className="nx-btn nx-btn--sm nx-btn--ghost"
-            disabled={busy !== null}
-            onClick={() => run("retry", () => hand.retry(requestId), L.planSync.retryFailed)}
-          >
-            {busy === "retry" ? <Spin /> : null}
-            {L.planSync.retry}
-          </button>
+          {/* 한 줄의 손은 묶음째 접힌다(2026-11-03 — 작업 FC) — 좁은 칸에서 낱낱이 갈라지지 않게. */}
+          <span className="nx-psync-hands">
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm nx-btn--ghost"
+              disabled={busy !== null}
+              onClick={() => run("retry", () => hand.retry(requestId), L.planSync.retryFailed)}
+            >
+              {busy === "retry" ? <Spin /> : null}
+              {L.planSync.retry}
+            </button>
+          </span>
         </div>
       )}
       {docs.map((doc) => {
@@ -89,6 +92,11 @@ export function PlanSyncLine({
         // 떨어뜨린다(손 없음 · 같은 작은 줄 없음 — 검토 REVIEW-W1 · 2026-11-03).
         const shown: PlanSyncDoc["outcome"] =
           doc.outcome === "pending" && doc.docKey === null ? "proposed" : doc.outcome;
+        // 이 줄의 손이 하나라도 설 때만 묶음을 둔다 — 빈 묶음은 남은 간격(gap)만 만든다.
+        const canView =
+          shown !== "checking" && shown !== "failed" && shown !== "declined" && doc.docKey !== null;
+        const hasHands =
+          shown === "pending" || canView || (shown === "adopted" && doc.entryId !== undefined);
         return (
           <div key={key} className="nx-psync-row">
             {shown === "checking" ? (
@@ -120,98 +128,104 @@ export function PlanSyncLine({
               )}
             </span>
             {/* 게이트의 손(1A-1) — `고치기` 가 이 줄의 으뜸(ghost 가 아닌 보통 소단추), `건너뛰기` · `보기` 는 고스트다.
-                초안 열쇠가 없으면 손을 세우지 않는다. `declined` 줄은 말만 둔다. */}
-            {shown === "pending" && (
-              <>
-                <button
-                  type="button"
-                  className="nx-btn nx-btn--sm"
-                  disabled={busy !== null}
-                  onClick={() => {
-                    const docKey = doc.docKey;
-                    if (docKey !== null)
-                      run(
-                        `apply:${key}`,
-                        () => hand.apply(requestId, docKey),
-                        L.planSync.applyFailed,
-                      );
-                  }}
-                >
-                  {busy === `apply:${key}` ? <Spin /> : null}
-                  {L.planSync.apply}
-                </button>
-                <button
-                  type="button"
-                  className="nx-btn nx-btn--sm nx-btn--ghost"
-                  disabled={busy !== null}
-                  onClick={() => {
-                    const docKey = doc.docKey;
-                    if (docKey !== null)
-                      run(`skip:${key}`, () => hand.skip(requestId, docKey), L.planSync.skipFailed);
-                  }}
-                >
-                  {busy === `skip:${key}` ? <Spin /> : null}
-                  {L.planSync.skip}
-                </button>
-              </>
-            )}
-            {shown !== "checking" &&
-              shown !== "failed" &&
-              shown !== "declined" &&
-              doc.docKey !== null && (
-                <button
-                  type="button"
-                  className="nx-btn nx-btn--sm nx-btn--ghost"
-                  onClick={() => hand.open(doc)}
-                >
-                  {L.planSync.view}
-                </button>
-              )}
-            {/* 곁줄 발행(C3) — 확인 창은 그대로, 이동만 없앤다. 게이트가 꺼져 있으면 손이 안 선다(같은 계획 §3). */}
-            {shown === "adopted" &&
-              doc.docKey !== null &&
-              hand.publish !== undefined &&
-              !isPublished && (
-                <button
-                  type="button"
-                  className="nx-btn nx-btn--sm nx-btn--ghost"
-                  disabled={busy !== null}
-                  onClick={() => {
-                    const publish = hand.publish;
-                    if (publish === undefined) return;
-                    run(
-                      `publish:${key}`,
-                      () =>
-                        publish(doc).then((ok) => {
-                          if (!ok) throw new Error("publish closed");
-                          setPublished((before) => new Set([...before, key]));
-                        }),
-                      L.planSync.publishFailed,
-                    );
-                  }}
-                >
-                  {busy === `publish:${key}` ? <Spin /> : null}
-                  {L.planSync.publish}
-                </button>
-              )}
-            {shown === "adopted" && doc.entryId !== undefined && (
-              <button
-                type="button"
-                className="nx-btn nx-btn--sm nx-btn--ghost"
-                disabled={busy !== null}
-                onClick={() => {
-                  const entryId = doc.entryId;
-                  if (entryId !== undefined)
-                    run(`undo:${entryId}`, () => hand.undo(entryId), L.planSync.undoFailed);
-                }}
-              >
-                {busy === `undo:${doc.entryId}` ? (
-                  <Spin />
-                ) : (
-                  <Undo2 className="nx-i" size={14} aria-hidden="true" />
+                초안 열쇠가 없으면 손을 세우지 않는다. `declined` 줄은 말만 둔다.
+                손은 묶음(nx-psync-hands)째 접힌다 — 좁은 칸에서 단추끼리 갈라지지 않게(2026-11-03 작업 FC). */}
+            {hasHands && (
+              <span className="nx-psync-hands">
+                {shown === "pending" && (
+                  <>
+                    <button
+                      type="button"
+                      className="nx-btn nx-btn--sm"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        const docKey = doc.docKey;
+                        if (docKey !== null)
+                          run(
+                            `apply:${key}`,
+                            () => hand.apply(requestId, docKey),
+                            L.planSync.applyFailed,
+                          );
+                      }}
+                    >
+                      {busy === `apply:${key}` ? <Spin /> : null}
+                      {L.planSync.apply}
+                    </button>
+                    <button
+                      type="button"
+                      className="nx-btn nx-btn--sm nx-btn--ghost"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        const docKey = doc.docKey;
+                        if (docKey !== null)
+                          run(
+                            `skip:${key}`,
+                            () => hand.skip(requestId, docKey),
+                            L.planSync.skipFailed,
+                          );
+                      }}
+                    >
+                      {busy === `skip:${key}` ? <Spin /> : null}
+                      {L.planSync.skip}
+                    </button>
+                  </>
                 )}
-                {L.planSync.undo}
-              </button>
+                {canView && (
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm nx-btn--ghost"
+                    onClick={() => hand.open(doc)}
+                  >
+                    {L.planSync.view}
+                  </button>
+                )}
+                {/* 곁줄 발행(C3) — 확인 창은 그대로, 이동만 없앤다. 게이트가 꺼져 있으면 손이 안 선다(같은 계획 §3). */}
+                {shown === "adopted" &&
+                  doc.docKey !== null &&
+                  hand.publish !== undefined &&
+                  !isPublished && (
+                    <button
+                      type="button"
+                      className="nx-btn nx-btn--sm nx-btn--ghost"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        const publish = hand.publish;
+                        if (publish === undefined) return;
+                        run(
+                          `publish:${key}`,
+                          () =>
+                            publish(doc).then((ok) => {
+                              if (!ok) throw new Error("publish closed");
+                              setPublished((before) => new Set([...before, key]));
+                            }),
+                          L.planSync.publishFailed,
+                        );
+                      }}
+                    >
+                      {busy === `publish:${key}` ? <Spin /> : null}
+                      {L.planSync.publish}
+                    </button>
+                  )}
+                {shown === "adopted" && doc.entryId !== undefined && (
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm nx-btn--ghost"
+                    disabled={busy !== null}
+                    onClick={() => {
+                      const entryId = doc.entryId;
+                      if (entryId !== undefined)
+                        run(`undo:${entryId}`, () => hand.undo(entryId), L.planSync.undoFailed);
+                    }}
+                  >
+                    {busy === `undo:${doc.entryId}` ? (
+                      <Spin />
+                    ) : (
+                      <Undo2 className="nx-i" size={14} aria-hidden="true" />
+                    )}
+                    {L.planSync.undo}
+                  </button>
+                )}
+              </span>
             )}
           </div>
         );
@@ -227,21 +241,23 @@ export function PlanSyncLine({
                 : L.planSync.linked(link.title, screenTitle(link.route))}
             </span>
             {!cut.has(key) && (
-              <button
-                type="button"
-                className="nx-btn nx-btn--sm nx-btn--ghost"
-                disabled={busy !== null}
-                onClick={() =>
-                  run(
-                    `cut:${key}`,
-                    () =>
-                      hand.unlink(link).then(() => setCut((before) => new Set([...before, key]))),
-                    L.planSync.unlinkFailed,
-                  )
-                }
-              >
-                {L.planSync.unlink}
-              </button>
+              <span className="nx-psync-hands">
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm nx-btn--ghost"
+                  disabled={busy !== null}
+                  onClick={() =>
+                    run(
+                      `cut:${key}`,
+                      () =>
+                        hand.unlink(link).then(() => setCut((before) => new Set([...before, key]))),
+                      L.planSync.unlinkFailed,
+                    )
+                  }
+                >
+                  {L.planSync.unlink}
+                </button>
+              </span>
             )}
           </div>
         );
@@ -328,14 +344,16 @@ function AskRow({ requestId, hand }: { requestId: string; hand: PlanSyncHand }) 
       <div className="nx-psync-row">
         <FileText className="nx-i" size={14} aria-hidden="true" />
         <span className="nx-psync-text">{L.planSync.ask}</span>
-        <button
-          type="button"
-          className="nx-btn nx-btn--sm nx-btn--ghost"
-          aria-expanded={open}
-          onClick={() => setOpen((before) => !before)}
-        >
-          {L.planSync.pick}
-        </button>
+        <span className="nx-psync-hands">
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm nx-btn--ghost"
+            aria-expanded={open}
+            onClick={() => setOpen((before) => !before)}
+          >
+            {L.planSync.pick}
+          </button>
+        </span>
       </div>
       {open && (
         <fieldset className="nx-psync-pick" aria-label={L.planSync.pickTitle}>

@@ -588,6 +588,65 @@ const planSyncScene: Block[] = [
 ];
 
 /**
+ * `?scene=plan-sync-gate` — 같이 고치기 게이트(2026-11-03 A안 1A-1 · 1A-2): 판정이 끝났지만 사람의 누름을
+ * 기다리는 문서(요약 · 바꿀 곳 수가 있는 것과 없는 것) · 건너뛴 문서 · 같이 고쳐진 문서(기존 되돌리기 손) ·
+ * 문서를 고르기도 전에 전체가 실패한 카드의 `다시 시도`.
+ */
+const planSyncGateScene: Block[] = [
+  {
+    ...withResult("pg1", "검색 조건을 다섯 개로 늘려 줘.", "req-pg1", [
+      { route: "member/list", title: "회원 목록" },
+    ]),
+    planSync: {
+      phase: "done",
+      docs: [
+        {
+          docKey: "p-1",
+          pageId: "1",
+          title: "회원 목록 기능설계서",
+          outcome: "pending",
+          changes: 3,
+          summary: "검색 조건에 상태 · 가입일 범위를 더함",
+          proposalId: "pp-1",
+        },
+        {
+          docKey: "p-2",
+          pageId: "2",
+          title: "회원가입 정책서",
+          outcome: "pending",
+          changes: 0,
+        },
+        {
+          docKey: "p-3",
+          pageId: "3",
+          title: "주문 접수 정책서",
+          outcome: "declined",
+          changes: 1,
+        },
+        {
+          docKey: "p-4",
+          pageId: "4",
+          title: "공통 용어집",
+          outcome: "adopted",
+          changes: 2,
+          summary: "필터를 검색으로 읽는 말을 맞춤",
+          entryId: "e9",
+        },
+      ],
+      linked: [],
+    },
+  } as Block,
+  answer("pg1a", "검색 조건을 다섯 개로 늘렸어요."),
+  turn("pgt1", 47000),
+  {
+    ...withResult("pg2", "결제 버튼 색을 바꿔 줘.", "req-pg2", [{ route: "pay", title: "결제" }]),
+    planSync: { phase: "done", docs: [], linked: [], failure: { kind: "sync" } },
+  } as Block,
+  answer("pg2a", "버튼 색을 바꿨어요."),
+  turn("pgt2", 12000),
+];
+
+/**
  * `?scene=working` — 맨 아래 `작업 중` 줄의 네 모양(2026-10-06): 묶음을 모를 때 · 살펴보는 중 · 고치는 중 ·
  * 검사 중 + 1분이 넘은 시계. 그 아래 입력창 위 알약(2026-10-20 사용자 요청)의 세 모양: 할 일만 · 보조 작업만 · 둘 다
  * 펼친 목록(끝남 · 하는 중 · 남음 · 근황 한 줄 · 멈춘 보조 작업). 좁은 칸(`?w=320`)에서 줄과 목록이 감겨도 잘리지
@@ -1268,7 +1327,9 @@ function Fixture() {
                                                   ? longLive
                                                   : scene === "plan-sync"
                                                     ? planSyncScene
-                                                    : blocks
+                                                    : scene === "plan-sync-gate"
+                                                      ? planSyncGateScene
+                                                      : blocks
             }
             live={scene === "queue" || scene === "ci-live" || scene === "long-live"}
             showThinking={false}
@@ -1309,6 +1370,15 @@ function Fixture() {
               },
               pick: async (requestId, pageId) => {
                 calls.push(`plan-pick:${requestId}:${pageId}`);
+              },
+              apply: async (requestId, docKey) => {
+                calls.push(`plan-apply:${requestId}:${docKey}`);
+              },
+              skip: async (requestId, docKey) => {
+                calls.push(`plan-skip:${requestId}:${docKey}`);
+              },
+              retry: async (requestId) => {
+                calls.push(`plan-retry:${requestId}`);
               },
               docs: async () => [
                 { pageId: "1", title: "회원가입 정책서", path: "정책" },

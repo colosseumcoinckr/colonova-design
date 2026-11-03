@@ -44,10 +44,9 @@ export function PlanSyncLine({
   const [cut, setCut] = useState<ReadonlySet<string>>(new Set());
   // 곁줄 발행(C3) — 발행이 끝난 문서는 문구가 「…」 발행했어요 로 바뀐다.
   const [published, setPublished] = useState<ReadonlySet<string>>(new Set());
-  // pending 인데 초안 열쇠가 없으면 누를 것이 없는 묻는 줄이 된다 — 그 문서 줄은 세우지 않는다(검토 REVIEW-W1).
-  const docs = sync.docs.filter(
-    (doc) => doc.outcome !== "unchanged" && (doc.outcome !== "pending" || doc.docKey !== null),
-  );
+  // 바꿀 것이 없던(unchanged) 문서 줄은 세우지 않는다 — pending 인데 초안 열쇠가 없는 줄은
+  // 묻는 말이 아니라 제안 모양으로 떨어뜨린다(아래 shown — 검토 REVIEW-W1 · 2026-11-03).
+  const docs = sync.docs.filter((doc) => doc.outcome !== "unchanged");
   const adopted = docs.some((doc) => doc.outcome === "adopted" && !published.has(keyOf(doc)));
   if (
     docs.length === 0 &&
@@ -86,38 +85,43 @@ export function PlanSyncLine({
       {docs.map((doc) => {
         const key = keyOf(doc);
         const isPublished = published.has(key);
+        // 초안 열쇠가 없는 pending 은 누를 것이 없다 — 묻는 말 대신 제안(proposed)의 말과 모양으로
+        // 떨어뜨린다(손 없음 · 같은 작은 줄 없음 — 검토 REVIEW-W1 · 2026-11-03).
+        const shown: PlanSyncDoc["outcome"] =
+          doc.outcome === "pending" && doc.docKey === null ? "proposed" : doc.outcome;
         return (
           <div key={key} className="nx-psync-row">
-            {doc.outcome === "checking" ? (
+            {shown === "checking" ? (
               <Spin />
             ) : (
               <FileText className="nx-i" size={14} aria-hidden="true" />
             )}
             <span className="nx-psync-text">
-              {lineOf(doc, isPublished)}
-              {doc.summary !== undefined && doc.outcome === "adopted" && (
+              {lineOf(shown, doc.title, isPublished)}
+              {doc.summary !== undefined && shown === "adopted" && (
                 <span className="nx-psync-sub">{doc.summary}</span>
               )}
-              {/* 같이 고치기 게이트(2026-11-03 A안 1A-1) — 요약과 바꿀 곳 수를 작은 줄로 함께 둔다. */}
-              {doc.outcome === "pending" && doc.summary !== undefined && (
+              {/* 같이 고치기 게이트(2026-11-03 A안 1A-1) — 요약과 바꿀 곳 수를 작은 줄로 함께 둔다.
+                  바꿀 곳이 없으면(0) 그 줄은 서지 않는다(검토 REVIEW-W1). */}
+              {shown === "pending" && doc.summary !== undefined && (
                 <span className="nx-psync-sub">{doc.summary}</span>
               )}
-              {doc.outcome === "pending" && doc.changes > 0 && (
+              {shown === "pending" && doc.changes > 0 && (
                 <span className="nx-psync-sub">{L.planSync.pendingChanges(doc.changes)}</span>
               )}
-              {doc.outcome === "adopted" && doc.kept !== undefined && doc.kept > 0 && (
+              {shown === "adopted" && doc.kept !== undefined && doc.kept > 0 && (
                 <span className="nx-psync-sub">{L.planSync.adoptedKept(doc.kept)}</span>
               )}
-              {doc.outcome === "undone" && doc.kept !== undefined && doc.kept > 0 && (
+              {shown === "undone" && doc.kept !== undefined && doc.kept > 0 && (
                 <span className="nx-psync-sub">{L.planSync.undoneKept(doc.kept)}</span>
               )}
-              {doc.outcome === "failed" && doc.detail !== undefined && (
+              {shown === "failed" && doc.detail !== undefined && (
                 <span className="nx-psync-sub">{doc.detail}</span>
               )}
             </span>
             {/* 게이트의 손(1A-1) — `고치기` 가 이 줄의 으뜸(ghost 가 아닌 보통 소단추), `건너뛰기` · `보기` 는 고스트다.
                 초안 열쇠가 없으면 손을 세우지 않는다. `declined` 줄은 말만 둔다. */}
-            {doc.outcome === "pending" && doc.docKey !== null && (
+            {shown === "pending" && (
               <>
                 <button
                   type="button"
@@ -151,9 +155,9 @@ export function PlanSyncLine({
                 </button>
               </>
             )}
-            {doc.outcome !== "checking" &&
-              doc.outcome !== "failed" &&
-              doc.outcome !== "declined" &&
+            {shown !== "checking" &&
+              shown !== "failed" &&
+              shown !== "declined" &&
               doc.docKey !== null && (
                 <button
                   type="button"
@@ -164,7 +168,7 @@ export function PlanSyncLine({
                 </button>
               )}
             {/* 곁줄 발행(C3) — 확인 창은 그대로, 이동만 없앤다. 게이트가 꺼져 있으면 손이 안 선다(같은 계획 §3). */}
-            {doc.outcome === "adopted" &&
+            {shown === "adopted" &&
               doc.docKey !== null &&
               hand.publish !== undefined &&
               !isPublished && (
@@ -190,7 +194,7 @@ export function PlanSyncLine({
                   {L.planSync.publish}
                 </button>
               )}
-            {doc.outcome === "adopted" && doc.entryId !== undefined && (
+            {shown === "adopted" && doc.entryId !== undefined && (
               <button
                 type="button"
                 className="nx-btn nx-btn--sm nx-btn--ghost"
@@ -258,24 +262,25 @@ function keyOf(doc: PlanSyncDoc): string {
   return doc.pageId ?? doc.docKey ?? doc.title;
 }
 
-function lineOf(doc: PlanSyncDoc, published = false): string {
-  switch (doc.outcome) {
+/** 문서 줄 한 줄의 말 — shown outcome(초안 열쇠 없는 pending 은 proposed 로 떨어진 것)이 정한다. */
+function lineOf(outcome: PlanSyncDoc["outcome"], title: string, published = false): string {
+  switch (outcome) {
     case "checking":
-      return L.planSync.checking(doc.title);
+      return L.planSync.checking(title);
     case "adopted":
       // 곁줄 발행(C3) — 발행이 끝나면 문구가 바뀐다.
-      return published ? L.planSync.publishedDone(doc.title) : L.planSync.adopted(doc.title);
+      return published ? L.planSync.publishedDone(title) : L.planSync.adopted(title);
     case "proposed":
-      return L.planSync.proposed(doc.title);
+      return L.planSync.proposed(title);
     case "failed":
-      return L.planSync.failed(doc.title);
+      return L.planSync.failed(title);
     case "undone":
-      return L.planSync.undone(doc.title);
+      return L.planSync.undone(title);
     // 같이 고치기 게이트(2026-11-03 A안 1A-1) — 손은 위의 줄 마크업이 세운다.
     case "pending":
-      return L.planSync.pending(doc.title);
+      return L.planSync.pending(title);
     case "declined":
-      return L.planSync.declined(doc.title);
+      return L.planSync.declined(title);
     case "unchanged":
       return "";
   }

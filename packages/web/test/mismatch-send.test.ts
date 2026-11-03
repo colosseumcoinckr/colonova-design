@@ -206,6 +206,13 @@ test("자동 맞춰 보기 토글: AI 쪽에 한 줄 — 켬은 상태를 따르
   assert.match(aiPage, /L\.planLoop\.saveFailed/);
   // 저장은 machine.set 의 planLoop — provider · 자동 설치 인자는 건드리지 않는다.
   assert.match(aiPage, /machineSet\(undefined, undefined, next\)/);
+  // 낙관 표시는 상태 방송이 누른 값에 닿을 때 지워진다 — 4초 타이머가 지우지 않는다(검토 REVIEW-W2).
+  assert.match(aiPage, /statusLoop === loopPending\) setLoopPending\(null\)/);
+  assert.doesNotMatch(aiPage, /loopTimer|setTimeout\(\(\) => setLoopPending/);
+  // 자리 — 미리보기 따라가기 줄 바로 아래에 선다(브리프 · 검토 REVIEW-W2).
+  const follow = aiPage.indexOf('id="nx-ai-follow"');
+  const loop = aiPage.indexOf('id="nx-ai-planloop"');
+  assert.ok(follow !== -1 && loop !== -1 && follow < loop, "planLoop 줄은 followRow 줄 아래");
 });
 
 test("선로: machineSet 이 planLoop 를 셋째 선택 인자로 싣고, 다시 시도 요청이 있다", () => {

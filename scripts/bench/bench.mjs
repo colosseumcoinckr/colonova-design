@@ -15,9 +15,10 @@
  *     (1층 채점 — 데몬 없이 syncTargets 만 돌린다 · 2026-11-03 · A안 0-2)
  */
 import { execFile } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { connect } from "./client.mjs";
 import {
@@ -137,6 +138,27 @@ function resultPath(label, now = new Date()) {
   return join(RESULTS_DIR, `${stamp}-${label}.json`);
 }
 
+/**
+ * suggest 편의 흔적 걷기(2026-11-03 · 검토 REVIEW-B) — 무엇을 지우고 되돌릴지 순수하게 정한다.
+ * 새 대화는 지우고, 벤치가 새로 연 초안은 버리고, 원래 있던 초안은 말을 보내기 전 개정으로 되돌린다.
+ * @returns {{kind: string, request: {type: string} & Record<string, unknown>}[]}
+ */
+export function suggestCleanup({ threadId, docKey, existed, previousRevision }) {
+  const steps = [];
+  if (threadId !== null) {
+    steps.push({ kind: "대화 지우기", request: { type: "draft.threadDelete", threadId } });
+  }
+  if (docKey !== null && !existed) {
+    steps.push({ kind: "초안 버리기", request: { type: "draft.discard", docKey } });
+  } else if (docKey !== null && previousRevision !== null) {
+    steps.push({
+      kind: "개정 되돌리기",
+      request: { type: "draft.revisionRestore", docKey, revision: previousRevision },
+    });
+  }
+  return steps;
+}
+
 /** 시나리오 하나 — 클론 경로는 읽고 쓰지 않는다. */
 async function runScenario({ client, scenario, repo, logDir, meta }) {
   const entry = {
@@ -239,17 +261,15 @@ async function runScenario({ client, scenario, repo, logDir, meta }) {
     } catch (error) {
       entry.reasons.push(error instanceof Error ? error.message : String(error));
     } finally {
-      // 흔적 걷기 — 새 대화는 지우고, 새로 연 초안은 버리고, 원래 있던 초안은 그 전 개정으로 되돌린다.
-      if (threadId !== null) {
-        await client.request({ type: "draft.threadDelete", threadId }).catch(() => undefined);
-      }
-      if (docKey !== null) {
-        if (!existed) {
-          await client.request({ type: "draft.discard", docKey }).catch(() => undefined);
-        } else if (previousRevision !== null) {
-          await client
-            .request({ type: "draft.revisionRestore", docKey, revision: previousRevision })
-            .catch(() => undefined);
+      // 흔적 걷기 — 무엇을 걷는지는 suggestCleanup(순수)이 정한다. 실패는 삼키지 않는다 —
+      // 몰래 섞인 다음 실측의 기준이 오염되므로 결과 이유와 콘솔에 종류만 한 줄 남긴다(검토 REVIEW-B).
+      for (const step of suggestCleanup({ threadId, docKey, existed, previousRevision })) {
+        try {
+          await client.request(step.request);
+        } catch {
+          const reason = `흔적 걷기가 실패했습니다 — ${step.kind}`;
+          entry.reasons.push(reason);
+          console.log(`  ${scenario.id} · ${reason}`);
         }
       }
     }
@@ -423,7 +443,8 @@ async function commandCompare(args) {
 /**
  * 1층 채점(2026-11-03 · A안 0-2) — 데몬 없이 돈다. `--links <plans-map.json>` 을 주면 그 파일의
  * 연결로 잰다(진짜 pageId — 정답표의 docs[].pageId 가 채워져 있어야 한다). 주지 않으면 정답표의
- * 견본 연결 표로 잰다. `--out` 은 결과를 JSON 파일로 남긴다(값 없이 쓰면 bench-results/…-targets.json).
+ * 견본 연결 표로 잰다. `--out` 은 결과를 JSON 파일로 남긴다 — 경로를 주면 그 파일,
+ * `-` 이면 `bench-results/…-targets.json`(값 없는 `--out` 은 인자 검사가 거절한다 — 검토 REVIEW-B).
  */
 function commandTargets(args) {
   if (!args.sheet) throw new Error("targets 에는 --sheet <정답표> 가 필요합니다");
@@ -466,7 +487,21 @@ async function main() {
   else throw new Error(`알 수 없는 명령입니다: ${command}`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+// 시험이 순수 함수(suggestCleanup)를 빌릴 수 있게 — 직접 실행될 때만 돈다(2026-11-03 · 검토 REVIEW-B).
+const isMain = (() => {
+  try {
+    return (
+      process.argv[1] !== undefined &&
+      realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

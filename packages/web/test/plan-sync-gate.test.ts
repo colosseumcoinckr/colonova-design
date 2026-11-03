@@ -15,25 +15,31 @@ const column = read("../src/next/chat/ChatColumn.tsx");
 const client = read("../src/lib/daemon-client.ts");
 
 test("pending 줄 — 제목 · 요약 · 바꿀 곳 수와 세 손이 함께 선다", () => {
-  // 말: 제목 줄은 lineOf 가, 작은 줄은 요약(있을 때)과 바꿀 곳 수가 맡는다 — 바꿀 곳 수는 0일 때 서지 않는다.
-  assert.match(line, /case "pending":\s*return L\.planSync\.pending\(doc\.title\);/);
-  assert.match(line, /doc\.outcome === "pending" && doc\.summary !== undefined/);
-  assert.match(line, /doc\.outcome === "pending" && doc\.changes > 0/);
+  // 말: 제목 줄은 lineOf 가, 작은 줄은 요약(있을 때)과 바꿀 곳 수가 맡는다 — 바꿀 곳 수는 0일 때 서지 않는다(검토 REVIEW-W1).
+  assert.match(line, /case "pending":\s*return L\.planSync\.pending\(title\);/);
+  assert.match(line, /shown === "pending" && doc\.summary !== undefined/);
+  assert.match(line, /shown === "pending" && doc\.changes > 0/);
   assert.match(line, /L\.planSync\.pendingChanges\(doc\.changes\)/);
 
-  // pending 인데 초안 열쇠가 없으면 누를 것이 없다 — 줄 자체를 걸러 세우지 않는다(검토 반영).
-  assert.match(line, /doc\.outcome !== "pending" \|\| doc\.docKey !== null/);
+  // unchanged 문서는 줄로 서지 않고, 초안 열쇠가 없는 pending 은 묻는 말 대신 제안(proposed)의
+  // 말과 모양으로 떨어뜨린다 — 손이 없는 「초안도 고칠까요?」가 남지 않게(검토 REVIEW-W1).
+  assert.match(line, /doc\.outcome !== "unchanged"/);
+  assert.match(
+    line,
+    /doc\.outcome === "pending" && doc\.docKey === null \? "proposed" : doc\.outcome/,
+  );
 
-  // 세 손 — 고치기 · 건너뛰기는 초안 열쇠가 있을 때 한 묶음(<>)으로 선다.
-  const pending =
-    /doc\.outcome === "pending" && doc\.docKey !== null && \(\s*<>([\s\S]*?)<\/>\s*\)\}/.exec(line);
+  // 세 손 — 고치기 · 건너뛰기는 shown 이 pending 일 때 한 묶음(<>)으로 선다(열쇠 없는 pending 은
+  // proposed 로 떨어졌으니 이 조건 하나로 충분하다).
+  const pending = /shown === "pending" && \(\s*<>([\s\S]*?)<\/>\s*\)\}/.exec(line);
   assert.ok(pending, "pending 손 묶음이 없다");
   // 고치기는 보통 소단추 — 닫는 따옴표까지 대조해 ghost 가 아님을 고정한다.
   assert.match(pending[1] ?? "", /className="nx-btn nx-btn--sm"/);
-  // 건너뛰기 단추 자체에 대해 ghost 를 정확히 대조한다(뒤의 보기 단추가 대신 통과시키지 못하게).
-  assert.match(pending[1] ?? "", /className="nx-btn nx-btn--sm nx-btn--ghost"/);
+  // 건너뛰기 단추 자체의 클래스만 정확히 대조한다 — 뒤의 `보기` 단추가 대신 통과시키지 못하게(검토 REVIEW-W1).
+  const skip = /<button[^>]*>([\s\S]*?)\{L\.planSync\.skip\}/.exec(pending[1] ?? "");
+  assert.ok(skip, "건너뛰기 단추가 없다");
+  assert.match(skip[0], /className="nx-btn nx-btn--sm nx-btn--ghost"/);
   assert.match(pending[1] ?? "", /L\.planSync\.apply\b/);
-  assert.match(pending[1] ?? "", /L\.planSync\.skip\b/);
   assert.match(line, /hand\.apply\(requestId, docKey\)/);
   assert.match(line, /hand\.skip\(requestId, docKey\)/);
   assert.match(line, /L\.planSync\.applyFailed/);
@@ -45,11 +51,10 @@ test("pending 줄 — 제목 · 요약 · 바꿀 곳 수와 세 손이 함께 �
 });
 
 test("declined 줄 — 말만 서고 손은 없다", () => {
-  assert.match(line, /case "declined":\s*return L\.planSync\.declined\(doc\.title\);/);
-  // declined 에 단추를 다는 묶음이 없다.
-  assert.doesNotMatch(line, /outcome === "declined"[\s\S]{0,120}<button/);
-  // `보기` 도 declined 에는 서지 않는다.
-  assert.match(line, /doc\.outcome !== "declined"/);
+  assert.match(line, /case "declined":\s*return L\.planSync\.declined\(title\);/);
+  // declined 에 단추를 다는 묶음이 없고, `보기` 도 declined 에는 서지 않는다(shown 으로 잰다).
+  assert.match(line, /shown !== "declined"/);
+  assert.doesNotMatch(line, /shown === "declined" &&/);
 });
 
 test("전체 실패 줄 — 문서 없이 failure 만 있어도 서고 다시 시도로 잇는다", () => {

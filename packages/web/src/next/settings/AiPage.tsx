@@ -1,5 +1,5 @@
 import { isUnusablePlan, type OnboardingFixKind } from "@colonova-design/protocol";
-import { type UIEvent, useEffect, useRef, useState } from "react";
+import { type UIEvent, useEffect, useState } from "react";
 import { useInstallStep } from "../../hooks/use-install-step";
 import type { Daemon } from "../../lib/daemon-client";
 import { composing } from "../../lib/ime";
@@ -172,20 +172,19 @@ export function AiPage({
   const [loopPending, setLoopPending] = useState<boolean | null>(null);
   const [loopError, setLoopError] = useState<string | null>(null);
   const [loopResumed, setLoopResumed] = useState(false);
-  const loopTimer = useRef<number | null>(null);
+  // 낙관 표시는 상태 방송이 누른 값에 닿을 때까지 잡는다 — 시간이 아니라 방송이 지운다
+  // (방송이 늦거나 빠져도 스위치가 옛 값으로 튀지 않는다 — 검토 REVIEW-W2 · 2026-11-03).
   useEffect(() => {
     if (loopPending !== null && statusLoop === loopPending) setLoopPending(null);
   }, [statusLoop, loopPending]);
   const loopOn = loopPending ?? statusLoop;
   const setLoop = (next: boolean) => {
-    if (loopTimer.current !== null) window.clearTimeout(loopTimer.current);
     setLoopError(null);
     setLoopResumed(false);
     setLoopPending(next);
     void daemon.api
       .machineSet(undefined, undefined, next)
       .then(() => {
-        loopTimer.current = window.setTimeout(() => setLoopPending(null), 4000);
         // 다시 켜면 앱이 어긋남을 곧장 다시 잡는다 — 그 말을 한 번 얹는다.
         if (next) setLoopResumed(true);
       })
@@ -314,8 +313,19 @@ export function AiPage({
         </div>
       )}
       {providers.length === 0 && <EmptyProviders loading={daemon.status === null} />}
+      {/* AI 가 일하는 동안 미리보기가 고치는 화면으로 옮겨 간다 — 기본 켜짐, 끄는 길이 이 한 줄이다(2026-10-08 베타 준비 분석). */}
+      <SGroup>
+        <SRow title={L.live.followRow} id="nx-ai-follow" sub={L.live.followRowSub}>
+          <Switch
+            on={settings.followEdits}
+            label={L.live.followRow}
+            onChange={(followEdits) => onSettingsChange({ followEdits })}
+          />
+        </SRow>
+      </SGroup>
       {/* 기획서와 화면이 어긋나면 앱이 스스로 맞춰 본다(2026-11-03 A안 1A-1(c)) — 기본은 켬, 저장은
-          이 컴퓨터의 머신 설정(machine.set 의 planLoop)이다. 값이 아직 안 오면 데몬의 기본(켬)을 믿는다. */}
+          이 컴퓨터의 머신 설정(machine.set 의 planLoop)이다. 값이 아직 안 오면 데몬의 기본(켬)을 믿는다.
+          자리는 위의 미리보기 따라가기 줄 바로 아래다(브리프 · 검토 REVIEW-W2). */}
       <SGroup>
         <SRow title={L.planLoop.row} id="nx-ai-planloop" sub={L.planLoop.rowSub}>
           <Switch on={loopOn} label={L.planLoop.row} onChange={setLoop} />
@@ -330,16 +340,6 @@ export function AiPage({
             {L.planLoop.resumed}
           </p>
         )}
-      </SGroup>
-      {/* AI 가 일하는 동안 미리보기가 고치는 화면으로 옮겨 간다 — 기본 켜짐, 끄는 길이 이 한 줄이다(2026-10-08 베타 준비 분석). */}
-      <SGroup>
-        <SRow title={L.live.followRow} id="nx-ai-follow" sub={L.live.followRowSub}>
-          <Switch
-            on={settings.followEdits}
-            label={L.live.followRow}
-            onChange={(followEdits) => onSettingsChange({ followEdits })}
-          />
-        </SRow>
       </SGroup>
     </SPage>
   );

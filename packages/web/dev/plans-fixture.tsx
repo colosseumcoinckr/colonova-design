@@ -27,6 +27,8 @@
  *   · op-blocked — 문서 관리 창이 막힌 이유 둘(권한 없음 · 범위 밖)
  *   · op-unknown · op-failed — 문서 관리(복제 · 위치 옮기기 · 휴지통 · 복구)의 결과 모름 · 실패
  *   · comment-failed · comment-unknown — 코멘트 쓰기의 실패(닻이 애매) · 결과 모름
+ *   · mismatch-doc — 읽는 문서 곁 `화면과 맞춰 보기` 의 어긋남 카드(누르면 선다, 2026-11-03 A안)
+ *   · mismatch-chat · mismatch-failed — 기획 대화 답 아래의 화면 제안 카드 · 판정 실패 줄(곧장 그린다)
  *
  *   눌러 볼 수 있는 흐름 — 문서 → 머리의 ⋯ 메뉴(복제 · 위치 옮기기 · 휴지통) · 목록 머리의 휴지통 단추(복구) ·
  *   `화면 작업에 근거로 보내기`(입력창이 없어 `noComposer` 로 끝난다) · 목록의 초안 칩 → 편집기의 `발행` ·
@@ -39,7 +41,9 @@ import type {
   DocOpPreview,
   DocOpResult,
   DocTrashEntry,
+  DraftCompareResult,
   DraftEdit,
+  DraftMessage,
   DraftPublishPreview,
   DraftPublishResult,
   DraftSnapshot,
@@ -47,10 +51,13 @@ import type {
   DraftView,
   ProjectSummary,
 } from "@colonova-design/protocol";
-import { StrictMode, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, StrictMode, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { Daemon, PlanDocComment } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale, useSettings } from "../src/lib/settings";
+import { PlanChat } from "../src/next/plans/draft/PlanChat";
+import { useDraftThread } from "../src/next/plans/draft/use-draft-thread";
+import { PlanDocView } from "../src/next/plans/PlanDocView";
 import { PlansColumn } from "../src/next/plans/PlansColumn";
 import { PlansSidebar } from "../src/next/plans/PlansSidebar";
 import { PlansContext, usePlansWorkspace } from "../src/next/plans/PlansWorkspace";
@@ -390,6 +397,57 @@ const later = <T,>(ms: number, value: T) =>
   new Promise<T>((resolve) => window.setTimeout(() => resolve(value), ms));
 const failLater = <T,>(ms: number) =>
   new Promise<T>((_resolve, reject) => window.setTimeout(() => reject(new Error("fixture")), ms));
+/**
+ * 어긋남 카드의 견본 줄(2026-11-03 A안 부품 사진) — `?case=mismatch-doc` 의 `화면과 맞춰 보기` 가 돌려주는
+ * 판정과 `?case=mismatch-chat` 의 기획 대화 답 아래 카드가 함께 쓴다.
+ */
+const MISMATCH: DraftCompareResult = {
+  docKey: "p-2001",
+  pageId: "2001",
+  title: "[정책서] 주문 접수",
+  source: "초안(3판)",
+  rows: [
+    {
+      section: "5-2. 예외",
+      plan: "배정이 실패하면 운영 담당 확인을 거친다",
+      screen: "확인 없이 실패 안내만 보여 준다",
+      screenName: "주문 목록",
+    },
+    {
+      section: "5-1. 접수 조건",
+      plan: "요청 메모는 200자 이내",
+      screen: "메모 500자까지 받는다",
+      screenName: "주문 입력",
+    },
+  ],
+  note: null,
+};
+
+/**
+ * 기획 대화의 견본 말(2026-11-03 A안 부품 사진) — `?case=mismatch-chat` 은 AI 답 아래에 화면 제안 카드
+ * (`mismatch`)를, `?case=mismatch-failed` 는 판정 실패 한 줄과 `다시 시도` (`mismatchFailed`)를 세운다.
+ */
+function mismatchMessages(kind: string): DraftMessage[] {
+  const answer: DraftMessage = {
+    messageId: "m-2",
+    role: "assistant",
+    text: "배정 실패의 예외를 **5절**에 맞춰 두 군데에 더했어요. 표의 권한 칸도 운영 담당(OP)으로 고쳤어요.",
+    at: ago(5),
+    proposalId: "pr-1",
+    reads: [{ pageId: "2001", title: "[정책서] 주문 접수", version: 7 }],
+    ...(kind === "mismatch-chat" ? { mismatch: { rows: MISMATCH.rows } } : {}),
+    ...(kind === "mismatch-failed" ? { mismatchFailed: true as const } : {}),
+  };
+  return [
+    {
+      messageId: "m-1",
+      role: "user",
+      text: "배정 실패 때의 예외를 정책에 더해 줘. 운영 담당 확인을 거치게.",
+      at: ago(6),
+    },
+    answer,
+  ];
+}
 
 function projectFor(id: string): ProjectSummary {
   const base = { name: "colonova-cdp", slug: "colonova-cdp" };
@@ -755,72 +813,81 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
             ],
             proposals: [],
           })
-        : later(200, {
-            docKey,
-            threadId: "t-1",
-            running: false,
-            messages: [
-              {
-                messageId: "m-1",
-                role: "user",
-                text: "배정 실패 때의 예외를 정책에 더해 줘. 운영 담당 확인을 거치게.",
-                at: ago(6),
-                refs: [
-                  {
-                    pageId: DOCS[2].pageId,
-                    title: DOCS[2].title,
-                    version: 4,
-                    sections: ["5. 세부 규칙"],
-                  },
-                ],
-              },
-              {
-                messageId: "m-2",
-                role: "assistant",
-                text: "배정 실패의 예외를 **5절**에 맞춰 두 군데에 더했어요. 표의 권한 칸도 운영 담당(OP)으로 고쳤어요.",
-                at: ago(5),
-                proposalId: "pr-1",
-                reads: [{ pageId: DOCS[3].pageId, title: DOCS[3].title, version: 7 }],
-              },
-            ],
-            proposals: [
-              {
-                // 바로 반영(2026-10-31 2단계) — 채택 없이 초안에 들어간 고침의 문서 카드다.
-                proposalId: "pr-1",
-                createdAt: ago(5),
-                draftRevision: 3,
-                summary: "배정 실패 예외와 확인 권한을 더한다",
-                appliedAt: ago(5),
-                appliedOps: 2,
-                // 남은 고침 하나(2026-11-02 D9) — 사람이 고치던 블록에 남은 걸음이 있어 알약이 서는 견본.
-                keptOps: 1,
-                undoable: true,
-                ops: [
-                  {
-                    opId: "op-1",
-                    type: "replace",
-                    blockId: "b1",
-                    view: {
-                      kind: "paragraph",
-                      text: "출고 지시는 **재고 확정** 뒤에만 만든다. 배정이 실패하면 운영 담당이 확인한 뒤 다시 배정한다.",
+        : id === "mismatch-chat" || id === "mismatch-failed"
+          ? // A안 부품 사진(2026-11-03) — 화면 제안 카드와 판정 실패 줄은 대화 판이 아니라 곧장 그리는 장면으로 본다.
+            later(200, {
+              docKey,
+              threadId: "t-1",
+              running: false,
+              messages: mismatchMessages(id),
+              proposals: [],
+            })
+          : later(200, {
+              docKey,
+              threadId: "t-1",
+              running: false,
+              messages: [
+                {
+                  messageId: "m-1",
+                  role: "user",
+                  text: "배정 실패 때의 예외를 정책에 더해 줘. 운영 담당 확인을 거치게.",
+                  at: ago(6),
+                  refs: [
+                    {
+                      pageId: DOCS[2].pageId,
+                      title: DOCS[2].title,
+                      version: 4,
+                      sections: ["5. 세부 규칙"],
                     },
-                    state: "adopted",
-                  },
-                  {
-                    opId: "op-2",
-                    type: "insert",
-                    afterBlockId: "b2",
-                    view: {
-                      kind: "paragraph",
-                      text: "예외: 긴급 출고는 확인 없이 먼저 배정하고 사후에 기록한다.",
+                  ],
+                },
+                {
+                  messageId: "m-2",
+                  role: "assistant",
+                  text: "배정 실패의 예외를 **5절**에 맞춰 두 군데에 더했어요. 표의 권한 칸도 운영 담당(OP)으로 고쳤어요.",
+                  at: ago(5),
+                  proposalId: "pr-1",
+                  reads: [{ pageId: DOCS[3].pageId, title: DOCS[3].title, version: 7 }],
+                },
+              ],
+              proposals: [
+                {
+                  // 바로 반영(2026-10-31 2단계) — 채택 없이 초안에 들어간 고침의 문서 카드다.
+                  proposalId: "pr-1",
+                  createdAt: ago(5),
+                  draftRevision: 3,
+                  summary: "배정 실패 예외와 확인 권한을 더한다",
+                  appliedAt: ago(5),
+                  appliedOps: 2,
+                  // 남은 고침 하나(2026-11-02 D9) — 사람이 고치던 블록에 남은 걸음이 있어 알약이 서는 견본.
+                  keptOps: 1,
+                  undoable: true,
+                  ops: [
+                    {
+                      opId: "op-1",
+                      type: "replace",
+                      blockId: "b1",
+                      view: {
+                        kind: "paragraph",
+                        text: "출고 지시는 **재고 확정** 뒤에만 만든다. 배정이 실패하면 운영 담당이 확인한 뒤 다시 배정한다.",
+                      },
+                      state: "adopted",
                     },
-                    state: "adopted",
-                  },
-                  { opId: "op-3", type: "delete", blockId: "b4", state: "stale" },
-                ],
-              },
-            ],
-          }),
+                    {
+                      opId: "op-2",
+                      type: "insert",
+                      afterBlockId: "b2",
+                      view: {
+                        kind: "paragraph",
+                        text: "예외: 긴급 출고는 확인 없이 먼저 배정하고 사후에 기록한다.",
+                      },
+                      state: "adopted",
+                    },
+                    { opId: "op-3", type: "delete", blockId: "b4", state: "stale" },
+                  ],
+                },
+              ],
+            }),
     draftAdopt: (docKey: string) => {
       log("변경안 채택");
       return later(200, draft ?? sampleDraft(docKey.slice(2), false));
@@ -834,6 +901,32 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
       return later(150, { threadId: "t-1", messageId: "m-3" });
     },
     draftCancel: () => later(100, { cancelled: true }),
+    // 화면과 맞춰 보기(2026-11-02 C7) · 같이 고치기 게이트 · 판정 다시 시도(2026-11-03 A안)의 손 —
+    // 견본에서는 로그만 남기고 카드의 바쁨/실패 모양이 사는지만 본다.
+    draftCompare: () =>
+      id === "mismatch-doc"
+        ? later(300, { ...MISMATCH })
+        : later(300, { ...MISMATCH, docKey: null, rows: [] }),
+    draftCompareDecline: () => {
+      log("어긋남 안 받기");
+      return later(150, { ok: true });
+    },
+    draftSyncApply: () => {
+      log("같이 고침 적용");
+      return later(150, { ok: true });
+    },
+    draftSyncSkip: () => {
+      log("같이 고침 건너뛰기");
+      return later(150, { ok: true });
+    },
+    draftSyncRetry: () => {
+      log("같이 고침 다시 시도");
+      return later(150, { ok: true });
+    },
+    draftMismatchRetry: () => {
+      log("어긋남 판정 다시 시도");
+      return later(150, { ok: true });
+    },
     // 기획 대화 목록 · 판 고르기 · 되돌리기(2026-10-31 2·3단계) — 견본의 가짜 데몬이 같은 모양으로 답한다.
     // 지운 대화는 목록에서 거둔다(2026-11-03) — 줄의 `···` 지우기가 실제로 사라지는 것을 눈으로 본다.
     draftThreads: () =>
@@ -1394,7 +1487,148 @@ const FIXTURE_VIEW = [
   },
 ];
 
+/**
+ * `?case=mismatch-doc` — 읽는 문서 곁의 `화면과 맞춰 보기`(C7)로 서는 어긋남 카드(2026-11-03 A안 부품
+ * 사진). 진짜 `PlanDocView` 를 견본 본문과 함께 올리고, 누르면 가짜 `draftCompare` 의 판정이 카드로 선다.
+ */
+function MismatchDocFrame({ id }: { id: string }) {
+  const [line, setLine] = useState("—");
+  const daemon = useMemo(() => daemonFor(id, setLine), [id]);
+  const nav = {
+    openSettings: () => setLine("설정 열기"),
+    showPane: (pane: string) => setLine(`오른쪽 칸 → ${pane}`),
+    showTab: (tab: string) => setLine(`오른쪽 칸 → ${tab}`),
+    openPlans: () => setLine("기획서 열기"),
+    toast: (text: string) => setLine(`토스트: ${text}`),
+  } as unknown as ShellNav;
+  const doc = DOCS[5];
+  return (
+    <div id={`fixture-${id}`} style={{ width: FRAME_W }}>
+      <div style={{ font: "12px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}>
+        {id} — 머리의 `화면과 맞춰 보기` 를 누르면 카드가 선다
+        <br />→ {line}
+      </div>
+      {/* .nx 는 셸의 두 열 격자(사이드바 + 본문)다 — 부품 한 장 견본은 평범한 문서로 푼다(다른 견본과 같다). */}
+      <div
+        className="nx"
+        style={{
+          display: "block",
+          height: FRAME_H,
+          width: FRAME_W,
+          overflow: "auto",
+          border: "1px dashed #8884",
+        }}
+      >
+        <PlanDocView
+          pageId={doc.pageId}
+          row={null}
+          site="colosseum.atlassian.net"
+          phase="ready"
+          docError={null}
+          doc={{
+            markdown: POLICY(doc),
+            sections: [
+              { heading: "1. 목적", macro: false },
+              { heading: "3. 용어", macro: true },
+              { heading: "4. 정책 원칙", macro: true },
+              { heading: "5. 세부 규칙", macro: false },
+            ],
+            comments: COMMENTS,
+            view: FIXTURE_VIEW,
+            labels: fixtureLabels,
+            attachments: [],
+          }}
+          draft={{
+            docKey: "p-2001",
+            pageId: doc.pageId,
+            title: `${doc.title} v0.8`,
+            revision: 3,
+            state: "editing",
+            changedBlocks: 2,
+            baseVersion: 7,
+            observedVersion: null,
+            updatedAt: ago(2),
+          }}
+          daemon={daemon}
+          nav={nav}
+          rows={[]}
+          writable
+          onRetry={() => {}}
+          onBack={() => setLine("뒤로")}
+          onRefresh={() => {}}
+          onEdit={() => setLine("고치기")}
+          onApplied={() => {}}
+          onOpenPage={(pageId) => setLine(`문서 열기 ${pageId}`)}
+          onSelectionAsk={(text) => setLine(`AI 에게 묻기: ${text.slice(0, 20)}`)}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * `?case=mismatch-chat` · `?case=mismatch-failed` — 기획 대화의 AI 답 아래(2026-11-03 A안 1A-2): 화면 제안
+ * 카드의 두 손(으뜸 `화면을 기획서대로` · ghost `고쳐서 보내기`)과 판정 실패 한 줄의 `다시 시도`. 진짜
+ * `PlanChat` + 진짜 `useDraftThread` 를 대화 칸 폭에 올린다.
+ */
+function MismatchChatFrame({ id }: { id: string }) {
+  const [line, setLine] = useState("—");
+  const daemon = useMemo(() => daemonFor(id, setLine), [id]);
+  const nav = {
+    openSettings: () => setLine("설정 열기"),
+    showPane: (pane: string) => setLine(`오른쪽 칸 → ${pane}`),
+    showTab: (tab: string) => setLine(`오른쪽 칸 → ${tab}`),
+    openPlans: () => setLine("기획서 열기"),
+    toast: (text: string) => setLine(`토스트: ${text}`),
+  } as unknown as ShellNav;
+  const thread = useDraftThread(daemon, "p-2001", null);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  return (
+    <div id={`fixture-${id}`} style={{ width: FRAME_W }}>
+      <div style={{ font: "12px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}>
+        {id}
+        <br />→ {line}
+      </div>
+      {/* .nx 는 셸의 두 열 격자(사이드바 + 본문)다 — 대화 칸만 보이는 견본은 평범한 문서로 푼다(다른 견본과 같다). */}
+      <div
+        className="nx"
+        style={{ display: "block", height: FRAME_H, overflow: "auto", border: "1px dashed #8884" }}
+      >
+        <div
+          className="nx-pl-view"
+          data-chat="on"
+          data-tab="chat"
+          style={{ "--nx-pl-chat-w": `${FRAME_W}px` } as CSSProperties}
+        >
+          <PlanChat
+            daemon={daemon}
+            nav={nav}
+            docKey="p-2001"
+            pageId="2001"
+            docTitle="[정책서] 주문 접수"
+            thread={thread}
+            draft={null}
+            inputRef={inputRef}
+            conversation={null}
+            pickedThreadId={null}
+            pickThread={() => {}}
+            onShowInDoc={(ids) => setLine(`문서에서 보기 ${ids.join(",")}`)}
+            onConversationsChanged={() => {}}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Frame({ id }: { id: string }) {
+  // A안 부품 사진(2026-11-03) — 어긋남 카드와 판정 실패 줄은 전체 칸이 아니라 곧장 그리는 장면으로 본다.
+  if (id === "mismatch-doc") return <MismatchDocFrame id={id} />;
+  if (id === "mismatch-chat" || id === "mismatch-failed") return <MismatchChatFrame id={id} />;
+  return <PlansFrame id={id} />;
+}
+
+function PlansFrame({ id }: { id: string }) {
   const [line, setLine] = useState("—");
   const daemon = useMemo(() => daemonFor(id, setLine), [id]);
   const project = useMemo(() => projectFor(id), [id]);

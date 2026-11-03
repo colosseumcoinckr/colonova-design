@@ -79,14 +79,20 @@ export function repositoryHandlers(
           const head = await active.repo.headCommitFiles();
           await active.repo.repoCore().refreshPendingChanges(true);
           refuseWhileTurnRuns();
-          if (
-            (message.expectedHead && head?.sha !== message.expectedHead) ||
-            active.repo.pendingChanges > 0 ||
-            (message.expectedPreview &&
-              (await active.repo.repoCore().submitPreviewToken()) !== message.expectedPreview)
-          ) {
+          // 거부 이유를 문장 뒤에 남긴다(2026-11-04 실앱 감사) — 사용자의 말은 그대로 두고
+          // 괄호 안 짧은 값만 더해, 로그에서 어느 조건이 거부했는지 바로 보이게 한다.
+          const token =
+            message.expectedPreview === undefined
+              ? null
+              : await active.repo.repoCore().submitPreviewToken();
+          const headMismatch =
+            message.expectedHead !== undefined && head?.sha !== message.expectedHead;
+          const tokenMismatch = token !== null && token !== message.expectedPreview;
+          if (headMismatch || active.repo.pendingChanges > 0 || tokenMismatch) {
             throw new Error(
-              "SUBMIT_CHANGED: 확인한 뒤 작업 내용이 바뀌었어요. 변경 목록을 다시 확인해 주세요.",
+              `SUBMIT_CHANGED: 확인한 뒤 작업 내용이 바뀌었어요. 변경 목록을 다시 확인해 주세요. ` +
+                `(head=${head?.sha ?? "없음"} 기대=${message.expectedHead ?? "없음"}, ` +
+                `미커밋=${active.repo.pendingChanges}, 지문=${tokenMismatch ? "다름" : "같음"})`,
             );
           }
           if ((await active.repo.repoCore().finalChangedFiles()).length === 0) {

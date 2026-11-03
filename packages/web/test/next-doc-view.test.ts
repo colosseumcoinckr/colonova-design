@@ -54,6 +54,11 @@ test("그림 종류 — svg 는 그리지 않는다(글자 속 스크립트를 �
   assert.ok(!isImageType("application/pdf"));
 });
 
+test("그림의 문장 — 크게 보기 단추와 겹판 제목은 사전에 있다(2026-11-03 그림 개선)", () => {
+  assert.ok(L.confluence.imageZoom.length > 0);
+  assert.ok(L.confluence.imageAlt.length > 0);
+});
+
 test("첨부 기억 열쇠는 NFC 로 맞춘다", () => {
   assert.equal(attachmentKey("1", "흐름도.png".normalize("NFD")), attachmentKey("1", "흐름도.png"));
   assert.notEqual(attachmentKey("1", "a.png"), attachmentKey("2", "a.png"));

@@ -2415,6 +2415,7 @@ export const L = {
     imageTooLarge: (name: string) => `그림이 커서 여기서는 보이지 않아요 · ${name}`,
     imageOther: (name: string) => `다른 문서의 그림 · ${name}`,
     imageAlt: "문서의 그림",
+    imageZoom: "그림 크게 보기",
     // 첨부
     attachmentsHeading: (count: number) => `첨부 ${count}개`,
     attachmentsUnavailable: "첨부 목록은 지금 읽지 못했어요",

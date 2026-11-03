@@ -12,11 +12,13 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { createContext, type ReactNode, type RefObject, useContext, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Markdown } from "../../../components/Markdown";
 import type { Daemon } from "../../../lib/daemon-client";
 import { linkClick } from "../../../lib/open-link";
 import { L } from "../../labels";
 import { Spin } from "../../ui/icons";
+import { ModalBody, ModalFrame, ModalHead } from "../../ui/ModalFrame";
 import { fencedCode, isImageType, tocDepths } from "./doc-view-model";
 import { downloadAttachment, useAttachment } from "./use-attachment";
 import "./doc-view.css";
@@ -405,16 +407,36 @@ function AttachmentChip({ filename }: { filename: string }) {
   );
 }
 
+/**
+ * 그림 한 장 — 홀로 선 그림(블록)은 칸 폭에 맞게 크게 그리되 본래 크기는 넘기지 않는다.
+ * Confluence 가 저장한 표시 폭(`ac:width`)은 저 캔버스에서 찍은 값이라 문서 판에서는 쓰지
+ * 않는다(2026-11-03 기획서 칸 그림 개선). 문장 속 그림(인라인)은 표시 폭을 그대로 믿어 줄이
+ * 망가지지 않게 한다. 누르면 `ImageZoom` 의 겹판에서 자세히 본다.
+ */
 function ImageView({ image, block }: { image: DocImage; block: boolean }) {
   const view = useView();
   const source = image.source;
   const filename = source.kind === "attachment" && source.other !== true ? source.filename : null;
   const state = useAttachment(view.api, view.pageId, filename);
   const alt = image.alt ?? L.confluence.imageAlt;
-  const style = image.width === null ? undefined : { width: `${image.width}px` };
+  const style = block || image.width === null ? undefined : { width: `${image.width}px` };
   const className = block ? "nx-dv-img nx-dv-img--block" : "nx-dv-img";
+  const draw = (url: string, lazy: boolean) =>
+    block ? (
+      <ImageZoom alt={alt} sub={source.kind === "attachment" ? source.filename : null}>
+        <img className={className} src={url} alt={alt} loading={lazy ? "lazy" : undefined} />
+      </ImageZoom>
+    ) : (
+      <img
+        className={className}
+        src={url}
+        alt={alt}
+        style={style}
+        loading={lazy ? "lazy" : undefined}
+      />
+    );
   if (source.kind === "url") {
-    return <img className={className} src={source.url} alt={alt} style={style} loading="lazy" />;
+    return draw(source.url, true);
   }
   if (source.other === true) {
     return <span className="nx-dv-img-note">{L.confluence.imageOther(source.filename)}</span>;
@@ -427,7 +449,7 @@ function ImageView({ image, block }: { image: DocImage; block: boolean }) {
     );
   }
   if (state.phase === "ready" && isImageType(state.mediaType)) {
-    return <img className={className} src={state.url} alt={alt} style={style} />;
+    return draw(state.url, false);
   }
   if (state.phase === "ready") return <AttachmentChip filename={source.filename} />;
   return (
@@ -436,5 +458,44 @@ function ImageView({ image, block }: { image: DocImage; block: boolean }) {
         ? L.confluence.imageTooLarge(source.filename)
         : L.confluence.imageFailed(source.filename)}
     </span>
+  );
+}
+
+/**
+ * 크게 보기 — 블록 그림을 누르면 겹판에 본래 크기까지 크게 띄운다. 뼈대는 공용 `ModalFrame`
+ * (Esc · 스크림 · 초점 가두기)이고, 대화 칸 시안의 `크게 보기` 와 같은 이유로 앱 뿌리(`.nx`)로
+ * 옮겨 그린다 — 문서 칸의 `container-type` 이 fixed 의 기준을 가둔다.
+ */
+function ImageZoom({
+  alt,
+  sub,
+  children,
+}: {
+  alt: string;
+  sub: string | null;
+  children: ReactNode;
+}) {
+  const [big, setBig] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="nx-dv-imgbtn"
+        aria-haspopup="dialog"
+        aria-label={L.confluence.imageZoom}
+        title={L.confluence.imageZoom}
+        onClick={() => setBig(true)}
+      >
+        {children}
+      </button>
+      {big &&
+        createPortal(
+          <ModalFrame className="nx-dv-big" onClose={() => setBig(false)}>
+            <ModalHead title={alt} sub={sub ?? undefined} />
+            <ModalBody className="nx-dv-big-body">{children}</ModalBody>
+          </ModalFrame>,
+          document.querySelector(".nx") ?? document.body,
+        )}
+    </>
   );
 }

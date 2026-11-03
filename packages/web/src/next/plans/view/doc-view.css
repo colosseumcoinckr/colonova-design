@@ -166,7 +166,9 @@
   font-size: var(--fs-sm);
 }
 
-/* 그림 */
+/* 그림 — 홀로 선 그림은 칸 폭에 맞게 크게(본래 크기 한도). Confluence 가 저장한 표시 폭값은
+   저 캔버스에서 찍은 값이라 쓰지 않는다(2026-11-03 기획서 칸 그림 개선). 흰 바탕 스크린샷이
+   글에 묻히지 않게 머리칼 테두리 한 줄을 둘러다(시안 무대 `.nx-askp-stage` 와 같은 손). */
 .nx-dv-img {
   max-width: 100%;
   height: auto;
@@ -175,6 +177,8 @@
 }
 .nx-dv-img--block {
   display: block;
+  width: fit-content;
+  box-shadow: 0 0 0 1px var(--line);
 }
 .nx-dv-img-note {
   display: inline-flex;
@@ -182,6 +186,39 @@
   gap: var(--sp-1);
   color: var(--ink3);
   font-size: var(--fs-sm);
+}
+
+/* 크게 보기 단추 — 블록 그림을 감싸고, 누르면 겹판에 크게 띄운다 */
+.nx-dv-imgbtn {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: zoom-in;
+}
+.nx-dv-imgbtn:hover .nx-dv-img--block {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+/* 크게 보기 겹판 — 대화 칸 시안의 큰 판(`.nx-askp-big`)과 같은 폭 규칙. 무대는 가운데, 그림은
+   창보다 크면 맞춰 줄어든다. */
+.nx-modal.nx-dv-big {
+  width: min(1200px, calc(100% - 40px));
+  max-height: min(920px, calc(100% - 48px));
+}
+.nx-dv-big-body {
+  display: flex;
+  justify-content: center;
+}
+.nx-dv-big-body .nx-dv-img {
+  width: auto;
+  max-width: 100%;
+  max-height: calc(100dvh - 220px);
+  object-fit: contain;
+  box-shadow: none;
 }
 
 /* 단 나눔 — 좁으면 위아래로 */

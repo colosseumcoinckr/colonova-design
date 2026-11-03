@@ -257,7 +257,8 @@ localStorage, 없으면 화면 자리). 기획서 자리에는 화면 대화 · 
   견본은 `dev/plans-fixture.html?case=list|none|empty|list-loading|list-failed|doc-slow|doc-failed|import-slow|import-failed|expired`.
 - `plans/view/doc-view-model.ts` — 기획서 보기의 순수 판정(2026-10-30 사용자 요청 — Confluence 기능 확장): 그리지 못한 매크로 이름
   (`unknownMacros`) · 목차 들여쓰기 · 그릴 그림 종류(svg 제외) · 첨부 기억 열쇠 · 라벨 이름 검사와 결과 한 줄 · 본문 찾기 결과 거르기와
-  강조 조각 · 코드 울타리. 그림은 `DocView`(데몬의 보기 블록 나무를 `.md` 눈금으로 그린다)와 `DocPreview`(초안의 보존 블록),
+  강조 조각 · 코드 울타리. 그림은 `DocView`(데몬의 보기 블록 나무를 `.md` 눈금으로 그린다 — 홀로 선 그림은 칸 폭에 맞게 본래 크기 한도,
+  누르면 겹판 `크게 보기`)와 `DocPreview`(초안의 보존 블록),
   곁은 `DocLabels` · `DocAttachments` · `DocHistory`, 손은 `use-attachment`(Blob 주소 기억) · `use-body-search` · `use-block-previews`.
 - `handoff-preview.ts` · `use-handoff-draft.ts` — 제출 확인의 `개발자에게는 이렇게 보여요`: `handoffPreviewOf(draft, firstSubject)` 가 데몬의 요청 초안
   (`repo.handoffDraft`)에서 사용자가 읽는 제목(종류 접두어 · 작성자 꼬리를 뗌) · 설명 첫 대목 · 사진 수 · 자동 확인 결과(`extras.checks`)를 뽑고, `useHandoffDraft` 가 제출을 붙잡지 않고 따로 읽는다.

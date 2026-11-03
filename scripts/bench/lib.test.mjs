@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import {
   collectRows,
   compareResults,
+  countFlaky,
   judge,
   loadScenarios,
   median,
@@ -19,6 +20,7 @@ import {
   pinTurnText,
   renderCompareTable,
   renderSummaryTable,
+  scoreTargets,
   statsFiles,
   summaryOf,
   turnProgress,
@@ -52,9 +54,11 @@ const gate = (over = {}) => ({
 // 시나리오 검증
 // ---------------------------------------------------------------------------
 
-test("시나리오 검증 — 저장소의 두 시나리오 파일은 통과한다", () => {
+test("시나리오 검증 — 저장소의 시나리오 파일은 통과한다", () => {
   assert.doesNotThrow(() => loadScenarios(join(HERE, "scenarios/fixture.json")));
   assert.doesNotThrow(() => loadScenarios(join(HERE, "scenarios/cds.json")));
+  assert.doesNotThrow(() => loadScenarios(join(HERE, "scenarios/compare.json")));
+  assert.doesNotThrow(() => loadScenarios(join(HERE, "scenarios/suggest.json")));
 });
 
 test("시나리오 검증 — 필수 칸 · 종류 · 중복 id", () => {
@@ -375,4 +379,115 @@ test("표 — 헤더와 시나리오마다 한 줄씩", () => {
   assert.ok(lines[2].includes("search"));
   const compare = renderCompareTable(compareResults({ scenarios: [] }, { scenarios: [] }));
   assert.ok(compare.includes("시나리오"));
+});
+
+// ---------------------------------------------------------------------------
+// 시나리오 검증 — suggest(2026-11-03 · A안 0-2 C8)
+// ---------------------------------------------------------------------------
+
+test("시나리오 검증 — suggest 는 brief · pageId 가 필요하고 expect.sections 는 비어도 된다", () => {
+  assert.doesNotThrow(() =>
+    validateScenarios([
+      {
+        id: "s1",
+        kind: "suggest",
+        pageId: "123",
+        brief: "규칙을 바꿔 줘",
+        expect: { sections: ["절"] },
+      },
+    ]),
+  );
+  // 빈 expect.sections 는 「잘못 짚음 없음」을 재는 편 — 허용한다.
+  assert.doesNotThrow(() =>
+    validateScenarios([
+      {
+        id: "s2",
+        kind: "suggest",
+        pageId: "123",
+        brief: "규칙을 바꿔 줘",
+        expect: { sections: [] },
+      },
+    ]),
+  );
+  assert.throws(
+    () =>
+      validateScenarios([
+        { id: "s3", kind: "suggest", pageId: "123", expect: { sections: ["절"] } },
+      ]),
+    /brief/,
+  );
+  assert.throws(
+    () =>
+      validateScenarios([
+        { id: "s4", kind: "suggest", brief: "규칙을 바꿔 줘", expect: { sections: ["절"] } },
+      ]),
+    /pageId/,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// 1층 채점 — scoreTargets(2026-11-03 · A안 0-2)
+// ---------------------------------------------------------------------------
+
+const SHEET = {
+  docs: [
+    { title: "가 정책서", pageId: null, sections: ["절1"] },
+    { title: "나 정책서", pageId: null, sections: ["절2"] },
+  ],
+  links: [
+    { doc: "가 정책서", route: "/a", section: "절1" },
+    // /b 는 일부러 비워 둔다 — 1층이 놓치는 요청이 생긴다.
+    { doc: "나 정책서", route: "/n", section: null },
+  ],
+  requests: [
+    { id: "hit-a", request: "가를 고쳐 줘", route: "/a", doc: "가 정책서", sections: ["절1"] },
+    { id: "miss-b", request: "나를 고쳐 줘", route: "/b", doc: "나 정책서", sections: ["절2"] },
+    // 기대 문서가 다른 데(가)로 잇긴 화면 — 놓침과 잘못 닿음이 한 요청에 겹친다.
+    { id: "both", request: "가를 건드려 줘", route: "/a", doc: "나 정책서", sections: ["절2"] },
+    { id: "null-hit", request: "모양을 고쳐 줘", route: "/c", doc: null, sections: [] },
+    { id: "null-miss", request: "목록을 고쳐 줘", route: "/n", doc: null, sections: [] },
+  ],
+};
+
+test("1층 채점 — 놓침(기대 문서 없음)과 잘못 닿음(기대 밖 문서)을 가른다", () => {
+  const result = scoreTargets(SHEET);
+  assert.equal(result.total, 5);
+  assert.equal(result.hit, 2);
+  assert.deepEqual([...result.missed].sort(), ["both", "miss-b"]);
+  assert.deepEqual([...result.extra].sort(), ["both", "null-miss"]);
+});
+
+test("1층 채점 — links 파일 모드는 pageId 가 빠지면 사람 말로 멈춘다", () => {
+  const filled = {
+    ...SHEET,
+    docs: SHEET.docs.map((doc, i) => ({ ...doc, pageId: String(100 + i) })),
+  };
+  const links = [{ pageId: "100", route: "/a", section: "절1" }];
+  const result = scoreTargets(filled, { links });
+  assert.equal(result.total, 5);
+  assert.equal(result.hit, 3);
+  assert.deepEqual([...result.missed].sort(), ["both", "miss-b"]);
+  assert.deepEqual(result.extra, ["both"]);
+  assert.throws(() => scoreTargets(SHEET, { links }), /pageId 가 비어/);
+});
+
+// ---------------------------------------------------------------------------
+// 흔들림 — countFlaky(2026-11-03 · A안 0-2)
+// ---------------------------------------------------------------------------
+
+test("흔들림 — 같은 시나리오의 짚은 절 묶음이 첫 회와 달라진 회 수를 센다", () => {
+  const entries = [
+    { id: "a", sections: ["x", "y"] },
+    { id: "a", sections: ["y", "x"] }, // 순서만 다르면 같은 묶음이다.
+    { id: "a", sections: ["x"] }, // 달라짐.
+    { id: "b", sections: ["z"] },
+    { id: "b", sections: ["z", "w"] }, // 달라짐.
+    { id: "c" }, // 절을 읽지 못한 회 — 세지도 기준도 안 된다.
+    { id: "c", sections: ["x"] }, // c 의 첫 읽힌 회가 기준.
+    { id: "c", sections: ["x", "q"] }, // 달라짐.
+  ];
+  const flaky = countFlaky(entries);
+  assert.equal(flaky.total, 3);
+  assert.deepEqual(flaky.byId, { a: 1, b: 1, c: 1 });
+  assert.equal(countFlaky([]).total, 0);
 });

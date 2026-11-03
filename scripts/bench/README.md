@@ -76,9 +76,34 @@ node scripts/bench/bench.mjs compare bench-results/…-before.json bench-results
 행으로 남는다. 모델 · 노력 · 지침을 바꾼 앞뒤를 "같은 통과 수에 더 싸게"로 읽는
 자리이기도 하다 — 한 번의 실행은 요동이 크니 `--repeat 3` 이상의 중앙값으로 본다.
 
+## 1층 채점 — 닿을 문서 고르기(2026-11-03 · A안 0-2)
+
+데몬 없이 도는 별도 명령이다. 정답표(`compare-sheet.json`)의 화면 요청마다 데몬의
+`syncTargets` 를 1층 바닥 재료(근거 없음 · 요청의 화면 주소 · 연결 표)로 돌려, 기대 문서가
+대상에 들었는지 센다 — 놓침 n/20 이 C1 개방의 재료다.
+
+```bash
+# 정답표의 견본 연결 표(links)로 잰다 — pageId 가 없어도 돈다
+node scripts/bench/bench.mjs targets --sheet scripts/bench/compare-sheet.json
+
+# 실측 — 견본 프로젝트 클론의 plans-map.json 으로 잰다(docs[].pageId 를 먼저 채운다)
+node scripts/bench/bench.mjs targets --sheet scripts/bench/compare-sheet.json \
+  --links ~/.colonova-design/projects/<slug>/repo/plans-map.json --out -
+```
+
+끝에 두 줄이 선다 — «놓침 n/20 · id 목록»은 기대 문서(doc)가 있는데 대상에 없는 요청,
+«잘못 닿음 m/20 · id 목록»은 기대에 없는 문서가 대상에 든 요청(doc: null 요청에 문서가
+골라진 것 포함)이다. 한 요청이 두 줄에 함께 설 수 있다. `--out` 은
+`{ total, hit, missed, extra }` 를 JSON 으로 남긴다.
+
+`run` 의 끝 줄 `흔들림 n` — `--repeat` 으로 같은 compare · suggest 시나리오를 여러 번
+돈 결과에서, 짚은 절 묶음이 첫 회와 달라진 회 수다(판정의 재현성). 절을 읽지 못한
+회는 세지 않는다.
+
 ## 시나리오 파일
 
-배열 하나다. 두 종류가 있다:
+배열 하나다. 네 종류가 있다 — user · pin 은 세션을 돌리고, compare · suggest 는
+세션 없이 초안 작업만 부른다:
 
 ```json
 [
@@ -89,7 +114,14 @@ node scripts/bench/bench.mjs compare bench-results/…-before.json bench-results
   { "id": "pin-title", "kind": "pin",
     "note": "제목을 더 크게 해 줘",
     "pins": [{ "screen": "list", "text": "회원 목록" }],
-    "expect": { "files": ["server.js"] } }
+    "expect": { "files": ["server.js"] } },
+
+  { "id": "compare-signup", "kind": "compare", "pageId": "12345",
+    "expect": { "sections": ["비밀번호 규칙", "휴면 전환"] } },
+
+  { "id": "suggest-signup", "kind": "suggest", "pageId": "12345",
+    "brief": "비밀번호 규칙을 8자 이상으로 낮춰 줘",
+    "expect": { "sections": ["비밀번호 규칙"] } }
 ]
 ```
 
@@ -102,15 +134,24 @@ node scripts/bench/bench.mjs compare bench-results/…-before.json bench-results
   `index`)다. `pins` · `pinHints` 는 웹의 핀 턴(`pinsToTurn`)과 같은 모양의
   표식 턴으로 실린다 — 마커의 `items[].id` 와 `pinHints[].id` 가 같아서
   데몬의 파일 후보 강화가 붙는다.
+- compare · suggest 의 `expect.sections` 는 답의 어긋남 줄이 짚어야 할 절이다 —
+  정답표(compare-sheet.json)의 절 이름과 같아야 한다. compare 는 `draft.compare`
+  의 답을, suggest 는 초안을 열고(`draft.open`) `draft.ask` 로 보낸 말의 답 어긋남
+  줄을 견준다 — suggest 의 시간은 생성과 판정을 합친 총 시간이다. suggest 는
+  끝나면 흔적을 걷는다 — 새로 연 초안은 버리고, 원래 있던 초안은 보내기 전 개정으로
+  되돌리고, 벤치가 만든 기획 대화는 지운다.
 
 저장소에 둘레가 마련돼 있다 — `scenarios/fixture.json`(colonova-beta-fixture 의
-7개)과 `scenarios/cds.json`(CDS 레포의 5개, 실제 화면 폴더에 맞춰 뒀다).
+7개) · `scenarios/cds.json`(CDS 레포의 5개, 실제 화면 폴더에 맞춰 뒀다) ·
+`scenarios/compare.json` · `scenarios/suggest.json`(견본 각 한 편 — 실측 전에
+pageId 를 채운다).
 
 ## 시험
 
 `pnpm test` 가 `scripts/bench/*.test.mjs` 를 함께 돌린다 — 순수 함수(시나리오
-검증 · 핀 턴 · 행 모으기 · 끝 판정 · 판정 · 요약 · 비교)의 시험이다. 데몬이나
-미리보기를 부르지 않는다.
+검증 · 핀 턴 · 행 모으기 · 끝 판정 · 판정 · 1층 채점 · 흔들림 · 요약 · 비교)의
+시험이다. 데몬이나 미리보기를 부르지 않는다 — 다만 데몬의 `dist` 는 읽는다(1층
+채점이 `syncTargets` 를 가져다 쓴다) 빌드 뒤에 돈다.
 
 ## 주의
 

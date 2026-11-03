@@ -25,6 +25,25 @@ test("정답표 — 문서마다 절이 있고 제목이 겹치지 않는다", (
   }
 });
 
+test("정답표 — 연결 표는 아는 문서 · 절만 가리키고, 빈 화면이 남는다(2026-11-03 · A안 0-2)", () => {
+  assert.ok(Array.isArray(sheet.links), "연결 표 links 가 있어야 한다");
+  const sectionsOf = new Map(sheet.docs.map((doc) => [doc.title, new Set(doc.sections)]));
+  const linked = new Set();
+  for (const row of sheet.links) {
+    const sections = sectionsOf.get(row.doc);
+    assert.ok(sections !== undefined, `모르는 문서 — ${row.doc}`);
+    assert.equal(typeof row.route, "string");
+    assert.ok(row.route.trim() !== "", `${row.doc} 의 화면 주소가 비었다`);
+    if (row.section !== null) {
+      assert.ok(sections.has(row.section), `${row.doc} 에 없는 절 — ${row.section}`);
+    }
+    linked.add(row.route);
+  }
+  // 일부러 비어 있는 화면이 있어야 1층의 놓침을 잰다.
+  const unlinked = sheet.requests.filter((row) => row.doc !== null && !linked.has(row.route));
+  assert.ok(unlinked.length > 0, "연결되지 않은 화면의 요청이 있어야 놓침을 잰다");
+});
+
 test("정답표 — 어긋난 규칙은 아는 문서 · 절만 가리킨다", () => {
   const sectionsOf = new Map(sheet.docs.map((doc) => [doc.title, new Set(doc.sections)]));
   for (const row of sheet.mismatches) {
@@ -46,6 +65,8 @@ test("정답표 — 화면 요청 20개 안팎이고 아는 문서 · 절만 가
   for (const row of sheet.requests) {
     assert.equal(typeof row.request, "string");
     assert.ok(row.request.trim() !== "");
+    assert.equal(typeof row.route, "string");
+    assert.ok(row.route.trim() !== "", `${row.id} 에 화면 주소(route)가 없다`);
     if (row.doc !== null) {
       const sections = sectionsOf.get(row.doc);
       assert.ok(sections !== undefined, `모르는 문서 — ${row.doc}`);

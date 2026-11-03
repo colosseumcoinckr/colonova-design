@@ -2372,7 +2372,7 @@ test("기획 대화 지우기 — 도는 중에 지운 대화는 답이 끝나�
 
 // ————— 같이 고치기(2026-10-30 사용자 결정 · 같이 고치기 계획 §4 · §5) —————
 
-test("같이 고치기 — 바꿀 것이 있으면 초안에 바로 들어가고, 되돌리면 그 전으로 돌아온다", async () => {
+test("같이 고치기 — 바꿀 것이 있으면 변경안으로 남고, 고치기가 넣으면 되돌릴 수 있다", async () => {
   const ai = fakeAi(async (request) => {
     assert.match(request.prompt, /같이 고치기/);
     return {
@@ -2404,17 +2404,33 @@ test("같이 고치기 — 바꿀 것이 있으면 초안에 바로 들어가고
       displayText: "비밀번호를 10자 이상으로",
       promptText: "[화면 요청에서 같이 고치기] …",
     });
-    assert.equal(result.outcome, "adopted");
+    // 게이트(2026-11-03 A안 1A-1) — 판정은 변경안만 남기고 초안은 그대로다.
+    assert.equal(result.outcome, "pending");
     assert.equal(result.changes, 2);
-    const after = await rig1.service.get(KEY);
-    assert.equal(paragraphText(after.blocks[1]), "10자 이상이다.");
-    assert.equal(paragraphText(after.blocks[3]), "새 규칙이다.");
-    // 대화에는 화면 요청에서 온 말과 AI 답이 남고, 걸음은 채택이다.
+    const before = await rig1.service.get(KEY);
+    assert.equal(paragraphText(before.blocks[1]), "첫 문단이다.");
+    assert.equal(before.blocks.length, 3);
+    // 대화에는 화면 요청에서 온 말과 AI 답이 남고, 걸음은 열려 있다.
     const thread = rig1.service.thread(KEY);
     assert.equal(thread.messages[0]?.origin, "screen");
     assert.equal(thread.messages[0]?.text, "비밀번호를 10자 이상으로");
     assert.deepEqual(
       thread.proposals[0]?.ops.map((op) => op.state),
+      ["open", "open"],
+    );
+    // 고치기 — 변경안이 초안에 들어가고 되돌릴 재료를 돌려준다.
+    const applied = await rig1.service.screenSyncApply({
+      slug: "demo",
+      docKey: KEY,
+      proposalId: result.proposalId ?? "",
+    });
+    assert.equal(applied.outcome, "adopted");
+    assert.equal(applied.changes, 2);
+    const after = await rig1.service.get(KEY);
+    assert.equal(paragraphText(after.blocks[1]), "10자 이상이다.");
+    assert.equal(paragraphText(after.blocks[3]), "새 규칙이다.");
+    assert.deepEqual(
+      rig1.service.thread(KEY).proposals[0]?.ops.map((op) => op.state),
       ["adopted", "adopted"],
     );
     // 되돌리기 — 고친 문단과 더한 문단이 그 전으로.
@@ -2422,8 +2438,8 @@ test("같이 고치기 — 바꿀 것이 있으면 초안에 바로 들어가고
       slug: "demo",
       docKey: KEY,
       proposalId: result.proposalId ?? "",
-      opIds: result.opIds ?? [],
-      inverse: result.inverse ?? [],
+      opIds: applied.opIds ?? [],
+      inverse: applied.inverse ?? [],
     });
     assert.deepEqual(undone, { restored: 2, kept: 0 });
     const back = await rig1.service.get(KEY);
@@ -2491,6 +2507,12 @@ test("같이 고치기 되돌리기 — 그 뒤 사람이 고친 블록은 그�
       displayText: "규칙 두 개를 바꿔 줘",
       promptText: "[화면 요청에서 같이 고치기] …",
     });
+    assert.equal(result.outcome, "pending");
+    const applied = await rig1.service.screenSyncApply({
+      slug: "demo",
+      docKey: KEY,
+      proposalId: result.proposalId ?? "",
+    });
     const view = await rig1.service.get(KEY);
     await rig1.service.edit(KEY, view.revision, [
       { type: "set", blockId: "b2", view: { kind: "paragraph", text: "사람이 다시 고쳤다." } },
@@ -2499,8 +2521,8 @@ test("같이 고치기 되돌리기 — 그 뒤 사람이 고친 블록은 그�
       slug: "demo",
       docKey: KEY,
       proposalId: result.proposalId ?? "",
-      opIds: result.opIds ?? [],
-      inverse: result.inverse ?? [],
+      opIds: applied.opIds ?? [],
+      inverse: applied.inverse ?? [],
     });
     assert.deepEqual(undone, { restored: 1, kept: 1 });
     const back = await rig1.service.get(KEY);

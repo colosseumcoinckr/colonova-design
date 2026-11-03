@@ -88,6 +88,11 @@ export interface ProposalRecord {
   inverse?: ScreenSyncInverse[];
   /** 되돌려진 때 — 되돌리기가 한 번만 먹게 한다. */
   undoneAt?: string;
+  /**
+   * 화면 요청이 낸 변경안(2026-11-03 A안 1A-1 — 같이 고치기 게이트). 곁줄 카드의 `고치기` 를 기다린다. 기획서 탭에서
+   * 넣거나 걷어도 같이 고치기 기록이 함께 남게 서비스가 `onScreenProposal` 로 알린다.
+   */
+  origin?: "screen";
 }
 
 /**
@@ -363,6 +368,8 @@ function parseDraftMessage(raw: unknown): DraftMessage | null {
   // 화면 제안 카드(2026-11-02 · 같이 고치기 UX 계획 C8) — 모양이 맞는 줄만 실린다.
   const mismatch = parseMismatchCard(record.mismatch);
   if (mismatch !== null) message.mismatch = mismatch;
+  // 화면 제안 판정의 실패 표시(2026-11-03 A안 1A-2) — 참만 실린다.
+  if (record.mismatchFailed === true) message.mismatchFailed = true;
   return message;
 }
 
@@ -475,6 +482,8 @@ function parseProposalRecord(raw: unknown): ProposalRecord | null {
   if (inverse !== null) parsed.inverse = inverse;
   const undoneAt = asString(record.undoneAt);
   if (undoneAt !== null) parsed.undoneAt = undoneAt;
+  // 화면 요청이 낸 변경안(2026-11-03 A안 1A-1) — 다른 값은 버린다.
+  if (record.origin === "screen") parsed.origin = "screen";
   return parsed;
 }
 

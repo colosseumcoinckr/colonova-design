@@ -691,3 +691,24 @@ test("replaceBase — 변경안이 없으면 변경안 파일을 만들지 않�
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("화면 변경안의 origin 과 판정 실패 표시는 다시 읽어도 남는다(2026-11-03 A안 1A-1 · 1A-2)", () => {
+  const root = newRoot();
+  try {
+    const store = new DraftStore(root);
+    store.create(makeDraft(), BASE_XML);
+    store.saveProposals(KEY, [{ ...makeProposal(), origin: "screen" }]);
+    const thread = makeThread();
+    const [first, second] = thread.messages;
+    assert.ok(first !== undefined && second !== undefined);
+    store.saveThread({ ...thread, messages: [first, { ...second, mismatchFailed: true }] });
+    // 새 저장소 — 디스크에서 다시 읽는 길(재시작)과 같다.
+    const reread = new DraftStore(root);
+    assert.equal(reread.proposals(KEY)[0]?.origin, "screen");
+    assert.equal(reread.thread(KEY)?.messages[1]?.mismatchFailed, true);
+    // 다른 값은 버린다 — 참만 실린다.
+    assert.equal(reread.thread(KEY)?.messages[0]?.mismatchFailed, undefined);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

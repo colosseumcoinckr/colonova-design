@@ -29,6 +29,27 @@ export function draftHandlers(deps: DraftDeps): RequestHandlers<DraftRequest> {
         throw new Error("이 대화의 프로젝트를 찾지 못했어요 — 대화를 다시 열어 주세요.");
       return deps.screenSync.pick(slug, message.sessionId, message.requestId, message.pageId);
     },
+    // 같이 고치기 게이트(2026-11-03 A안 1A-1 · 1A-2) — 곁줄 카드의 고치기 · 건너뛰기 · 다시 시도. 그 대화의 프로젝트다.
+    "draft.syncApply": (message) =>
+      deps.screenSync.apply(
+        sessionSlug(deps, message.sessionId),
+        message.sessionId,
+        message.requestId,
+        message.docKey,
+      ),
+    "draft.syncSkip": (message) =>
+      deps.screenSync.skip(
+        sessionSlug(deps, message.sessionId),
+        message.sessionId,
+        message.requestId,
+        message.docKey,
+      ),
+    "draft.syncRetry": (message) =>
+      deps.screenSync.retry(
+        sessionSlug(deps, message.sessionId),
+        message.sessionId,
+        message.requestId,
+      ),
     "draft.open": (message) => drafts.open(message.pageId),
     "draft.create": (message) =>
       drafts.create({
@@ -111,6 +132,16 @@ export function draftHandlers(deps: DraftDeps): RequestHandlers<DraftRequest> {
       return { ok: true };
     },
     "draft.syncDocs": (message) => drafts.syncDocs(message.sessionId),
+    // 화면 제안 판정의 다시 시도(2026-11-03 A안 1A-2).
+    "draft.mismatchRetry": (message) => drafts.mismatchRetry(message.docKey, message.messageId),
     "draft.syncScreens": (message) => drafts.syncScreens(message.pageId),
   };
+}
+
+/** 그 대화의 프로젝트 — 없으면 사람 말로 거절한다(문서 고르기와 같은 규칙). */
+function sessionSlug(deps: DraftDeps, sessionId: string): string {
+  const slug = deps.fleet.workspaceOfSession(sessionId)?.slug ?? null;
+  if (slug === null)
+    throw new Error("이 대화의 프로젝트를 찾지 못했어요 — 대화를 다시 열어 주세요.");
+  return slug;
 }

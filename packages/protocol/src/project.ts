@@ -367,6 +367,11 @@ export interface DaemonStatus {
    */
   agentAutoUpdate: boolean;
   /**
+   * 기획서와 화면을 서로 맞추는 자동 판정(2026-11-03 A안 1A-1 설정 토글) — 기본 켬, `machine.set` 의 `planLoop` 로
+   * 바꾸고 machine.json 이 끔만 기억한다. 없으면 켬으로 읽는다.
+   */
+  planLoop?: boolean;
+  /**
    * 에이전트 업데이트의 지금(PLAN-UI U12, v19 보충) — 새로 고친 창도 `도는
    * 작업이 끝나면 설치해요`(pending) · 진행 중(running) · 끝(done · failed)을
    * 다시 그릴 수 있게. `at` 은 그 단계에 들어선 시각(ISO), `version` 은 끝난

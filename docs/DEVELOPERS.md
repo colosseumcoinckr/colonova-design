@@ -1711,20 +1711,30 @@ exclude 줄도 보관 거름도 없다. 자리는 `confluence-mirror.ts` 의 두
   3. 판정 — 문서마다 `DraftService.screenSync`: 초안이 없으면 `open(pageId, slug)` 로 만들고(활성 프로젝트가 아니어도 그
      프로젝트의 저장소), 같은 초안의 질문이 돌면 끝까지 기다린 뒤, 기존 기획 AI(`#generate` · 읽기 도구만 · `settingSources: []`)를
      `quiet` 로 돌린다. 말은 `screenSyncPrompt`(요청 · 바뀐 화면 · 바뀐 파일 · 먼저 볼 절 · 기준 한 줄). 걸음이 비면 대화 · 세션
-     열쇠를 남기지 않고 `unchanged` 다.
-  4. 자동 채택 — `#adoptFromScreen` 이 `adopt` 와 같은 판정(블록 지문 · 생성 중 개정이 바뀌면 오래됨 · 발행 중이면 변경안으로
-     남김)으로 들이고, 걸음마다 되돌릴 재료(`ScreenSyncInverse` — 그 전 블록 · 들어간 뒤 지문)를 돌려준다. 하나도 못 들이면
-     `proposed` 다.
-  5. 기록과 방송 — 들어간 문서는 `plans/screen-sync.jsonl` 에 `entry` 줄(되돌리기 재료), 끝난 카드는 `card` 줄(턴의 재료와 마지막
-     `PlanSync` — 문서 고르기와 되돌린 뒤 다시 그리기에 쓴다)로 남는다. 방송은 `session.event` 의 `plans.synced`
-     (`{ requestId, sync }`)이고, 끝난 결과는 대화록의 그 요청 줄(`user.echo` 의 선택 필드 `planSync`)에 다시 적혀 다시 연 대화에도
-     곁줄이 선다(`session-tape.ts` 가 합친다). 로그에는 종류와 수만 남는다.
+     열쇠를 남기지 않고 `unchanged` 다. **초안에는 넣지 않는다**(2026-11-03 A안 1A-1 게이트) — 변경안 기록에 `origin: "screen"` 을
+     적고(문서 잠금 안) `{ outcome: "pending", proposalId, changes }` 를 돌려준다. 자동 판정의 켜고 끔은 machine.json 의 `planLoop`
+     (끔만 `"off"` 로 적힌다 · `plan-loop.ts` 의 `planLoopOn` 이 읽고 지휘에는 `loopOn` 으로 들어간다 · `machine.set { planLoop }` 가 바꾸고
+     상태의 `planLoop` 로 방송된다) — 끄면 잇기만 하고 `screenSync` · 카드 없이 끝나며 화면 제안(C8)의 견주기도 돌지 않는다.
+     사람이 부른 길(`pick` · `retry` · `draft.mismatchRetry`)은 꺼져도 돈다.
+  4. 넣는 손 — 곁줄 카드의 `고치기`(`draft.syncApply` → `screenSyncApply`)가 `#applyWithInverse`(옛 `#adoptFromScreen` ·
+     `adopt` 와 같은 판정 — 블록 지문 · 생성 중 개정이 바뀌면 오래됨 걸음 건너뜀 · 발행 중이면 변경안으로 남김)를 돌려 들인다.
+     이미 들어갔거나 걷힌 변경안에는 사람 말로 거절한다. `건너뛰기`(`draft.syncSkip` → `screenSyncDismiss`)는 열린 걸음을
+     `rejected` 로 걷는다. 기획서 탭의 채택 · 걷기(`adopt` · `reject`)도 같은 변경안이다 — `origin === "screen"` 이면 끝날 때
+     `onScreenProposal` 으로 opIds · 되돌릴 재료(`ScreenSyncInverse`)를 지휘에 알린다.
+  5. 기록과 방송 — 들어간 문서는 `plans/screen-sync.jsonl` 에 `entry` 줄(되돌리기 재료 · 넣은 뒤에만), 끝난 카드는 `card` 줄(턴의
+     재료와 마지막 `PlanSync` — 대기 카드도 여기 남겨 다시 연 대화 · 지휘 재시작에서도 손이 선다)로 남고, `건너뛰기` 는 `decline`
+     줄(화면 · 문서 짝 — 연결로만 이어진 다음 판정은 대상에서 빼고, 근거로 보낸 문서는 예외)로 남는다. 카드가 한 번도 못 선 실패는
+     `card` 줄의 `failure: { kind: "sync" }` 로 남고 `다시 시도`(`draft.syncRetry` → `retry` 가 턴을 다시 돈다)가 닫는다 — 판정 중
+     대화가 지워지면 되살리지 않는다. 방송은 `session.event` 의 `plans.synced`(`{ requestId, sync }`)이고, 끝난 결과는 대화록의
+     그 요청 줄(`user.echo` 의 선택 필드 `planSync`)에 다시 적혀 다시 연 대화에도 곁줄이 선다(`session-tape.ts` 가 합친다).
+     로그에는 종류와 수만 남는다.
 - **되돌리기** — `draft.syncUndo { entryId }` → `screenSyncUndo`: 들어간 뒤 지문 그대로인 블록만 그 전으로 돌리고(사람이 그 뒤 고친
   블록은 `kept` 로 센다) 되돌린 걸음은 `rejected` 로 적는다. 발행 중이면 거절이다. Confluence 는 건드리지 않는다. 화면의
   `repo.restore(sha)` 는 되돌리기 전 보관 이력을 읽어 두었다가, 성공하면 그 지점보다 뒤의 보관에 묶인 살아 있는 기록을 새것부터
-  돌린다(`entriesAfterRestore` · `undoAfterRestore`).
+  돌린다(`entriesAfterRestore` · `undoAfterRestore`) — 그 자리에 아직 대기인 변경안이 있으면 넣는 대신 `screenSyncDismiss` 로
+  걷고 카드의 그 줄을 `unchanged` 로 지운다(2026-11-03 A안 1A-1).
 - **문서 고르기** — `draft.syncPick { sessionId, requestId, pageId }` 는 그 요청의 `card` 줄에서 턴을 꺼내 고른 문서와 그 화면을
-  잇고 그 문서로 같이 고친다. 결과는 `plans.synced` 로 온다.
+  잇고 그 문서로 같이 고친다(사람이 누른 길이라 `planLoop` 과 상관없이 돈다). 결과는 `plans.synced` 로 온다.
 - **화면과 맞춰 보기(2026-11-02 · UX 계획 C7)** — `draft.compare { pageId }` 가 문서 하나와 지금 화면을 견주어 어긋난 줄
   (`DraftCompareResult` — 절 · 기획서 쪽 말 · 화면 쪽 말 · 화면 이름 · 출처)을 돌려준다. **판정만 돌고 초안 · 화면 어디에도 쓰지
   않는다** — 초안이 없는 문서는 공식본 사본을 읽고 초안을 만들지 않는다. 정본은 초안 우선(같은 계획 §2)이라 어느 판에서
@@ -1735,7 +1745,7 @@ exclude 줄도 보관 거름도 없다. 자리는 `confluence-mirror.ts` 의 두
 - **화면 제안 카드(같은 날 C8)** — 기획 AI 답 스키마에 선택 필드 `policy`(정책 · 규칙 · 조건 · 문구 정의를 바꿨는지 자기 보고)를
   더했다. `draft.ask` 의 바로 반영으로 개정이 오르고 `policy` 가 참이면 `#mismatchOf` 가 같은 문서로 조용히 견준다 — 화면이 옛
   규칙이면 담은 말에 선택 필드 `mismatch { rows }` 로 실리고 기획 대화 답 아래 카드가 선다(`draft-store` 의 해석도 같이). 실패는
-  조용히 사라진다(제안은 덤). 같이 고치기(`quiet` — `#adoptFromScreen` 길)에는 돌지 않는다(같은 계획 §2 핑퐁 막기).
+  조용히 사라진다(제안은 덤). 같이 고치기(`quiet` — `screenSync` 길)에는 돌지 않는다(같은 계획 §2 핑퐁 막기).
 - **곁줄 발행(같은 날 C3)** — 같이 고친 문서의 곁줄에 `발행` 손. `chat/PublishFromSync.tsx` 가 발행 확인 부품
   (`PublishDialog`)에 `site · baseTitle · pendingCommandId` 를 채워 화면 자리에 그대로 띄운다(선택 필드 `banner` 로
   같이 고친 것 밖의 바뀐 곳 한 줄). Confluence 쓰기 게이트가 꺼져 있으면 손이 안 선다.
@@ -1754,12 +1764,22 @@ exclude 줄도 보관 거름도 없다. 자리는 `confluence-mirror.ts` 의 두
   (옛 `plans/draft/ReadAsk.tsx` 는 2026-11-02 D11 정리에서 지웠다).
   제출 확인(`SubmitPopover`)은 셸의 초안 요약에서 바뀐 블록이 있거나 새 문서인 초안을 `아직 발행 전인 기획서 초안 N개` 로 보인다.
   문장은 `labels.ts` 의 `L.planSync` · `L.compare` · `L.plans.ask*` · `L.plans.docScreen*` · `L.submitConfirm.plans*` · `L.drafts.fromScreen`.
+- **누름=보내기 · 판정 다시 시도 · 자동 맞춰 보기 스위치(2026-11-03 A안 1A-1(b)(c) · 1A-2, 웹)** — 어긋남 카드의
+  `화면을 기획서대로` 는 `sendMismatchNow` 로 `nx:composer:attach` 에 `send: true` 를 실어 보내고, `Composer` 는 그 표시에
+  붙인 편집판을 그대로 즉시 보낸다(쓰던 말은 덮지 않는다 — 비었을 때만 브리프가 들어간다); 곁의 `고쳐서 보내기` 만
+  입력창에 미리 채운다. `DraftMessage.mismatchFailed` 가 선 답 아래에는 실패 한 줄과 `다시 시도`
+  (`draft.mismatchRetry { docKey, messageId }` — 결과는 대화 갱신 방송으로 온다)가 선다. 설정 · AI 쪽의
+  `기획서와 화면을 서로 맞춰요` 스위치는 `machine.set` 의 `planLoop` 를 저장하고 상태의 `planLoop?` 를 읽는다
+  (없으면 기본 켬) — 다시 켜면 `다시 켰어요` 한 줄이 선다. `machineSet` 에 `planLoop` 는 셋째 선택 인자로 더했다
+  (기존 부름은 그대로). 시험 `mismatch-send.test.ts`(send 표시 · 바로 보내기 갈림 · 다시 시도 · 토글 · 선로 꼴).
 - **정답표 · 재기(같은 날 0단계)** — `scripts/bench/compare-sheet.json` 이 견본 문서 · 어긋난 규칙 · 화면 요청 정답표(20개 안팎,
   검사는 `compare-sheet.test.mjs`)를 담고, 벤치 시나리오의 `compare` 종류(`scenarios/compare.json`)가 `draft.compare` 로
   한 편을 재 어긋난 절을 정답과 견준다(`judgeCompare` — 놓친 절 · 잘못 짚은 절). C1(자동 대상 찾기)의 켜고 끄기와 임계는
   이 정답표의 결과로 정한다(UX 계획 §8).
 - **시험** — 데몬 `screen-plan-sync.test.ts`(대상 · 잇기 · 판정 말 · 되돌림 지점 · 고르기 → 같이 고침 → 되돌리기 흐름 · 화면
-  되돌리기 묶기)와 `draft-service.test.ts` 의 같이 고치기 셋(들어감과 되돌림 · 바꿀 것 없음 · 사람이 고친 블록 남김),
+  되돌리기 묶기)와 `screen-sync-gate.test.ts`(게이트 — 판정은 대기만 · 고치기가 넣음 · 오래됨 · 건너뛰기와 decline ·
+  카드 두 장과 재시작 · 실패 카드와 다시 시도 · `planLoop` 끔 · 되돌림 지점 뒤 대기 걷기 · 기획서 탭 채택 · 걷기),
+  `draft-service.test.ts` 의 같이 고치기 셋(판정은 대기만 · 고치기로 들어감과 되돌림 · 바꿀 것 없음 · 사람이 고친 블록 남김),
   `plan-compare.test.ts`(절 자르기 · 판정 말 · 답 줄 걸르기 · 안 받은 짝 · 먼저 볼 화면), `draft-compare.test.ts`(판정만 돌고
   초안 없음 · 초안 우선과 거부 걸르기 · 화면 제안 카드와 핑퐁 막기 · 기록 도출의 절 풀기), `link-map.test.ts`,
   웹 `next-plan-sync.test.ts`(결과에 실림 · 맡긴 첫 말)와 `next-mismatch.test.ts`(줄 열쇠 · 두 브리프의 기준 줄).
@@ -1819,7 +1839,7 @@ exclude 줄도 보관 거름도 없다. 자리는 `confluence-mirror.ts` 의 두
   정해져 있어 프로젝트마다 달라질 이유가 없다(씨앗 규칙은 화면 대화의 next 와 같다 — `draft-pick.ts`). 서비스가 걸음을 다시 검사해 맞지 않는 것은 버리고(로그에는 수만),
   **묻기의 변경안은 채택 없이 초안에 바로 들어간다**(2026-10-31 기획서 칸 개선 · 사용자 결정 — 추천안 채택. 옛 결정
   「자동 채택 제외」(같이 고치기 계획 §0 인용)를 기획 대화 전체로 넓혔다) — `#applyProposalLocked` 가
-  `#adoptFromScreen` 과 같은 판정으로 열린 걸음을 초안에 넣고 되돌릴 재료(`ProposalRecord.inverse`)와
+  `#applyWithInverse`(옛 `#adoptFromScreen`)과 같은 판정으로 열린 걸음을 초안에 넣고 되돌릴 재료(`ProposalRecord.inverse`)와
   `appliedAt` · `appliedOpIds` 를 변경안 기록에 남긴다. 사람이 고치던 블록의 걸음은 덮지 않고 남는다(오래됨 표시는
   대화 보기의 다시 대 보기 몫). 되돌리기(`draft.undo`)는 재료의 지문이 그대로인 블록만 그 전으로 돌리고 걸음을 거절로
   적는다(같이 고치기의 `screenSyncUndo` 와 같은 판정). 저장할 때마다 판 스냅숏이 `plans/revisions/<docKey>/<개정>.json`
@@ -2166,7 +2186,7 @@ v19 에서 더한 것(PLAN-UI 3 · 8): `repo.submit { sessionId?, note? }` 와 �
 (PR 본문의 `> 한마디:`), `RepoStatus.cycleScreens` · `submit` · `phaseSince`,
 `DaemonStatus.providers[].latestVersion` · `agentAutoUpdate` · `agentUpdates`,
 `ProjectSummary.reviewers` · `commandsApproved`, 명령 `agent.update { kind }` ·
-`agent.update.check` · `machine.set { agentAutoUpdate?, provider? }`, 설치 진행기의
+`agent.update.check` · `machine.set { agentAutoUpdate?, provider?, planLoop? }`, 설치 진행기의
 `update-claude`, `InviteRow` 의 `keep`, 데스크톱 브리지의
 `invite.discard(path)` · `invite.pathOf(file)`. 데몬은 에이전트 CLI 를 띄울 때
 `DISABLE_AUTOUPDATER=1` 을 건다 — 자기 업데이트를 끄고 설정의 업데이트 줄이 대신 맡는다

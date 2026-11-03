@@ -1,5 +1,5 @@
 import { isUnusablePlan, type OnboardingFixKind } from "@colonova-design/protocol";
-import { type UIEvent, useEffect, useState } from "react";
+import { type UIEvent, useEffect, useRef, useState } from "react";
 import { useInstallStep } from "../../hooks/use-install-step";
 import type { Daemon } from "../../lib/daemon-client";
 import { composing } from "../../lib/ime";
@@ -166,6 +166,35 @@ export function AiPage({
   const gone =
     usable.length > 0 && !usable.some((provider) => provider.id === settings.chat.provider);
 
+  // 기획서↔화면 자동 맞춰 보기(2026-11-03 A안 1A-1(c)) — 값은 머신 설정에 산다. 아직 상태가
+  // 없으면 기본(켬)으로 믿고 그린다 — `use-updates` 의 자동 설치 줄과 같은 결의 낙관적 고름이다.
+  const statusLoop = daemon.status?.planLoop ?? true;
+  const [loopPending, setLoopPending] = useState<boolean | null>(null);
+  const [loopError, setLoopError] = useState<string | null>(null);
+  const [loopResumed, setLoopResumed] = useState(false);
+  const loopTimer = useRef<number | null>(null);
+  useEffect(() => {
+    if (loopPending !== null && statusLoop === loopPending) setLoopPending(null);
+  }, [statusLoop, loopPending]);
+  const loopOn = loopPending ?? statusLoop;
+  const setLoop = (next: boolean) => {
+    if (loopTimer.current !== null) window.clearTimeout(loopTimer.current);
+    setLoopError(null);
+    setLoopResumed(false);
+    setLoopPending(next);
+    void daemon.api
+      .machineSet(undefined, undefined, next)
+      .then(() => {
+        loopTimer.current = window.setTimeout(() => setLoopPending(null), 4000);
+        // 다시 켜면 앱이 어긋남을 곧장 다시 잡는다 — 그 말을 한 번 얹는다.
+        if (next) setLoopResumed(true);
+      })
+      .catch(() => {
+        setLoopPending(null);
+        setLoopError(L.planLoop.saveFailed);
+      });
+  };
+
   return (
     <SPage id="ai" active={active} onScroll={onScroll}>
       {loginExpired && (
@@ -285,6 +314,23 @@ export function AiPage({
         </div>
       )}
       {providers.length === 0 && <EmptyProviders loading={daemon.status === null} />}
+      {/* 기획서와 화면이 어긋나면 앱이 스스로 맞춰 본다(2026-11-03 A안 1A-1(c)) — 기본은 켬, 저장은
+          이 컴퓨터의 머신 설정(machine.set 의 planLoop)이다. 값이 아직 안 오면 데몬의 기본(켬)을 믿는다. */}
+      <SGroup>
+        <SRow title={L.planLoop.row} id="nx-ai-planloop" sub={L.planLoop.rowSub}>
+          <Switch on={loopOn} label={L.planLoop.row} onChange={setLoop} />
+        </SRow>
+        {loopError !== null && (
+          <p className="nx-snote nx-snote--row nx-snote--red" role="alert">
+            {loopError}
+          </p>
+        )}
+        {loopResumed && (
+          <p className="nx-snote nx-snote--row" role="status">
+            {L.planLoop.resumed}
+          </p>
+        )}
+      </SGroup>
       {/* AI 가 일하는 동안 미리보기가 고치는 화면으로 옮겨 간다 — 기본 켜짐, 끄는 길이 이 한 줄이다(2026-10-08 베타 준비 분석). */}
       <SGroup>
         <SRow title={L.live.followRow} id="nx-ai-follow" sub={L.live.followRowSub}>

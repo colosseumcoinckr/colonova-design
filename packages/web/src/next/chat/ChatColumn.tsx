@@ -151,6 +151,19 @@ export function ChatColumn({
         if (activeId === null) return Promise.reject(new Error("no session"));
         return api.draftSyncPick(activeId, requestId, pageId).then(() => undefined);
       },
+      // 같이 고치기 게이트(2026-11-03 A안 1A-1) — 세 손 모두 결과는 `plans.synced` 방송으로 온다.
+      apply: (requestId, docKey) => {
+        if (activeId === null) return Promise.reject(new Error("no session"));
+        return api.draftSyncApply(activeId, requestId, docKey).then(() => undefined);
+      },
+      skip: (requestId, docKey) => {
+        if (activeId === null) return Promise.reject(new Error("no session"));
+        return api.draftSyncSkip(activeId, requestId, docKey).then(() => undefined);
+      },
+      retry: (requestId) => {
+        if (activeId === null) return Promise.reject(new Error("no session"));
+        return api.draftSyncRetry(activeId, requestId).then(() => undefined);
+      },
       docs: () => api.docList().then((result) => result.docs ?? []),
       // 곁줄 발행(C3) — 쓰기 게이트가 열려 있을 때만 손이 선다. 확인 창은 그대로 화면 자리 팝으로 뜬다.
       ...(project?.confluence?.writable === true

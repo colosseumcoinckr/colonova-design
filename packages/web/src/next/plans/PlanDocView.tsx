@@ -6,7 +6,11 @@ import type { Daemon, MapReadResult } from "../../lib/daemon-client";
 import { timeAgo } from "../../lib/format";
 import { openScreenPath } from "../../lib/screen-link";
 import { L } from "../labels";
-import { applyMismatchToDraft, offerMismatchToComposer } from "../lib/mismatch-model";
+import {
+  applyMismatchToDraft,
+  offerMismatchToComposer,
+  sendMismatchNow,
+} from "../lib/mismatch-model";
 import type { ShellNav } from "../slots";
 import { CloseIcon, InfoIcon, SparkIcon, Spin } from "../ui/icons";
 import { MismatchCard, type MismatchHand } from "../ui/MismatchCard";
@@ -154,6 +158,16 @@ export function PlanDocView({
               docKey: compareResult.docKey,
             }).then(() => nav.toast(L.compare.appliedToast)),
     send: (row) =>
+      sendMismatchNow({
+        api: daemon.api,
+        brief: L.compare.sendBrief(row, compareResult?.title ?? shownTitle),
+        target: { pageId },
+      }).then((result) => {
+        if (result === false) throw new Error("composer away");
+        nav.showTab("chat");
+        nav.toast(result === "sent" ? L.compare.sentNowToast : L.compare.sentToast);
+      }),
+    sendEdit: (row) =>
       offerMismatchToComposer({
         api: daemon.api,
         brief: L.compare.sendBrief(row, compareResult?.title ?? shownTitle),

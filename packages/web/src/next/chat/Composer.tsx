@@ -242,6 +242,10 @@ export function Composer({
     text: storedDraft(draftKey),
     attachments: [],
   }));
+  // 지금 편집판의 거울 — `nx:composer:attach` 의 누름=보내기가 setEditor 를 기다리지 않고
+  // 붙인 편집판을 계산할 때 읽는다.
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
   const hintId = useId();
   const [notice, setNotice] = useState<{ tone: "warn" | "danger"; text: string } | null>(null);
   const [sending, setSending] = useState(false);
@@ -416,10 +420,12 @@ export function Composer({
     setEditor((prev) => ({ ...prev, text: ghost }));
   };
 
-  const submit = () => {
+  // 보내기의 몸통 — 입력창의 지금 편집판이 아니라 건네준 편집판을 보낸다. `nx:composer:attach` 의
+  // 누름=보내기(`detail.send` — 2026-11-03 A안 1A-1(b))가 붙인 내용을 그대로 보내게 한 갈림이다.
+  const submitEditor = (given: Editor) => {
     if (sendingRef.current || locked) return;
-    const text = editor.text.trim();
-    if (!text && editor.attachments.length === 0 && pins.length === 0) return;
+    const text = given.text.trim();
+    if (!text && given.attachments.length === 0 && pins.length === 0) return;
     // 핀만 있고 말이 어디에도 없다 — 보내지 않고 한 줄로 묻는다(말풍선의 `지금 보내기` 도 이 길을 지난다).
     if (pinsWordless(text, pins)) {
       setNotice({ tone: "warn", text: L.composer.pinNeedsWords });
@@ -432,14 +438,14 @@ export function Composer({
     setDismissed(suggestion?.trim() || null);
     const sentKey = keyRef.current;
     sendFailures.current.delete(sentKey);
-    const sentEditor = editor;
+    const sentEditor = given;
     let restoreKey = sentKey;
     // 누른 순간 비운다 — 거절되면 catch 가 말과 첨부를 돌려놓는다.
     drafts.current.set(sentKey, EMPTY);
     saveDraft(sentKey, "");
     setEditor(EMPTY);
     const sentScreens = shownScreens.current.take(sentKey);
-    void onSend(text, editor.attachments, pins, sentScreens, (id) => {
+    void onSend(text, given.attachments, pins, sentScreens, (id) => {
       restoreKey = id;
     })
       .catch((error: unknown) => {
@@ -472,8 +478,17 @@ export function Composer({
         }
       });
   };
+  const submit = () => submitEditor(editor);
   const submitRef = useRef(submit);
   submitRef.current = submit;
+  // 최신 submitEditor · pins · locked 의 손잡이 — 마운트 때 단 한 번 붙는 `nx:composer:attach` 처리가
+  // 오래된 값을 잡지 않게 렌더마다 갈아 끼운다.
+  const submitEditorRef = useRef(submitEditor);
+  submitEditorRef.current = submitEditor;
+  const pinsRef = useRef(pins);
+  pinsRef.current = pins;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
 
   // 미리보기의 `AI에게 이 화면 보여 주기`(단계 3) — 담아 준 그림을 첨부로 받는다. 받았다고
   // 알리면(preventDefault) 미리보기는 스스로 보내지 않는다. 화면은 다음 보내기에 실린다.
@@ -486,6 +501,10 @@ export function Composer({
           attachments?: Array<Partial<Attachment> & { mediaType: string; data: string }>;
           screen?: string;
           text?: string;
+          /** 누름=보내기(2026-11-03 A안 1A-1(b)) — 붙이고 채운 뒤 곧바로 보낸다(도는 중이면 대기 줄). */
+          send?: boolean;
+          /** 처리 결과의 답신 — 누름=보내기가 실제로 보냈으면 true, 미리 채우기로 떨어졌으면 false. */
+          sent?: boolean;
         }>
       ).detail;
       const incoming = (detail?.attachments ?? []).filter((att) => att?.data && att.mediaType);
@@ -499,11 +518,34 @@ export function Composer({
         data: att.data,
         size: att.size ?? Math.ceil(att.data.length * 0.75),
       }));
-      setEditor((prev) => ({
-        // 미리 채우는 말은 사람이 확인하고 보내는 브리프다 — 이미 쓰던 말을 덮지 않게 비었을 때만 채운다.
-        text: typeof detail?.text === "string" && prev.text.trim() === "" ? detail.text : prev.text,
-        attachments: [...prev.attachments, ...read],
-      }));
+      // 누름=보내기는 입력창이 완전히 비었을 때만 보낸다 — 쓰던 말 · 첨부 · 핀이 하나라도 있으면
+      // 사람의 편집판을 덮거나 함께 보내지 않고 미리 채우기로 떨어진다(2026-11-03 오케스트레이터 검토).
+      const sendsNow =
+        detail?.send === true &&
+        editorRef.current.text.trim() === "" &&
+        editorRef.current.attachments.length === 0 &&
+        pinsRef.current.length === 0 &&
+        !sendingRef.current &&
+        !lockedRef.current;
+      if (sendsNow && detail) {
+        detail.sent = true;
+        setEditor(EMPTY);
+        if (detail.screen) shownScreens.current.add(keyRef.current, [{ screen: detail.screen }]);
+        // 보내는 편집판은 브리프와 붙은 첨부뿐 — 보내기 길은 `submitEditor`(`nx:pins:send` 와 같은 길).
+        submitEditorRef.current({ text: detail.text ?? "", attachments: read });
+        return;
+      }
+      if (detail?.send === true) detail.sent = false;
+      // 붙인 편집판을 한 번 계산해 둔다 — 미리 채우는 말은 사람이 확인하고 보내는 브리프다 —
+      // 이미 쓰던 말을 덮지 않게 비었을 때만 채운다.
+      const merged: Editor = {
+        text:
+          typeof detail?.text === "string" && editorRef.current.text.trim() === ""
+            ? detail.text
+            : editorRef.current.text,
+        attachments: [...editorRef.current.attachments, ...read],
+      };
+      setEditor(merged);
       if (detail?.screen) shownScreens.current.add(keyRef.current, [{ screen: detail.screen }]);
       area.current?.focus();
     };

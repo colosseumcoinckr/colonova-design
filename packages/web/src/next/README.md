@@ -35,7 +35,9 @@
   `nx-input`(+`--area`) · `nx-field`, `nx-pill`, `nx-banner`(+`-body` · `-act`),
   `nx-empty`(+`-mark` · `-title` · `-desc` · `-act`), `nx-topbar`(52px),
   `nx-li`(+`-main` · `-title` · `-sub` · `-end`), 어긋남 카드 `nx-mismatch`(`ui/MismatchCard.tsx` —
-  2026-11-02 · 같이 고치기 UX 계획 §2. 기획서 칸 읽는 문서 곁 · 화면 자리 기획서 탭 · 기획 대화 답 아래가 함께 쓴다)를
+  2026-11-02 · 같이 고치기 UX 계획 §2. 기획서 칸 읽는 문서 곁 · 화면 자리 기획서 탭 · 기획 대화 답 아래가 함께 쓴다.
+  `화면을 기획서대로` 는 2026-11-03 A안 1A-1(b)부터 브리프를 화면 대화로 바로 보내는 으뜸 손이고,
+  `고쳐서 보내기` 만 입력창에 미리 채운다)를
   쓴다. 같은 모양을 각 칸의 CSS에 다시 선언하지 않는다.
 - **으뜸 단추는 한 화면에 하나다.** `nx-btn--pri`는 잉크 바탕이고, 포인트 색 바탕(`nx-btn--accent`)은 AI에게
   `보내기`와 켜짐 상태에만 쓴다. 상태는 색과 함께 글이나 아이콘으로 말한다.
@@ -242,6 +244,8 @@ localStorage, 없으면 화면 자리). 기획서 자리에는 화면 대화 · 
 - `use-closing.ts` — 겹판이 닫히는 동안의 모션 타이머 한 곳(`useClosing`).
 - `mismatch-model.ts` — 어긋남 카드의 순수 재료(2026-11-02 · 같이 고치기 UX 계획 C7 · C8): `mismatchRowKey`
   (절 · 화면 이름의 짝) · `offerMismatchToComposer`(문서를 근거로 붙이고 브리프를 입력창에 미리 채운다 — 보내기는 사람) ·
+  `sendMismatchNow`(2026-11-03 A안 1A-1(b) — 같은 길에 `send: true` 를 실어 입력창이 곧바로 보낸다,
+  도는 중이면 대기 줄) ·
   `applyMismatchToDraft`(초안이 없으면 먼저 열고 기획 대화로 브리프를 보낸다). 브리프 문장은 `L.compare.applyBrief` ·
   `sendBrief`. 이벤트 이름 `nx:composer:attach` 는 `composer-attach.ts`(순수 모듈 — .tsx 를 읽지 않는 시험도 쓴다).
 - `plans/plans-list.ts` — 기획서 칸의 순수 조립(2026-10-18): `planRows`(경로의 **걸음** 순서 — 글자 통째로 견주면 `정책서 v2` 가

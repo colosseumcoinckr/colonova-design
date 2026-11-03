@@ -4,7 +4,11 @@ import { Markdown } from "../../components/Markdown";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
 import { routePath } from "../lib/follow-edit";
-import { applyMismatchToDraft, offerMismatchToComposer } from "../lib/mismatch-model";
+import {
+  applyMismatchToDraft,
+  offerMismatchToComposer,
+  sendMismatchNow,
+} from "../lib/mismatch-model";
 import { attachEventDetail } from "../plans/doc-actions/doc-actions-model";
 import { openPlanTarget } from "../plans/open-plan";
 import { DocView } from "../plans/view/DocView";
@@ -231,6 +235,23 @@ export function PlanTab({
               docKey: compareResult.docKey,
             }).then(() => nav.toast(L.compare.appliedToast)),
     send:
+      picked === null
+        ? () => Promise.reject(new Error("no doc"))
+        : (row) =>
+            sendMismatchNow({
+              api,
+              brief: L.compare.sendBrief(row, compareResult?.title ?? picked.title),
+              target:
+                picked.pageId !== null
+                  ? { pageId: picked.pageId }
+                  : { docKey: picked.docKey ?? "" },
+            }).then((result) => {
+              if (result === false) throw new Error("composer away");
+              nav.showTab("chat");
+              // 실제로 보냈을 때만 `보냈어요` — 미리 채우기로 떨어졌으면 예전 토스트.
+              nav.toast(result === "sent" ? L.compare.sentNowToast : L.compare.sentToast);
+            }),
+    sendEdit:
       picked === null
         ? () => Promise.reject(new Error("no doc"))
         : (row) =>

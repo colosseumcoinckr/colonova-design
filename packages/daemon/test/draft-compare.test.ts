@@ -301,8 +301,8 @@ test("화면 제안 — 같이 고치기가 넣은 고침에는 카드를 띄우
       displayText: "비밀번호를 10자 이상으로",
       promptText: "[화면 요청에서 같이 고치기] …",
     });
-    assert.equal(result.outcome, "adopted");
-    // 정책 고침이 들어갔어도 견주기는 돌지 않는다 — autoApply 길이 아니므로(계획 §2).
+    assert.equal(result.outcome, "pending");
+    // 판정은 변경안만 남긴다(2026-11-03 A안 1A-1 게이트) — 자동으로 들어가지 않으니 견주기는 돌지 않는다.
     assert.equal(rig1.calls.filter((one) => one.prompt.includes("[화면과 맞춰 보기]")).length, 0);
     const last = rig1.service.thread(KEY).messages.at(-1);
     assert.equal(last?.mismatch, undefined);
@@ -333,6 +333,12 @@ test("기록 도출 — 걸음의 열쇠가 닿은 절을 풀어 돌려준다(C4
       displayText: "비밀번호를 10자 이상으로",
       promptText: "[화면 요청에서 같이 고치기] …",
     });
+    // 게이트 뒤에는 넣는 손이 따른다(2026-11-03 A안 1A-1) — 기록은 넣은 뒤에 남긴다.
+    const applied = await rig1.service.screenSyncApply({
+      slug: "demo",
+      docKey: KEY,
+      proposalId: result.proposalId ?? "",
+    });
     // 기록은 지휘(screen-plan-sync)가 남긴다 — 여기서는 같은 모양으로 직접 쓴다.
     mkdirSync(join(rig1.home, "demo", "plans"), { recursive: true });
     writeFileSync(
@@ -348,8 +354,8 @@ test("기록 도출 — 걸음의 열쇠가 닿은 절을 풀어 돌려준다(C4
         docKey: KEY,
         title: "로그인 화면",
         proposalId: result.proposalId,
-        opIds: result.opIds,
-        inverse: [],
+        opIds: applied.opIds,
+        inverse: applied.inverse,
       })}\n`,
     );
     const { docs } = rig1.service.syncDocs("s1");

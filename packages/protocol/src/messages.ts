@@ -676,6 +676,11 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     provider: z.string().min(1).max(64).nullable().optional(),
     /** 새 AI 버전이 나오면 스스로 설치할지(PLAN-UI U12) — 없으면 그대로 둔다. */
     agentAutoUpdate: z.boolean().optional(),
+    /**
+     * 기획서와 화면을 서로 맞추는 자동 판정(2026-11-03 A안 1A-1 설정 토글) — 같이 고치기 · 화면 제안의 판정을 돌릴지.
+     * 끄면 판정 호출 자체를 하지 않는다(연결 · 근거 기록은 계속 쌓는다). 없으면 그대로 둔다.
+     */
+    planLoop: z.boolean().optional(),
   }),
   /**
    * 설정의 `업데이트` 줄(PLAN-UI U12): 에이전트 CLI 를 새 버전으로 바꾼다.

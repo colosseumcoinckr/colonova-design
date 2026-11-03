@@ -59,6 +59,7 @@ import { MachineSetting } from "./machine-setting.js";
 import { type DaemonNotice, noticeForState } from "./notices.js";
 import { AgentLogin } from "./onboarding.js";
 import { realpathBestEffort } from "./paths.js";
+import { planLoopOn } from "./plan-loop.js";
 import { PlanTracker } from "./plan-tracker.js";
 import { daemonOwnedPorts } from "./preview-claim.js";
 import type { PreviewDriverFactory } from "./preview-driver.js";
@@ -809,6 +810,8 @@ export class DaemonServer {
       claudeExecutable: () => this.claudeExecutable,
       broadcast: (m) => this.broadcast(m),
       logger: this.logger,
+      // 기획서 탭에서 화면 변경안을 넣거나 걷으면 같이 고치기가 기록과 곁줄을 맞춘다(2026-11-03 A안 1A-1).
+      onScreenProposal: (input) => this.screenSync?.onProposalSettled(input),
       ai: createDraftAiRunner(),
       publisher: new DraftPublisher(),
       cloneRoot: (slug) => {
@@ -829,6 +832,7 @@ export class DaemonServer {
         readConfluenceLedger(confluenceMirrorLedger(registry.paths(slug).root)).pages[pageId]
           ?.title ?? null,
       emit: (turn, sync) => this.emitPlanSync(turn, sync),
+      loopOn: () => planLoopOn(this.machineSetting),
       logger: this.logger,
     });
     // 문서 관리 — 기획 초안 바로 옆에서 만든다(2026-10-23 작업 D1a). 적용 · 결과 불명 뒤에는 트리를
@@ -1536,6 +1540,7 @@ export class DaemonServer {
       dev: this.config.devAgents === true,
       authorName: this.machineSetting.get("authorName"),
       agentAutoUpdate: this.machineSetting.get("agentAutoUpdate") !== "off",
+      planLoop: planLoopOn(this.machineSetting),
       ...(this.agentUpdates.snapshot() ? { agentUpdates: this.agentUpdates.snapshot() } : {}),
       githubAuthExpired: this.github.authExpired,
       // 만료 예정(U17) — 브리지가 아직 모르면(첫 관찰 전) machine.json 의 값.

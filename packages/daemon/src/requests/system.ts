@@ -3,6 +3,7 @@ import { collectDiagnostics } from "../diagnostics.js";
 import { forgetMissingGit } from "../environment.js";
 import { submitFeatureRequest } from "../feedback.js";
 import { runOnboardingChecks, runPnpmInstall, startGitInstall } from "../onboarding.js";
+import { PLAN_LOOP_KEY } from "../plan-loop.js";
 import type { RequestHandlers, RouterDeps } from "./types.js";
 
 type SystemDeps = Pick<
@@ -133,6 +134,13 @@ export function systemHandlers(deps: SystemDeps): RequestHandlers<SystemRequest>
           .then((status) => deps.broadcast({ type: "status", status } as ServerMessage));
         // 켰다면 이미 아는 새 버전을 곧바로 건다(도는 작업이 있으면 미룬다).
         if (message.agentAutoUpdate) void deps.agentUpdates.applyAuto();
+      }
+      if (message.planLoop !== undefined) {
+        // 켬이 기본이라 파일에는 끔만 적힌다 — 잊기(null)가 곧 켬이다(agentAutoUpdate 와 같은 결).
+        deps.machineSetting.set(PLAN_LOOP_KEY, message.planLoop ? null : "off");
+        void deps
+          .status()
+          .then((status) => deps.broadcast({ type: "status", status } as ServerMessage));
       }
       if (provider === undefined) return { ok: true as const };
       if (provider !== null) {

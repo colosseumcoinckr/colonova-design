@@ -1028,10 +1028,12 @@ interface DaemonApi {
   /**
    * 기계 설정(machine.set) — 저장 메모 담당(null 은 자동)과 AI 자동 설치
    * (PLAN-UI U12). 둘 다 생략 가능하고 `undefined` 는 "그대로"다.
+   * `planLoop`(2026-11-03 A안 1A-1)는 기획서↔화면 자동 판정의 켬/끔.
    */
   machineSet: (
     provider: string | null | undefined,
     agentAutoUpdate?: boolean,
+    planLoop?: boolean,
   ) => Promise<{ ok: true }>;
   /** 설정의 업데이트 줄(PLAN-UI U12) — `check` 면 새 버전만 확인해 돌려준다. */
   agentUpdate: (
@@ -1196,6 +1198,12 @@ interface DaemonApi {
   draftSyncUndo: (entryId: string) => Promise<DraftSyncUndoResult>;
   /** 이어진 기획서가 없던 화면 요청에 문서를 골라 잇고 같이 고친다(2026-10-30). 결과는 `plans.synced` 로 온다. */
   draftSyncPick: (sessionId: string, requestId: string, pageId: string) => Promise<{ ok: true }>;
+  /** 같이 고치기 게이트(2026-11-03 A안 1A-1) — 눌러 둔 `고치기` 가 기다리는 변경안을 초안에 넣는다. 결과는 방송으로 온다. */
+  draftSyncApply: (sessionId: string, requestId: string, docKey: string) => Promise<{ ok: true }>;
+  /** 같은 게이트의 `건너뛰기` — 변경안을 걷고 이 화면 · 문서 짝은 다시 묻지 않는다. */
+  draftSyncSkip: (sessionId: string, requestId: string, docKey: string) => Promise<{ ok: true }>;
+  /** 같이 고치기 전체 실패의 `다시 시도`(2026-11-03 A안 1A-2) — 결과는 방송으로 온다. */
+  draftSyncRetry: (sessionId: string, requestId: string) => Promise<{ ok: true }>;
   draftAdopt: (
     docKey: string,
     proposalId: string,
@@ -1229,6 +1237,8 @@ interface DaemonApi {
   draftCompare: (pageId: string) => Promise<DraftCompareResult>;
   /** 어긋남 카드 안 받기(같은 계획 §2) — 이 화면 · 문서 짝의 카드를 다시 띄우지 않는다. */
   draftCompareDecline: (pageId: string, screenName: string) => Promise<{ ok: true }>;
+  /** 화면 제안 판정의 `다시 시도`(2026-11-03 A안 1A-2) — 결과는 대화 갱신 방송으로 온다. */
+  draftMismatchRetry: (docKey: string, messageId: string) => Promise<{ ok: true }>;
   /** 이 화면 대화에서 같이 고쳐진 문서들(같은 계획 C4) — 기획서 탭의 초안 묶음의 재료. */
   draftSyncDocs: (sessionId: string) => Promise<{ docs: DraftSyncDocRow[] }>;
   /** 이 문서가 같이 고침으로 닿은 화면(같은 계획 C4) — 이 문서의 화면의 기록 도출 줄. */
@@ -2324,12 +2334,13 @@ export function useDaemon(url: string | null): Daemon {
           );
           return step;
         }),
-      machineSet: (provider, agentAutoUpdate) =>
+      machineSet: (provider, agentAutoUpdate, planLoop) =>
         call<{ ok: true }>(
           {
             type: "machine.set",
             ...(provider !== undefined ? { provider } : {}),
             ...(agentAutoUpdate !== undefined ? { agentAutoUpdate } : {}),
+            ...(planLoop !== undefined ? { planLoop } : {}),
           },
           15_000,
         ),
@@ -2409,11 +2420,20 @@ export function useDaemon(url: string | null): Daemon {
         call<DraftSyncUndoResult>({ type: "draft.syncUndo", entryId }, 60_000),
       draftSyncPick: (sessionId: string, requestId: string, pageId: string) =>
         call<{ ok: true }>({ type: "draft.syncPick", sessionId, requestId, pageId }, 60_000),
+      draftSyncApply: (sessionId: string, requestId: string, docKey: string) =>
+        call<{ ok: true }>({ type: "draft.syncApply", sessionId, requestId, docKey }, 60_000),
+      draftSyncSkip: (sessionId: string, requestId: string, docKey: string) =>
+        call<{ ok: true }>({ type: "draft.syncSkip", sessionId, requestId, docKey }, 60_000),
+      draftSyncRetry: (sessionId: string, requestId: string) =>
+        call<{ ok: true }>({ type: "draft.syncRetry", sessionId, requestId }, 60_000),
       // 맞춰 보기는 기획 AI 호출 한 번 — 창을 넉넉히 둔다(2026-11-02 C7).
       draftCompare: (pageId: string) =>
         call<DraftCompareResult>({ type: "draft.compare", pageId }, 180_000),
       draftCompareDecline: (pageId: string, screenName: string) =>
         call<{ ok: true }>({ type: "draft.compareDecline", pageId, screenName }, 30_000),
+      // 다시 시도는 판정을 예약하는 요청이고 결과는 방송으로 온다 — 창은 응답까지의 것이다(2026-11-03 A안 1A-2).
+      draftMismatchRetry: (docKey: string, messageId: string) =>
+        call<{ ok: true }>({ type: "draft.mismatchRetry", docKey, messageId }, 30_000),
       draftSyncDocs: (sessionId: string) =>
         call<{ docs: DraftSyncDocRow[] }>({ type: "draft.syncDocs", sessionId }, 30_000),
       draftSyncScreens: (pageId: string) =>

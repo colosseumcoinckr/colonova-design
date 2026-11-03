@@ -49,14 +49,21 @@ export interface SyncTarget {
 /**
  * 대상 고르기 — 이 대화에 근거로 보낸 문서가 먼저, 그다음 연결 파일에서 이번 화면에 이어진 문서다. 같은 문서는 한
  * 번이고 절은 합친다(문서 전체가 하나라도 있으면 전체). 상한을 넘는 것은 버린다.
+ * `declines`(건너뛴 (문서, 화면) 짝 · 2026-11-03 A안 1A-1)은 연결 줄에서만 걸러낸다 — 근거로 직접 보낸 문서는
+ * 건너뛰기와 상관없이 늘 대상이다.
  */
 export function syncTargets(input: {
   links: readonly MapLink[];
   refs: readonly PlanRefEntry[];
   sessionId: string;
   routes: readonly string[];
+  /** 건너뛴 (pageId, 화면 주소) 짝 — 같은 짝의 연결만 다시 대상으로 고르지 않는다. */
+  declines?: ReadonlyArray<{ pageId: string; route: string }>;
 }): SyncTarget[] {
   const routes = new Set(input.routes.map((route) => normalizeRoute(route)));
+  const declined = new Set(
+    (input.declines ?? []).map((row) => `${row.pageId}\n${normalizeRoute(row.route)}`),
+  );
   const out: SyncTarget[] = [];
   const keyOf = (pageId: string | null, docKey: string | null): string =>
     pageId !== null ? `p:${pageId}` : `d:${docKey ?? ""}`;
@@ -91,7 +98,9 @@ export function syncTargets(input: {
     add(entry.ref.pageId, entry.ref.docKey, entry.ref.title, entry.ref.sections);
   }
   for (const link of input.links) {
-    if (!routes.has(normalizeRoute(link.route))) continue;
+    const route = normalizeRoute(link.route);
+    if (!routes.has(route)) continue;
+    if (declined.has(`${link.pageId}\n${route}`)) continue;
     add(link.pageId, null, null, link.section === null ? null : [link.section]);
   }
   return out.slice(0, SCREEN_SYNC_DOC_LIMIT);
@@ -190,6 +199,16 @@ export interface SyncCard {
   turn: ScreenTurn;
   sync: PlanSync;
 }
+/** 곁줄 `건너뛰기` 가 걷은 변경안(2026-11-03 A안 1A-1) — 걷인 문서와 그때의 화면 주소를 기억해, 연결로 이어진
+ *  같은 짝만 다시 대상으로 고르지 않게 한다(근거로 보낸 문서는 상관없다). */
+export interface SyncDecline {
+  kind: "decline";
+  at: string;
+  slug: string;
+  pageId: string | null;
+  docKey: string;
+  routes: string[];
+}
 
 interface SyncUndone {
   kind: "undone";
@@ -197,7 +216,7 @@ interface SyncUndone {
   entryId: string;
 }
 
-type SyncLine = SyncEntry | SyncCard | SyncUndone;
+type SyncLine = SyncEntry | SyncCard | SyncDecline | SyncUndone;
 
 export function screenSyncFile(projectRoot: string): string {
   return join(projectRoot, "plans", "screen-sync.jsonl");
@@ -222,20 +241,31 @@ export function readSyncLines(file: string): SyncLine[] {
     try {
       const parsed = JSON.parse(line) as Partial<SyncLine> | null;
       if (parsed === null || typeof parsed !== "object") continue;
-      if (
-        parsed.kind === "entry" &&
-        typeof parsed.entryId === "string" &&
-        Array.isArray(parsed.inverse)
-      ) {
-        out.push(parsed as SyncEntry);
-      } else if (
-        parsed.kind === "card" &&
-        typeof parsed.turn === "object" &&
-        typeof parsed.sync === "object"
-      ) {
-        out.push(parsed as SyncCard);
-      } else if (parsed.kind === "undone" && typeof parsed.entryId === "string") {
-        out.push(parsed as SyncUndone);
+      if (parsed.kind === "entry") {
+        const row = parsed as Partial<SyncEntry>;
+        if (typeof row.entryId === "string" && Array.isArray(row.inverse)) {
+          out.push(row as SyncEntry);
+        }
+      } else if (parsed.kind === "card") {
+        const row = parsed as Partial<SyncCard>;
+        if (typeof row.turn === "object" && typeof row.sync === "object") {
+          out.push(row as SyncCard);
+        }
+      } else if (parsed.kind === "decline") {
+        const row = parsed as Partial<SyncDecline>;
+        if (typeof row.docKey === "string" && Array.isArray(row.routes)) {
+          out.push({
+            kind: "decline",
+            at: typeof row.at === "string" ? row.at : "",
+            slug: typeof row.slug === "string" ? row.slug : "",
+            pageId: typeof row.pageId === "string" ? row.pageId : null,
+            docKey: row.docKey,
+            routes: row.routes.filter((route): route is string => typeof route === "string"),
+          });
+        }
+      } else if (parsed.kind === "undone") {
+        const row = parsed as Partial<SyncUndone>;
+        if (typeof row.entryId === "string") out.push(row as SyncUndone);
       }
     } catch {
       // 깨진 줄은 건너뛴다.
@@ -273,6 +303,18 @@ export function lastCard(
   return null;
 }
 
+/** 건너뛴 (문서, 화면) 짝 — 대상 고르기(`syncTargets`)에서 같은 짝의 연결만 걸러낸다. */
+export function declinedPairs(
+  lines: readonly SyncLine[],
+): Array<{ pageId: string; route: string }> {
+  const out: Array<{ pageId: string; route: string }> = [];
+  for (const line of lines) {
+    if (line.kind !== "decline" || line.pageId === null) continue;
+    for (const route of line.routes) out.push({ pageId: line.pageId, route });
+  }
+  return out;
+}
+
 /**
  * 화면 되돌리기와 묶기(같이 고치기 계획 §5) — 되돌림 지점보다 뒤의 보관(이력에서 그 지점보다 앞에 선 것 · 이력은
  * 새것부터)에 묶인 살아 있는 기록을 새것부터 고른다. 지점을 이력에서 못 찾으면 아무것도 고르지 않는다.
@@ -306,6 +348,18 @@ export interface ScreenPlanSyncDeps {
       opIds: string[];
       inverse: ScreenSyncInverse[];
     }): Promise<{ restored: number; kept: number }>;
+    /** 곁줄 `고치기` — 기다리는 화면 변경안을 초안에 넣는다(2026-11-03 A안 1A-1). */
+    screenSyncApply(input: {
+      slug: string;
+      docKey: string;
+      proposalId: string;
+    }): Promise<ScreenSyncResult>;
+    /** 곁줄 `건너뛰기` — 기다리는 화면 변경안의 열린 걸음을 걷는다. */
+    screenSyncDismiss(input: {
+      slug: string;
+      docKey: string;
+      proposalId: string;
+    }): Promise<{ ok: true }>;
   };
   paths(slug: string): { root: string; repoRoot: string };
   /** 그 프로젝트가 Confluence 에 이어져 있는가 — 아니면 문서 고르기를 권하지 않는다. */
@@ -314,6 +368,11 @@ export interface ScreenPlanSyncDeps {
   titleOf(slug: string, pageId: string): string | null;
   /** 결과를 그 대화로 보낸다 — 방송과 대화록 기록은 서버가 맡는다. */
   emit(turn: ScreenTurn, sync: PlanSync): void;
+  /**
+   * 자동 판정이 켜져 있는가(2026-11-03 A안 1A-1 설정 토글 · `plan-loop.ts`). 꺼져 있으면 잇기(연결 쓰기)만 하고 판정
+   * (`drafts.screenSync`)은 부르지 않으며 카드도 세우지 않는다. 없으면 켬.
+   */
+  loopOn?: () => boolean;
   logger: DaemonLogger;
   now?: () => Date;
 }
@@ -341,16 +400,13 @@ export class ScreenPlanSync {
     });
     return run;
   }
-
-  /** 보관이 내려앉은 화면 요청 — 실패는 조용하다(곁줄이 말한다). */
+  /** 보관이 내려앉은 화면 요청 — 자동 길이다(설정 토글이 판정을 끌 수 있다). 실패는 카드로 말한다. */
   onSaved(turn: ScreenTurn): Promise<void> {
     if (turn.screens.length === 0 || turn.request.trim() === "") return Promise.resolve();
-    return this.#queue(turn.slug, () => this.#run(turn, null)).catch((error: unknown) => {
-      this.#deps.logger.error("같이 고치기 실패", { err: error });
-    });
+    return this.#settle(turn, () => this.#run(turn, null, false));
   }
 
-  /** 문서 고르기 — 그 턴의 화면과 문서를 잇고 그 문서로 같이 고친다. */
+  /** 문서 고르기 — 그 턴의 화면과 문서를 잇고 그 문서로 같이 고친다(사람이 부른 길 — 토글과 상관없이 돈다). */
   async pick(
     slug: string,
     sessionId: string,
@@ -365,13 +421,31 @@ export class ScreenPlanSync {
     if (this.#deps.titleOf(slug, pageId) === null) {
       throw new Error("기획서 목록에 없는 문서예요 — 목록 가운데서 골라 주세요.");
     }
-    void this.#queue(slug, () => this.#run(card.turn, pageId)).catch((error: unknown) => {
-      this.#deps.logger.error("같이 고치기 실패", { err: error });
-    });
+    void this.#settle(card.turn, () => this.#run(card.turn, pageId, true));
     return { ok: true };
   }
 
-  async #run(turn: ScreenTurn, picked: string | null): Promise<void> {
+  /**
+   * 프로젝트 한 줄 뒤에서 돌리고, 실패하면 로그(종류만)와 함께 전체 실패 카드를 세운다(2026-11-03 A안 1A-2 — 조용한
+   * 실패 알림). card 줄이 남으므로 `다시 시도` 가 턴을 찾는다. 실패 카드의 publish 자체가 던지면 삼킨다.
+   */
+  async #settle(turn: ScreenTurn, work: () => Promise<void>): Promise<void> {
+    await this.#queue(turn.slug, work).catch((error: unknown) => {
+      this.#deps.logger.error("같이 고치기 실패", { err: error });
+      try {
+        this.#publish(turn, {
+          phase: "done",
+          docs: [],
+          linked: [],
+          failure: { kind: "sync" },
+        });
+      } catch {
+        // 실패 알림 자체의 실패는 삼킨다.
+      }
+    });
+  }
+
+  async #run(turn: ScreenTurn, picked: string | null, manual: boolean): Promise<void> {
     const { root, repoRoot } = this.#deps.paths(turn.slug);
     const routes = turn.screens.map((screen) => normalizeRoute(screen.route));
     const links = await readPlanMap(repoRoot)
@@ -380,6 +454,7 @@ export class ScreenPlanSync {
     const refs = readPlanRefs(join(root, "plans", "refs.jsonl"), null).filter(
       (entry) => entry.sessionId === turn.sessionId,
     );
+    const lines = readSyncLines(screenSyncFile(root));
     // 잇기 — 근거로 보낸 문서(또는 사람이 고른 문서)와 바뀐 화면.
     const wanted =
       picked !== null
@@ -409,6 +484,9 @@ export class ScreenPlanSync {
         this.#deps.logger.error("같이 고치기 잇기 실패", { err: error });
       }
     }
+    // 설정 토글(2026-11-03 A안 1A-1) — 끄면 잇기만 하고 대상 고르기 · 판정 · 카드는 하지 않는다.
+    // 사람이 부른 길(고르기 · 다시 시도)은 토글과 상관없이 돈다.
+    if (!manual && this.#deps.loopOn?.() === false) return;
     const targets: SyncTarget[] =
       picked !== null
         ? [
@@ -419,7 +497,13 @@ export class ScreenPlanSync {
               sections: null,
             },
           ]
-        : syncTargets({ links, refs, sessionId: turn.sessionId, routes });
+        : syncTargets({
+            links,
+            refs,
+            sessionId: turn.sessionId,
+            routes,
+            declines: declinedPairs(lines),
+          });
     if (targets.length === 0) {
       const sync: PlanSync = {
         phase: "done",
@@ -474,34 +558,12 @@ export class ScreenPlanSync {
           ? { summary: result.summary.trim() }
           : {}),
         ...(result.detail !== undefined ? { detail: result.detail } : {}),
+        ...(result.proposalId !== undefined ? { proposalId: result.proposalId } : {}),
         ...(result.kept !== undefined && result.kept > 0 ? { kept: result.kept } : {}),
       };
-      if (
-        result.outcome === "adopted" &&
-        result.docKey !== null &&
-        result.proposalId !== undefined &&
-        result.inverse !== undefined
-      ) {
-        const entry: SyncEntry = {
-          kind: "entry",
-          entryId: randomUUID(),
-          at: this.#now(),
-          slug: turn.slug,
-          sessionId: turn.sessionId,
-          requestId: turn.requestId,
-          sha: turn.sha,
-          docKey: result.docKey,
-          title: doc.title,
-          proposalId: result.proposalId,
-          opIds: result.opIds ?? [],
-          inverse: result.inverse,
-        };
-        appendLine(screenSyncFile(root), entry);
-        doc.entryId = entry.entryId;
-      }
       docs[index] = doc;
     }
-    const counts = { adopted: 0, proposed: 0, unchanged: 0, failed: 0 };
+    const counts = { pending: 0, proposed: 0, unchanged: 0, failed: 0 };
     for (const doc of docs)
       if (doc.outcome in counts) counts[doc.outcome as keyof typeof counts] += 1;
     this.#deps.logger.info("같이 고치기", { docs: docs.length, linked: linked.length, ...counts });
@@ -521,6 +583,185 @@ export class ScreenPlanSync {
     this.#deps.emit(turn, sync);
   }
 
+  /** 기다리는 문서 행을 그 요청의 마지막 카드에서 찾는다 — 없으면 사람 말 오류. */
+  #pendingDoc(
+    slug: string,
+    sessionId: string,
+    requestId: string,
+    docKey: string,
+  ): { card: SyncCard; doc: PlanSyncDoc } {
+    const card = lastCard(
+      readSyncLines(screenSyncFile(this.#deps.paths(slug).root)),
+      sessionId,
+      requestId,
+    );
+    const doc = card?.sync.docs.find((row) => row.docKey === docKey) ?? null;
+    if (
+      card === null ||
+      doc === null ||
+      doc.outcome !== "pending" ||
+      doc.proposalId === undefined
+    ) {
+      throw new Error("기다리는 고침을 찾지 못했어요 — 이미 넣었거나 건너뛴 것 같아요.");
+    }
+    return { card, doc };
+  }
+
+  /**
+   * 되돌리기 기록(entry 줄)을 쓰고 그 문서 행에 entryId 를 붙인다 — 곁줄 카드의 `고치기` 와 기획서 탭의 채택이
+   * 같은 줄을 남긴다(2026-11-03 A안 1A-1 — 판정이 남긴 변경안을 사람이 넣을 때 쓴다).
+   */
+  #writeEntry(
+    card: SyncCard,
+    doc: PlanSyncDoc,
+    input: { proposalId: string; opIds: string[]; inverse: ScreenSyncInverse[] },
+  ): void {
+    if (doc.docKey === null) return;
+    const entry: SyncEntry = {
+      kind: "entry",
+      entryId: randomUUID(),
+      at: this.#now(),
+      slug: card.turn.slug,
+      sessionId: card.turn.sessionId,
+      requestId: card.turn.requestId,
+      sha: card.turn.sha,
+      docKey: doc.docKey,
+      title: doc.title,
+      proposalId: input.proposalId,
+      opIds: input.opIds,
+      inverse: input.inverse,
+    };
+    appendLine(screenSyncFile(this.#deps.paths(card.turn.slug).root), entry);
+    doc.entryId = entry.entryId;
+  }
+
+  /** 곁줄 카드의 `고치기`(2026-11-03 A안 1A-1) — 기다리는 변경안을 넣고 되돌리기 기록을 남긴다. */
+  async apply(
+    slug: string,
+    sessionId: string,
+    requestId: string,
+    docKey: string,
+  ): Promise<{ ok: true }> {
+    // 줄 밖에서 모양을 먼저 본다 — 사람 말 오류는 즉시 던지고, 넣기는 한 줄 안에서 다시 본다.
+    this.#pendingDoc(slug, sessionId, requestId, docKey);
+    await this.#queue(slug, async () => {
+      // 한 줄 안에서 다시 읽는다 — 줄을 기다리는 동안 다른 길이 그 변경안을 정했을 수 있다.
+      const { card: fresh, doc } = this.#pendingDoc(slug, sessionId, requestId, docKey);
+      const result = await this.#deps.drafts.screenSyncApply({
+        slug,
+        docKey: doc.docKey ?? docKey,
+        proposalId: doc.proposalId ?? "",
+      });
+      doc.outcome = result.outcome;
+      doc.changes = result.changes;
+      if (result.detail !== undefined) doc.detail = result.detail;
+      if (result.kept !== undefined && result.kept > 0) doc.kept = result.kept;
+      if (result.title !== "") doc.title = result.title;
+      if (result.outcome === "adopted") {
+        this.#writeEntry(fresh, doc, {
+          proposalId: result.proposalId ?? "",
+          opIds: result.opIds ?? [],
+          inverse: result.inverse ?? [],
+        });
+        // 들어간 뒤에만 열쇠를 내린다 — proposed(전부 오래됨) · 실패에는 남겨 기획서 탭의 걷기가 카드를 찾게 한다
+        // (2026-11-03 검토 · 후속 1).
+        delete doc.proposalId;
+      }
+      this.#publish(fresh.turn, { ...fresh.sync, docs: [...fresh.sync.docs] });
+    });
+    return { ok: true };
+  }
+
+  /** 곁줄 카드의 `건너뛰기`(2026-11-03 A안 1A-1) — 변경안을 걷고 (문서, 화면) 짝을 기억한다. */
+  async skip(
+    slug: string,
+    sessionId: string,
+    requestId: string,
+    docKey: string,
+  ): Promise<{ ok: true }> {
+    // 줄 밖에서 모양을 먼저 본다 — 사람 말 오류는 즉시 던지고, 걷기는 한 줄 안에서 다시 본다.
+    this.#pendingDoc(slug, sessionId, requestId, docKey);
+    await this.#queue(slug, async () => {
+      // 한 줄 안에서 다시 읽는다 — 줄을 기다리는 동안 다른 길이 그 변경안을 정했을 수 있다.
+      const { card: fresh, doc } = this.#pendingDoc(slug, sessionId, requestId, docKey);
+      await this.#deps.drafts.screenSyncDismiss({
+        slug,
+        docKey: doc.docKey ?? docKey,
+        proposalId: doc.proposalId ?? "",
+      });
+      // 짝 기억 — 같은 문서가 같은 화면에 연결로만 이어져도 다시 대상으로 고르지 않는다.
+      appendLine(screenSyncFile(this.#deps.paths(slug).root), {
+        kind: "decline",
+        at: this.#now(),
+        slug,
+        pageId: doc.pageId,
+        docKey: doc.docKey ?? docKey,
+        routes: fresh.turn.screens.map((screen) => normalizeRoute(screen.route)),
+      });
+      doc.outcome = "declined";
+      delete doc.proposalId;
+      this.#publish(fresh.turn, { ...fresh.sync, docs: [...fresh.sync.docs] });
+    });
+    return { ok: true };
+  }
+
+  /** 전체 실패 카드의 `다시 시도`(2026-11-03 A안 1A-2) — 사람이 부른 길이라 토글과 상관없이 돈다. */
+  async retry(slug: string, sessionId: string, requestId: string): Promise<{ ok: true }> {
+    const card = lastCard(
+      readSyncLines(screenSyncFile(this.#deps.paths(slug).root)),
+      sessionId,
+      requestId,
+    );
+    if (card?.sync.failure === undefined) {
+      throw new Error(
+        "다시 시도할 같이 고침을 찾지 못했어요 — 실패한 카드에서만 다시 시도할 수 있어요.",
+      );
+    }
+    void this.#settle(card.turn, () => this.#run(card.turn, null, true));
+    return { ok: true };
+  }
+
+  /**
+   * 기획서 탭에서 화면 변경안이 넣어지거나 걷혔다(`DraftServiceDeps.onScreenProposal`) — 그 proposalId 를 기다리는
+   * 마지막 카드를 찾아 맞춘다: 넣으면 되돌리기 기록(entry 줄)과 adopted, 걷으면 unchanged(줄이 사라진다).
+   */
+  onProposalSettled(input: {
+    slug: string;
+    docKey: string;
+    proposalId: string;
+    outcome: "adopted" | "rejected";
+    opIds: string[];
+    inverse: ScreenSyncInverse[];
+  }): void {
+    const file = screenSyncFile(this.#deps.paths(input.slug).root);
+    const lines = readSyncLines(file);
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index];
+      if (line?.kind !== "card") continue;
+      const doc = line.sync.docs.find(
+        (row) =>
+          (row.outcome === "pending" || row.outcome === "proposed") &&
+          row.proposalId === input.proposalId,
+      );
+      if (doc === undefined) continue;
+      if (input.outcome === "adopted") {
+        this.#writeEntry(line, doc, {
+          proposalId: input.proposalId,
+          opIds: input.opIds,
+          inverse: input.inverse,
+        });
+        doc.outcome = "adopted";
+        doc.changes = input.opIds.length;
+      } else {
+        doc.outcome = "unchanged";
+        doc.changes = 0;
+      }
+      delete doc.proposalId;
+      this.#publish(line.turn, { ...line.sync, docs: [...line.sync.docs] });
+      return;
+    }
+  }
+
   /** 곁줄의 되돌리기 — 그 한 문서의 같이 고친 블록을 돌린다. */
   async undo(slug: string, entryId: string): Promise<{ restored: number; kept: number }> {
     const file = screenSyncFile(this.#deps.paths(slug).root);
@@ -530,8 +771,9 @@ export class ScreenPlanSync {
   }
 
   /**
-   * 화면 되돌리기 뒤 — 그 지점보다 뒤의 보관에 묶인 같이 고친 초안을 새것부터 돌린다. 돌린 문서 수를 돌려준다.
-   * `historyNewestFirst` 는 되돌리기 전의 보관 이력(새것부터)이다.
+   * 화면 되돌리기 뒤 — 그 지점보다 뒤의 보관에 묶인 같이 고친 초안을 새것부터 돌리고(기록과 같은 sha 규칙),
+   * 아직 누름을 기다리는(`pending`) 문서의 변경안은 걷는다 — 되돌린 화면의 고침을 기다리게 두지 않는다
+   * (2026-11-03 A안 1A-1). 돌린 문서 수를 돌려준다. `historyNewestFirst` 는 되돌리기 전의 보관 이력(새것부터)이다.
    */
   async undoAfterRestore(
     slug: string,
@@ -539,12 +781,56 @@ export class ScreenPlanSync {
     sha: string,
   ): Promise<number> {
     const file = screenSyncFile(this.#deps.paths(slug).root);
-    const picked = entriesAfterRestore(liveEntries(readSyncLines(file)), historyNewestFirst, sha);
+    const at = historyNewestFirst.indexOf(sha);
+    if (at < 0) return 0;
+    const newer = new Set(historyNewestFirst.slice(0, at));
     let undone = 0;
-    for (const entry of picked) {
-      const result = await this.#queue(slug, () => this.#undoEntry(entry)).catch(() => null);
-      if (result !== null && result.restored > 0) undone += 1;
-    }
+    // 고르기와 걷기 모두 한 줄 안에서 파일을 다시 읽는다(2026-11-03 검토 · 후속 1) — 앞서 줄에 든 `고치기` 가
+    // 쓴 entry 를 되돌려야 하고, 한 요청의 옛 카드 줄을 되살리면 안 된다.
+    await this.#queue(slug, async () => {
+      // 먼저 들어간 고침을 새것부터 돌린다 — 지금 읽은 파일의 살아 있는 기록 기준.
+      const picked = entriesAfterRestore(liveEntries(readSyncLines(file)), historyNewestFirst, sha);
+      for (const entry of picked) {
+        const result = await this.#undoEntry(entry).catch(() => null);
+        if (result !== null && result.restored > 0) undone += 1;
+      }
+      // 걷기 — 되돌림 지점보다 새 보관에 묶인 요청마다 마지막 카드 한 장만 보고, 아직 기다리는 문서만 걷어
+      // 그 최신 카드를 한 번 다시 선다. 옛 카드 줄은 다시 쌓지 않는다.
+      const seen = new Set<string>();
+      const keys: Array<{ sessionId: string; requestId: string }> = [];
+      for (const line of readSyncLines(file)) {
+        if (line.kind !== "card" || line.turn.sha === null || !newer.has(line.turn.sha)) continue;
+        const key = `${line.turn.sessionId}${line.turn.requestId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        keys.push({ sessionId: line.turn.sessionId, requestId: line.turn.requestId });
+      }
+      for (const key of keys) {
+        const card = lastCard(readSyncLines(file), key.sessionId, key.requestId);
+        if (card === null) continue;
+        let touched = false;
+        for (const doc of card.sync.docs) {
+          if (doc.outcome !== "pending" || doc.proposalId === undefined) continue;
+          if (doc.docKey !== null) {
+            const docKey = doc.docKey;
+            const proposalId = doc.proposalId;
+            await this.#deps.drafts
+              .screenSyncDismiss({ slug, docKey, proposalId })
+              .catch(() => undefined);
+          }
+          doc.outcome = "unchanged";
+          doc.changes = 0;
+          delete doc.proposalId;
+          touched = true;
+        }
+        if (!touched) continue;
+        try {
+          this.#publish(card.turn, { ...card.sync, docs: [...card.sync.docs] });
+        } catch {
+          // 카드 다시 서기의 실패는 되돌리기를 막지 않는다.
+        }
+      }
+    });
     return undone;
   }
 

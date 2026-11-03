@@ -70,6 +70,7 @@ import {
   parseCompareRows,
   readCompareDeclines,
 } from "./plan-compare.js";
+import { planLoopOn } from "./plan-loop.js";
 import { planRefHeader } from "./plan-refs.js";
 import type { RestTransport } from "./rest-transport.js";
 // 같이 고치기 기록 읽기(2026-11-02 C4 · C7) — 반대 방향은 type import 뿐이라 순환 없이 쓴다.
@@ -93,6 +94,18 @@ export interface DraftServiceDeps {
   logger: DaemonLogger;
   ai: DraftAiRunner;
   publisher: DraftPublisher;
+  /**
+   * 화면 요청이 낸 변경안(`origin: "screen"`)이 같이 고치기 밖의 길(기획서 탭의 채택 · 거절)로 넣어지거나 걷혔다
+   * (2026-11-03 A안 1A-1). 같이 고치기가 되돌리기 기록과 곁줄 카드를 맞춘다. 넣은 때는 들어간 걸음과 되돌릴 재료를 싣는다.
+   */
+  onScreenProposal?(input: {
+    slug: string;
+    docKey: string;
+    proposalId: string;
+    outcome: "adopted" | "rejected";
+    opIds: string[];
+    inverse: ScreenSyncInverse[];
+  }): void;
   /** 클론 뿌리 — 기획 AI 가 화면 코드를 읽는 두 번째 뿌리 · 클론 전이면 null(2026-10-23 · 기획서 사본 이동 계획 §6 · 사용자 결정 — 기획 AI 의 클론 읽기 허용). */
   cloneRoot?(slug: string): string | null;
   now?: () => Date;
@@ -110,7 +123,7 @@ export type { ScreenSyncInverse };
 export interface ScreenSyncResult {
   docKey: string | null;
   title: string;
-  outcome: "adopted" | "proposed" | "unchanged" | "failed";
+  outcome: "adopted" | "proposed" | "unchanged" | "failed" | "pending";
   changes: number;
   summary?: string;
   detail?: string;
@@ -1064,11 +1077,20 @@ export class DraftService {
       // 화면 제안(2026-11-02 · 같이 고치기 UX 계획 C8) — 정책을 바꾼 고침이 들어가면 같은 문서로 화면을 견준다.
       // 화면이 옛 규칙이면 답 아래에 어긋남 카드가 선다. 같이 고치기(quiet — autoApply 없이 #adoptFromScreen 이
       // 넣는 길)에는 돌지 않는다 — 한 방향의 고침이 반대 방향의 카드를 부르지 않게(같은 계획 §2 핑퐁 막기).
+      // 설정 토글이 꺼져 있으면 판정 호출 자체를 하지 않는다(2026-11-03 A안 1A-1-c — 추가 토큰 0).
       let mismatch: { rows: DraftMismatchRow[] } | null = null;
-      if (input.autoApply === true && answer.policy === true && proposalId !== null) {
+      let mismatchFailed = false;
+      if (
+        input.autoApply === true &&
+        answer.policy === true &&
+        proposalId !== null &&
+        planLoopOn(this.#deps.machineSetting)
+      ) {
         const after = store.read(docKey);
         if (after !== null && after.revision !== record.revision) {
-          mismatch = await this.#mismatchOf(slug, after);
+          const judged = await this.#mismatchOf(slug, after);
+          if (judged === "failed") mismatchFailed = true;
+          else mismatch = judged;
         }
       }
       if (input.quiet === true && proposalId === null) {
@@ -1087,6 +1109,7 @@ export class DraftService {
           ...(proposalId !== null ? { proposalId } : {}),
           ...(reads.length > 0 ? { reads } : {}),
           ...(mismatch !== null ? { mismatch } : {}),
+          ...(mismatchFailed ? { mismatchFailed: true as const } : {}),
         },
       ];
       // 대화도 문서 잠금 안에서, 초안이 아직 있을 때만 쓴다 — 버리기와 엇갈려 지운 열쇠에 다시 쓰지 않게.
@@ -1233,8 +1256,9 @@ export class DraftService {
 
   /**
    * 화면 요청에서 같이 고치기 — 기획 AI 가 이 화면 변경이 문서의 정책 · 규칙 · 조건을 바꾸는지 보고, 바꾸면 그 걸음을
-   * 초안에 바로 채택한다. 사람이 고치던 블록은 덮지 않고 오래됨으로 남긴다. 발행은 하지 않는다. 바꿀 것이 없으면
-   * 대화에도 아무것도 남기지 않는다. 같은 초안의 질문이 돌면 끝나기를 기다린다.
+   * 변경안(`origin: "screen"`)으로만 남긴다 — 초안에 넣는 것은 곁줄 카드의 `고치기` 누름(`screenSyncApply`)이다
+   * (2026-11-03 A안 1A-1 게이트). 발행은 하지 않는다. 바꿀 것이 없으면 대화에도 아무것도 남기지 않는다. 같은 초안의
+   * 질문이 돌면 끝나기를 기다린다.
    */
   async screenSync(input: {
     slug: string;
@@ -1342,7 +1366,69 @@ export class DraftService {
       if (this.#runs.get(runKey) === run) this.#runs.delete(runKey);
     }
     if (proposalId === null) return { docKey, title, outcome: "unchanged", changes: 0 };
-    return await this.#adoptFromScreen(store, docKey, proposalId, title);
+    // 게이트(2026-11-03 A안 1A-1) — 걸음을 초안에 넣지 않고 화면 요청의 변경안으로만 남긴다.
+    // 곁줄 카드의 `고치기`(screenSyncApply)나 기획서 탭의 채택이 들은 뒤 반영한다.
+    const pending = await store.withLock(docKey, () => {
+      const proposals = store.proposals(docKey);
+      const proposal = proposals.find((row) => row.proposalId === proposalId);
+      if (proposal === undefined) return null;
+      proposal.origin = "screen";
+      store.saveProposals(docKey, proposals);
+      return proposal;
+    });
+    if (pending === null) {
+      return { docKey, title, outcome: "failed", changes: 0, detail: "변경안을 찾지 못했어요" };
+    }
+    return {
+      docKey,
+      title,
+      outcome: "pending",
+      changes: pending.ops.length,
+      summary: pending.summary,
+      proposalId,
+    };
+  }
+
+  /**
+   * 곁줄 카드의 `고치기`(2026-11-03 A안 1A-1) — 판정이 남긴 화면 변경안을 지금의 판정(오래됨 걸르기 포함)으로
+   * 초안에 넣는다. 아직 안 들어갔고 걷히지 않은 변경안만 넣는다.
+   */
+  async screenSyncApply(input: {
+    slug: string;
+    docKey: string;
+    proposalId: string;
+  }): Promise<ScreenSyncResult> {
+    const store = this.#store(input.slug);
+    const title = store.read(input.docKey)?.title ?? "";
+    // 넣을 수 있는가(없음 · appliedAt 있음 · 열린 걸음 0)는 적용과 같은 잠금 안에서 본다 — 그 사이 기획서 탭의
+    // 채택이 끼면 apply 가 proposed 로 흘러 이미 adopted 인 카드를 덮었다(2026-11-03 검토 · 후속 1).
+    return await this.#adoptFromScreen(store, input.docKey, input.proposalId, title, (proposal) => {
+      if (proposal.appliedAt !== undefined) return false;
+      return proposal.ops.some((op) => op.state === "open");
+    });
+  }
+
+  /**
+   * 곁줄 카드의 `건너뛰기`(2026-11-03 A안 1A-1) — 화면 변경안의 열린 걸음을 걷는다. 이미 들어간 걸음은 그대로다.
+   */
+  async screenSyncDismiss(input: {
+    slug: string;
+    docKey: string;
+    proposalId: string;
+  }): Promise<{ ok: true }> {
+    const store = this.#store(input.slug);
+    await store.withLock(input.docKey, () => {
+      const proposals = store.proposals(input.docKey);
+      const proposal = proposals.find((row) => row.proposalId === input.proposalId);
+      if (proposal === undefined) {
+        throw new Error("변경안을 찾지 못했어요 — 이미 넣었거나 걷힌 것 같아요");
+      }
+      for (const op of proposal.ops) {
+        if (op.state === "open") op.state = "rejected";
+      }
+      store.saveProposals(input.docKey, proposals);
+    });
+    return { ok: true };
   }
 
   /**
@@ -1411,16 +1497,25 @@ export class DraftService {
     };
   }
 
-  /** 같이 고치기의 채택 — 바로 반영과 같은 판정(2026-10-31 2단계부터 #applyProposalLocked 가 같이 쓴다). */
+  /**
+   * 같이 고치기의 채택 — 바로 반영과 같은 판정(2026-10-31 2단계부터 #applyProposalLocked 가 같이 쓴다).
+   * `gate` 를 넘기면 같은 잠금 안에서 먼저 묻고, 거절이면 사람 말로 던진다(곁줄 `고치기` 의 넣을 수 있는가 검사 —
+   * 점검과 적용이 다른 잠금이면 그 사이 채택이 끼는 창이 생긴다 · 2026-11-03 후속 1). 넘기지 않는 부르는 곳은
+   * 그대로다.
+   */
   async #adoptFromScreen(
     store: DraftStore,
     docKey: string,
     proposalId: string,
     title: string,
+    gate?: (proposal: ProposalRecord) => boolean,
   ): Promise<ScreenSyncResult> {
     const outcome = await store.withLock(docKey, () => {
       const proposals = store.proposals(docKey);
       const proposal = proposals.find((row) => row.proposalId === proposalId);
+      if (gate !== undefined && (proposal === undefined || !gate(proposal))) {
+        throw new Error("변경안을 찾지 못했어요 — 이미 넣었거나 걷힌 것 같아요");
+      }
       if (proposal === undefined) return null;
       return this.#applyProposalLocked(store, docKey, proposal, {
         origin: "screen",
@@ -1642,13 +1737,69 @@ export class DraftService {
   }
 
   /**
+   * 화면 제안 판정의 다시 시도(2026-11-03 A안 1A-2 · `draft.mismatchRetry`) — `mismatchFailed` 가 선 답의
+   * 판정을 지금 초안으로 다시 돈다. 사람이 누른 일이라 설정 토글과 상관없이 돈다. 어긋남이 남아 있으면
+   * `mismatch` 를 싣고 실패 표시를 걷고, 같다고 판정하면 둘 다 걷고, 또 실패하면 그대로 둔다.
+   */
+  async mismatchRetry(docKey: string, messageId: string): Promise<{ ok: true }> {
+    const slug = this.#slug();
+    const store = this.#store(slug);
+    // 실패 표시가 선 답만 다시 본다 — 그 메시지가 사는 대화를 이 문서의 대화들에서 찾는다.
+    let hit: { conversation: ConversationRecord; message: DraftMessage } | null = null;
+    for (const conversation of store.conversations()) {
+      if (conversation.docKey !== docKey) continue;
+      const message = conversation.messages.find((one) => one.messageId === messageId);
+      if (message !== undefined) {
+        hit = { conversation, message };
+        break;
+      }
+    }
+    if (hit === null || hit.message.mismatchFailed !== true) {
+      throw new Error("다시 볼 것이 없어요 — 실패한 판정만 다시 시도할 수 있습니다.");
+    }
+    const record = store.read(docKey);
+    if (record === null) {
+      throw new Error("초안이 없어 다시 볼 수 없어요 — 문서를 다시 열어 주세요.");
+    }
+    const judged = await this.#mismatchOf(slug, record);
+    // 대화 저장은 문서 잠금 안에서(#generate 와 같은 꼴) — 판정이 도는 동안 초안이 버려졌거나 대화가
+    // 지워졌으면 쓰지 않는다. 누른 사이 다른 쓰기가 그 표시를 걷었어도 다시 쓰지 않는다. 또 실패한
+    // 판정은 메시지를 손대지 않는다 — 실패 표시가 그대로 남는다.
+    const written = await store.withLock(docKey, () => {
+      if (store.read(docKey) === null) return false;
+      if (this.#goneThreads.has(hit.conversation.threadId)) return false;
+      const conversation = store.conversation(hit.conversation.threadId);
+      if (conversation === null) return false;
+      const message = conversation.messages.find((one) => one.messageId === messageId);
+      if (message === undefined || message.mismatchFailed !== true) return false;
+      if (judged === "failed") return false;
+      message.mismatchFailed = undefined;
+      if (judged !== null) message.mismatch = judged;
+      else message.mismatch = undefined;
+      store.saveConversation(conversation);
+      return true;
+    });
+    if (!written) return { ok: true };
+    // 대화가 바뀌었음을 알린다 — #generate 가 대화 저장 뒤에 쓰는 `draft.ai` done 과 같은 길.
+    this.#deps.broadcast({
+      type: "draft.ai",
+      docKey,
+      threadId: hit.conversation.threadId,
+      messageId,
+      phase: "done",
+    });
+    return { ok: true };
+  }
+
+  /**
    * 화면 제안의 판정(C8) — 기획 고침이 초안에 들어간 뒤 같은 문서로 조용히 견준다. 화면이 옛 규칙이면 줄을
-   * 돌려준다. 실패는 조용히 사라진다 — 제안은 덤이고 사람의 고침 자체는 이미 끝났다.
+   * 돌려준다. 실패는 "failed" 로 구분해 돌려준다(2026-11-03 A안 1A-2 — 조용히 삼키지 않고 사람이 다시
+   * 시도하게 답에 `mismatchFailed` 를 싣는다). 로그에는 종류만 남긴다.
    */
   async #mismatchOf(
     slug: string,
     record: DraftRecord,
-  ): Promise<{ rows: DraftMismatchRow[] } | null> {
+  ): Promise<{ rows: DraftMismatchRow[] } | null | "failed"> {
     try {
       const parsed = await this.#runCompare(slug, {
         title: record.title,
@@ -1657,9 +1808,9 @@ export class DraftService {
         pageId: record.pageId,
       });
       return parsed.rows.length > 0 ? { rows: parsed.rows } : null;
-    } catch (error) {
-      this.#deps.logger.info("화면 견주기 실패", { err: error });
-      return null;
+    } catch {
+      this.#deps.logger.info("화면 견주기 실패");
+      return "failed";
     }
   }
 
@@ -1804,55 +1955,105 @@ export class DraftService {
         throw new Error("변경안을 찾지 못했습니다 — 대화를 다시 읽어 주세요.");
       }
       const wanted = new Set(opIds);
+      // 화면 요청의 변경안이면 들어간 걸음마다 되돌릴 재료를 모은다 — 같이 고치기가 곁줄 되돌리기로 이어 받는다
+      // (2026-11-03 A안 1A-1). 그 밖의 변경안은 지금처럼 적용만 한다.
+      const screen = proposal.origin === "screen";
+      const inverse: ScreenSyncInverse[] = [];
+      const applied: string[] = [];
       const work: DraftRecord = { ...record, blocks: record.blocks.map((block) => ({ ...block })) };
-      let applied = 0;
       for (const op of proposal.ops) {
         if (!wanted.has(op.opId)) continue;
         // 이미 정해진 걸음은 두 번 적용하지 않는다. 오래됨으로 표시된 걸음도 — 지문 · 앵커를 다시 대 보는 것만으로는
         // 생성 중 고침 · 기준 바뀜(블록 id 재매김)을 가리지 못한다(2026-10-23 검토 B10).
         if (op.state === "adopted" || op.state === "rejected" || op.state === "stale") continue;
-        if (this.#opStale(op, work) || !this.#applyOp(work, op)) {
+        if (this.#opStale(op, work)) {
+          op.state = "stale";
+          continue;
+        }
+        if (screen) {
+          const step = this.#applyWithInverse(work, op);
+          if (step === null) {
+            op.state = "stale";
+            continue;
+          }
+          inverse.push(step);
+        } else if (!this.#applyOp(work, op)) {
           op.state = "stale";
           continue;
         }
         op.state = "adopted";
-        applied += 1;
+        applied.push(op.opId);
       }
-      if (applied > 0) {
+      if (applied.length > 0) {
         if (work.state === "published" || work.state === "closed-unconfirmed")
           work.state = "editing";
         // 개정이 다르면 DraftStaleError — 처리기가 코드 draft.stale 로 낸다. 남은 걸음의 채택도
         // AI 의 고침이다(2026-10-31 2단계 — 사람이 고친 블록 위의 단추로 들어간다).
         store.save(work, expectedRevision, { origin: "ai", label: null });
+        if (screen) {
+          proposal.appliedAt = this.#now().toISOString();
+          proposal.appliedOpIds = applied;
+          proposal.inverse = inverse;
+        }
         store.saveProposals(docKey, proposals);
       } else if (proposal.ops.some((op) => op.state === "stale" && wanted.has(op.opId))) {
         // 아무것도 적용되지 않았어도 stale 표시는 남긴다 — 대화가 다시 읽힐 때 보인다.
         store.saveProposals(docKey, proposals);
       }
-      return applied > 0 ? (store.read(docKey) ?? work) : record;
+      return {
+        record: applied.length > 0 ? (store.read(docKey) ?? work) : record,
+        // 화면 변경안이 들어갔다 — 같이 고치기가 되돌리기 기록과 곁줄 카드를 맞추게 알린다.
+        settled: screen && applied.length > 0 ? { opIds: applied, inverse } : null,
+      };
     });
-    this.#broadcast(saved);
-    return this.#view(saved);
+    this.#broadcast(saved.record);
+    if (saved.settled !== null) {
+      this.#deps.onScreenProposal?.({
+        slug: this.#slug(),
+        docKey,
+        proposalId,
+        outcome: "adopted",
+        opIds: saved.settled.opIds,
+        inverse: saved.settled.inverse,
+      });
+    }
+    return this.#view(saved.record);
   }
 
   async reject(docKey: string, proposalId: string, opIds?: string[]): Promise<DraftThread> {
     const slug = this.#slug();
     const store = this.#storeFor(docKey);
-    return await store.withLock(docKey, () => {
+    const settled = await store.withLock(docKey, () => {
       const proposals = store.proposals(docKey);
       const proposal = proposals.find((row) => row.proposalId === proposalId);
       if (proposal === undefined) {
         throw new Error("변경안을 찾지 못했습니다 — 대화를 다시 읽어 주세요.");
       }
       const wanted = opIds === undefined ? null : new Set(opIds);
+      let rejected = 0;
       for (const op of proposal.ops) {
         if (wanted !== null && !wanted.has(op.opId)) continue;
         if (op.state !== "open") continue;
         op.state = "rejected";
+        rejected += 1;
       }
       store.saveProposals(docKey, proposals);
-      return this.#threadView(slug, docKey, store);
+      // 화면 요청의 변경안을 사람이 걷었다 — 같이 고치기가 기록과 곁줄 카드를 맞추게 알린다(2026-11-03 A안 1A-1).
+      const screen =
+        rejected > 0 && proposal.origin === "screen" && proposal.appliedAt === undefined;
+      return { thread: this.#threadView(slug, docKey, store), screen };
     });
+    if (settled.screen) {
+      this.#deps.onScreenProposal?.({
+        slug,
+        docKey,
+        proposalId,
+        outcome: "rejected",
+        opIds: [],
+        inverse: [],
+      });
+    }
+    return settled.thread;
   }
 
   /** 채택의 한 걸음을 초안에 적용한다 — edit 과 같은 규칙. 못 적용하면 거짓. */
@@ -2393,6 +2594,8 @@ export class DraftService {
         (proposal.inverse?.length ?? 0) > 0
           ? { undoable: true }
           : {}),
+        // 화면 요청이 낸 변경안(2026-11-03 A안 1A-1) — 곁줄 카드와 같은 변경안임을 기획서 탭이 안다.
+        ...(proposal.origin === "screen" ? { origin: "screen" as const } : {}),
         // 열린 걸음은 지금 초안과 다시 대 본다 — 사람이 고친 블록의 걸음은 stale 다.
         ops: proposal.ops.map((op): DraftOp => {
           const state: DraftOpState =

@@ -147,13 +147,17 @@ test("화면 되돌리기 묶기 — 되돌림 지점보다 뒤의 보관에 묶
   assert.deepEqual(entriesAfterRestore(entries, history, "zz"), []);
 });
 
-/** 가짜 초안 서비스 — 부른 것을 적고 정한 답을 돌려준다. */
-function fakeDrafts(answers: ScreenSyncResult[]) {
+/** 가짜 초안 서비스 — 부른 것을 적고 정한 답을 돌려준다. 넣기(apply)는 applyAnswers 를, 없으면 adopted 를 돌려준다. */
+function fakeDrafts(answers: ScreenSyncResult[], applyAnswers: ScreenSyncResult[] = []) {
   const calls: Array<{ pageId: string | null; docKey: string | null; promptText: string }> = [];
   const undos: string[] = [];
+  const applies: string[] = [];
+  const dismisses: string[] = [];
   return {
     calls,
     undos,
+    applies,
+    dismisses,
     drafts: {
       async screenSync(input: {
         pageId: string | null;
@@ -164,6 +168,24 @@ function fakeDrafts(answers: ScreenSyncResult[]) {
         const answer = answers.shift();
         if (answer === undefined) throw new Error("답이 없다");
         return answer;
+      },
+      async screenSyncApply(input: { docKey: string; proposalId: string }) {
+        applies.push(input.proposalId);
+        const answer = applyAnswers.shift();
+        if (answer !== undefined) return answer;
+        return {
+          docKey: input.docKey,
+          title: "",
+          outcome: "adopted",
+          changes: 1,
+          proposalId: input.proposalId,
+          opIds: ["op-1"],
+          inverse: [{ type: "title", before: "옛", after: "새" }],
+        } satisfies ScreenSyncResult;
+      },
+      async screenSyncDismiss(input: { docKey: string; proposalId: string }) {
+        dismisses.push(input.proposalId);
+        return { ok: true as const };
       },
       async screenSyncUndo(input: { docKey: string }) {
         undos.push(input.docKey);
@@ -179,11 +201,15 @@ const silent: DaemonLogger = {
   error: () => undefined,
 } as unknown as DaemonLogger;
 
-function syncRig(answers: ScreenSyncResult[], connected = true) {
+function syncRig(
+  answers: ScreenSyncResult[],
+  connected = true,
+  options?: { applyAnswers?: ScreenSyncResult[]; loopOn?: boolean },
+) {
   const home = mkdtempSync(join(tmpdir(), "screen-sync-"));
   // 연결 레포 클론의 뿌리 — 연결 파일이 여기 생긴다.
   mkdirSync(join(home, "repo"));
-  const fake = fakeDrafts(answers);
+  const fake = fakeDrafts(answers, options?.applyAnswers ?? []);
   const emitted: PlanSync[] = [];
   const sync = new ScreenPlanSync({
     drafts: fake.drafts,
@@ -191,6 +217,7 @@ function syncRig(answers: ScreenSyncResult[], connected = true) {
     connected: () => connected,
     titleOf: (_slug, pageId) => (pageId === "77" ? "고른 문서" : null),
     emit: (_turn, value) => emitted.push(structuredClone(value)),
+    ...(options?.loopOn !== undefined ? { loopOn: () => options?.loopOn ?? true } : {}),
     logger: silent,
     now: () => new Date("2026-10-30T01:00:00Z"),
   });
@@ -228,13 +255,10 @@ test("흐름 — 이어진 문서가 없고 연결돼 있으면 고르기를 권
     {
       docKey: "p-77",
       title: "고른 문서",
-      outcome: "adopted",
+      outcome: "pending",
       changes: 1,
       summary: "가입 조건의 비밀번호 길이",
       proposalId: "prop-1",
-      opIds: ["op-1"],
-      inverse: [{ type: "title", before: "옛", after: "새" }],
-      kept: 0,
     },
   ]);
   try {
@@ -252,13 +276,19 @@ test("흐름 — 이어진 문서가 없고 연결돼 있으면 고르기를 권
     const done = one.emitted.at(-1);
     assert.equal(done?.phase, "done");
     assert.deepEqual(done?.linked, [{ pageId: "77", title: "고른 문서", route: "/signup" }]);
-    assert.equal(done?.docs[0]?.outcome, "adopted");
-    assert.equal(done?.docs[0]?.summary, "가입 조건의 비밀번호 길이");
-    const entryId = done?.docs[0]?.entryId ?? "";
-    assert.notEqual(entryId, "");
+    // 게이트(2026-11-03 A안 1A-1) — 판정은 변경안만 남기고 카드는 누름을 기다린다.
+    assert.equal(done?.docs[0]?.outcome, "pending");
+    assert.equal(done?.docs[0]?.proposalId, "prop-1");
     // 연결 파일이 연결 레포 뿌리에 생겼다.
     const map = JSON.parse(readFileSync(join(one.home, "repo", "plans-map.json"), "utf8"));
     assert.equal(map.links[0].pageId, "77");
+    // 고치기 — 변경안이 들어가고 entry 줄이 생기고 카드가 adopted 로 다시 선다.
+    assert.deepEqual(await one.sync.apply("demo", "s1", "r1", "p-77"), { ok: true });
+    const applied = one.emitted.at(-1);
+    assert.equal(applied?.docs[0]?.outcome, "adopted");
+    assert.equal(applied?.docs[0]?.summary, "가입 조건의 비밀번호 길이");
+    const entryId = applied?.docs[0]?.entryId ?? "";
+    assert.notEqual(entryId, "");
     // 되돌리기 — 초안 서비스에 닿고, 카드가 undone 으로 다시 선다. 두 번째는 아무것도 하지 않는다.
     assert.deepEqual(await one.sync.undo("demo", entryId), { restored: 1, kept: 0 });
     assert.deepEqual(one.fake.undos, ["p-77"]);
@@ -285,17 +315,17 @@ test("화면 되돌리기 — 지점 뒤의 같이 고친 초안을 돌린다", 
     {
       docKey: "p-77",
       title: "고른 문서",
-      outcome: "adopted",
+      outcome: "pending",
       changes: 1,
       proposalId: "prop-1",
-      opIds: ["op-1"],
-      inverse: [{ type: "title", before: "옛", after: "새" }],
     },
   ]);
   try {
     await one.sync.onSaved(turn);
     await one.sync.pick("demo", "s1", "r1", "77");
     await settled(one.emitted);
+    // 카드의 고치기가 넣은 뒤에야 되돌리기 기록이 있다.
+    assert.deepEqual(await one.sync.apply("demo", "s1", "r1", "p-77"), { ok: true });
     assert.equal(await one.sync.undoAfterRestore("demo", ["c2", "c1", "c0"], "c0"), 1);
     assert.deepEqual(one.fake.undos, ["p-77"]);
     // 이미 되돌린 것은 다시 돌리지 않는다.

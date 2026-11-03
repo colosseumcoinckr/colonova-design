@@ -3,18 +3,20 @@ import { useState } from "react";
 import { L } from "../labels";
 import { mismatchRowKey } from "../lib/mismatch-model";
 import { Spin } from "./icons";
-
 /**
  * 어긋남 카드(2026-11-02 · 같이 고치기 UX 계획 §2) — 기획서와 화면이 다른 규칙을 나란히 보이고 어느 쪽으로
- * 맞출지 사람이 고른다. 손은 셋이 어느 쪽도 으뜸이 아니다. 기획서 칸의 읽는 문서 곁 · 화면 자리 기획서 탭 ·
+ * 맞출지 사람이 고른다. `화면을 기획서대로` 는 브리프를 화면 대화로 곧바로 보내는 으뜸 손이다(2026-11-03 A안
+ * 1A-1(b)) — 곁의 `고쳐서 보내기` 만 입력창에 미리 채운다. 기획서 칸의 읽는 문서 곁 · 화면 자리 기획서 탭 ·
  * 기획 대화 답 아래가 함께 쓴다 — 답 아래(C8)에는 되돌리기가 판에 이미 있어 `기획서를 화면대로` 손이 없다.
  * 카드가 이미 한쪽으로 기운 자리는 손을 줄여 얹는다(계획 §2 「남은 손이 바뀐다」).
  */
 export interface MismatchHand {
   /** 기획서를 화면대로 — 그 절을 초안에 바로 고친다(되돌리기 가능). 이 손이 없는 자리는 undefined 다. */
   apply?: (row: DraftMismatchRow) => Promise<void>;
-  /** 화면을 기획서대로 — 화면 자리로 옮겨 브리프를 미리 채운다. 보내기는 사람이다. */
+  /** 화면을 기획서대로 — 브리프를 화면 대화로 바로 보낸다(누름=보내기 · 2026-11-03 A안 1A-1(b)). */
   send: (row: DraftMismatchRow) => Promise<void>;
+  /** 고쳐서 보내기 — 화면 자리로 옮겨 브리프를 미리 채운다. 보내기는 사람이다. */
+  sendEdit: (row: DraftMismatchRow) => Promise<void>;
   /** 안 받기 — 이 화면 · 문서 짝의 카드를 다시 띄우지 않는다. */
   decline: (row: DraftMismatchRow) => Promise<void>;
 }
@@ -98,6 +100,15 @@ export function MismatchCard({
                 >
                   {busy === `${key}:send` ? <Spin /> : null}
                   {L.compare.send}
+                </button>
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm nx-btn--ghost"
+                  disabled={busy !== null}
+                  onClick={() => run(`${key}:send`, () => hand.sendEdit(row), L.compare.sendFailed)}
+                >
+                  {busy === `${key}:send` ? <Spin /> : null}
+                  {L.compare.sendEdit}
                 </button>
                 <button
                   type="button"

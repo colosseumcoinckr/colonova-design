@@ -20,7 +20,7 @@ import { timeAgo } from "../../../lib/format";
 import { ModelChip } from "../../chat/ModelChip";
 import { L } from "../../labels";
 import { hasLeadSentence } from "../../lib/answer-lead";
-import { offerMismatchToComposer } from "../../lib/mismatch-model";
+import { offerMismatchToComposer, sendMismatchNow } from "../../lib/mismatch-model";
 import type { ShellNav } from "../../slots";
 import { CloseIcon, PlusIcon, SendIcon, SparkIcon, Spin } from "../../ui/icons";
 import { MismatchCard } from "../../ui/MismatchCard";
@@ -307,6 +307,9 @@ function MessageRow({
   };
 }) {
   const [copied, setCopied] = useState(false);
+  // 판정 실패의 다시 시도(2026-11-03 A안 1A-2) — 돌고 실패 여부는 이 답 아래에만 둔다.
+  const [retrying, setRetrying] = useState(false);
+  const [retryFailed, setRetryFailed] = useState(false);
   const at = timeAgo(Date.parse(message.at));
   if (message.role === "user") {
     return (
@@ -373,6 +376,21 @@ function MessageRow({
             rows={message.mismatch.rows}
             hand={{
               send: (row) =>
+                sendMismatchNow({
+                  api: mismatchDoc.daemon.api,
+                  brief: L.compare.sendBrief(row, mismatchDoc.docTitle),
+                  target:
+                    mismatchDoc.pageId !== null
+                      ? { pageId: mismatchDoc.pageId }
+                      : { docKey: mismatchDoc.docKey ?? "" },
+                }).then((result) => {
+                  if (result === false) throw new Error("composer away");
+                  mismatchDoc.nav.showTab("chat");
+                  mismatchDoc.nav.toast(
+                    result === "sent" ? L.compare.sentNowToast : L.compare.sentToast,
+                  );
+                }),
+              sendEdit: (row) =>
                 offerMismatchToComposer({
                   api: mismatchDoc.daemon.api,
                   brief: L.compare.sendBrief(row, mismatchDoc.docTitle),
@@ -393,6 +411,41 @@ function MessageRow({
                       .then(() => undefined),
             }}
           />
+        )}
+        {/* 판정 실패 알림(2026-11-03 A안 1A-2 — 조용한 실패 알림) — 화면 제안의 판정이 실패한 답 아래에
+            실패 한 줄과 `다시 시도` 가 선다. 다시 시도가 카드를 세우거나 같다고 판정하면 이 표시는 걷힌다. */}
+        {message.mismatchFailed === true && (
+          <>
+            <p className="nx-dr-msg-err" role="alert">
+              {L.compare.judgeFailed}
+            </p>
+            <div className="nx-dr-msg-acts">
+              <button
+                type="button"
+                className="nx-btn nx-btn--xs nx-btn--ghost"
+                disabled={busy || retrying || mismatchDoc.docKey === null}
+                onClick={() => {
+                  if (mismatchDoc.docKey === null) return;
+                  setRetryFailed(false);
+                  setRetrying(true);
+                  mismatchDoc.daemon.api
+                    .draftMismatchRetry(mismatchDoc.docKey, message.messageId)
+                    .catch(() => {
+                      setRetryFailed(true);
+                    })
+                    .finally(() => setRetrying(false));
+                }}
+              >
+                {retrying ? <Spin /> : null}
+                {L.compare.retry}
+              </button>
+            </div>
+            {retryFailed && (
+              <p className="nx-dr-msg-err" role="alert">
+                {L.compare.retryFailed}
+              </p>
+            )}
+          </>
         )}
         {at !== "" && <p className="nx-dr-msg-at">{at}</p>}
         {message.text !== "" && (

@@ -10,6 +10,11 @@ export interface PlanSyncHand {
   undo: (entryId: string) => Promise<void>;
   unlink: (link: PlanSyncLink) => Promise<void>;
   pick: (requestId: string, pageId: string) => Promise<void>;
+  /** 같이 고치기 게이트(2026-11-03 A안 1A-1) — `고치기` 는 기다리는 변경안을 초안에 넣고, `건너뛰기` 는 걷고 그 짝을 기억한다. */
+  apply: (requestId: string, docKey: string) => Promise<void>;
+  skip: (requestId: string, docKey: string) => Promise<void>;
+  /** 같이 고치기 전체 실패의 `다시 시도`(2026-11-03 A안 1A-2). */
+  retry: (requestId: string) => Promise<void>;
   docs: () => Promise<Array<{ pageId: string; title: string; path: string }>>;
   /**
    * 곁줄 발행(2026-11-02 · 같이 고치기 UX 계획 C3) — 화면 자리를 떠나지 않고 발행 확인 창을 띄운다.
@@ -39,9 +44,18 @@ export function PlanSyncLine({
   const [cut, setCut] = useState<ReadonlySet<string>>(new Set());
   // 곁줄 발행(C3) — 발행이 끝난 문서는 문구가 「…」 발행했어요 로 바뀐다.
   const [published, setPublished] = useState<ReadonlySet<string>>(new Set());
-  const docs = sync.docs.filter((doc) => doc.outcome !== "unchanged");
+  // pending 인데 초안 열쇠가 없으면 누를 것이 없는 묻는 줄이 된다 — 그 문서 줄은 세우지 않는다(검토 REVIEW-W1).
+  const docs = sync.docs.filter(
+    (doc) => doc.outcome !== "unchanged" && (doc.outcome !== "pending" || doc.docKey !== null),
+  );
   const adopted = docs.some((doc) => doc.outcome === "adopted" && !published.has(keyOf(doc)));
-  if (docs.length === 0 && sync.linked.length === 0 && sync.ask === undefined) return null;
+  if (
+    docs.length === 0 &&
+    sync.linked.length === 0 &&
+    sync.ask === undefined &&
+    sync.failure === undefined
+  )
+    return null;
 
   const run = (key: string, work: () => Promise<void>, failed: string) => {
     setBusy(key);
@@ -53,6 +67,22 @@ export function PlanSyncLine({
 
   return (
     <section className="nx-psync" aria-label={L.planSync.label}>
+      {/* 조용한 실패 알림(2026-11-03 A안 1A-2) — 문서를 고르기도 전에 멈춘 때. 다시 시도는 그 요청 전체를 다시 돌린다. */}
+      {sync.failure !== undefined && (
+        <div className="nx-psync-row">
+          <FileText className="nx-i" size={14} aria-hidden="true" />
+          <span className="nx-psync-text">{L.planSync.failedAll}</span>
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm nx-btn--ghost"
+            disabled={busy !== null}
+            onClick={() => run("retry", () => hand.retry(requestId), L.planSync.retryFailed)}
+          >
+            {busy === "retry" ? <Spin /> : null}
+            {L.planSync.retry}
+          </button>
+        </div>
+      )}
       {docs.map((doc) => {
         const key = keyOf(doc);
         const isPublished = published.has(key);
@@ -68,6 +98,13 @@ export function PlanSyncLine({
               {doc.summary !== undefined && doc.outcome === "adopted" && (
                 <span className="nx-psync-sub">{doc.summary}</span>
               )}
+              {/* 같이 고치기 게이트(2026-11-03 A안 1A-1) — 요약과 바꿀 곳 수를 작은 줄로 함께 둔다. */}
+              {doc.outcome === "pending" && doc.summary !== undefined && (
+                <span className="nx-psync-sub">{doc.summary}</span>
+              )}
+              {doc.outcome === "pending" && doc.changes > 0 && (
+                <span className="nx-psync-sub">{L.planSync.pendingChanges(doc.changes)}</span>
+              )}
               {doc.outcome === "adopted" && doc.kept !== undefined && doc.kept > 0 && (
                 <span className="nx-psync-sub">{L.planSync.adoptedKept(doc.kept)}</span>
               )}
@@ -78,15 +115,54 @@ export function PlanSyncLine({
                 <span className="nx-psync-sub">{doc.detail}</span>
               )}
             </span>
-            {doc.outcome !== "checking" && doc.outcome !== "failed" && doc.docKey !== null && (
-              <button
-                type="button"
-                className="nx-btn nx-btn--sm nx-btn--ghost"
-                onClick={() => hand.open(doc)}
-              >
-                {L.planSync.view}
-              </button>
+            {/* 게이트의 손(1A-1) — `고치기` 가 이 줄의 으뜸(ghost 가 아닌 보통 소단추), `건너뛰기` · `보기` 는 고스트다.
+                초안 열쇠가 없으면 손을 세우지 않는다. `declined` 줄은 말만 둔다. */}
+            {doc.outcome === "pending" && doc.docKey !== null && (
+              <>
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm"
+                  disabled={busy !== null}
+                  onClick={() => {
+                    const docKey = doc.docKey;
+                    if (docKey !== null)
+                      run(
+                        `apply:${key}`,
+                        () => hand.apply(requestId, docKey),
+                        L.planSync.applyFailed,
+                      );
+                  }}
+                >
+                  {busy === `apply:${key}` ? <Spin /> : null}
+                  {L.planSync.apply}
+                </button>
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm nx-btn--ghost"
+                  disabled={busy !== null}
+                  onClick={() => {
+                    const docKey = doc.docKey;
+                    if (docKey !== null)
+                      run(`skip:${key}`, () => hand.skip(requestId, docKey), L.planSync.skipFailed);
+                  }}
+                >
+                  {busy === `skip:${key}` ? <Spin /> : null}
+                  {L.planSync.skip}
+                </button>
+              </>
             )}
+            {doc.outcome !== "checking" &&
+              doc.outcome !== "failed" &&
+              doc.outcome !== "declined" &&
+              doc.docKey !== null && (
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm nx-btn--ghost"
+                  onClick={() => hand.open(doc)}
+                >
+                  {L.planSync.view}
+                </button>
+              )}
             {/* 곁줄 발행(C3) — 확인 창은 그대로, 이동만 없앤다. 게이트가 꺼져 있으면 손이 안 선다(같은 계획 §3). */}
             {doc.outcome === "adopted" &&
               doc.docKey !== null &&
@@ -195,6 +271,11 @@ function lineOf(doc: PlanSyncDoc, published = false): string {
       return L.planSync.failed(doc.title);
     case "undone":
       return L.planSync.undone(doc.title);
+    // 같이 고치기 게이트(2026-11-03 A안 1A-1) — 손은 위의 줄 마크업이 세운다.
+    case "pending":
+      return L.planSync.pending(doc.title);
+    case "declined":
+      return L.planSync.declined(doc.title);
     case "unchanged":
       return "";
   }

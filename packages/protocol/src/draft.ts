@@ -182,6 +182,11 @@ export interface DraftProposal {
   keptOps?: number;
   /** 바로 반영을 되돌릴 수 있는가 — 그 뒤 사람이 고친 블록이 있으면 꺼진다(같이 고치기와 같은 판정). */
   undoable?: boolean;
+  /**
+   * 화면 요청이 낸 변경안(2026-11-03 A안 1A-1 — 같이 고치기 게이트). 곁줄 카드와 같은 변경안 하나다 — 어느 쪽에서
+   * 넣든 걷든 같이 고치기 기록(되돌리기의 재료)이 함께 남는다.
+   */
+  origin?: "screen";
 }
 
 export interface DraftReadRef {
@@ -211,6 +216,11 @@ export interface DraftMessage {
    * 답 아래에 선다. 손은 `화면을 기획서대로`(사람이 보낸다)와 `안 받기` 뿐이다 — 되돌리기는 판에 이미 있다.
    */
   mismatch?: { rows: DraftMismatchRow[] };
+  /**
+   * 화면 제안의 판정이 실패했다(2026-11-03 A안 1A-2 — 조용한 실패 알림). 답 아래에 실패 한 줄과 `다시 시도`
+   * (`draft.mismatchRetry`)가 선다. 다시 시도가 카드를 세우거나 같다고 판정하면 이 표시는 걷힌다.
+   */
+  mismatchFailed?: true;
 }
 
 export interface DraftThread {
@@ -587,6 +597,16 @@ export const draftClientMessageSchemas = [
     blockId: blockIdSchema,
     choice: z.enum(["mine", "theirs"]),
   }),
+  /**
+   * 화면 제안 판정의 `다시 시도`(2026-11-03 A안 1A-2) — `mismatchFailed` 가 선 답의 판정을 지금 초안으로 다시 돈다.
+   * 답은 `{ ok: true }` — 결과는 대화 갱신 방송으로 온다(답의 `mismatch` 가 서거나 실패 표시가 걷힌다).
+   */
+  z.object({
+    ...withId,
+    type: z.literal("draft.mismatchRetry"),
+    docKey: z.string().regex(DRAFT_KEY_PATTERN),
+    messageId: z.string().min(1).max(200),
+  }),
   snapshotSchema,
   refsSchema,
   /**
@@ -604,6 +624,38 @@ export const draftClientMessageSchemas = [
     sessionId: z.string().min(1).max(200),
     requestId: z.string().min(1).max(200),
     pageId: pageIdSchema,
+  }),
+  /**
+   * 같이 고치기 게이트(2026-11-03 A안 1A-1) — 곁줄 카드 「초안을 고칠까요?」의 `고치기`. 그 요청 · 그 문서의 기다리는
+   * 변경안(`pending`)을 초안에 넣고 되돌리기 기록을 남긴다. 결과는 대화의 `plans.synced` 로 다시 온다. 답은 `{ ok: true }`.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("draft.syncApply"),
+    sessionId: z.string().min(1).max(200),
+    requestId: z.string().min(1).max(200),
+    docKey: z.string().regex(DRAFT_KEY_PATTERN),
+  }),
+  /**
+   * 같은 카드의 `건너뛰기` — 기다리는 변경안을 걷고 그 문서와 화면의 짝을 기억해 다음부터 연결로는 다시 묻지 않는다.
+   * 근거로 보낸 문서는 기억과 상관없이 다시 본다. 답은 `{ ok: true }`.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("draft.syncSkip"),
+    sessionId: z.string().min(1).max(200),
+    requestId: z.string().min(1).max(200),
+    docKey: z.string().regex(DRAFT_KEY_PATTERN),
+  }),
+  /**
+   * 같이 고치기 전체가 실패한 카드(`PlanSync.failure`)의 `다시 시도`(2026-11-03 A안 1A-2). 그 요청으로 처음부터 다시
+   * 돈다. 답은 `{ ok: true }` — 결과는 `plans.synced` 로 온다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("draft.syncRetry"),
+    sessionId: z.string().min(1).max(200),
+    requestId: z.string().min(1).max(200),
   }),
   /**
    * 초안 판 목록(2026-10-31 2단계) — 문서 판 머리의 판 고르기가 읽는다. 답은 새것부터의

@@ -15,7 +15,11 @@ export type PlanSyncOutcome =
   | "proposed"
   | "unchanged"
   | "failed"
-  | "undone";
+  | "undone"
+  /** 판정은 끝났고 사람의 누름을 기다린다(2026-11-03 A안 1A-1 — 같이 고치기 게이트). 변경안으로만 남아 있다. */
+  | "pending"
+  /** 사람이 `건너뛰기` 를 눌렀다 — 변경안을 걷고 그 짝을 기억한다(2026-11-03 A안 1A-1). */
+  | "declined";
 
 export interface PlanSyncDoc {
   /** 초안 열쇠 — 아직 초안을 열지 못했으면 null. */
@@ -31,6 +35,8 @@ export interface PlanSyncDoc {
   detail?: string;
   /** 되돌리기의 열쇠(`draft.syncUndo`) — 초안에 들어간 때만. */
   entryId?: string;
+  /** 기다리는 변경안(`pending`)의 열쇠 — `draft.syncApply` · `draft.syncSkip` 이 이 문서를 가리킬 때 쓴다(2026-11-03 A안 1A-1). */
+  proposalId?: string;
   /**
    * 그대로 남은 수 — `adopted` 면 사람이 고치던 곳이라 들어가지 못하고 변경안으로 남은 걸음, `undone` 이면 사람이 그 뒤
    * 고쳐 두어 되돌리지 않은 블록.
@@ -51,6 +57,11 @@ export interface PlanSync {
   linked: PlanSyncLink[];
   /** 이어진 기획서가 없는 화면 — 사람이 고르면(`draft.syncPick`) 잇고 같이 고친다. */
   ask?: { routes: string[] };
+  /**
+   * 같이 고치기 전체가 실패했다(2026-11-03 A안 1A-2 — 조용한 실패 알림). 문서마다의 실패는 `docs[].outcome` 이 말하고,
+   * 이것은 문서를 고르기도 전에 멈춘 때다. 곁줄이 `다시 시도`(`draft.syncRetry`)를 세운다. 종류만 싣는다.
+   */
+  failure?: { kind: "sync" };
 }
 
 /**

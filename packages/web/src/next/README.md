@@ -67,8 +67,7 @@
 
 ## 겹판 — 팝업 · 모달
 
-겹판은 모두 같은 틀 위에 선다(2026-10-06 겹판 손질 — 표면별 결과는 `docs/overlay-review-2026-10-06.md`,
-계약은 `docs/DEVELOPERS.md` 의 「겹판」). 새 겹판을 만들 때 스크림 · 그림자 · 반경 · 들어옴/나감을
+겹판은 모두 같은 틀 위에 선다(2026-10-06 겹판 손질 — 계약은 `docs/DEVELOPERS.md` 의 「겹판」). 새 겹판을 만들 때 스크림 · 그림자 · 반경 · 들어옴/나감을
 다시 선언하지 않는다.
 
 - **모달**은 `ui/ModalFrame`(+`ModalHead` · `ModalBody` · `ModalFoot`)이다 — `role="dialog"` · 이름 ·
@@ -106,7 +105,7 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 └ Workspace ─ useSessions · usePins · useShellNav · usePlansWorkspace를 한 번씩 부른다
   ├ sidebar/Sidebar     앱 머리 / 프로젝트 전환기 / 찾기 · 기획서 · 화면 / 자리별 목록 / 바닥
   │ ├ 화면              다른 프로젝트 줄 · 날짜별 대화 목록 + 새 대화 · 도구가 한 일
-  │ └ plans/PlansSidebar 기획 대화 목록(+ 새 기획 대화 — 날짜 묶음 머리 · 줄 끝 ⋯ 지우기, 2026-11-03) / 기준 페이지 + 새 문서 · ⋯ / 찾기 · 트리(PlansList — 줄 끝 상태 점) / 가져온 때
+  │ └ plans/PlansSidebar 기획 대화 목록(+ 새 기획 대화 — 날짜 묶음 머리 · 줄 끝 ⋯ 이름 바꾸기 · 지우기, 2026-11-03) / 기준 페이지 + 새 문서 · ⋯ / 찾기 · 트리(PlansList — 줄 끝 상태 점) / 가져온 때
     ├ 자리별 머리        기획서: plans/PlansHeader / 화면: status/StatusLine
     ├ status/ProblemLine 문제 문장 · 초대 파일 안내(작업 자리에 유지)
     ├ 기획서 자리        plans/PlansColumn — 문서 판(PlanDocView · DraftEditor) | 기획 대화(draft/PlanChat) 두 칸

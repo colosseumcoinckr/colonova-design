@@ -94,7 +94,9 @@ git, 그리고 데몬 환경에 `ANTHROPIC_API_KEY` 가 없을 것. Node(22 이�
 경보(1 high · 2 moderate)에 따라 `body-parser`(^2.4.0 — express 연쇄, 압축 본문 뒤 잉여
 바이트 DoS)와 `hono`(^4.13.11 — MCP SDK 의 정적 경로 미들웨어 우회)를 더하고 같은 연쇄의
 `fast-uri`(^3.1.9) · `ip-address`(^10.7.4)도 올렸다 — 넷은 전부 claude-agent-sdk → MCP SDK
-전이 의존성이고 상위 선언 범위 안의 패치 버전이다.
+전이 의존성이고 상위 선언 범위 안의 패치 버전이다. 2026-11-03 Dependabot 경보(moderate)에 따라
+`@hono/node-server`(^2.1.3 — 같은 연쇄의 MCP SDK HTTP 서버, GHSA-rmxm-3fg6-px4f 정적 경로
+우회)를 더한다 — MCP SDK 1.32.1 이 선언한 범위(`^1.19.9 || ^2.0.5`) 안의 패치 버전이다.
 
 **연결 레포가 개발 규칙을 정한다**(2026-10-20 사용자 요청). Claude Code는 프로젝트의
 로컬 클론을 작업 경로로 사용한다. 앱은 내장 MCP를 주입하지 않는다. 브라우저 중계 엔드포인트와

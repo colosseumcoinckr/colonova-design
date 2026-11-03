@@ -89,6 +89,17 @@ export function usePlansWorkspace({
   useEffect(() => {
     if (enabled && connected) refreshConversations();
   }, [enabled, connected, refreshConversations]);
+  // AI 가 답을 마치면 목록을 다시 읽는다(2026-11-04 실앱 감사) — 보내기 직후의 갱신은
+  // 대화 기록이 늦게 저장되는 탓에 새 대화를 못 보았다. 끝났다는 방송을 듣고 다시 읽는다.
+  useEffect(() => {
+    if (!enabled || !connected) return;
+    return daemon.onDraftEvent((message) => {
+      if (message.type !== "draft.ai") return;
+      if (message.phase === "done" || message.phase === "failed" || message.phase === "cancelled") {
+        refreshConversations();
+      }
+    });
+  }, [enabled, connected, daemon, refreshConversations]);
   // 본문 찾기(2026-10-30 사용자 요청) — 트리 찾기 칸의 말로 가져온 사본의 본문도 찾는다.
   const bodySearch = useBodySearch(daemon, query, enabled && connected);
   const rows = useMemo(

@@ -9,7 +9,6 @@ import { confluenceMirrorLedger } from "../dist/confluence-mirror.js";
 import { MemoryCredentialStore } from "../dist/credentials.js";
 import type { DraftAiAnswer, DraftAiRequest, DraftAiRunner } from "../dist/draft-ai.js";
 import { DraftService } from "../dist/draft-service.js";
-import { DraftStore } from "../dist/draft-store.js";
 import type { DaemonLogger } from "../dist/log.js";
 import { appendCompareDecline } from "../dist/plan-compare.js";
 import type { RestTransport } from "../dist/rest-transport.js";

@@ -93,7 +93,10 @@ test("문서 관리의 막는 이유 — 여섯 이름이 각각 사람의 말�
   ];
   const lines = docOpBlockerLines(preview(six));
   assert.equal(lines.length, 6);
-  assert.equal(lines[0], "Confluence 에 쓰기가 아직 꺼져 있어요 — 검증을 마친 뒤 켜요");
+  assert.equal(
+    lines[0],
+    "지금은 이 앱에서 Confluence 에 쓰기가 꺼져 있어요 — 담당자에게 알리거나 Confluence 에서 직접 관리해 주세요",
+  );
   assert.equal(
     lines[4],
     "이 앱에서 휴지통으로 옮긴 문서가 아니에요 — 복구는 이 앱에서 옮긴 문서만 해요",

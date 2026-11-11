@@ -24,6 +24,11 @@
  *   · publish-blocked — 초안의 발행 확인 창이 막힌 이유 둘(발행 꺼짐 · 원격이 더 새 판)
  *   · publish-closed — 발행 확인 창의 개정 발행(표기가 1.0 이상 — 새 표기와 사유를 묻는다)
  *   · publish-unknown — 발행을 보냈지만 결과를 못 받은 초안(편집기의 `결과 확인 필요` 띠 — 다시 확인 · 재전송 없이 종료)
+ *   · publish-review — 발행 확인 창의 검토(제목 · 본문 · 긴 문장 · 큰 표 · 더한 블록 · 지운 보존 상자 · 순서 바꿈)
+ *   · publish-review-failed · publish-review-stale — 검토의 첫 읽기가 실패(다시 시도) · 확인 중 개정이 달라짐
+ *   · compare-failed — `Confluence 판과 견주기` 의 기준 읽기가 실패(다시 시도)
+ *   · publish-failed — 발행이 실패로 끝남(`결과 다시 확인` 으로 최신 내용을 살피고 다시 검토한다)
+ *   · publish-not-applied — 첫 발행이 반영 거절(`최신 내용 다시 확인` 으로 미리보기를 다시 읽고 재발행 성공)
  *   · op-blocked — 문서 관리 창이 막힌 이유 둘(권한 없음 · 범위 밖)
  *   · op-unknown · op-failed — 문서 관리(복제 · 위치 옮기기 · 휴지통 · 복구)의 결과 모름 · 실패
  *   · comment-failed · comment-unknown — 코멘트 쓰기의 실패(닻이 애매) · 결과 모름
@@ -36,6 +41,7 @@
  */
 
 import type {
+  DocBlock,
   DocCommentResult,
   DocOpKind,
   DocOpPreview,
@@ -46,6 +52,7 @@ import type {
   DraftMessage,
   DraftPublishPreview,
   DraftPublishResult,
+  DraftRevisionView,
   DraftSnapshot,
   DraftSummary,
   DraftView,
@@ -496,10 +503,12 @@ function projectFor(id: string): ProjectSummary {
 /**
  * 초안 편집기 견본(2026-10-23 · 최종 구현 계획 F1) — 문서를 열고 `고치기` 를 누르면 서는 초안. 제목 · 문단(토큰 ·
  * 코멘트 닻) · 목록 · 표 · 보존 상자 · 고친 블록 · 새 블록을 담고, `draft-conflict` 면 충돌 블록이 하나 더 선다.
- * 고치기는 메모리 안에서만 돈다(개정이 오른다).
+ * `publish-review` 는 발행 확인 창의 검토 판을 채우는 판본(2026-11-11) — 긴 문장과 큰 표를 담고 보존 상자를
+ * 지운 채 둔다. 고치기는 메모리 안에서만 돈다(개정이 오른다).
  */
-function sampleDraft(pageId: string, conflict: boolean): DraftView {
+function sampleDraft(pageId: string, variant: "base" | "conflict" | "review"): DraftView {
   const doc = DOCS.find((row) => row.pageId === pageId) ?? DOCS[5];
+  const conflict = variant === "conflict";
   const blocks: DraftView["blocks"] = [
     {
       id: "b0",
@@ -570,6 +579,26 @@ function sampleDraft(pageId: string, conflict: boolean): DraftView {
       editable: false,
       tokens: {},
       status: "same",
+      // 지금 판의 정보 상자 원문(2026-11-11 독립 검토 수정) — 검토의 전 · 후가 읽히도록
+      // 기준의 원문(6월 판)과 다른 문장이다.
+      preview: [
+        {
+          t: "panel",
+          tone: "info",
+          title: null,
+          blocks: [
+            {
+              t: "p",
+              children: [
+                {
+                  t: "text",
+                  text: "11월 판 기준 — 반품 출고는 재고 검수 뒤에만 허용하고, 검수 없는 재입고는 정보 상자의 예외 절차를 따른다.",
+                },
+              ],
+            },
+          ],
+        },
+      ],
     },
     {
       id: "nabc123def456",
@@ -579,6 +608,49 @@ function sampleDraft(pageId: string, conflict: boolean): DraftView {
       status: "new",
     },
   ];
+  if (variant === "review") {
+    // 검토 판본(2026-11-11) — 기준의 보존 상자(b4)를 지우고, 긴 문장과 큰 표를 새 블록으로 더한다.
+    blocks.splice(4, 1);
+    blocks.push(
+      {
+        id: "n222222222222",
+        view: {
+          kind: "paragraph",
+          text: "출고 지시는 재고가 확정된 뒤에만 만들고, 긴급이라는 이유로 순서를 앞당기지 않는다. 반품 · 교환의 재입고도 같은 규칙으로 받아들이며, 어떤 담당자든 화면의 지시가 아니라 이 문서의 조건을 보고 판단한다. 조건을 벗어난 출고는 예외 처리 절차를 따르고 결재 선에 기록을 남긴다.",
+        },
+        editable: true,
+        tokens: {},
+        status: "new",
+      },
+      {
+        id: "n333333333333",
+        view: {
+          kind: "table",
+          rows: [
+            {
+              cells: [
+                { header: true, text: "월" },
+                { header: true, text: "출고" },
+                { header: true, text: "반품" },
+                { header: true, text: "지연율" },
+              ],
+            },
+            ...["07", "08", "09", "10", "11", "12"].map((month) => ({
+              cells: [
+                { header: false, text: `2026-${month}` },
+                { header: false, text: `${Number(month) * 83}` },
+                { header: false, text: `${Number(month) * 7}` },
+                { header: false, text: `${(Number(month) * 0.4).toFixed(1)}%` },
+              ],
+            })),
+          ],
+        },
+        editable: true,
+        tokens: {},
+        status: "new",
+      },
+    );
+  }
   if (conflict) {
     blocks.splice(3, 0, {
       id: "b5",
@@ -595,7 +667,8 @@ function sampleDraft(pageId: string, conflict: boolean): DraftView {
     pageId: doc.pageId,
     site: "colosseum.atlassian.net",
     title: `${doc.title} v0.8`,
-    baseTitle: `${doc.title} v0.8`,
+    // 발행본의 제목 — 초안이 `v0.8` 을 붙였으니 달라야 검토가 제목의 전 · 후를 보인다(2026-11-11).
+    baseTitle: doc.title,
     baseVersion: doc.version,
     revision: 3,
     state: conflict ? "conflict" : "editing",
@@ -607,6 +680,74 @@ function sampleDraft(pageId: string, conflict: boolean): DraftView {
     updatedAt: ago(2),
   };
 }
+/**
+ * 발행본 기준 견본(2026-11-11) — `draft.revision(0)` 이 돌려주는 판 0. 초안이 출발한 발행본이므로 현재 초안과
+ * 달라야 `Confluence 판과 견주기` · 발행 확인 창의 검토가 전 · 후를 보인다. `review` 는 순서 바꿈(목록 ↔ 표)과
+ * 지운 문단 · 지운 보존 상자(b4)가 기준에 남도록 겹친다.
+ */
+function publishedBase(docKey: string, pageId: string | null): DraftRevisionView {
+  // 발행본의 블록 — 초안과 id 는 같지만 순서와 내용이 다르다(2026-11-11). 기준의 순서는
+  // 목적 → 본문 → 알림 문단 → 표 → 보존 상자 → 목록. 초안은 알림 문단을 지우고 목록 ↔ 표를 뒤바꿨다.
+  const para = (id: string, text: string): DraftView["blocks"][number] => ({
+    id,
+    view: { kind: "paragraph", text },
+    editable: true,
+    tokens: {},
+    status: "same",
+  });
+  const draft = sampleDraft(pageId ?? "2001", "base");
+  const byId = new Map(draft.blocks.map((block) => [block.id, block]));
+  const same = (id: string): DraftView["blocks"][number] => {
+    const block = byId.get(id);
+    if (!block) throw new Error(`기준에 없는 블록: ${id}`);
+    return { ...block, status: "same" };
+  };
+  const blocks: DraftView["blocks"] = [
+    same("b0"),
+    {
+      ...same("b1"),
+      view: {
+        kind: "paragraph",
+        text: "출고 지시는 재고 확정 뒤에 만든다. 상태 표시와 예외 처리는 5절을 따른다.",
+      },
+      tokens: {},
+    },
+    para("b7", "출고 지연 시 담당자에게 알림을 보낸다."),
+    same("b3"),
+    {
+      ...same("b4"),
+      // 발행본(6월 판)의 정보 상자 원문 — 삭제 전 내용이 눈으로 검증되도록 지금 판과 다른 문장이다.
+      preview: [
+        {
+          t: "panel",
+          tone: "info",
+          title: null,
+          blocks: [
+            {
+              t: "p",
+              children: [
+                {
+                  t: "text",
+                  text: "6월 발행본 — 반품 출고는 창고 담당이 육안 확인 뒤 접수하고, 불량은 검수팀 승인 없이 재입고할 수 없다.",
+                },
+              ],
+            },
+          ],
+        },
+      ] as DocBlock[],
+    },
+    same("b2"),
+  ];
+  return {
+    docKey,
+    revision: 0,
+    at: ago(24 * 60 * 30),
+    origin: "system",
+    label: null,
+    title: DOCS.find((row) => row.pageId === pageId)?.title ?? draft.baseTitle ?? "",
+    blocks,
+  };
+}
 
 /** 프로젝트 한 칸의 가짜 데몬 — 누른 손잡이의 종류를 아래 줄에 남긴다(검사 · 콘솔에서도 쓴다). */
 export function daemonFor(id: string, log: (line: string) => void): Daemon {
@@ -616,7 +757,7 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
   // 새 문서 초안의 선택 줄도 실제 셸에서 확인한다(2026-10-24 RS 3).
   if (new URLSearchParams(location.search).has("newDraft")) {
     draft = {
-      ...sampleDraft("2001", false),
+      ...sampleDraft("2001", "base"),
       docKey: "n-c0ffee0011223344556677889900aabb",
       kind: "new",
       pageId: null,
@@ -627,6 +768,12 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
     };
     draftKey = draft.docKey;
   }
+  // 검토 읽기의 시도 횟수(2026-11-11) — StrictMode 가 창의 읽기 useEffect 를 두 번 돌리므로 첫 마운트는
+  // 호출을 두 번 보낸다. `publish-review-failed` · `compare-failed` 는 처음 두 호출을 실패하게 해 화면의
+  // 첫 시도가 확실히 실패로 서고, 사람의 `다시 시도` (다음 마운트)부터는 성공한다.
+  let previewTries = 0;
+  let baseTries = 0;
+  let publishTries = 0;
   let copySerial = 1;
   let commentSeq = COMMENTS.length + 1;
   const comments = COMMENTS.map((row) => ({ ...row }));
@@ -639,7 +786,10 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
   const openDraft = (key: string): DraftView | null => {
     if (draft !== null && draftKey === key) return draft;
     if (!key.startsWith("p-")) return null;
-    const base = sampleDraft(key.slice(2), id === "draft-conflict");
+    const base = sampleDraft(
+      key.slice(2),
+      id === "draft-conflict" ? "conflict" : id === "publish-review" ? "review" : "base",
+    );
     // 목록의 `result-unknown` 초안 — 편집기의 결과 띠(다시 확인 · 재전송 없이 종료)가 서도록 연다.
     draft =
       base.pageId === "3001"
@@ -723,13 +873,19 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
         );
       }
       const view = openDraft(docKey);
+      // `publish-review-stale` — 발행 미리보기가 읽힌 뒤 다시 읽는 초안의 개정이 달라진다(2026-11-11).
+      // 확인 창은 「확인하는 동안 초안이 바뀌었어요」로 거절하고 `다시 시도` 가 서야 한다.
+      if (view !== null && id === "publish-review-stale") {
+        draft = { ...view, revision: view.revision + 1 };
+        return later(120, draft);
+      }
       return view === null ? failLater(120) : later(120, view);
     },
     draftCreate: (input: { title: string; parentId: string; parentType: "page" | "folder" }) => {
       log("새 문서 초안");
       const parentTitle =
         DOCS.find((row) => row.pageId === input.parentId)?.title ?? input.parentId;
-      const base = sampleDraft(DOCS[5].pageId, false);
+      const base = sampleDraft(DOCS[5].pageId, "base");
       draft = {
         ...base,
         docKey: "n-c0ffee0011223344556677889900aabb",
@@ -890,7 +1046,7 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
             }),
     draftAdopt: (docKey: string) => {
       log("변경안 채택");
-      return later(200, draft ?? sampleDraft(docKey.slice(2), false));
+      return later(200, draft ?? sampleDraft(docKey.slice(2), "base"));
     },
     draftReject: (docKey: string) => {
       log("변경안 거절");
@@ -1012,19 +1168,25 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
           state: "editing",
         },
       ]),
-    draftRevision: (_docKey: string, revision: number) => {
-      const view = openDraft(draftKey ?? "p-2001");
-      if (view === null) return failLater(120);
+    draftRevision: (docKey: string, revision: number) => {
+      // 판 0 은 발행본 기준 — 현재 초안의 복제가 아니라 독립 기준을 돌려줘야 검토가 전 · 후를 보인다(2026-11-11).
       if (revision === 0) {
-        return later(200, {
-          ...view,
-          revision: 0,
-          blocks: view.blocks.map((b) => ({ ...b, status: "same" as const })),
-        });
+        // 견주기 effect 는 compareOpen 이 켜질 때만 호출된다 — StrictMode 의 첫 마운트는 호출이 없어
+        // `< 2` 는 `다시 시도` 까지 실패시킨다. 첫 토글만 실패, 재시도 성공(2026-11-11).
+        if (id === "compare-failed" && baseTries++ === 0) return failLater(200);
+        const view = openDraft(docKey);
+        const pageId = view?.pageId ?? (docKey.startsWith("p-") ? docKey.slice(2) : null);
+        return later(200, publishedBase(docKey, pageId));
       }
+      const view = openDraft(docKey);
+      if (view === null) return failLater(120);
       return later(200, {
-        ...view,
+        docKey: view.docKey,
         revision,
+        at: ago(20),
+        origin: "person" as const,
+        label: null,
+        title: view.title,
         blocks: view.blocks.map((b) => ({ ...b, status: "same" as const })),
       });
     },
@@ -1040,21 +1202,36 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
     },
     // 발행 확인 창의 손(2026-10-23 · 최종 구현 계획 F2) — 미리보기는 상태마다, 보내기는 기본 닿음.
     draftPublishPreview: (docKey: string) => {
+      // `publish-review-failed` — 첫 읽기(미리보기)가 실패하고 `다시 시도` 로 성공한다(2026-11-11).
+      if (id === "publish-review-failed" && previewTries++ < 2) return failLater(250);
       const view = openDraft(docKey);
       if (view === null) return failLater(250);
       const closed = id === "publish-closed";
       const ahead = closed || id === "publish-blocked";
+      const review = id === "publish-review";
       return later(250, {
         docKey: view.docKey,
-        kind: "update",
+        // 새 문서는 create — 기준 읽기를 건너뛰고 검토가 새 문서 모양으로 선다(2026-11-11).
+        kind: view.kind === "new" ? "create" : "update",
         pageId: view.pageId,
         title: view.title,
-        titleChanged: view.title !== view.baseTitle,
+        titleChanged: view.kind !== "new" && view.title !== view.baseTitle,
         parent: view.parent,
         baseVersion: view.baseVersion,
         remoteVersion: view.baseVersion === null ? null : view.baseVersion + (ahead ? 2 : 0),
         draftRevision: view.revision,
-        changes: { changed: 2, inserted: 1, deleted: 0, protectedRemoved: [] },
+        // 데몬의 실제 계약(2026-11-11) — 새 문서는 전 블록이 inserted, 그 외는 기준과 견준 수.
+        changes:
+          view.kind === "new"
+            ? {
+                changed: 0,
+                inserted: view.blocks.length,
+                deleted: 0,
+                protectedRemoved: [],
+              }
+            : review
+              ? { changed: 3, inserted: 3, deleted: 2, protectedRemoved: ["macro:info"] }
+              : { changed: 2, inserted: 1, deleted: 0, protectedRemoved: [] },
         stage: closed
           ? { current: "1.01", closed: true, required: true }
           : { current: view.stage.notation, closed: false, required: false },
@@ -1073,17 +1250,31 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
       if (view === null || draft === null) return failLater(150);
       log("초안 발행");
       const unknown = id === "publish-unknown";
-      // 결과를 못 받으면 편집기가 다시 읽을 때 `결과 확인 필요` 띠가 선다.
-      draft = unknown
-        ? { ...view, state: "result-unknown", pendingCommandId: commandId }
-        : { ...view, state: "published", pendingCommandId: null };
+      const failed = id === "publish-failed";
+      // `publish-not-applied` — 첫 발행만 반영 거절, `최신 내용 다시 확인` 뒤의 재발행은 성공한다(2026-11-11).
+      const notApplied = id === "publish-not-applied" && publishTries++ === 0;
+      // 결과를 못 받으면 편집기가 다시 읽을 때 `결과 확인 필요` 띠가 선다. 실패 · 못함은 초안을
+      // 고치는 중으로 두고 창의 `결과 다시 확인` (실패) · `최신 내용 다시 확인` (못함)으로 잇는다(2026-11-11).
+      draft =
+        failed || notApplied
+          ? { ...view, state: "editing", pendingCommandId: null }
+          : unknown
+            ? { ...view, state: "result-unknown", pendingCommandId: commandId }
+            : { ...view, state: "published", pendingCommandId: null };
       return later(900, {
         commandId,
         docKey,
-        state: unknown ? "unknown" : "applied",
+        state: unknown ? "unknown" : failed ? "failed" : notApplied ? "not-applied" : "applied",
         pageId: view.pageId,
-        version: unknown || view.pageId === null ? null : (view.baseVersion ?? 0) + 1,
-        detail: "",
+        version:
+          unknown || failed || notApplied || view.pageId === null
+            ? null
+            : (view.baseVersion ?? 0) + 1,
+        detail: failed
+          ? "Confluence 요청이 실패했어요"
+          : notApplied
+            ? "기준 판이 바뀌어 반영되지 않았어요"
+            : "",
       } satisfies DraftPublishResult);
     },
     draftPublishRecheck: (commandId: string) => {

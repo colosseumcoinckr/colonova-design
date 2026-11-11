@@ -107,14 +107,15 @@ NextShell ─ 첫 상태 전 · 프로젝트 0개 · 게이트가 막힘 → onb
 └ Workspace ─ useSessions · usePins · useShellNav · usePlansWorkspace를 한 번씩 부른다
   ├ sidebar/Sidebar     앱 머리 / 프로젝트 전환기 / 찾기 · 기획서 · 화면 / 자리별 목록 / 바닥
   │ ├ 화면              다른 프로젝트 줄 · 날짜별 대화 목록 + 새 대화 · 도구가 한 일
-  │ └ plans/PlansSidebar 기획 대화 목록(+ 새 기획 대화 — 날짜 묶음 머리 · 줄 끝 ⋯ 이름 바꾸기 · 지우기, 2026-11-03) / 기준 페이지 + 새 문서 · ⋯ / 찾기 · 트리(PlansList — 줄 끝 상태 점) / 가져온 때
+  │ └ plans/PlansSidebar 기획 대화 목록(+ 새 기획 대화 — 날짜 묶음 머리 · 줄 끝 ⋯ 이름 바꾸기 · 지우기, 2026-11-03;
+  │                     낮은 창 780px 아래는 몫이 30% 로 줄고 날짜 머리 · 문서 이름이 숨는다, 2026-11-11 화면 평가) / 기준 페이지 + 새 문서 · ⋯ / 찾기 · 트리(PlansList — 줄 끝 상태 점) / 가져온 때
     ├ 자리별 머리        기획서: plans/PlansHeader / 화면: status/StatusLine
     ├ status/ProblemLine 문제 문장 · 초대 파일 안내(작업 자리에 유지)
     ├ 기획서 자리        plans/PlansColumn — 문서 판(PlanDocView · DraftEditor) | 기획 대화(draft/PlanChat) 두 칸
     │                   / 판 고르기 · Confluence 판과 견주기 · 코멘트 · 화면 서랍 · plans/PlansEmpty — 연결 없음 · 빈 목록 · 실패 · 만료 안내
     └ 화면 자리          (넓은 창) 미리보기 | 오른쪽 칸(대화 · 기획서 · 작업 기록 탭) — 2026-10-31 화면 자리 개선안 S15 · S10
                         (좁은 창) 화면 · <이름> | 대화 | 기획서 탭 — 화면이 첫 탭이다(S12)
-      ├ preview/PreviewColumn 막대(주소 · 찍기 · 기기 · ⋯) · PreviewHost · LiveLayer · 말풍선 · 준비 화면 · 좁은 창의 작업 기록 서랍 · 입력창 시트 자리
+      ├ preview/PreviewColumn 막대(주소 · 찍기 · ⋯) · PreviewHost · LiveLayer · 말풍선 · 준비 화면 · 좁은 창의 작업 기록 서랍 · 입력창 시트 자리
       └ chat/ChatColumn  탭 머리 · 빈 자리(안내 · 시작점 칩) · Thread(결과 띠 — S3) · PlanTab · HistoryPanel · 작업 독(S4) · Composer(모델 · `/` · `@`)
 ```
 
@@ -142,13 +143,17 @@ localStorage, 없으면 화면 자리). 기획서 자리에는 화면 대화 · 
 
 **기획서 본문(2026-10-31 기획서 칸 개선)** — 두 칸이다 — 왼쪽 문서 판(PlanDocView · DraftEditor), 오른쪽 기획 대화
 (`draft/PlanChat`). 읽기 · 고치기의 두 모드는 없다 — 문서 판은 늘 같은 자리고, 초안이 없는 문서의 첫 말은 초안을 열어
-건네진다(`pending-ask`). 두 칸 사이의 선(`nx-pl-split`)을 끌어 폭을 바꾸고 문서 판의 `⤢` 가 판을 넓혀 대화를 접는다.
-칸 폭 1100px 아래(`@container nxpl`)에서는 `문서` · `대화` 두 탭으로 나뉜다 — 대화 탭에서는 대화 칸 머리의 안내문이
-순다(2026-11-02 D6). `useDraftThread`의 판은 `PlansColumn`이
+건네진다(`pending-ask`). 두 칸 사이의 선(`nx-pl-split`)을 끌어 폭을 바꾼다 — 선에 초점을 두고 ←/→ 는 24px,
+Home/End 는 양끝(300 · 560px), Enter · 두 번 누름은 기본(380px)으로 옮긴다(2026-11-11). 문서 판의 `⤢` 가 판을 넓혀 대화를 접는다 — 접힌 대화 칸은 마운트가 남아 입력창의
+쓰던 글과 붙인 근거가 보존된다(2026-11-11). 칸 폭 1100px 아래(`@container nxpl`)에서는 `문서` · `대화` 두 탭이
+칸 위쪽의 가로 띠로 서고 고른 쪽이 칸 폭 전체를 쓴다(2026-11-11 화면 평가 수리 — 옛 세로 기둥 탭은 대화를 창 밖으로
+밀었다). 탭은 화살표 · Home/End 도 먹는다(`lib/tab-keys` 한 판 — 오른쪽 칸 탭 · 설정 목록과 같다) — 대화 탭에서는
+대화 칸 머리의 안내문이 순다(2026-11-02 D6). `useDraftThread`의 판은 `PlansColumn`이
 쥐므로 문서 판의 남은 걸음 고르기 · 바로 반영의 표시와 대화의 문서 카드가 같은 판을 본다. 기획 대화의 견주기 표는
 셀마다 제 폭을 지킨다(`draft.css` 의 min-width — 전역 `.md table` 의 width:100% 이 좁은 칸에서 CJK 셀을 한 글자씩
 접는다). AI 의 고침은 채택 없이 초안에 바로 들어가고(`#applyProposalLocked` — 2026-10-31 사용자 결정), 대화의 문서
-카드가 `문서에서 보기`(블록 칠하기)와 `되돌리기`(되돌릴 재료는 변경안 기록에 남는다)를 세운다. `⤢` 는 `nx:plans-expand-chat`
+카드가 `문서에서 보기`(문서 판을 그 블록으로 옮겨 칠한다 — 좁은 칸은 `문서` 탭이 먼저 선다, 2026-11-11)와
+`되돌리기`(되돌릴 재료는 변경안 기록에 남는다)를 세운다. `⤢` 는 `nx:plans-expand-chat`
 방송으로, 고른 글은 `nx:plan-selection` 방송으로 대화 칸에 닿는다.
 기획 대화 칸의 말씨는 화면 대화와 같은 닻이다(2026-11-02 D 개선) — 기록(`.nx-dr-thread-log`)의 첫 아이 `margin-top: auto`
 로 짧은 대화가 입력창 위에 붙고, AI 말은 `chat.css` 의 `nx-av`(스파크) 얼굴과 `lib/answer-lead` 의 첫 문장 크게를 쓰며,
@@ -166,7 +171,7 @@ localStorage, 없으면 화면 자리). 기획서 자리에는 화면 대화 · 
 기존 `planDraft` · `setPlanDraft` · `StatusLine.docFocus` 계약은 남지만 `Workspace`의 자리 배치 조건으로 쓰지 않는다.
 
 **미리보기 막대** — `PreviewBar`는 이동(`nx-pvg`) · 화면 고르기(`nx-addrwrap`) · 보기 도구(`nx-pvg--tools`)
-세 묶음이다. 조절 높이는 32px, 기기 마디 안쪽 단추는 28px다. `수정할 곳 선택`은 보통 단추이며 켜졌을 때만
+세 묶음이다. 조절 높이는 32px다(기기 마디는 2026-11-11 걷었다). `수정할 곳 선택`은 보통 단추이며 켜졌을 때만
 `nx-btn--accent`를 쓰고 담긴 수를 배지로 표시한다. 좁은 칸에서는 기록 글자 · 배율 · 찍기 글자 · 앞으로 순으로 숨는다.
 
 **문제 줄** — `ProblemLine`은 공통 `nx-banner`에 아이콘 · 글 · 단추를 놓는다. 고치는 중은 호박색, 알렸다는 소식은 파랑,

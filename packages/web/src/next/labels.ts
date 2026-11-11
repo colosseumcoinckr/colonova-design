@@ -477,9 +477,10 @@ export const L = {
     emptyTitleScreen: (name: string) => `‘${name}’에서 무엇을 바꿀까요?`,
     emptyTitleAny: "이 서비스에서 무엇을 바꿀까요?",
     editScreenHint: "대화 내용을 고쳐 보내요. 화면은 현재 상태를 유지해요",
+    /** 실제 화면의 자리를 방향으로 말하지 않는다 — 사이드바 · 칸 폭에 따라 달라진다(2026-11-11 화면 평가). */
     emptyBody: (name: string) =>
-      `오른쪽은 ${name}의 실제 화면이에요.\n원하는 변경을 입력하거나, 고칠 곳을 찍어 알려 주세요.\n그림·기획 문서도 첨부할 수 있어요.`,
-    /** 좁은 창(900px 미만)에서는 미리보기가 오른쪽이 아니라 탭이다. */
+      `옆의 화면이 ${name}의 실제 화면이에요.\n원하는 변경을 입력하거나, 고칠 곳을 찍어 알려 주세요.\n그림·기획 문서도 첨부할 수 있어요.`,
+    /** 좁은 창(900px 미만)에서는 미리보기가 칸이 아니라 탭이다. */
     emptyBodyNarrow: (name: string) =>
       `${name}의 실제 화면은 화면 탭에서 봐요.\n원하는 변경을 입력하거나, 고칠 곳을 찍어 알려 주세요.\n그림·기획 문서도 첨부할 수 있어요.`,
     emptyPreparing: (name: string) =>
@@ -728,9 +729,6 @@ export const L = {
     back: "뒤로",
     forward: "앞으로",
     reload: "새로 고침 · 보던 자리 그대로",
-    devicePc: "PC",
-    deviceTablet: "태블릿",
-    devicePhone: "휴대폰",
     pinTip: "고칠 곳 찍기 · ⌘⇧P · option(⌥)+클릭은 언제든",
     history: "작업 기록",
     more: "더 보기",
@@ -775,7 +773,6 @@ export const L = {
     /** 목록 위의 낭독 한 줄 — 친 글자에 맞는 화면 수. */
     addrCount: (n: number) => `화면 ${n}곳`,
     recent: "최근 수정",
-    device: "화면 크기",
     pin: "찍기",
     pinOffTip: "찍기 끄기 · ⌘⇧P",
     /** 잠김 상태를 아는 손 — 잠긴 이유는 눌렀을 때의 토스트가 말한다(2026-10-04 ux-review). */
@@ -1923,6 +1920,7 @@ export const L = {
      * 바뀐 곳이다 — 초안 요약의 수(`changedBlocks`)로 함께 본다.
      */
     unpublished: "아직 발행 전",
+    draftOnlyNote: "고친 내용은 이 컴퓨터의 초안에 보관해요. 발행해야 Confluence 원본에 반영돼요.",
     /** 제목의 단계 표기가 1.0 이후일 때 배지 옆에 선다 — 발행이 새 판을 만든다는 안내다. */
     stageClosed: "발행하면 새 판이 돼요",
     locked: "발행을 확인하는 동안은 고칠 수 없어요 — 끝나면 다시 고칠 수 있어요.",
@@ -2031,8 +2029,10 @@ export const L = {
     },
     // ── 기획 대화 — 초안 편집기 안에서 AI 와 문서를 다듬는 칸(2026-10-23 · 최종 구현 계획 F1)
     threadTitle: "기획 대화",
-    /** 기획 대화 머리의 한 줄 — 이 AI 가 바꾸는 것과 바꾸지 않는 것(2026-10-23 기획자 화면 손질 · 정본 §6 실행 경계). */
-    threadScope: "이 AI 는 문서의 변경안만 만들어요 — 화면과 Confluence 는 바꾸지 않아요",
+    /** 기획 대화 머리의 한 줄 — 실행 경계(2026-10-23 정본 §6): AI 는 채택 없이 초안을 바로 고치고 화면은
+     * 건드리지 않으며, Confluence 반영은 발행의 몫이다. 옛 「변경안만 만들어요」는 채택 걸음을 걷은
+     * 뒤(2026-10-31)에도 남아 있던 것을 2026-11-11 에 바로잡았다. */
+    threadScope: "이 AI 는 초안을 바로 고쳐요 — 화면은 바꾸지 않고 Confluence 는 발행할 때 반영돼요",
     send: "보내기",
     inputHint: "예: 둘째 절에 목표를 더하고 문단을 나눠 줘",
     aiWorking: "AI 가 쓰는 중…",
@@ -2119,7 +2119,15 @@ export const L = {
     // ── Confluence 판과 견주기(2026-10-31 2단계) ──
     compareConfluence: "Confluence 판과 견주기",
     compareTitle: "Confluence 판과 견주기",
-    compareSub: "발행본에서 바뀐 곳을 모두 보여요 — 지운 글에 취소선, 더한 글에 밑줄.",
+    compareSub: "초안이 출발한 발행본과 수정 전후를 살펴보세요.",
+    compareOnlyChanges: "바뀐 곳만 보기",
+    compareShowAll: (n: number) => `그대로인 내용 ${n}곳도 보기`,
+    compareMoved: (before: number, after: number) => `순서 변경 · ${before}번째 → ${after}번째`,
+    /** 앞뒤 지움 · 더함으로 자리 숫자는 그대로인 이동 — 자리를 말하지 않고 주변과 바뀌었다고만 한다(2026-11-11 fixture 확인). */
+    compareMovedAmong: "주변 내용과의 순서가 바뀌었어요",
+    compareFailed: "비교할 내용을 읽지 못했어요. 다시 시도해 주세요. 초안은 그대로 남아 있어요.",
+    reviewBefore: "발행본",
+    reviewAfter: "초안",
     // 바뀐 곳이 하나도 없을 때의 한 줄(2026-11-03 실앱 감사) — 같은 문서를 두 벌로 겹쳐 보이지 않게.
     compareNone: "발행본과 바뀐 곳이 없어요.",
     compareDeleted: "발행본에는 있지만 지워진 블록",
@@ -2159,17 +2167,24 @@ export const L = {
     startWithAi: "AI 와 시작하기",
     // ── 발행(2026-10-23 · 최종 구현 계획 F2) — Confluence 에 반영하기 전에 무엇이 반영되는지 보인다
     publish: "발행",
-    /** 쓰기 꺼짐의 한 칩(2026-10-31 E — 쓰기가 막힌 것을 한 곳에서만 말한다). */
+    /** 쓰기 꺼짐의 한 칩(2026-10-31 E — 쓰기가 막힌 것을 한 곳에서만 말한다). 켜는 곳은 연결 설정이 아니라
+     * 이 앱을 띄운 자리다 — 사용자에게 남은 길을 말한다(2026-11-11 화면 평가). */
     writeOff: "Confluence 쓰기 꺼짐",
-    writeOffHint: "발행 · 라벨 · 코멘트 · 문서 관리가 잠겨요 — 연결 설정에서 쓰기를 켜요",
+    writeOffHint: "발행 · 라벨 · 코멘트 · 문서 관리가 잠겨요 — 담당자에게 알리거나 Confluence 에서 직접 다뤄 주세요",
     publishTitle: "Confluence 에 발행",
-    publishSub: "반영되는 내용과 막힌 것이 있으면 미리 알려요.",
+    publishSub: "아래 내용을 확인하고 발행하면 Confluence 원본에 반영돼요. 닫아도 초안은 남아요.",
+    publishReviewFailed: "발행할 내용을 확인하지 못했어요. 다시 시도하거나 초안으로 돌아가 주세요.",
+    publishReviewChanged: "확인하는 동안 초안이 바뀌었어요. 다시 시도해 최신 내용을 확인해 주세요.",
+    backToDraft: "초안으로 돌아가기",
+    reviewAgain: "최신 내용 다시 확인",
     publishConfirm: "발행",
     publishing: "보내는 중…",
     previewTarget: "대상",
     previewTitle: "제목",
+    /** 출발 판은 맞추기 · 발행 뒤에도 바뀐다 — 「처음」이라 하지 않고 metaLine 과 같은 뜻으로
+     * 말한다(2026-11-11 검토 반영). */
     previewVersions: (base: number | null, remote: number | null, revision: number) =>
-      `기준 판 ${base ?? "없음"} · 지금 원격 판 ${remote ?? "없음"} · 초안 개정 ${revision}`,
+      `초안이 출발한 판 ${base ?? "없음"} · 지금 Confluence 판 ${remote ?? "없음"} · 초안 판 ${revision}`,
     changeHeading: "이번에 반영할 내용",
     changeCounts: (changed: number, inserted: number, deleted: number) => {
       const parts: string[] = [];
@@ -2181,7 +2196,7 @@ export const L = {
     protectedRemoved: (label: string) => `${label} — 지운 조각이 발행물에서도 빠져요`,
     /** 막는 이유의 글 — 이름은 선로의 기계 이름이다(시험이 열한 갈래를 대조한다). */
     blocker: {
-      "publish-disabled": "발행이 아직 꺼져 있어요 — 검증을 마친 뒤 켜요",
+      "publish-disabled": "지금은 이 앱에서 Confluence 에 쓰기가 꺼져 있어요 — 담당자에게 알리거나 Confluence 에서 직접 고쳐 주세요",
       "nothing-to-publish": "바뀐 내용이 없어요 — 발행할 것이 없어요",
       "remote-newer": "Confluence 에 더 새 판이 있어요",
       "remote-draft": "Confluence 에서 누군가 고치는 중인 내용이 있어요",
@@ -2225,7 +2240,7 @@ export const L = {
     precheckChanges: (n: number) => `바뀐 곳 ${n}곳`,
     precheckKept: (n: number) => `직접 고를 AI 고침 ${n}곳`,
     precheckComments: (n: number) => `안 풀린 코멘트 ${n}개`,
-    precheckScreen: "발행 전에 화면에서 확인해요 — `화면에서 확인` 으로 근거를 보내요",
+    precheckScreen: "발행 전에 화면에서 확인해요 — 「화면에서 확인」으로 근거를 보내요",
     closeNoResend: "재전송 없이 종료",
     closeNoResendTitle: "결과를 확인하지 않고 종료할까요?",
     closeNoResendBody: "Confluence 에 닿았는지 모른 채 이 상태를 거둬요. 같은 내용을 다시 보내지 않아요.",
@@ -2307,7 +2322,7 @@ export const L = {
     hasDraft: "이 컴퓨터의 초안은 지워지지 않아요",
     /** 막는 이유의 글 — 이름은 선로의 기계 이름이다(시험이 일곱 갈래를 대조한다). */
     blocker: {
-      "publish-disabled": "Confluence 에 쓰기가 아직 꺼져 있어요 — 검증을 마친 뒤 켜요",
+      "publish-disabled": "지금은 이 앱에서 Confluence 에 쓰기가 꺼져 있어요 — 담당자에게 알리거나 Confluence 에서 직접 관리해 주세요",
       "remote-missing": "Confluence 에서 문서를 찾지 못했어요 — 지워졌을 수 있어요",
       "out-of-scope": "연결한 기획서 범위 밖의 문서예요 — 여기서는 옮기지 않아요",
       "no-permission": "이 문서를 바꿀 권한이 없어요",

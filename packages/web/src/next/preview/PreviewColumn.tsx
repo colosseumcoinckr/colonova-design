@@ -31,7 +31,7 @@ import { LiveLayer } from "./LiveLayer";
 import { PINS_SEND_EVENT, PinBubble } from "./PinBubble";
 import { PrepareCard, StageNotice } from "./PrepareCard";
 import { PreviewBar, type ScreenRow } from "./PreviewBar";
-import { nativePreview, type PreviewDevice, PreviewHost } from "./PreviewHost";
+import { nativePreview, PreviewHost } from "./PreviewHost";
 import { useLiveFollow } from "./use-live-follow";
 import { type MachineTurn, usePreviewErrors } from "./use-preview-errors";
 
@@ -489,7 +489,6 @@ export function PreviewColumn({
     : (errors.fixingSince ?? undefined);
 
   // --- 무대 ---------------------------------------------------------
-  const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [zoom, setZoom] = useState(1);
   // 실패의 다시 시도 — 있는 손만 쓴다: 미리보기를 다시 읽고(막대의 새로 고침과 같은),
   // 준비 파이프를 다시 걷는다(마운트 때와 같은 멱등 부름). 새 진행 표시는 만들지 않는다.
@@ -501,15 +500,6 @@ export function PreviewColumn({
       .repoSync()
       .catch((cause: Error) => console.error("[colonova-design] repo sync", cause));
   }, [reload, api]);
-  const pickDevice = (next: PreviewDevice) => {
-    noteUser();
-    if (next === device) return;
-    invalidateView();
-    setDevice(next);
-    // 기기는 몸이고 배율은 눈이다 — 기기가 바뀌면 눈은 100% 로.
-    setZoom(1);
-    void window.colonovaDesignDesktop?.preview?.zoom?.("reset");
-  };
 
   // --- 찍기 ---------------------------------------------------------
   const [commentsOn, setCommentsOn] = useState(false);
@@ -606,9 +596,9 @@ export function PreviewColumn({
     },
     [pins, openBubble, noteUser],
   );
-  // 어긋날 수 있는 사건에는 닫는다 — 이동 · 배율 · 기기 · 창 크기(U4 · 6 리스크).
+  // 어긋날 수 있는 사건에는 닫는다 — 이동 · 배율 · 창 크기(U4 · 6 리스크).
   // biome-ignore lint/correctness/useExhaustiveDependencies: 사건만 본다.
-  useEffect(() => setBubble(null), [location, zoom, device, frozen, root]);
+  useEffect(() => setBubble(null), [location, zoom, frozen, root]);
   useEffect(() => {
     const close = () => setBubble(null);
     window.addEventListener("resize", close);
@@ -946,8 +936,6 @@ export function PreviewColumn({
           go(path);
         }}
         onAddress={onAddress}
-        device={device}
-        onDevice={pickDevice}
         pinOn={commentsOn}
         pinCount={pinCount}
         pinLocked={pinLocked}
@@ -983,7 +971,6 @@ export function PreviewColumn({
         epoch={epoch}
         target={target}
         reloadKey={reloadKey}
-        device={device}
         commentsOn={commentsOn}
         overlaySkin={overlaySkin}
         sweep={arriveTick}

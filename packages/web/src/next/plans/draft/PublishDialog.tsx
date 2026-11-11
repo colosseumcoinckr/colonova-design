@@ -1,4 +1,9 @@
-import type { DraftPublishPreview, DraftPublishResult } from "@colonova-design/protocol";
+import type {
+  DraftPublishPreview,
+  DraftPublishResult,
+  DraftRevisionView,
+  DraftView,
+} from "@colonova-design/protocol";
 import { useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../../lib/daemon-client";
 import { linkClick } from "../../../lib/open-link";
@@ -7,6 +12,7 @@ import type { ShellNav } from "../../slots";
 import { ExternalIcon, InfoIcon, Spin } from "../../ui/icons";
 import { ModalBody, ModalFoot, ModalFrame, ModalHead } from "../../ui/ModalFrame";
 import { docUrl } from "../plans-list";
+import { DraftChanges } from "./DraftChanges";
 import { DRAFT_LIMITS } from "./limits";
 import {
   blockerLines,
@@ -15,6 +21,7 @@ import {
   resultLine,
   stageInputNeeded,
 } from "./publish-model";
+import { loadPublishReview } from "./publish-review";
 
 /**
  * 발행 확인 창(2026-10-23 · 최종 구현 계획 F2) — Confluence 에 반영하기 전에 무엇이 반영되는지
@@ -73,18 +80,29 @@ export function PublishDialog({
   /** 맞추기 · 다시 확인의 잠금 — 두 번 눌러 두 번 보내지 않게. */
   const [busy, setBusy] = useState(false);
   const [sending, setSending] = useState(false);
+  const [review, setReview] = useState<{ draft: DraftView; base: DraftRevisionView | null } | null>(
+    null,
+  );
+  const [attempt, setAttempt] = useState(0);
   const [notation, setNotation] = useState("");
   const [reason, setReason] = useState("");
 
   // 미리보기는 창이 설 때 한 번 읽는다 — 늦게 온 답은 창이 닫혔으면 버린다.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt 는 다시 확인의 방아쇠 — 읽지 않고 바뀜에만 반응한다.
   useEffect(() => {
     let alive = true;
     setPhase("loading");
-    apiRef.current
-      .draftPublishPreview(docKey)
-      .then((next) => {
+    setPreview(null);
+    setReview(null);
+    setLoadError(null);
+    setResult(null);
+    setError(null);
+    setCommentCount(null);
+    loadPublishReview(apiRef.current, docKey)
+      .then(({ preview: next, draft, base }) => {
         if (!alive) return;
         setPreview(next);
+        setReview({ draft, base });
         setPhase("ready");
         setNotation(stageInputNeeded(next) ? (nextNotation(next.stage.current) ?? "") : "");
         // 안 풀린 코멘트의 수 — 기존 문서의 발행에서만 읽는다(2026-10-31 F). 실패는 조용히 뺀다.
@@ -108,7 +126,7 @@ export function PublishDialog({
     return () => {
       alive = false;
     };
-  }, [docKey]);
+  }, [docKey, attempt]);
 
   const rebase = async () => {
     if (busy || sending) return;
@@ -148,7 +166,7 @@ export function PublishDialog({
   };
 
   const publish = async () => {
-    if (preview === null || sending) return;
+    if (!canPublish || preview === null || sending || busy) return;
     setSending(true);
     setError(null);
     try {
@@ -188,10 +206,14 @@ export function PublishDialog({
   const canPublish =
     phase === "ready" &&
     preview !== null &&
+    review !== null &&
+    !busy &&
+    result === null &&
     blockers.length === 0 &&
     (!stageNeeded || (notation.trim() !== "" && reason !== ""));
   const conflict = result?.state === "conflict";
-  const retryable = result?.state === "failed" || result?.state === "not-applied";
+  /** 창에 남는 실패 결과 — 확정된 결과라 다시 묻지 못하고, 재검토로 다시 발행할 수 있다. */
+  const retryByReview = result?.state === "not-applied" || result?.state === "failed";
 
   return (
     <ModalFrame onClose={onClose} locked={sending} label={L.drafts.publishTitle} className="nx-pb">
@@ -203,9 +225,15 @@ export function PublishDialog({
           </p>
         )}
         {phase === "failed" && (
-          <p className="nx-banner nx-banner--red" role="alert">
-            {loadError}
-          </p>
+          <div>
+            <p className="nx-banner nx-banner--red" role="alert">
+              {L.drafts.publishReviewFailed}
+            </p>
+            {loadError !== null && <p className="nx-pb-note">{loadError}</p>}
+            <button type="button" className="nx-btn" onClick={() => setAttempt((n) => n + 1)}>
+              {L.vocab.retry}
+            </button>
+          </div>
         )}
         {phase === "ready" && preview !== null && (
           <>
@@ -260,6 +288,15 @@ export function PublishDialog({
                 ) || L.drafts.blocker["nothing-to-publish"]}
               </p>
             </section>
+            {review !== null && (
+              <DraftChanges
+                base={review.base}
+                title={review.draft.title}
+                blocks={review.draft.blocks}
+                api={daemon.api}
+                pageId={review.draft.pageId}
+              />
+            )}
             {preview.changes.protectedRemoved.length > 0 && (
               <section
                 className="nx-banner nx-banner--amber"
@@ -386,6 +423,19 @@ export function PublishDialog({
       </ModalBody>
       <ModalFoot className="nx-pb-foot">
         <div className="nx-pb-foot-act">
+          <button type="button" className="nx-btn" disabled={busy || sending} onClick={onClose}>
+            {L.drafts.backToDraft}
+          </button>
+          {retryByReview && (
+            <button
+              type="button"
+              className="nx-btn"
+              disabled={busy || sending}
+              onClick={() => setAttempt((n) => n + 1)}
+            >
+              {L.drafts.reviewAgain}
+            </button>
+          )}
           {conflict && (
             <button
               type="button"
@@ -394,16 +444,6 @@ export function PublishDialog({
               onClick={() => void rebase()}
             >
               {L.drafts.actionRebase}
-            </button>
-          )}
-          {retryable && result !== null && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm"
-              disabled={busy || sending}
-              onClick={() => void recheck(result.commandId)}
-            >
-              {L.drafts.actionRecheck}
             </button>
           )}
         </div>

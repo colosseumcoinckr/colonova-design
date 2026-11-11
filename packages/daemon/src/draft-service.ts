@@ -42,6 +42,7 @@ import { type ConfluenceLedger, readConfluenceLedger } from "./confluence-ledger
 import { deriveMarkdown } from "./confluence-markdown.js";
 import { confluenceMirrorLedger, confluenceMirrorRoot } from "./confluence-mirror.js";
 import { confluenceRootIdKey, confluenceSiteKey } from "./confluence-sync.js";
+import { storageView } from "./confluence-view.js";
 import { type CredentialStore, loadConfluenceCredentials } from "./credentials.js";
 import { buildDraftPrompt, type DraftAiRunner, type DraftPromptRef } from "./draft-ai.js";
 import {
@@ -2519,6 +2520,7 @@ export class DraftService {
       tokens: projection.tokens,
       status,
     };
+    if (projection.view.kind === "preserved") wire.preview = storageView(block.xml);
     if (block.theirsXml !== undefined) {
       wire.theirs = projectBlock({
         id: block.id,

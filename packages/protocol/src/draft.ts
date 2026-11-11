@@ -12,6 +12,7 @@
  */
 
 import { z } from "zod";
+import type { DocBlock } from "./doc-view.js";
 import { effortLevelSchema } from "./shared.js";
 
 /** 초안의 열쇠 — 기존 문서는 `p-<페이지 id>`, 새 문서는 `n-<32자 소문자 16진>`. 경로에도 쓰여 모양을 좁힌다. */
@@ -54,6 +55,8 @@ export interface DraftBlock {
    */
   tokens: Record<string, string>;
   status: DraftBlockStatus;
+  /** 보존 블록의 같은 판 원문을 읽기 전용으로 그린다(2026-11-11 독립 검토 수정). */
+  preview?: DocBlock[];
   /** 충돌일 때 원격 쪽의 투영 — 사람이 고른다. */
   theirs?: DraftBlockView;
 }

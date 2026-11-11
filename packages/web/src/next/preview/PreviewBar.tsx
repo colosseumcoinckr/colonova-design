@@ -1,5 +1,5 @@
 import { APP_SHORTCUTS } from "@colonova-design/protocol";
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { composing } from "../../lib/ime";
 import { L } from "../labels";
 import { keyHint, tipWithKeys } from "../lib/key-hint";
@@ -16,16 +16,12 @@ import {
   KeyboardIcon,
   MinusIcon,
   MoreIcon,
-  PcIcon,
-  PhoneIcon,
   PinIcon,
   PlusIcon,
   ReloadIcon,
   ScreenIcon,
   SmallCheckIcon,
-  TabletIcon,
 } from "./icons";
-import type { PreviewDevice } from "./PreviewHost";
 
 /** 단축키 표(APP_SHORTCUTS)에 적힌 글리프 — 표에 없으면 null. 메뉴 · 시트와 같은 한 벌이다. */
 function keysOf(id: string): string | null {
@@ -44,7 +40,7 @@ export interface ScreenRow {
   modified?: boolean;
 }
 
-/** 막대의 접힘 차례(2026-10-31 화면 자리 개선안 S6) — 넓음 → ⌘L 감김 → 기기 마디를 한 단추로 → 앞으로. */
+/** 막대의 접힘 차례(2026-10-31 화면 자리 개선안 S6) — 넓음 → ⌘L 감김 → 찍기의 글자 · 앞으로. */
 type BarTier = "wide" | "mid" | "tight" | "tiny";
 
 function tierOf(width: number): BarTier {
@@ -57,10 +53,10 @@ function tierOf(width: number): BarTier {
 /**
  * 미리보기 막대 — 「어디 · 무엇을 · 어떻게 보나」 순으로 세운다(2026-10-31 화면 자리 개선안 S6).
  * 왼쪽은 뒤로 · 앞으로 · 새로 고침, 가운데는 주소(화면 고르기)와 그 바로 오른쪽의 **`찍기`** —
- * 이 칸의 가장 중요한 손이라 주소 곁으로 당겼다. 오른쪽은 기기 마디와 `···`다. 작업 기록은
+ * 이 칸의 가장 중요한 손이라 주소 곁으로 당겼다. 오른쪽은 `···`다(기기 마디는 2026-11-11 사용자 요청으로 걷었다). 작업 기록은
  * 막대에서 빠졌다 — 오른쪽 칸의 작업 기록 탭(S10)과 `···` 메뉴가 대신한다. 배율은 100% 가
- * 아닐 때만 `···` 위의 숫자 배지로 접힌다. 창이 좁아지면 ⌘L 감김 → 기기 마디를 한 단추로 →
- * 앞로 순으로 접힌다(막대 폭을 잰다).
+ * 아닐 때만 `···` 위의 숫자 배지로 접힌다. 창이 좁아지면 ⌘L 감김 → 찍기의 글자 · 앞으로
+ * 순으로 접힌다(막대 폭을 잰다).
  */
 export function PreviewBar({
   canBack,
@@ -76,8 +72,6 @@ export function PreviewBar({
   arrivePulse,
   onGo,
   onAddress,
-  device,
-  onDevice,
   pinOn,
   pinCount,
   pinLocked,
@@ -110,8 +104,6 @@ export function PreviewBar({
   onGo: (path: string) => void;
   /** `/` 로 시작하는 주소 — 옮겼으면 null, 거절이면 그 이유 한 줄. */
   onAddress: (raw: string) => string | null;
-  device: PreviewDevice;
-  onDevice: (device: PreviewDevice) => void;
   pinOn: boolean;
   /** 입력창에 담겨 있는 핀의 수 — 0 보다 크면 단추에 숫자 알약이 선다. */
   pinCount: number;
@@ -139,7 +131,6 @@ export function PreviewBar({
 }) {
   const [addrOpen, setAddrOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [deviceOpen, setDeviceOpen] = useState(false);
   // 답이 끝나 도착하면 주소 알약이 강조색으로 1.2초 물든다 — 도착이 먼저
   // 말하고 색이 뒤따라 꺼진다.
   const [arriveTint, setArriveTint] = useState(false);
@@ -151,7 +142,6 @@ export function PreviewBar({
   }, [arrivePulse]);
   const addrRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
-  const deviceRef = useRef<HTMLDivElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   // 막대의 폭으로 접힘 차례를 정한다 — 폭마다 보이는 것이 다르되 규칙은 하나다(S6).
   const [tier, setTier] = useState<BarTier>("wide");
@@ -172,16 +162,15 @@ export function PreviewBar({
   // 게스트(webview) 안의 누름은 문서의 mousedown 에 닿지 않는다 — 게스트가 포커스를
   // 가져가는 순간을 「바깥을 눌렀다」로 본다.
   useEffect(() => {
-    if (!addrOpen && !moreOpen && !deviceOpen) return;
+    if (!addrOpen && !moreOpen) return;
     const onFocusIn = (event: FocusEvent) => {
       if ((event.target as HTMLElement | null)?.tagName !== "WEBVIEW") return;
       setAddrOpen(false);
       setMoreOpen(false);
-      setDeviceOpen(false);
     };
     document.addEventListener("focusin", onFocusIn);
     return () => document.removeEventListener("focusin", onFocusIn);
-  }, [addrOpen, moreOpen, deviceOpen]);
+  }, [addrOpen, moreOpen]);
 
   const zoomState = zoomButtons(zoom);
   // 주소 목록의 체크와 같은 비교 — 이 대화에서 만든 화면 위에 서 있는가.
@@ -195,30 +184,6 @@ export function PreviewBar({
   if (pinLocked) pinName = L.preview.pinLockedState;
   else if (pinOn && pinCount === 0) pinName = L.preview.pinOnState;
   else if (pinCount > 0) pinName = L.preview.pinCountState(pinCount);
-
-  const deviceButton = (value: PreviewDevice, label: string, icon: ReactNode) => (
-    <button
-      type="button"
-      className={device === value ? "nx-seg--on" : ""}
-      title={label}
-      aria-label={label}
-      aria-pressed={device === value}
-      onClick={() => onDevice(value)}
-    >
-      {icon}
-    </button>
-  );
-
-  const deviceIcons: Record<PreviewDevice, ReactNode> = {
-    desktop: <PcIcon />,
-    tablet: <TabletIcon />,
-    mobile: <PhoneIcon />,
-  };
-  const deviceLabel: Record<PreviewDevice, string> = {
-    desktop: L.preview.devicePc,
-    tablet: L.preview.deviceTablet,
-    mobile: L.preview.devicePhone,
-  };
 
   return (
     <div className="nx-pvbar" ref={barRef} data-tier={tier}>
@@ -339,43 +304,6 @@ export function PreviewBar({
       <span className="nx-grow" />
 
       <div className="nx-pvg nx-pvg--tools">
-        {/* 기기 마디 — 좁으면 한 단추로 접는다(S6). */}
-        {tier === "wide" || tier === "mid" ? (
-          <fieldset className="nx-seg" aria-label={L.preview.device}>
-            {deviceButton("desktop", L.preview.devicePc, <PcIcon />)}
-            {deviceButton("tablet", L.preview.deviceTablet, <TabletIcon />)}
-            {deviceButton("mobile", L.preview.devicePhone, <PhoneIcon />)}
-          </fieldset>
-        ) : (
-          <div className="nx-anchor" ref={deviceRef}>
-            <button
-              type="button"
-              className="nx-ibtn"
-              title={L.preview.device}
-              aria-label={`${L.preview.device} · ${deviceLabel[device]}`}
-              aria-haspopup="dialog"
-              aria-expanded={deviceOpen}
-              onClick={() => setDeviceOpen((open) => !open)}
-            >
-              {deviceIcons[device]}
-            </button>
-            {deviceOpen && (
-              <Popover
-                anchor={deviceRef}
-                onClose={() => setDeviceOpen(false)}
-                align="end"
-                label={L.preview.device}
-              >
-                <div className="nx-mseg">
-                  {deviceButton("desktop", L.preview.devicePc, <PcIcon />)}
-                  {deviceButton("tablet", L.preview.deviceTablet, <TabletIcon />)}
-                  {deviceButton("mobile", L.preview.devicePhone, <PhoneIcon />)}
-                </div>
-              </Popover>
-            )}
-          </div>
-        )}
-
         <div className="nx-anchor" ref={moreRef}>
           <button
             type="button"

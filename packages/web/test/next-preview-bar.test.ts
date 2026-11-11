@@ -126,9 +126,9 @@ test("막대: 모든 조절은 32px 이고 좁아져도 줄이지 않는다 — 
   // 크기는 공통 부품(`nx-btn` · `nx-ibtn` 32px)이 정한다 — 이 파일이 따로 선언하지 않는다.
   assert.doesNotMatch(css, /\.nx-pvbar \.nx-ibtn\s*\{[^}]*(?:width|height):/);
   assert.match(body(".nx .nx-addr"), /height:\s*var\(--h-md\)/);
-  // 기기 칸(마디 단추)은 바깥 틀이 32px(안쪽 28px + 2px 두 겹)이다.
-  assert.match(body(".nx .nx-seg"), /padding:\s*var\(--sp-0_5\)/);
-  assert.match(body(".nx .nx-seg button"), /height:\s*var\(--h-sm\)/);
+  // 기기 마디(PC · 태블릿 · 휴대폰)는 2026-11-11 사용자 요청으로 걷었다 — 돌아오지 않는다.
+  assert.doesNotMatch(css, /\.nx-seg\b(?!-)/);
+  assert.doesNotMatch(bar, /onDevice|PreviewDevice/);
   // 질의 안에서 조절을 30px 이하로 줄이는 규칙이 돌아오지 않는다(예전 480px 질의의 30px).
   for (const { body: inner } of queries()) {
     assert.doesNotMatch(inner, /(?:^|[;\s{])height:\s*(?:2\d|30)px/);

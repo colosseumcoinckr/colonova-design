@@ -270,12 +270,11 @@ test("칸: 따라가기는 칸의 기존 이동 `go` 하나만 쓴다 — 새 �
 });
 
 test("칸: 사람의 손만 `noteUser` 로 남기고, 턴 끝의 도착 · 따라가기 · 자동 새로 고침은 남기지 않는다", () => {
-  // 사람의 손 — 걸음 · 주소 · 기기 · 찍기 · 핀 · 화면 링크 · 막대의 단추들.
+  // 사람의 손 — 걸음 · 주소 · 찍기 · 핀 · 화면 링크 · 막대의 단추들.
   for (const spot of [
     /const walk = \(delta: -1 \| 1\) => \{\s*noteUser\(\);/,
     /open: \(path\) => \{\s*noteUser\(\);/,
     /const onAddress = \(raw: string\): string \| null => \{\s*noteUser\(\);/,
-    /const pickDevice = \(next: PreviewDevice\) => \{\s*noteUser\(\);/,
     /\(on\?: boolean\) => \{\s*noteUser\(\);/,
     /\(pin: ColoNovaDesignPinEnvelope\["pin"\]\) => \{\s*noteUser\(\);/,
     /onGo=\{\(path\) => \{\s*noteUser\(\);\s*go\(path\);/,
@@ -295,7 +294,7 @@ test("칸: 사람의 손만 `noteUser` 로 남기고, 턴 끝의 도착 · 따�
   assert.match(arrival, /if \(refresh\) reload\(\);/);
   assert.doesNotMatch(arrival, /noteUser/);
   assert.doesNotMatch(
-    column.slice(column.indexOf("const retryStage"), column.indexOf("const pickDevice")),
+    column.slice(column.indexOf("const retryStage"), column.indexOf("const [commentsOn")),
     /noteUser/,
   );
   assert.doesNotMatch(column, /followTo = [^;]*noteUser/);

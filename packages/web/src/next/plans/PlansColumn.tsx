@@ -5,11 +5,13 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
+import { nextTabIndex } from "../lib/tab-keys";
 import type { ShellNav } from "../slots";
 import { TrashDialog } from "./doc-actions/TrashDialog";
 import { DraftEditor } from "./draft/DraftEditor";
@@ -34,6 +36,9 @@ import { PlansContext, usePlansContext, usePlansWorkspace } from "./PlansWorkspa
 /** 대화 칸의 폭 — 300~560px, 처음은 380. 고른 폭은 기억한다(Workspace 의 대화 폭과 같은 계약). */
 const CHAT_MIN = 300;
 const CHAT_MAX = 560;
+/** 좁은 칸의 두 탭 열쇠 — tab-keys 의 걸음과 tabpanel 연결이 같은 이름표를 읽는다. */
+const PL_TABS = ["doc", "chat"] as const;
+type PlTab = (typeof PL_TABS)[number];
 const CHAT_DEFAULT = 380;
 const CHAT_KEY = "colonova-design.plansChatWidth";
 
@@ -136,10 +141,22 @@ function PlansBody({
   const showInDoc = useCallback((blockIds: string[]) => {
     if (blockIds.length === 0) return;
     setFlashIds(blockIds);
-    if (flashTimer.current !== null) clearTimeout(flashTimer.current);
+    if (flashTimer.current !== null) {
+      clearTimeout(flashTimer.current);
+      flashTimer.current = null;
+    }
     flashTimer.current = setTimeout(() => setFlashIds(null), 2_600);
-    const first = document.querySelector(`[data-block-id="${blockIds[0]}"]`);
-    first?.scrollIntoView({ block: "center", behavior: "smooth" });
+    setPlTab("doc");
+    // 탭이 갈아 그리고 나서 블록을 찾는다 — `문서` 탭이 서기 전의 숨은 판은 위치를 못 잰다(2026-11-11).
+    requestAnimationFrame(() => {
+      docPaneRef.current
+        ?.querySelector(`[data-block-id="${blockIds[0]}"]`)
+        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+  }, []);
+  useEffect(() => {
+    const timer = flashTimer;
+    return () => clearTimeout(timer.current ?? undefined);
   }, []);
   // 판을 넓혀 대화를 접는다(2026-10-31 A — Claude 앱의 판 넓히기). 문서 판의 ⤢ 가 켠다.
   const [chatOff, setChatOff] = useState(false);
@@ -148,8 +165,26 @@ function PlansBody({
     window.addEventListener("nx:plans-expand-chat", onExpand);
     return () => window.removeEventListener("nx:plans-expand-chat", onExpand);
   }, []);
+  // 접힌 대화를 깨우는 두 방송(2026-11-11) — 문서 판의 `AI 에게 묻기`(고른 글 칩)와 빈 초안의
+  // `AI 와 시작하기`가 접힌 칸의 입력창으로 초점을 보낼 수 없게 둘 수 없어, 먼저 펼친다.
+  // 좁은 칸에서는 대화 탭도 함께 고른다.
+  useEffect(() => {
+    const onReveal = () => {
+      setChatOff(false);
+      if (narrowTab()) setPlTab("chat");
+    };
+    window.addEventListener("nx:plan-selection", onReveal);
+    window.addEventListener("nx:plan-focus-input", onReveal);
+    return () => {
+      window.removeEventListener("nx:plan-selection", onReveal);
+      window.removeEventListener("nx:plan-focus-input", onReveal);
+    };
+  }, []);
   // 좁은 칸의 두 탭(2026-10-31 H — 칸 폭 1100px 미만) — 문서와 대화가 나뉜다.
-  const [plTab, setPlTab] = useState<"doc" | "chat">("doc");
+  const [plTab, setPlTab] = useState<PlTab>("doc");
+  const tabsId = useId();
+  // 문서 판 — `문서에서 보기` 가 좁은 칸의 탭을 옮긴 뒤 이 뿌리 안에서만 블록을 찾는다(2026-11-11).
+  const docPaneRef = useRef<HTMLDivElement | null>(null);
   // 대화 칸의 폭 — 끌어 바꾸면 기억한다(Workspace 의 대화 폭과 같은 계약).
   const [chatWidth, setChatWidth] = useState(storedChatWidth);
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null);
@@ -295,11 +330,29 @@ function PlansBody({
         style={{ "--nx-pl-chat-w": `${chatWidth}px` } as CSSProperties}
       >
         {withChat && (
-          <div className="nx-pl-tabs" role="tablist" aria-label={L.plans.viewTabs}>
+          <div
+            className="nx-pl-tabs"
+            role="tablist"
+            aria-label={L.plans.viewTabs}
+            onKeyDown={(event) => {
+              const next = nextTabIndex(event.key, PL_TABS.length, PL_TABS.indexOf(plTab));
+              if (next === null) return;
+              event.preventDefault();
+              const target = PL_TABS[next];
+              if (target === undefined) return;
+              setPlTab(target);
+              event.currentTarget
+                .querySelectorAll<HTMLButtonElement>("[role='tab']")
+                [next]?.focus();
+            }}
+          >
             <button
               type="button"
               role="tab"
+              id={`${tabsId}-doc`}
               aria-selected={plTab === "doc"}
+              aria-controls={`${tabsId}-doc-panel`}
+              tabIndex={plTab === "doc" ? 0 : -1}
               className={plTab === "doc" ? "nx-tab--on" : ""}
               onClick={() => setPlTab("doc")}
             >
@@ -308,7 +361,10 @@ function PlansBody({
             <button
               type="button"
               role="tab"
+              id={`${tabsId}-chat`}
               aria-selected={plTab === "chat"}
+              aria-controls={`${tabsId}-chat-panel`}
+              tabIndex={plTab === "chat" ? 0 : -1}
               className={plTab === "chat" ? "nx-tab--on" : ""}
               onClick={() => setPlTab("chat")}
             >
@@ -316,16 +372,48 @@ function PlansBody({
             </button>
           </div>
         )}
-        <div className="nx-pl-docpane">{body}</div>
-        {withChat && chatOff === false && (
+        <div
+          className="nx-pl-docpane"
+          ref={docPaneRef}
+          id={`${tabsId}-doc-panel`}
+          role="tabpanel"
+          aria-labelledby={`${tabsId}-doc`}
+        >
+          {body}
+        </div>
+        {withChat && (
           <>
-            {/* 문서 판과 대화 칸 사이의 선 — 끌어 폭을 바꾼다(2026-10-31 4. 새 배치). */}
+            {/* 문서 판과 대화 칸 사이의 선 — 끌어 폭을 바꾼다(2026-10-31 4. 새 배치). 접힌 대화는
+                마운트가 남아(2026-11-11 — 입력창의 쓰던 글과 붙인 근거 보존) 선만 숨는다.
+                키보드: ← 가 대화를 넓히고 → 가 좁히며, Home/End 는 양끝, Enter/두 번 누름은 기본 폭. */}
             {/* biome-ignore lint/a11y/useSemanticElements: 두 칸 사이의 끌개라 separator 의 기본 꼴이 어울리지 않는다 */}
             <div
               className="nx-pl-split"
               role="separator"
               aria-orientation="vertical"
               aria-label={L.plans.chatWidth}
+              aria-valuemin={CHAT_MIN}
+              aria-valuemax={CHAT_MAX}
+              aria-valuenow={chatWidth}
+              tabIndex={0}
+              onKeyDown={(event) => {
+                const next =
+                  event.key === "ArrowLeft"
+                    ? chatWidth + 24
+                    : event.key === "ArrowRight"
+                      ? chatWidth - 24
+                      : event.key === "Home"
+                        ? CHAT_MIN
+                        : event.key === "End"
+                          ? CHAT_MAX
+                          : event.key === "Enter"
+                            ? CHAT_DEFAULT
+                            : null;
+                if (next === null) return;
+                event.preventDefault();
+                setChatWidth(Math.min(CHAT_MAX, Math.max(CHAT_MIN, next)));
+              }}
+              onDoubleClick={() => setChatWidth(CHAT_DEFAULT)}
               onPointerDown={(event) => {
                 if (event.button !== 0) return;
                 event.preventDefault();
@@ -339,6 +427,12 @@ function PlansBody({
                 setChatWidth(Math.min(CHAT_MAX, Math.max(CHAT_MIN, next)));
               }}
               onPointerUp={(event) => {
+                dragRef.current = null;
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+              }}
+              onPointerCancel={(event) => {
                 dragRef.current = null;
                 if (event.currentTarget.hasPointerCapture(event.pointerId)) {
                   event.currentTarget.releasePointerCapture(event.pointerId);
@@ -360,11 +454,11 @@ function PlansBody({
               conversation={conversation}
               pickedThreadId={pickedThreadId}
               pickThread={pickThread}
-              onShowInDoc={(ids) => {
-                showInDoc(ids);
-                setPlTab("doc");
-              }}
+              onShowInDoc={showInDoc}
               onConversationsChanged={refreshConversations}
+              offstage={chatOff}
+              panelId={`${tabsId}-chat-panel`}
+              labelledBy={`${tabsId}-chat`}
             />
           </>
         )}

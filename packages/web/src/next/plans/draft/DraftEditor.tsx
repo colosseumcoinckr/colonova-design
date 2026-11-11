@@ -42,6 +42,7 @@ import { SendToScreen } from "../doc-actions/SendToScreen";
 import { docUrl, type PlanListRow } from "../plans-list";
 import { DocPreview } from "../view/DocView";
 import { useBlockPreviews } from "../view/use-block-previews";
+import { DraftChanges } from "./DraftChanges";
 import {
   blockStatusLabel,
   listToText,
@@ -56,7 +57,6 @@ import {
 import { clipboardBlocks, insertEdits, pipeTable, typedShift } from "./markdown-blocks";
 import { PublishDialog } from "./PublishDialog";
 import { resultLine } from "./publish-model";
-import { diffWords } from "./text-diff";
 import { opSummary } from "./thread-model";
 import type { DraftHand } from "./use-draft";
 import type { DraftThreadHand } from "./use-draft-thread";
@@ -207,19 +207,6 @@ function ConflictSide({
   );
 }
 
-/** 견주기의 벗긴 글 — 굵게 · 기울임 · 머리말 · 목록 표지는 견주기의 잡음이라 걷는다(2026-10-31 2단계).
- *  토큰 칩의 다리(`[글](#token-t1)`)도 글로 되돌려 놓는다(2026-11-03 실앱 감사). */
-function plainOf(markdown: string): string {
-  return markdown
-    .replace(/^#{1,6}\s+/gmu, "")
-    .replace(/^[-*]\s+/gmu, "")
-    .replace(/^\d+\.\s+/gmu, "")
-    .replace(/\*\*/gu, "")
-    .replace(/\*/gu, "")
-    .replace(/\[([^\]]+)\]\(#token-[^)]*\)/gu, "$1")
-    .trim();
-}
-
 /** 토큰의 사람의 이름표 — ⟦t1⟧ 글자 대신 칩으로 그릴 때 쓴다(2026-10-31 4단계). */
 function tokenLabelsOf(tokens: Record<string, string>): Record<string, string> {
   const labels: Record<string, string> = {};
@@ -227,111 +214,6 @@ function tokenLabelsOf(tokens: Record<string, string>): Record<string, string> {
     labels[name] = L.drafts.tokenLabel(machine);
   }
   return labels;
-}
-
-/** Confluence 판과 견주기의 한 면(2026-10-31 2단계) — 지운 글에 취소선, 더한 글에 밑줄. */
-function DiffText({ pieces }: { pieces: ReturnType<typeof diffWords> }) {
-  return (
-    <p className="nx-dr-diff">
-      {pieces.map((piece, at) =>
-        piece.kind === "same" ? (
-          // biome-ignore lint/suspicious/noArrayIndexKey: 견주기 조각은 자리가 곧 정체다
-          <span key={at}>{piece.text}</span>
-        ) : piece.kind === "del" ? (
-          // biome-ignore lint/suspicious/noArrayIndexKey: 견주기 조각은 자리가 곧 정체다
-          <del key={at}>{piece.text}</del>
-        ) : (
-          // biome-ignore lint/suspicious/noArrayIndexKey: 견주기 조각은 자리가 곧 정체다
-          <ins key={at}>{piece.text}</ins>
-        ),
-      )}
-    </p>
-  );
-}
-
-/** Confluence 판과 견주기 판(2026-10-31 2단계) — 발행본 기준 대비 바뀐 곳을 블록마다 보인다.
- *  열려 있는 동안 문서 판 대신 이 판이 선다 — 같은 문서가 두 벌로 겹쳐 보이지 않게(2026-11-03 실앱 감사). */
-function ComparePanel({ base, blocks }: { base: DraftRevisionView | null; blocks: DraftBlock[] }) {
-  if (base === null) {
-    return (
-      <p className="nx-dr-compare-load">
-        <Spin /> {L.plans.reading}
-      </p>
-    );
-  }
-  const baseById = new Map(base.blocks.map((block) => [block.id, block]));
-  const deleted = base.blocks.filter((block) => !blocks.some((one) => one.id === block.id));
-  const changed = blocks.filter(
-    (block) => baseById.has(block.id) && block.status !== "same",
-  ).length;
-  const inserted = blocks.filter((block) => !baseById.has(block.id)).length;
-  return (
-    <section className="nx-dr-compare" aria-label={L.drafts.compareTitle}>
-      <p className="nx-dr-compare-sub">{L.drafts.compareSub}</p>
-      {/* 바뀐 곳이 하나도 없으면 문서를 다시 겹쳐 보이지 않고 한 줄로 답한다(2026-11-03 실앱 감사). */}
-      {changed + inserted + deleted.length === 0 ? (
-        <p className="nx-dr-compare-sub">{L.drafts.compareNone}</p>
-      ) : (
-        <ol className="nx-dr-blocks">
-          {blocks.map((block) => {
-            const before = baseById.get(block.id);
-            const tokens = tokenLabelsOf(block.tokens);
-            if (before === undefined) {
-              return (
-                <li key={block.id} className="nx-dr-block nx-dr-compare-ins" data-status="new">
-                  <div className="nx-dr-read">
-                    <Markdown
-                      text={viewToMarkdown(block.view, block.tokens)}
-                      tokens={tokens}
-                      machineTokens={block.tokens}
-                    />
-                  </div>
-                  <span className="nx-pill nx-pill--accent nx-dr-badge">
-                    {L.drafts.compareInserted}
-                  </span>
-                </li>
-              );
-            }
-            if (block.status === "same") {
-              return (
-                <li key={block.id} className="nx-dr-block" data-status="same">
-                  <div className="nx-dr-read">
-                    <Markdown
-                      text={viewToMarkdown(block.view, block.tokens)}
-                      tokens={tokens}
-                      machineTokens={block.tokens}
-                    />
-                  </div>
-                </li>
-              );
-            }
-            return (
-              <li
-                key={block.id}
-                className="nx-dr-block nx-dr-compare-changed"
-                data-status="changed"
-              >
-                <DiffText
-                  pieces={diffWords(
-                    plainOf(viewToMarkdown(before.view, before.tokens)),
-                    plainOf(viewToMarkdown(block.view, block.tokens)),
-                  )}
-                />
-              </li>
-            );
-          })}
-          {deleted.map((block) => (
-            <li key={block.id} className="nx-dr-block nx-dr-compare-del" data-status="changed">
-              <p className="nx-dr-diff">
-                <del>{viewToMarkdown(block.view, block.tokens)}</del>
-              </p>
-              <span className="nx-pill nx-pill--red nx-dr-badge">{L.drafts.compareDeleted}</span>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
 }
 
 /** 제자리 고치기(2026-10-31 4단계 · C) — 블록을 두 번 누르면 그 자리에서 고친다. 본문 글꼴 · 폭 그대로.
@@ -1175,6 +1057,8 @@ export function DraftEditorSurface({
 
   // Confluence 판과 견주기(2026-10-31 2단계) — 출발점(판 0)을 읽어 낱말 견주기의 앞쪽으로 쓴다.
   const [compareBase, setCompareBase] = useState<DraftRevisionView | null>(null);
+  const [compareFailed, setCompareFailed] = useState(false);
+  const [compareAttempt, setCompareAttempt] = useState(0);
   // 발행 뒤의 대화 카드(2026-10-31 F) — 대화 칸이 `Confluence 판 N 로 발행했어요` 를 잠깐 세운다.
   const publishedSeen = useRef<number | null>(null);
   const publishedVersion =
@@ -1188,22 +1072,24 @@ export function DraftEditorSurface({
       }),
     );
   }, [publishedVersion, draft.view?.docKey]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 기준 판과 다시 시도는 다시 읽는 방아쇠 — 몸에서 읽지 않아도 이 효과의 열쇠다.
   useEffect(() => {
     if (!compareOpen || viewDocKey === null) return;
     let live = true;
     setCompareBase(null);
+    setCompareFailed(false);
     daemon.api
       .draftRevision(viewDocKey, 0)
       .then((base) => {
         if (live) setCompareBase(base);
       })
       .catch(() => {
-        if (live) setCompareBase(null);
+        if (live) setCompareFailed(true);
       });
     return () => {
       live = false;
     };
-  }, [compareOpen, daemon.api, viewDocKey]);
+  }, [compareOpen, daemon.api, viewDocKey, draft.view?.baseVersion, compareAttempt]);
 
   // 결과를 못 받은 발행을 다시 묻는다 — 자동 재전송은 없다.
   const recheckPending = async () => {
@@ -1623,6 +1509,7 @@ export function DraftEditorSurface({
           </button>
         </div>
       )}
+      {!locked && viewing === null && <p className="nx-dr-draft-note">{L.drafts.draftOnlyNote}</p>}
       {/* 잠금의 한 줄 — 결과 확인 필요 띠가 서면 그 띠가 함께 말한다(띠 둘이 겹쳐 서지 않게 · 2026-10-23 기획자 화면 손질). */}
       {locked && !(view.state === "result-unknown" && view.pendingCommandId !== null) && (
         <p className="nx-banner nx-banner--amber nx-dr-lock" role="status">
@@ -1737,7 +1624,30 @@ export function DraftEditorSurface({
           ))}
         </ol>
       ) : compareOpen ? (
-        <ComparePanel base={compareBase} blocks={blocks} />
+        compareFailed ? (
+          <div className="nx-dr-compare">
+            <p role="alert">{L.drafts.compareFailed}</p>
+            <button
+              type="button"
+              className="nx-btn"
+              onClick={() => setCompareAttempt((n) => n + 1)}
+            >
+              {L.vocab.retry}
+            </button>
+          </div>
+        ) : compareBase === null ? (
+          <p className="nx-dr-compare-load" role="status">
+            <Spin /> {L.plans.reading}
+          </p>
+        ) : (
+          <DraftChanges
+            base={compareBase}
+            title={view.title}
+            blocks={blocks}
+            api={daemon.api}
+            pageId={view.pageId}
+          />
+        )
       ) : blocks.length === 0 ? (
         <div className="nx-dr-empty">
           <p>{L.drafts.emptyGuide}</p>

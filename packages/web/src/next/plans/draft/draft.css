@@ -1355,6 +1355,72 @@
   color: var(--ink2);
   font-size: var(--fs-ui);
 }
+
+/* 초안 검토(2026-11-11) — 바뀐 곳이 먼저, 전후 내용은 같은 폭으로 위아래에 놓는다. */
+.nx-dr-draft-note {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-8);
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+.nx-dr-compare-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-block-end: var(--sp-3);
+}
+.nx-dr-compare-tools .nx-dr-compare-sub {
+  margin: 0;
+}
+.nx-dr-review-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.nx-dr-review-row {
+  margin-block-end: var(--sp-4);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: 검토 줄의 h4 는 읽기 판(.md)의 머리가 아니라 종류 이름이다. */
+.nx-dr-review-row h4 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-semi);
+}
+.nx-dr-review-side + .nx-dr-review-side {
+  margin-block-start: var(--sp-3);
+}
+.nx-dr-review-side > b {
+  display: block;
+  margin-block-end: var(--sp-1);
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+}
+.nx-dr-review-side .nx-dr-read {
+  padding: 0;
+  min-width: 0;
+  overflow-x: auto;
+}
+/* biome-ignore lint/style/noDescendingSpecificity: 검토의 서쪽 p 는 읽기 판(.md) 문단이 아니라 제목 · 보존 이름표다. */
+.nx-dr-review-side p {
+  margin: 0;
+  line-height: 1.7;
+}
+.nx-pb .nx-dr-compare {
+  padding: var(--sp-3) 0 0;
+}
+.nx-pb-foot {
+  flex-wrap: wrap;
+}
+.nx-pb-foot-act {
+  flex-wrap: wrap;
+}
 .nx-dr-diff {
   margin: 0;
   font-size: var(--fs-ui);

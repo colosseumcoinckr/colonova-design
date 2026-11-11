@@ -517,6 +517,9 @@ export function PlanChat({
   pickThread,
   onShowInDoc,
   onConversationsChanged,
+  offstage = false,
+  panelId,
+  labelledBy,
 }: {
   daemon: Daemon;
   nav: ShellNav;
@@ -542,6 +545,12 @@ export function PlanChat({
   onShowInDoc: (blockIds: string[]) => void;
   /** 대화 목록을 다시 읽게 한다 — 물기 · 옮기기 · 지우기 뒤에. */
   onConversationsChanged: () => void;
+  /** 대화 접기(2026-11-11) — 칸은 마운트가 남아 쓰던 글과 붙인 근거를 지킨다. 루트가 스스로
+   *  숨고(inert) 열려 있던 팝은 접는다. */
+  offstage?: boolean;
+  /** 좁은 칸의 두 탭 연결(2026-11-11) — `문서` · `대화` 탭의 aria-controls / labelledby. */
+  panelId?: string;
+  labelledBy?: string;
 }) {
   // 기획 AI 의 모델 · 생각 시간 칩의 주인(2026-10-26 사용자 요청) — 화면 대화와 같은 부품, 다른 주인.
   const chip = useDraftPick(daemon);
@@ -559,6 +568,14 @@ export function PlanChat({
   const [fresh, setFresh] = useState(false);
   // 근거 수의 한계 이유 — 선로의 상한(문서 20개)에 닿아 더 담지 못할 때 한 줄로 말한다.
   const [refNotice, setRefNotice] = useState<string | null>(null);
+  // 접힌 동안 열려 있던 팝은 접는다(2026-11-11) — 숨은 팝이 화면 위에 떠 있거나 닫힘의
+  // 초점 복귀가 보이지 않는 손으로 향하는 것을 막는다.
+  useEffect(() => {
+    if (!offstage) return;
+    setMenuOpen(false);
+    setPickerOpen(false);
+    setMoveOpen(false);
+  }, [offstage]);
 
   // 고쳐 보내기 · 다시 요청 · 시작 문장 — 입력 칸에 말을 채우고 초점을 옮긴다(앞의 기록은 남는다).
   const fillInput = (text: string) => {
@@ -572,7 +589,8 @@ export function PlanChat({
       const detail = (event as CustomEvent<{ text?: unknown }>).detail;
       if (typeof detail?.text !== "string" || detail.text === "") return;
       setSelection(detail.text);
-      inputRef.current?.focus();
+      // 접힌 대화면 같은 사건이 칸을 먼저 펼친다(PlansColumn) — 펼쳐지고 나서 초점을 옮긴다.
+      requestAnimationFrame(() => inputRef.current?.focus());
     };
     window.addEventListener("nx:plan-selection", onSelection);
     return () => window.removeEventListener("nx:plan-selection", onSelection);
@@ -580,7 +598,10 @@ export function PlanChat({
 
   // 빈 초안의 `AI 와 시작하기`(2026-10-23 · F1) — 문서 판의 단추가 이 입력 칸으로 초점을 옮긴다.
   useEffect(() => {
-    const onFocus = () => inputRef.current?.focus();
+    const onFocus = () => {
+      // 접힌 대화면 같은 사건이 칸을 먼저 펼친다(PlansColumn) — 펼쳐지고 나서 초점을 옮긴다.
+      requestAnimationFrame(() => inputRef.current?.focus());
+    };
     window.addEventListener("nx:plan-focus-input", onFocus);
     return () => window.removeEventListener("nx:plan-focus-input", onFocus);
   }, [inputRef]);
@@ -602,13 +623,16 @@ export function PlanChat({
   // 사이드바의 `새 기획 대화`(2026-10-31 3단계) — 다음 말이 새 대화로 간다.
   useEffect(() => {
     const onNew = () => {
+      // 접힌 대화는 옛날처럼 이 방송을 받지 않는다(2026-11-11) — 마운트가 남아도 보이지 않는
+      // 채로 쓰던 글을 지우지 않는다.
+      if (offstage) return;
       setFresh(true);
       setInputText("");
       inputRef.current?.focus();
     };
     window.addEventListener("nx:plan-new", onNew);
     return () => window.removeEventListener("nx:plan-new", onNew);
-  }, [inputRef]);
+  }, [inputRef, offstage]);
 
   // `새 기획 대화`의 표식은 자리가 바뀌면 흘려 보낸다(2026-11-03 수리) — 눌어 있으면 이어
   // 말하려던 대화가 새 대화로 갈라져 나왔다. 칸은 문서가 바뀌어도 마운트된 채라 표식이 눌어 있었다.
@@ -819,7 +843,11 @@ export function PlanChat({
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 대화 칸의 Esc 는 제 자리에서 멈추는 길이다
     <aside
       className="nx-dr-thread nx-pl-chat"
-      aria-label={L.drafts.threadTitle}
+      aria-label={labelledBy === undefined ? L.drafts.threadTitle : undefined}
+      {...(panelId !== undefined ? { id: panelId, role: "tabpanel" } : {})}
+      {...(labelledBy !== undefined ? { "aria-labelledby": labelledBy } : {})}
+      aria-hidden={offstage}
+      inert={offstage}
       onKeyDown={onColumnKey}
     >
       {/* 머리는 세 줄의 위계다(2026-11-02 D6) — 대화 제목과 ⋯ 메뉴 / 다루는 문서 / 이 AI 의 담당 한 줄. */}

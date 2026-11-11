@@ -631,6 +631,11 @@
 .nx-pl-view[data-chat="on"] .nx-pl-chat {
   width: clamp(300px, var(--nx-pl-chat-w, 380px), 560px);
 }
+/* 접힌 대화는 마운트가 남는다(2026-11-11) — 쓰던 글과 붙인 근거를 지키되 자리는 숨는다.
+   마운트가 남는 만큼 숨김은 뿌리의 inert 가 초점과 낭독도 함께 거둔다. */
+.nx-pl-view[data-chat="off"] .nx-pl-chat {
+  display: none;
+}
 
 /* 좁은 칸의 두 탭(§H) — 1100px 아래에서 문서 · 대화가 나뉜다. */
 .nx-pl-tabs {
@@ -654,19 +659,29 @@
   font-weight: var(--fw-semi);
 }
 @container nxpl (max-width: 1100px) {
+  /* 탭을 칸 위쪽의 가로 띠로 눕힌다(2026-11-11 화면 평가) — 가로 줄의 자식이던 탭 묶음은 세로
+     기둥으로 서 대화 칸을 창 밖으로 밀었다. 세로 줄에서 탭은 가로 띠, 고른 쪽이 아래 칸 전체다. */
+  .nx-pl-view[data-chat="on"] {
+    flex-direction: column;
+  }
   .nx-pl-view[data-chat="on"] .nx-pl-tabs {
     display: flex;
   }
   /* 탭이 서면 한쪽만 보인다 — data-tab 이 고른다. */
-  .nx-pl-view[data-chat="on"][data-tab="doc"] .nx-pl-chat,
-  .nx-pl-view[data-chat="on"][data-tab="doc"] .nx-pl-split {
+  .nx-pl-view[data-chat="on"] .nx-pl-split {
+    display: none;
+  }
+  .nx-pl-view[data-chat="on"][data-tab="doc"] .nx-pl-chat {
     display: none;
   }
   .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-pl-docpane {
     display: none;
   }
   .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-pl-chat {
-    width: 100%;
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    min-height: 0;
   }
   /* 좁은 대화 탭에서는 머리를 줄인다(2026-11-02 D6) — 안내문을 숨기고 제목 · 문서 이름만 남는다. */
   .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-dr-thread-scope {
@@ -688,6 +703,18 @@
   max-height: 40%;
   min-height: 0;
   border-bottom: 1px solid var(--line);
+}
+/* 낮은 창에서는 문서 트리가 주인공이다(2026-11-11 화면 평가) — 1280×720 에서 대화 목록이
+   40% 를 채우면 트리가 네 줄 남짓으로 눌렸다. 30% 로 줄이고 부가 줄(날짜 머리 · 문서 이름)을
+   걷어 대화 줄 자체는 더 보이게 한다. */
+@media (max-height: 780px) {
+  .nx-pl-conv {
+    max-height: 30%;
+  }
+  .nx-pl-conv-g,
+  .nx-pl-conv-m {
+    display: none;
+  }
 }
 .nx-pl-conv-head :is(h2) {
   font-size: var(--fs-ui);

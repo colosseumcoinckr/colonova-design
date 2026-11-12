@@ -1,10 +1,5 @@
 import type { Block } from "../../lib/daemon-client";
-
-export function preview(value: unknown, max = 240): string {
-  if (typeof value === "string") return value.length > max ? `${value.slice(0, max)}…` : value;
-  const text = JSON.stringify(value, null, 2) ?? String(value);
-  return text.length > max ? `${text.slice(0, max)}…` : text;
-}
+import { L } from "../../next/labels";
 
 /** The one input field that best identifies what a tool call is about. */
 export function toolHeadline(input: unknown): string {
@@ -43,8 +38,8 @@ export function dayLabel(at: number): string {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const diff = Math.round((today.getTime() - day.getTime()) / 86_400_000);
-  if (diff <= 0) return "오늘";
-  if (diff === 1) return "어제";
+  if (diff <= 0) return L.tape.dayToday;
+  if (diff === 1) return L.tape.dayYesterday;
   return day.toLocaleDateString("ko-KR", {
     month: "long",
     day: "numeric",
@@ -57,10 +52,11 @@ export type ToolStatus = "running" | "done" | "error";
 
 /** 도구 행이 스스로 그릴 수 있는 것 밖의, 작업을 다루는 손. */
 export interface TaskControls {
-  /** 턴을 붙잡은 작업을 뒤로 보낸다 — 인자는 그 도구 호출의 id. */
-  onBackgroundTask?: (toolUseId: string) => void;
-  /** 그 작업 하나만 세운다 — 인자는 작업 id. */
-  onStopTask?: (taskId: string) => void;
+  /** 턴을 붙잡은 작업을 뒤로 보낸다 — 인자는 그 도구 호출의 id.
+      Promise 를 돌려주면 행이 기다려 실패를 자리에 알린다(2026-11-12 U-040). */
+  onBackgroundTask?: (toolUseId: string) => unknown;
+  /** 그 작업 하나만 세운다 — 인자는 작업 id. 위와 같은 약속. */
+  onStopTask?: (taskId: string) => unknown;
 }
 
 export type TodoToolBlock = Extract<Block, { type: "tool" }>;

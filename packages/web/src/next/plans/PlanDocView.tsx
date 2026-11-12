@@ -12,11 +12,12 @@ import {
   sendMismatchNow,
 } from "../lib/mismatch-model";
 import type { ShellNav } from "../slots";
-import { CloseIcon, InfoIcon, SparkIcon, Spin } from "../ui/icons";
+import { CloseIcon, InfoIcon, PencilIcon, SparkIcon, Spin } from "../ui/icons";
 import { MismatchCard, type MismatchHand } from "../ui/MismatchCard";
 import { DocComments } from "./comments/DocComments";
 import { DocDrawer } from "./comments/DocDrawer";
 import { DocMenu } from "./doc-actions/DocMenu";
+import { SendToScreen } from "./doc-actions/SendToScreen";
 import { PlansEmpty } from "./PlansEmpty";
 import { macroHeadings, type PlanListRow, planBodyBlocks, splitFrontmatter } from "./plans-list";
 import type { PlanDocBody, PlanPhase } from "./use-plans";
@@ -43,6 +44,7 @@ export function PlanDocView({
   site,
   nav,
   onApplied,
+  onEdit,
   writable,
   onSelectionAsk,
   focusTitle = true,
@@ -82,6 +84,18 @@ export function PlanDocView({
 }) {
   const article = useRef<HTMLElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
+  const [expanded, setExpanded] = useState(false);
+  // 2026-11-12 UI 조사 U-070 — 판의 실제 접힘 상태를 이름과 함께 읽힌다.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 실패 면에서 본문으로 돌아온 뒤 새 요소를 관찰한다.
+  useEffect(() => {
+    const pane = article.current?.closest(".nx-pl-view");
+    if (!pane) return;
+    const update = () => setExpanded(pane.getAttribute("data-chat") === "off");
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(pane, { attributes: true, attributeFilter: ["data-chat"] });
+    return () => observer.disconnect();
+  }, [pageId, phase]);
   // 본문 덩어리 — 인라인 코멘트의 닻 단추가 듣는 자리다(2026-10-23 · 최종 구현 계획 F4).
   const body = useRef<HTMLDivElement>(null);
   const parsed = useMemo(() => (doc === null ? null : splitFrontmatter(doc.markdown)), [doc]);
@@ -90,6 +104,7 @@ export function PlanDocView({
   const view = doc?.view;
   const unknown = useMemo(() => (view === undefined ? [] : unknownMacros(view)), [view]);
   const macros = doc === null || view !== undefined ? [] : macroHeadings(doc.sections);
+  const [sendOpen, setSendOpen] = useState(false);
   const [history, setHistory] = useState(false);
   // 서랍(2026-10-31 D) — 코멘트 · 이어진 화면이 문서 판 안에서 열린다(대화 칸 쪽 가장자리에서 나온다).
   const [drawer, setDrawer] = useState<"comments" | "screens" | null>(null);
@@ -329,29 +344,36 @@ export function PlanDocView({
           <button
             type="button"
             className="nx-ibtn nx-pl-doc-expand"
-            title={L.drafts.threadExpand}
-            aria-label={L.drafts.threadExpand}
+            title={expanded ? L.plans.restoreDocument : L.plans.expandDocument}
+            aria-label={expanded ? L.plans.restoreDocument : L.plans.expandDocument}
+            aria-expanded={expanded}
             onClick={() => window.dispatchEvent(new Event("nx:plans-expand-chat"))}
           >
             <Maximize2 className="nx-i" size={15} strokeWidth={1.8} aria-hidden="true" />
           </button>
         </div>
-        <div className="nx-pl-doc-meta">
-          {version !== null && <span>{L.plans.docVersions(version)}</span>}
-          {updatedAt !== null && <span>{L.plans.docUpdated(timeAgo(Date.parse(updatedAt)))}</span>}
-          {draft !== null && <span>{L.plans.hasDraft}</span>}
+        <div className="nx-pl-doc-status">
+          <div className="nx-pl-doc-meta">
+            {version !== null && <span>{L.plans.docVersions(version)}</span>}
+            {updatedAt !== null && (
+              <span>{L.plans.docUpdated(timeAgo(Date.parse(updatedAt)))}</span>
+            )}
+            {draft !== null && <span>{L.plans.hasDraft}</span>}
+          </div>
+          {phase === "ready" && (
+            <button type="button" className="nx-btn nx-btn--pri" onClick={() => onEdit(pageId)}>
+              <PencilIcon />
+              {draft ? L.drafts.resume : L.drafts.edit}
+            </button>
+          )}
         </div>
-        {phase === "ready" && doc !== null && (
-          <DocLabels
-            daemon={daemon}
-            pageId={pageId}
-            labels={doc.labels}
-            writable={writable === true}
-            onRefresh={onRefresh}
-          />
-        )}
         {/* 머리의 동작은 자리가 고정이다(2026-10-31 C) — 읽기에서 으뜸 자리는 비고(말로 고치는 곳)다. */}
         <div className="nx-pl-doc-acts">
+          {phase === "ready" && (
+            <button type="button" className="nx-btn nx-btn--sm" onClick={() => setSendOpen(true)}>
+              {L.drafts.sendToScreen}
+            </button>
+          )}
           {writable === false && (
             <span className="nx-pill nx-dr-writeoff" title={L.drafts.writeOffHint} role="note">
               {L.drafts.writeOff}
@@ -396,6 +418,15 @@ export function PlanDocView({
             </div>
           )}
 
+          {phase === "ready" && doc !== null && (
+            <DocLabels
+              daemon={daemon}
+              pageId={pageId}
+              labels={doc.labels}
+              writable={writable === true}
+              onRefresh={onRefresh}
+            />
+          )}
           <DocMenu
             daemon={daemon}
             site={site}
@@ -406,6 +437,16 @@ export function PlanDocView({
           />
         </div>
       </header>
+      {sendOpen && (
+        <SendToScreen
+          daemon={daemon}
+          nav={nav}
+          target={{ pageId }}
+          sections={doc?.sections.map((section) => section.heading) ?? []}
+          onSent={() => nav.showPane("preview")}
+          onClose={() => setSendOpen(false)}
+        />
+      )}
       {history && (
         <DocHistory
           daemon={daemon}
@@ -601,8 +642,18 @@ ${link.section ?? ""}`}
                   className="nx-pl-scrrow"
                 >
                   <Link2 className="nx-i" size={14} aria-hidden="true" />
-                  <span className="nx-pl-scrname">
-                    {screenTitles.get(link.route) || L.transcript.unknownScreen}
+                  <span
+                    className="nx-pl-scrname"
+                    title={[screenTitles.get(link.route) || link.route, link.section]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  >
+                    <span className="nx-pl-scrtitle">
+                      {screenTitles.get(link.route) || L.transcript.unknownScreen}
+                    </span>
+                    {!screenTitles.get(link.route) && (
+                      <span className="nx-pl-scrsub">{link.route}</span>
+                    )}
                     {link.section !== null && <span className="nx-pl-scrsub">{link.section}</span>}
                   </span>
                   <button
@@ -648,8 +699,8 @@ ${link.section ?? ""}`}
                   {(syncedScreens ?? []).map((screen) => (
                     <li key={screen.route} className="nx-pl-scrrow">
                       <Monitor className="nx-i" size={14} aria-hidden="true" />
-                      <span className="nx-pl-scrname">
-                        {screen.title ?? screen.route}
+                      <span className="nx-pl-scrname" title={screen.title || screen.route}>
+                        <span className="nx-pl-scrtitle">{screen.title || screen.route}</span>
                         <span className="nx-pl-scrsub">{timeAgo(Date.parse(screen.at))}</span>
                       </span>
                       <button

@@ -1,10 +1,13 @@
 import type { PlanSync, PlanSyncDoc, PlanSyncLink } from "@colonova-design/protocol";
 import { FileText, Link2, Undo2 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { koreanNoticeWords } from "../../lib/error-words";
 import { L } from "../labels";
 import { Spin } from "../ui/icons";
 
 /** 같이 고치기 곁줄이 쓰는 손 — 대화 칸이 데몬 · 기획서 칸과 이어 준다. */
+export type SyncPublishResult = "published" | "cancelled" | "failed";
+
 export interface PlanSyncHand {
   open: (doc: PlanSyncDoc) => void;
   undo: (entryId: string) => Promise<void>;
@@ -20,7 +23,7 @@ export interface PlanSyncHand {
    * 곁줄 발행(2026-11-02 · 같이 고치기 UX 계획 C3) — 화면 자리를 떠나지 않고 발행 확인 창을 띄운다.
    * 약속은 발행이 끝났는지를 돌려준다(곁줄 문구가 바뀐다). 쓰기 게이트가 꺼져 있으면 이 손이 없다.
    */
-  publish?: (doc: PlanSyncDoc) => Promise<boolean>;
+  publish?: (doc: PlanSyncDoc) => Promise<SyncPublishResult | boolean>;
 }
 
 /**
@@ -40,6 +43,7 @@ export function PlanSyncLine({
   hand: PlanSyncHand;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const busyRef = useRef(false);
   const [note, setNote] = useState<string | null>(null);
   const [cut, setCut] = useState<ReadonlySet<string>>(new Set());
   // 곁줄 발행(C3) — 발행이 끝난 문서는 문구가 「…」 발행했어요 로 바뀐다.
@@ -57,11 +61,16 @@ export function PlanSyncLine({
     return null;
 
   const run = (key: string, work: () => Promise<void>, failed: string) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(key);
     setNote(null);
     work()
       .catch(() => setNote(failed))
-      .finally(() => setBusy(null));
+      .finally(() => {
+        busyRef.current = false;
+        setBusy(null);
+      });
   };
 
   return (
@@ -124,7 +133,9 @@ export function PlanSyncLine({
                 <span className="nx-psync-sub">{L.planSync.undoneKept(doc.kept)}</span>
               )}
               {shown === "failed" && doc.detail !== undefined && (
-                <span className="nx-psync-sub">{doc.detail}</span>
+                <span className="nx-psync-sub">
+                  {koreanNoticeWords(doc.detail) ? doc.detail : L.planSync.failedAll}
+                </span>
               )}
             </span>
             {/* 게이트의 손(1A-1) — `고치기` 가 이 줄의 으뜸(ghost 가 아닌 보통 소단추), `건너뛰기` · `보기` 는 고스트다.
@@ -195,8 +206,10 @@ export function PlanSyncLine({
                           `publish:${key}`,
                           () =>
                             publish(doc).then((ok) => {
-                              if (!ok) throw new Error("publish closed");
-                              setPublished((before) => new Set([...before, key]));
+                              if (ok === "failed" || ok === false)
+                                throw new Error("publish failed");
+                              if (ok === "published" || ok === true)
+                                setPublished((before) => new Set([...before, key]));
                             }),
                           L.planSync.publishFailed,
                         );

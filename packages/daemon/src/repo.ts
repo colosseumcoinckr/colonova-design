@@ -89,6 +89,7 @@ export class RepoWorkspace {
   private makePublish(): PublishCycle {
     return new PublishCycle(this.core, {
       machineMemo: (files) => this.summarizer.machineMemo(files),
+      atomicPlan: (input) => this.summarizer.atomicPlan(input),
       onCycleEvent: this.onCycleEvent,
       notice: this.notice,
       resolveNotice: this.resolveNotice,
@@ -321,14 +322,14 @@ export class RepoWorkspace {
    * the old `push origin HEAD` did, and it is the one thing a tool driven by
    * someone who does not read diffs must not do.
    *
-   * The repo's own `check` does not gate this anymore (실사: a save stuck at
-   * 레포 검사 left work the planner could not put up). Problems are the
-   * developer's to catch in the pull request 넘기기 opens; the agent can still
-   * run the check inside a turn when it wants one.
+   * 레포 검사는 보관 자체를 막지 않는다. 2026-11-12 의미 단위 분리는 중간
+   * 상태를 검사하지만, 실패하면 단일 보관으로 물러난다.
    */
   save(
     options: {
       message?: string;
+      /** 화면 요청의 의미 단위 보관. 감독자의 잔여 변경 보관은 사용하지 않는다. */
+      atomicRequest?: string;
       onSessionTurn?: (brief: string) => void;
       /** hero-synthesis D1: the conversation this save belongs to. */
       sessionId?: string;

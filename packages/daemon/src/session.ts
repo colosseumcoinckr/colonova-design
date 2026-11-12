@@ -173,6 +173,8 @@ export interface SessionEvents {
    */
   onTurnStart?: (sessionId: string) => void;
   beforeDeliver?: (sessionId: string, item: HeldSend) => Promise<void>;
+  /** 최신 작업 준비는 재시도도 지난다. 거절되면 AI에게 보내지 않고 사람이 다시 시도한다(2026-11-12). */
+  beforeAgentSend?: (sessionId: string, item: HeldSend) => Promise<void>;
   /**
    * 말이 실제로 CLI 로 나가는 순간(2026-10-19 응답 속도 조사) — beforeDeliver 가 끝나고
    * 드라이버의 send 를 부르기 직전. 턴 통계가 데몬의 보내기 전 시간(preDeliverMs)을 여기서 잰다.
@@ -500,6 +502,12 @@ export class Session {
   // -------------------------------------------------------------------------
   /** 마지막으로 나간 말 — 실패한 턴의 재시도와 죽은 질의의 재개가 다시 쓴다. */
   private lastDelivered: HeldSend | null = null;
+  private preparingDelivery: HeldSend | null = null;
+
+  /** 전송 전 준비 중인 대화는 다른 대화의 새 작업 준비를 막지 않는다. AI는 아직 파일을 쓰지 않는다. */
+  get preparingForDelivery(): boolean {
+    return this.preparingDelivery !== null;
+  }
   /**
    * 지금 보내기가 세운 끊김 알림 턴 — 다음 턴 끝의 `release` 가 대기 말보다
    * 먼저 나간다. 대기 방에 섞지 않으므로 대기 줄 · 회복 패널에 사람의 말로
@@ -1633,6 +1641,17 @@ export class Session {
       !replay && this.events.beforeDeliver
         ? this.events.beforeDeliver(this.id, item).catch(() => undefined)
         : null;
+    const checkWorkspace = this.events.beforeAgentSend;
+    if (checkWorkspace) this.preparingDelivery = item;
+    const checked = checkWorkspace
+      ? Promise.resolve(ready).then(() => {
+          if (this.closed || this.interrupting || this.lastDelivered !== item) return;
+          return checkWorkspace(this.id, item);
+        })
+      : ready;
+    const releasePreparation = () => {
+      if (this.preparingDelivery === item) this.preparingDelivery = null;
+    };
     const deliverToAgent = (): void => {
       if (pinEffort !== null && this.agent?.setEffort) {
         void this.agent
@@ -1646,8 +1665,31 @@ export class Session {
         send();
       }
     };
-    if (ready) void ready.then(deliverToAgent);
-    else deliverToAgent();
+    if (checked) {
+      void checked.then(
+        () => {
+          releasePreparation();
+          deliverToAgent();
+        },
+        (error: unknown) => {
+          releasePreparation();
+          if (this.closed || this.interrupting || this.lastDelivered !== item) return;
+          const detail = asPlannerFacingError(error).message;
+          this.events.onEvent(this.id, { kind: "notice", level: "error", text: detail });
+          // AI가 시작하지 못한 실패다. 공급자 자동 재시도에 넘기지 않고 기존 다시 보내기 손을 남긴다.
+          this.events.onEvent(this.id, {
+            kind: "turn.end",
+            subtype: "error",
+            isError: true,
+            costUsd: null,
+            numTurns: null,
+            durationMs: this.turnStartedAt !== null ? Date.now() - this.turnStartedAt : null,
+            resultText: detail,
+          });
+          this.endTurn();
+        },
+      );
+    } else deliverToAgent();
 
     // The echo carries the person's own words. D87: the pin crops ride back
     // (capped) so the chat card can draw its thumbnails — live only; a

@@ -17,8 +17,8 @@ export function objectParticle(word: string): string {
 
 const GATE_LABEL: Record<keyof RepoCommands, string> = {
   install: "설치 실행",
-  check: "레포 검사",
-  build: "빌드 검사",
+  check: "작업 검사",
+  build: "화면 준비 검사",
   preview: "미리보기 실행",
 };
 

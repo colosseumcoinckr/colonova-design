@@ -31,6 +31,43 @@
 - **크기는 `ui/tokens.css`, 색 짝 이름은 `next.css`.** 글자 · 간격 · 높이 · 그림자 · 글 폭은 토큰을 쓴다.
   사람이 읽는 글은 12px 아래로 내리지 않는다(키캡 `kbd` · `.nx-pm` 이니셜만 예외). 반 픽셀 크기를 새로 쓰지 않고,
   손대는 규칙은 토큰으로 옮긴다. 읽는 글은 `--fs-read`(15px) · `--lh-read`(1.7)다.
+- **단추 초기화는 둘로 나뉜다(2026-11-12 · `briefs/NOTE-1`).** 앱은 `styles.css` 를
+  먼저 · `next.css` 를 나중에 싣는다(`main.tsx` → `NextShell.tsx` — 견본 페이지는
+  보통 반대라 눈으로 확인한 결과가 앱에서 뒤집힐 수 있다). 상자(`background` ·
+  `border` · `padding` · `cursor` · `text-align`)는 `:where(.nx) button`(특이도 0-0-1)이
+  초기화해 부품의 단일 클래스가 이기고, 글자(`font` · `color`)는 `.nx button`(0-1-1)이
+  초기화해 옛 전역 `button { font: 500 …; color: inherit }` 에 이긴다. 그러니 부품이
+  단추의 글자 · 색을 정할 때는 **`.nx .클래스`(0-2-0)** 로 쓴다 — 단일 클래스(0-1-0)는
+  견본에서는 먹어도 앱의 초기화에 진다. 상자 쪽은 단일 클래스로 충분하다.
+  `test/next-css-variables.test.ts` 가 이 갈림을 시험한다. 같은 이유로 옛
+  `styles.css` 의 요소 선택자(`button` · `input` · `textarea` · `select`)와 같은
+  특이도로 겨루는 새 규칙을 쓰지 않는다.
+- **대체값 없는 `var(--x)` 는 선언된 이름만 쓴다.** `next-css-variables.test.ts` 가
+  `src/**` 의 모든 CSS 를 읽어 미선언 참조를 잡는다 — 대체값(`var(--x, fallback)`)은
+  허용하되 대체값 안의 미선언 참조도 잡는다. 인라인 변수는 시험의 표에 받는 곳을 적는다.
+
+## 0단계의 공통 조각 (2026-11-12 UI 조사)
+
+부품마다 다시 만들지 않는다 — 아래 것이 그 몫이다.
+
+- **한글 조합은 `lib/ime.ts` 의 `composing` 으로 판정한다.** `isComposing` /
+  `keyCode === 229` 하나로 본다 — 조합 중의 Esc · Enter 가 찍기 닫기 · 전송 · 편집
+  취소로 새지 않는다. 새 키 처리기는 같은 판정을 쓴다(Popover 의 Esc 도 같다).
+- **늦은 답은 `lib/latest-request.ts` 의 `createLatestRequest<Scope>()` 가 버린다.**
+  `begin(scope)` 의 표와 `isCurrent(ticket, scope)` 로 — 요청 순서와 대상이 모두
+  맞는 답만 받는다. 대상 변경 · 닫힘 · 언마운트는 `invalidate()` 로 옛 답 전부를
+  버린다(같은 대상으로 돌아와도).
+- **읽는 중 · 없음 · 실패는 `ui/ReadState` 가 그린다** — `nx-empty` 위에 돌림 ·
+  `role="status"`/`"alert"` · 실패의 `다시 읽기` 손까지 한 덩이다.
+- **복사는 `ui/CopyButton`** — `useCopied`(1.5초 `복사했어요`)와 실패 안내 · 얻은
+  글의 직접 선택 퇴로가 함께다. 텍스트를 취하는 일과 확인 꼬리를 따로 짜지 않는다.
+- **굴리기는 `lib/scroll-to-target.ts`** — `scrollToTarget(target, opts)` 가
+  `prefers-reduced-motion` 을 읽어 `auto`/`smooth` 를 정한다. `scrollIntoView` 를
+  곧장 부르면 사용자의 동작 줄이기를 무시한다.
+- **초점 걸음은 공통 필터를 쓴다** — `focusableElements` · `visibleFocusable`
+  (`hooks/use-modal-focus.ts`)가 빈 판 판의 초점 고리 · Popover 닫힘의 초점 복귀 ·
+  모달 가두기를 한 기준으로 걷는다. ModalFrame 은 `initialFocus` 를 먼저 보고,
+  없으면 안의 `autoFocus`, 둘 다 없으면 판에 둔다.
 - **공통 부품은 `ui/ui.css` 끝에 있다.** `nx-btn`(28 · 32 · 40px) · `nx-ibtn`(24 · 28 · 32px),
   `nx-input`(+`--area`) · `nx-field`, `nx-pill`, `nx-banner`(+`-body` · `-act`),
   `nx-empty`(+`-mark` · `-title` · `-desc` · `-act`), `nx-topbar`(52px),
@@ -78,6 +115,10 @@
   공통 모달은 반경 16px(`--r-xl`), 머리 제목 18px(`--fs-h3`), 설명 13px(`--fs-sm`)다.
 - **팝**은 `ui/Popover` 다 — 줄을 고르는 팝은 `role="menu"`(↑ ↓ Home End · 글자 건너뛰기, 줄에 `menuitem`/
   `menuitemradio` 를 단다), 폼 · 카드가 든 팝은 `role="dialog"`. 닫히면 여는 요소로 초점이 돌아온다.
+  팝 스택(`lib/popover-stack.ts`)은 가장 나중에 연 팝 하나만 Esc 를 받게 한다 — 팝 안에서 연
+  팝(부모)은 남고, 그 밖의 팝은 갈아 끼워진다(2026-11-12 UI 조사 U-130). Esc 는 캡처 단계 — 한글
+  조합 중에는 물러나고, 대상이 팝 안 `InlineConfirm`(`.nx-iconf`)이면 그 확인의 «Esc 는 확인만
+  접는다» 계약에 양보한다.
 - **되돌릴 수 없는 일**은 `ui/InlineConfirm` + `.nx-btn--dng` — 초점은 `그만두기` 에, Esc 는 확인만 접는다.
 - **토스트**는 `nav.toast(text)` 한 길이다(`ui/Toast` — 같은 문장도 새 알림, 손 · 초점이 얹히면 멈춤).
   글자는 14px, 동작 단추는 28px다. 현재 크기는 `overlay.css`가 `ui.css`의 기본값 위에 덮는다.
@@ -148,14 +189,17 @@ localStorage, 없으면 화면 자리). 기획서 자리에는 화면 대화 · 
 화면 대화 감싸개와 기획서 본문은 `aria-hidden`과 `inert`도 받는다. 칸 안의 색은 `.nx`의 토큰만 읽는다.
 
 **기획서 본문(2026-10-31 기획서 칸 개선)** — 두 칸이다 — 왼쪽 문서 판(PlanDocView · DraftEditor), 오른쪽 기획 대화
-(`draft/PlanChat`). 읽기 · 고치기의 두 모드는 없다 — 문서 판은 늘 같은 자리고, 초안이 없는 문서의 첫 말은 초안을 열어
+(`draft/PlanChat`) — 넓은 칸에서 대화 칸은 머리 줄 아래부터 바닥 · 오른쪽 끝까지 붙고, 판의 위 · 아래 여백은 문서 칸이 제 스크롤 안에
+가져간다(2026-11-12 사용자 요청). 읽기 · 고치기의 두 모드는 없다 — 문서 판은 늘 같은 자리고, 초안이 없는 문서의 첫 말은 초안을 열어
 건네진다(`pending-ask`). 두 칸 사이의 선(`nx-pl-split`)을 끌어 폭을 바꾼다 — 선에 초점을 두고 ←/→ 는 24px,
 Home/End 는 양끝(300 · 560px), Enter · 두 번 누름은 기본(380px)으로 옮긴다(2026-11-11). 문서 판의 `⤢` 가 판을 넓혀 대화를 접는다 — 접힌 대화 칸은 마운트가 남아 입력창의
 쓰던 글과 붙인 근거가 보존된다(2026-11-11). 칸 폭 1100px 아래(`@container nxpl`)에서는 `문서` · `대화` 두 탭이
 칸 위쪽의 가로 띠로 서고 고른 쪽이 칸 폭 전체를 쓴다(2026-11-11 화면 평가 수리 — 옛 세로 기둥 탭은 대화를 창 밖으로
 밀었다). 탭은 화살표 · Home/End 도 먹는다(`lib/tab-keys` 한 판 — 오른쪽 칸 탭 · 설정 목록과 같다) — 대화 탭에서는
 대화 칸 머리의 안내문이 순다(2026-11-02 D6). `useDraftThread`의 판은 `PlansColumn`이
-쥐므로 문서 판의 남은 걸음 고르기 · 바로 반영의 표시와 대화의 문서 카드가 같은 판을 본다. 기획 대화의 견주기 표는
+쥐므로 문서 판의 남은 걸음 고르기 · 바로 반영의 표시와 대화의 문서 카드가 같은 판을 본다. 직접 고치다 바깥 고침으로 잃을 뻔한 글(되살린 글)도
+`PlansColumn` 이 프로젝트 · 문서별로 쥔다 — `DraftEditor` 는 `recovery`(목록 · 더하기 · 닫기)를 받아 그리기만 하고, 초안을 닫았다 열어도 남으며
+저장하지 않는다(2026-11-12 UI 조사 U-098). 기획 대화의 견주기 표는
 셀마다 제 폭을 지킨다(`draft.css` 의 min-width — 전역 `.md table` 의 width:100% 이 좁은 칸에서 CJK 셀을 한 글자씩
 접는다). AI 의 고침은 채택 없이 초안에 바로 들어가고(`#applyProposalLocked` — 2026-10-31 사용자 결정), 대화의 문서
 카드가 `문서에서 보기`(문서 판을 그 블록으로 옮겨 칠한다 — 좁은 칸은 `문서` 탭이 먼저 선다, 2026-11-11)와
@@ -163,9 +207,12 @@ Home/End 는 양끝(300 · 560px), Enter · 두 번 누름은 기본(380px)으�
 방송으로, 고른 글은 `nx:plan-selection` 방송으로 대화 칸에 닿는다.
 기획 대화 칸의 말씨는 화면 대화와 같은 닻이다(2026-11-02 D 개선) — 기록(`.nx-dr-thread-log`)의 첫 아이 `margin-top: auto`
 로 짧은 대화가 입력창 위에 붙고, AI 말은 `chat.css` 의 `nx-av`(스파크) 얼굴과 `lib/answer-lead` 의 첫 문장 크게를 쓰며,
-말마다 `lib/format` 의 `timeAgo` 시각이 붙는다. 마지막 말의 손은 늘 보이고, 바닥에서 떠나면 `nx-jump`(`맨 아래로` ·
+말마다 `lib/format` 의 `timeAgo` 시각이 붙는다. 시각과 말의 손은 끝줄 하나(`.nx-dr-msg-foot`)에 서고 — 숨은 손이 따로 한 줄을
+차지해 말 사이가 들쭉날쭉했다 — AI 답의 문서 카드는 끝줄보다 앞에 선다. 판정 실패의 `다시 시도`(`.nx-dr-msg-retry`)는 숨지 않는다
+(2026-11-12 기획 대화 칸 손질). 마지막 말의 손은 늘 보이고, 바닥에서 떠나면 `nx-jump`(`맨 아래로` ·
 `새 내용`)가 `.nx-dr-formwrap` 위에 뜬다. 입력창은 글이 바뀔 때마다 높이를 다시 잡아(`chat/Composer` 와 같은 규칙)
-두 줄부터 180px 까지 자라고, 근거 고르기(`RefPicker`)는 `+ 근거 더하기` 단추에 붙은 `ui/Popover` 팝으로 뜨며 후보 · 절
+두 줄부터 180px 까지 자라고, 모델 칩과 보내기는 한 묶음(`.nx-dr-send`)이라 좁은 칸에서 묶음째 다음 줄 오른쪽으로 내려가며
+머리의 담당 한 줄은 말줄임하지 않고 줄을 바꾼다(2026-11-12), 근거 고르기(`RefPicker`)는 `+ 근거 더하기` 단추에 붙은 `ui/Popover` 팝으로 뜨며 후보 · 절
 고르기는 실제 `docRead`의 절 목록으로 만들고 순수 모듈 `draft/thread-model.ts`가 중복과 개수 제한을 잰다. 목록/절 읽기는 따로 재시도하고 늦게 온 답은 버린다. 문서 카드의 남은 고침 알약은
 단추여서 누르면 남은 걸음 블록으로 문서 판을 연다. 채택 걸음의 옛 규칙(`.nx-dr-prop*` · `.nx-dr-cmp*` · `adopt` 손 ·
 `ReadAsk`)은 2026-11-02 D11 에서 걷혔다.
@@ -251,7 +298,10 @@ Home/End 는 양끝(300 · 560px), Enter · 두 번 누름은 기본(380px)으�
 - `submit-view.ts` — 제출 확인의 상태(`submitView`): 목록 · 알림 줄 · 주 단추가 서로 어긋나지 않게 읽기
   실패와 보내기 실패를 가른다(보내기가 실패해도 목록은 남고 `다시 제출` 이 선다).
 - `use-copied.ts` — 복사 뒤 1.5초만 `복사했어요` 로 바뀌는 단추의 손(`useCopied`). 낭독은 부르는 쪽이 실린다.
+  그 손에 실패 안내와 직접 선택 퇴로까지 얹은 부품이 `ui/CopyButton` 이다(위 «0단계의 공통 조각»).
 - `use-closing.ts` — 겹판이 닫히는 동안의 모션 타이머 한 곳(`useClosing`).
+- `latest-request.ts` · `ime.ts` · `scroll-to-target.ts` · `popover-stack.ts` — 늦은 답 버리기 · 한글
+  조합 판정 · 동작 줄이기를 읽는 굴리기 · 팝의 최상위 Esc. 쓰는 법은 위 «0단계의 공통 조각».
 - `mismatch-model.ts` — 어긋남 카드의 순수 재료(2026-11-02 · 같이 고치기 UX 계획 C7 · C8): `mismatchRowKey`
   (절 · 화면 이름의 짝) · `offerMismatchToComposer`(문서를 근거로 붙이고 브리프를 입력창에 미리 채운다 — 보내기는 사람) ·
   `sendMismatchNow`(2026-11-03 A안 1A-1(b) — 같은 길에 `send: true` 를 실어 입력창이 곧바로 보낸다,

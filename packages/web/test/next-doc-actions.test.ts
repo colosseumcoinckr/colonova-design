@@ -95,11 +95,11 @@ test("문서 관리의 막는 이유 — 여섯 이름이 각각 사람의 말�
   assert.equal(lines.length, 6);
   assert.equal(
     lines[0],
-    "지금은 이 앱에서 Confluence 에 쓰기가 꺼져 있어요 — 담당자에게 알리거나 Confluence 에서 직접 관리해 주세요",
+    "지금은 이 앱에서 Confluence 에 쓰기가 꺼져 있어요 — 개발자에게 알리거나 Confluence 에서 직접 관리해 주세요",
   );
   assert.equal(
     lines[4],
-    "이 앱에서 휴지통으로 옮긴 문서가 아니에요 — 복구는 이 앱에서 옮긴 문서만 해요",
+    "이 앱에서 휴지통으로 옮긴 문서만 여기서 복구할 수 있어요. 이 문서는 Confluence 휴지통에서 복구해 주세요.",
   );
   // 거꾸로 세워도 순서는 미리보기가 정한다 — 화면이 다시 배열하지 않는다.
   assert.deepEqual(docOpBlockerLines(preview([...six].reverse())), [...lines].reverse());
@@ -125,8 +125,14 @@ test("문서 관리의 결과 — 마쳤음 · 모름 · 실패의 세 처지가
     "결과를 확인하지 못했어요 — 목록을 새로 가져와 확인해 주세요. 자동으로 다시 보내지 않아요.",
   );
   assert.equal(docOpResultLine(result("failed", "권한이 없어요")), "권한이 없어요");
-  assert.equal(docOpResultLine(result("failed")), "Confluence 요청이 실패했어요");
-  assert.equal(docOpResultLine(result("failed", "  ")), "Confluence 요청이 실패했어요");
+  assert.equal(
+    docOpResultLine(result("failed")),
+    "Confluence 요청을 마치지 못했어요 — 잠시 뒤 다시 시도해 주세요",
+  );
+  assert.equal(
+    docOpResultLine(result("failed", "  ")),
+    "Confluence 요청을 마치지 못했어요 — 잠시 뒤 다시 시도해 주세요",
+  );
 });
 
 test("복제의 처음 제목 — 사본이 아니면 사본을, 사본이면 그다음 수를 붙인다", () => {

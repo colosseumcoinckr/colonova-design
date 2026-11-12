@@ -1,6 +1,7 @@
 import { type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
 import type { Daemon, PlanDocComment } from "../../../lib/daemon-client";
 import { L } from "../../labels";
+import { InlineConfirm } from "../../ui/InlineConfirm";
 import { InfoIcon, Spin } from "../../ui/icons";
 import { type PlanCommentRow, planCommentRows } from "../plans-list";
 import { CommentComposer, type ComposerMode } from "./CommentComposer";
@@ -55,7 +56,7 @@ const NOTICE_MS = 6000;
 export function DocComments({
   daemon,
   pageId,
-  comments,
+  comments: initialComments,
   body,
   onRefresh,
   writable,
@@ -73,6 +74,8 @@ export function DocComments({
 }) {
   const apiRef = useRef(daemon.api);
   apiRef.current = daemon.api;
+  const [comments, setComments] = useState(initialComments);
+  useEffect(() => setComments(initialComments), [initialComments]);
   const rows = useMemo(() => (comments === null ? [] : planCommentRows(comments)), [comments]);
   const threads = useMemo(() => commentThreads(rows), [rows]);
   // 머리글의 수 — 실제 보이는 줄의 수다(숨은 답글은 세지 않는다).
@@ -86,6 +89,9 @@ export function DocComments({
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<number | undefined>(undefined);
   // 해결 중인 줄과 그 진행 — 한 줄씩만.
+  const resolveTrigger = useRef<HTMLButtonElement | null>(null);
+  const resolveInFlight = useRef(false);
+  const [resolveOpen, setResolveOpen] = useState(false);
   const [resolveRow, setResolveRow] = useState<string | null>(null);
   const [resolvePhase, setResolvePhase] = useState<ResolvePhase>({ state: "confirm" });
 
@@ -94,7 +100,9 @@ export function DocComments({
   // 문서를 다시 읽으면 해결 자리와 닻 실패 줄을 거둔다 — 새 읽기가 다시 세운다.
   // biome-ignore lint/correctness/useExhaustiveDependencies: comments 가 바뀔 때만
   useEffect(() => {
+    if (resolveInFlight.current) return;
     setResolveRow(null);
+    setResolveOpen(false);
     setResolvePhase({ state: "confirm" });
     setAnchorFail(null);
   }, [comments]);
@@ -109,6 +117,7 @@ export function DocComments({
 
   /** 본문에서 고른 문장 — 닻 판정을 지나 인라인 입력을 열거나 다시 고르게 하는 안내를 세운다. */
   const askInline = (selection: string) => {
+    if (resolveInFlight.current) return;
     const check = inlineAnchor(body.current?.textContent ?? "", selection);
     if (!check.ok) {
       setInput(null);
@@ -138,11 +147,15 @@ export function DocComments({
 
   /** 줄의 단추 누르기 — 해결은 확인을, 답글 · 고치기는 입력을 연다(하나만 열린다). */
   const openFor = (row: PlanCommentRow, action: CommentAction) => {
+    if (resolveInFlight.current && (action !== "resolve" || resolveRow !== row.key)) return;
     setAnchorFail(null);
     if (action === "resolve") {
       setInput(null);
       setResolveRow(row.key);
-      setResolvePhase({ state: "confirm" });
+      setResolveOpen(true);
+      if (resolveRow !== row.key || resolvePhase.state === "failed") {
+        setResolvePhase({ state: "confirm" });
+      }
       return;
     }
     setResolveRow(null);
@@ -151,8 +164,9 @@ export function DocComments({
 
   /** 해결 보내기 — 확인 한 번 뒤에만. 모름은 다시 보내지 않는다(정본 계획 §9). */
   const sendResolve = async (row: PlanCommentRow) => {
-    if (resolvePhase.state === "sending" || resolvePhase.state === "unknown") return;
+    if (resolveInFlight.current || resolvePhase.state === "unknown") return;
     if (row.id === null || row.version === null) return;
+    resolveInFlight.current = true;
     setResolvePhase({ state: "sending" });
     const commandId = crypto.randomUUID().toLowerCase();
     try {
@@ -177,69 +191,56 @@ export function DocComments({
     } catch {
       // 요청 자체가 던지면(연결 끊김 등) 모름과 같이 다룬다.
       setResolvePhase({ state: "unknown" });
+    } finally {
+      resolveInFlight.current = false;
     }
   };
 
-  /** 해결의 줄 안 판 — 확인 · 보내는 중 · 실패 · 모름. */
+  // 2026-11-12 UI 조사 U-078 · U-198 — 닫기는 요청을 취소하지 않고 결과는 같은 줄에 남긴다.
+  const resolving = resolvePhase.state === "sending";
   const resolveNode = (row: PlanCommentRow): ReactNode => {
-    if (resolvePhase.state === "sending") {
-      return (
-        <p className="nx-dc-resolve" role="status">
-          <Spin /> {L.comments.sending}
-        </p>
-      );
-    }
-    if (resolvePhase.state === "unknown") {
-      return (
-        <div className="nx-dc-resolve">
-          <span className="nx-dc-fail">{L.comments.unknown}</span>
+    const result = (
+      <>
+        <div role="alert">
+          {resolvePhase.state === "failed" && (
+            <span className="nx-dc-fail">
+              {resolvePhase.line}
+              {resolvePhase.sub !== null && <small>{resolvePhase.sub}</small>}
+            </span>
+          )}
+          {resolvePhase.state === "unknown" && (
+            <span className="nx-dc-fail">{L.comments.unknown}</span>
+          )}
+        </div>
+        {resolvePhase.state === "unknown" && (
           <button type="button" className="nx-btn nx-btn--sm" onClick={() => onRefresh(pageId)}>
             {L.comments.reread}
           </button>
-          <button
-            type="button"
-            className="nx-btn nx-btn--sm nx-btn--ghost"
-            onClick={() => setResolveRow(null)}
-          >
-            {L.comments.cancel}
-          </button>
-        </div>
-      );
-    }
-    if (resolvePhase.state === "failed") {
-      return (
-        <div className="nx-dc-resolve">
-          <span className="nx-dc-fail">
-            {resolvePhase.line}
-            {resolvePhase.sub !== null && <small>{resolvePhase.sub}</small>}
-          </span>
-          <button
-            type="button"
-            className="nx-btn nx-btn--sm nx-btn--ghost"
-            onClick={() => setResolveRow(null)}
-          >
-            {L.comments.cancel}
-          </button>
-        </div>
-      );
-    }
+        )}
+      </>
+    );
     return (
-      <div className="nx-dc-resolve">
-        <span>{L.comments.resolveConfirm}</span>
-        <button
-          type="button"
-          className="nx-btn nx-btn--sm nx-btn--pri"
-          onClick={() => void sendResolve(row)}
-        >
-          {L.comments.resolveGo}
-        </button>
-        <button
-          type="button"
-          className="nx-btn nx-btn--sm nx-btn--ghost"
-          onClick={() => setResolveRow(null)}
-        >
-          {L.comments.cancel}
-        </button>
+      <div>
+        {resolveOpen && (
+          <InlineConfirm
+            title={L.comments.resolveConfirm}
+            confirmLabel={L.comments.resolveGo}
+            cancelLabel={L.comments.cancel}
+            tone="neutral"
+            busy={resolving}
+            busyWhy={resolving ? L.comments.sending : undefined}
+            confirmDisabled={resolvePhase.state !== "confirm"}
+            returnRef={resolveTrigger}
+            onConfirm={() => void sendResolve(row)}
+            onCancel={() => setResolveOpen(false)}
+          />
+        )}
+        {!resolveOpen && resolving && (
+          <p className="nx-dc-resolve" role="status">
+            <Spin /> {L.comments.sending} {L.inlineConfirm.continuesAfterClose}
+          </p>
+        )}
+        {result}
       </div>
     );
   };
@@ -262,7 +263,11 @@ export function DocComments({
                 key={action}
                 type="button"
                 className="nx-btn nx-btn--sm nx-btn--ghost"
-                onClick={() => openFor(row, action)}
+                disabled={resolving && (action !== "resolve" || resolveRow !== row.key)}
+                onClick={(event) => {
+                  if (action === "resolve") resolveTrigger.current = event.currentTarget;
+                  openFor(row, action);
+                }}
               >
                 {ACTION_LABEL[action]}
               </button>
@@ -282,7 +287,7 @@ export function DocComments({
               setInput(null);
               appliedNotice(op);
             }}
-            onReread={() => onRefresh(pageId)}
+            onReread={setComments}
           />
         )}
         {input !== null && input.kind === "reply" && input.row.key === row.key && (
@@ -296,7 +301,7 @@ export function DocComments({
               setInput(null);
               appliedNotice(op);
             }}
-            onReread={() => onRefresh(pageId)}
+            onReread={setComments}
           />
         )}
       </li>
@@ -314,7 +319,9 @@ export function DocComments({
 
   return (
     <section className="nx-pl-comments nx-dc">
-      <InlineAnchorButton onSelect={askInline} body={body} />
+      <div inert={resolving}>
+        <InlineAnchorButton onSelect={askInline} body={body} />
+      </div>
       {notice !== null && (
         <p className="nx-dc-notice" role="status">
           {notice}
@@ -337,7 +344,7 @@ export function DocComments({
             setInput(null);
             appliedNotice(op);
           }}
-          onReread={() => onRefresh(pageId)}
+          onReread={setComments}
         />
       )}
       {shown > 0 && <h4 className="nx-pl-comments-t">{L.plans.commentHeading(shown)}</h4>}
@@ -352,17 +359,19 @@ export function DocComments({
           {thread.replies.map((reply) => rowNode(reply, false))}
         </ul>
       ))}
-      {/* 바닥글 입력 — 코멘트가 0개여도 늘 선다. */}
-      <CommentComposer
-        daemon={daemon}
-        pageId={pageId}
-        mode={{ kind: "footer" }}
-        onClose={() => {
-          // 바닥글 입력은 닫히지 않는다 — Esc 가 스스로 비운다(CommentComposer).
-        }}
-        onApplied={appliedNotice}
-        onReread={() => onRefresh(pageId)}
-      />
+      {/* 바닥글 입력 — 해결 중에도 쓰던 글은 남긴다(2026-11-12 UI 조사 U-078). */}
+      <div inert={resolving}>
+        <CommentComposer
+          daemon={daemon}
+          pageId={pageId}
+          mode={{ kind: "footer" }}
+          onClose={() => {
+            // 바닥글 입력은 닫히지 않는다 — Esc 가 스스로 비운다(CommentComposer).
+          }}
+          onApplied={appliedNotice}
+          onReread={setComments}
+        />
+      </div>
     </section>
   );
 }

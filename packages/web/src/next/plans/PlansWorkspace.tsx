@@ -43,10 +43,16 @@ export function usePlansWorkspace({
   useEffect(() => {
     if (enabled) setVisited(slug);
   }, [enabled, slug]);
-  const { state, reset, refreshList, openDoc, closeDoc, refreshDoc, importNow } = usePlans(
-    daemon,
-    enabled,
-  );
+  const {
+    state,
+    reset,
+    refreshList,
+    refreshListAndWait,
+    openDoc,
+    closeDoc,
+    refreshDoc,
+    importNow,
+  } = usePlans(daemon, enabled);
   const [focusDoc, setFocusDoc] = useState(false);
   const [query, setQuery] = useState("");
   const [searchTarget, setSearchTarget] = useState<{
@@ -371,6 +377,7 @@ export function usePlansWorkspace({
     back,
     openDoc,
     refreshList,
+    refreshListAndWait,
     refreshDoc,
     importNow,
     draftKey,

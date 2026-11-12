@@ -75,6 +75,9 @@ export function PlansSidebar({
   );
   // 줄 끝 `···` 메뉴와 그 안의 지우기 확인 — 열린 줄의 이름표와 확인을 쥔다.
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const deleteBusy = useRef(false);
   const [confirmFor, setConfirmFor] = useState<string | null>(null);
   const rowAnchors = useRef(new Map<string, { current: HTMLButtonElement | null }>());
   const removeItem = useRef<HTMLButtonElement>(null);
@@ -155,17 +158,25 @@ export function PlansSidebar({
    * 다시 읽고, 지운 대화가 열려 있으면 대화 칸도 비우라고 알린다(nx:plan-thread-reload).
    */
   const removeConversation = (conv: DraftConversationSummary) => {
-    setMenuFor(null);
-    setConfirmFor(null);
+    if (deleteBusy.current) return;
+    deleteBusy.current = true;
+    setDeleting(conv.threadId);
+    setDeleteError(null);
     void daemon.api
       .draftThreadDelete(conv.threadId)
       .then(() => {
+        setMenuFor(null);
+        setConfirmFor(null);
         plans.refreshConversations();
         window.dispatchEvent(new CustomEvent("nx:plan-thread-reload", { detail: conv.threadId }));
         nav.toast(L.convMenu.removeDone);
       })
       .catch((err: unknown) => {
-        nav.toast(err instanceof Error ? err.message : String(err));
+        setDeleteError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        deleteBusy.current = false;
+        setDeleting(null);
       });
   };
 
@@ -233,6 +244,7 @@ export function PlansSidebar({
             // 우클릭 — 줄 끝 `···` 와 같은 메뉴가 같은 자리에 뜬다(화면 대화 목록과 같은 규칙).
             onContextMenu={(event) => {
               event.preventDefault();
+              if (deleteBusy.current) return;
               setConfirmFor(null);
               setMenuFor(conv.threadId);
             }}
@@ -252,6 +264,7 @@ export function PlansSidebar({
             aria-label={L.drafts.convRowMenu}
             aria-haspopup="menu"
             aria-expanded={menuOpen}
+            disabled={deleting !== null}
             onClick={() => {
               setConfirmFor(null);
               setMenuFor(menuOpen ? null : conv.threadId);
@@ -267,6 +280,7 @@ export function PlansSidebar({
               align="end"
               float
               onClose={() => {
+                if (deleteBusy.current) return;
                 setMenuFor(null);
                 setConfirmFor(null);
               }}
@@ -278,10 +292,19 @@ export function PlansSidebar({
                   confirmLabel={L.drafts.convDelete}
                   cancelLabel={L.convMenu.removeCancel}
                   onConfirm={() => removeConversation(conv)}
-                  onCancel={() => setConfirmFor(null)}
+                  busy={deleting === conv.threadId}
+                  busyWhy={deleting === conv.threadId ? L.drafts.convDeleting : undefined}
+                  onCancel={() => {
+                    if (!deleteBusy.current) setConfirmFor(null);
+                  }}
                   returnRef={removeItem}
                 >
                   {conv.running && <p className="nx-iconf-why">{L.drafts.convRemoveRunning}</p>}
+                  {deleteError && (
+                    <p className="nx-iconf-error" role="alert">
+                      {deleteError}
+                    </p>
+                  )}
                 </InlineConfirm>
               ) : (
                 <>
@@ -306,7 +329,10 @@ export function PlansSidebar({
                     role="menuitem"
                     ref={removeItem}
                     className="nx-mi nx-mi--dng"
-                    onClick={() => setConfirmFor(conv.threadId)}
+                    onClick={() => {
+                      setDeleteError(null);
+                      setConfirmFor(conv.threadId);
+                    }}
                   >
                     <TrashIcon />
                     {L.drafts.convDelete}
@@ -483,15 +509,13 @@ export function PlansSidebar({
         onFocused={plans.clearFocus}
         compact
       />
-      {connected && (
+      {connected && state.listPhase !== "failed" && !summary?.expired && (
         <div
           className={warn ? "nx-banner nx-banner--amber nx-pl-sync" : "nx-pl-sync"}
           role="status"
         >
           {warn && <InfoIcon />}
-          <span className="nx-banner-body">
-            {state.listPhase === "failed" ? L.plans.listFailed : sync.text}
-          </span>
+          <span className="nx-banner-body">{sync.text}</span>
           {warn && (
             <button
               type="button"

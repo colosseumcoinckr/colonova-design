@@ -7,6 +7,7 @@ import {
   useId,
   useRef,
 } from "react";
+import { seedModalFocus } from "../../hooks/focusable";
 import { useModalEscape, useModalFocus } from "../../hooks/use-modal-focus";
 import { L } from "../labels";
 import { useClosing } from "../lib/use-closing";
@@ -44,6 +45,7 @@ export function ModalFrame({
   backClassName = "",
   dismissOnScrim = true,
   returnRef,
+  initialFocus,
   children,
 }: {
   /** 늘 마운트해 두는 대화상자는 닫힌 동안 false — 훅은 걸리지 않고 아무것도 그리지 않는다. */
@@ -64,6 +66,8 @@ export function ModalFrame({
   dismissOnScrim?: boolean;
   /** 닫힌 뒤 초점이 돌아갈 곳 — 모르면 열기 직전에 초점이 있던 곳이다. */
   returnRef?: RefObject<HTMLElement | null>;
+  /** 2026-11-12 UI 조사 U-093 — 생략하면 안의 autoFocus 를 지키고, 없을 때만 판에 둔다. */
+  initialFocus?: RefObject<HTMLElement | null>;
   children: ReactNode;
 }) {
   const titleId = useId();
@@ -77,10 +81,10 @@ export function ModalFrame({
   const live = open && !closing;
   useModalFocus(panel, live, returnRef);
   useModalEscape(panel, request, live && !locked);
-  // 열릴 때 초점은 판에 둔다 — 안의 첫 입력칸을 바로 주고 싶은 판은 제 효과가 이어서 옮긴다.
+  // 명시한 처음 초점 → 안에 이미 있는 초점 → 판 순서로 둔다.
   useEffect(() => {
-    if (open) panel.current?.focus();
-  }, [open]);
+    if (open && panel.current) seedModalFocus(panel.current, initialFocus?.current);
+  }, [open, initialFocus]);
   if (!open) return null;
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: 스크림은 포인터 전용의 닫기 손이다 — 키보드의 닫기는 Esc 와 ✕ 가 맡는다.

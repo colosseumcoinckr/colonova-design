@@ -1,4 +1,6 @@
 import { type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef } from "react";
+import { L } from "../labels";
+import { composing } from "../lib/ime";
 
 /**
  * 인라인 확인 — 되돌릴 수 없는 일(대화 지우기 · 프로젝트 빼기 · 기록으로 되돌리기) 앞에서 팝 · 서랍
@@ -78,7 +80,7 @@ export function InlineConfirm({
       aria-describedby={body ? bodyId : undefined}
       aria-busy={busy || undefined}
       onKeyDown={(event) => {
-        if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+        if (event.key !== "Escape" || composing(event)) return;
         event.stopPropagation();
         cancelNow.current();
       }}
@@ -97,9 +99,14 @@ export function InlineConfirm({
           {busyWhy}
         </p>
       )}
+      {busy && (
+        <p className="nx-iconf-why" role="status">
+          {L.inlineConfirm.continuesAfterClose}
+        </p>
+      )}
       <div className="nx-iconf-act">
         <button type="button" className="nx-btn nx-btn--sm" ref={cancel} onClick={onCancel}>
-          {cancelLabel}
+          {busy ? L.inlineConfirm.close : cancelLabel}
         </button>
         <button
           type="button"

@@ -68,6 +68,8 @@ export interface PlansHand {
   reset: () => void;
   /** 목록을 조용히 다시 읽는다 — 이미 읽은 목록은 지우지 않고, 읽는 중이면 건너뛴다. */
   refreshList: () => void;
+  /** 진행 중인 조회 뒤 새 목록을 읽는다. 실패하면 거절한다(문서 관리 복구). */
+  refreshListAndWait: () => Promise<void>;
   /** 열린 문서를 조용히 다시 읽는다(2026-10-23 · 최종 구현 계획 F4) — 코멘트 쓰기가 마친 뒤 답만 바꾼다. */
   refreshDoc: (pageId: string) => void;
   openDoc: (pageId: string) => void;
@@ -89,6 +91,7 @@ export function usePlans(daemon: Daemon, enabled = true): PlansHand {
   const docSeq = useRef(0);
   const draftSeq = useRef(0);
   const listBusy = useRef(false);
+  const listPending = useRef<Promise<boolean> | null>(null);
   const endTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => () => window.clearTimeout(endTimer.current), []);
@@ -111,7 +114,7 @@ export function usePlans(daemon: Daemon, enabled = true): PlansHand {
 
   const loadList = useCallback(
     (quiet: boolean) => {
-      if (!enabledRef.current) return;
+      if (!enabledRef.current) return Promise.resolve(false);
       loadDrafts();
       listSeq.current += 1;
       const seq = listSeq.current;
@@ -119,10 +122,10 @@ export function usePlans(daemon: Daemon, enabled = true): PlansHand {
       setState((before) =>
         quiet && before.docs !== null ? before : { ...before, listPhase: "loading" },
       );
-      apiRef.current
+      const pending = apiRef.current
         .docList()
         .then((reply) => {
-          if (seq !== listSeq.current) return;
+          if (seq !== listSeq.current) return false;
           listBusy.current = false;
           setState((before) => ({
             ...before,
@@ -132,16 +135,23 @@ export function usePlans(daemon: Daemon, enabled = true): PlansHand {
             unsupported: reply.unsupported ?? [],
             listPhase: "ready",
           }));
+          return true;
         })
         .catch(() => {
-          if (seq !== listSeq.current) return;
+          if (seq !== listSeq.current) return false;
           listBusy.current = false;
           // 이미 읽어 둔 목록은 조용한 새로 고침의 실패로 지우지 않는다.
           setState((before) => ({
             ...before,
             listPhase: quiet && before.docs !== null ? "ready" : "failed",
           }));
+          return false;
+        })
+        .finally(() => {
+          if (listPending.current === pending) listPending.current = null;
         });
+      listPending.current = pending;
+      return pending;
     },
     [loadDrafts],
   );
@@ -159,6 +169,14 @@ export function usePlans(daemon: Daemon, enabled = true): PlansHand {
 
   const refreshList = useCallback(() => {
     if (!listBusy.current) loadList(true);
+  }, [loadList]);
+
+  // 2026-11-12 UI 조사 U-073 — 가져오기 전의 조회가 끝난 뒤 새 목록까지 기다린다.
+  const refreshListAndWait = useCallback(async () => {
+    const startedIn = scope.current;
+    while (listPending.current !== null) await listPending.current;
+    if (startedIn !== scope.current || !(await loadList(true)))
+      throw new Error("list refresh failed");
   }, [loadList]);
 
   const openDoc = useCallback((pageId: string) => {
@@ -249,5 +267,14 @@ export function usePlans(daemon: Daemon, enabled = true): PlansHand {
     [loadDrafts],
   );
 
-  return { state, reset, refreshList, openDoc, closeDoc, refreshDoc, importNow };
+  return {
+    state,
+    reset,
+    refreshList,
+    refreshListAndWait,
+    openDoc,
+    closeDoc,
+    refreshDoc,
+    importNow,
+  };
 }

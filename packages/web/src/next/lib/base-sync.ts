@@ -1,8 +1,9 @@
 import type { RepoStatus } from "@colonova-design/protocol";
 
 /**
- * 받아오기 칸의 지금(2026-10-20 사용자 요청) — 개발자가 반영한 내용은 사용자가 누를 때만 받아온다.
- * 상태 줄의 작은 단추와 `이번 작업` 의 칸이 같은 판정을 읽는다. 받을 것도 요청도 없으면 숨는다.
+ * 최신 내용 적용 칸의 지금(2026-11-12 사용자 요청 · 옛 `받아오기`) — 개발자가 반영한 내용은 사용자가
+ * 누를 때만 합친다. 상태 줄의 알 표식과 `이번 작업` 의 칸이 같은 판정을 읽는다. 받을 것도 요청도 없으면 숨는다.
+ * `behind`(받아올 커밋 수)는 내부 판정에만 쓰이고 사용자 면에는 수를 말하지 않는다.
  */
 export type BaseSyncRow =
   | { kind: "hidden" }
@@ -40,7 +41,7 @@ export function baseSyncSeenOf(repo: RepoStatus | null | undefined): BaseSyncSee
 }
 
 /**
- * 받아오기가 끝난 소식 — 같은 클론에서 `last.at` 이 바뀐 순간에만 결과를 돌려준다. 처음 본 값(창을 연 순간 ·
+ * 적용이 끝난 소식 — 같은 클론에서 `last.at` 이 바뀐 순간에만 결과를 돌려준다. 처음 본 값(창을 연 순간 ·
  * 프로젝트를 옮긴 순간 · 연결 뒤 첫 상태)은 소식이 아니다 — 앞선 결과로 성공을 말하지 않는다.
  */
 export function baseSyncNews(

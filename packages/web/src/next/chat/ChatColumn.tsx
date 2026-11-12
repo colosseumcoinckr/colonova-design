@@ -32,12 +32,14 @@ import {
 } from "../lib/composer-sheet";
 import { connectionLock } from "../lib/connection-copy";
 import { dockOf } from "../lib/dock";
+import { createLatestRequest } from "../lib/latest-request";
 import { makingPhase, makingWordOf } from "../lib/making";
 import { PIN_SHOT_MAX } from "../lib/pin-words";
 import { isPreparing } from "../lib/project-note";
 import { latestResult } from "../lib/request-results";
 import { planRetry } from "../lib/retry-send";
 import { runPlan } from "../lib/run-plan";
+import { scrollBehavior, scrollToTarget } from "../lib/scroll-to-target";
 import { shownScreenName, startersOf } from "../lib/starters";
 import { nextTabIndex } from "../lib/tab-keys";
 import { dedupeScreens } from "../lib/thread";
@@ -124,7 +126,7 @@ export function ChatColumn({
   const [publishTarget, setPublishTarget] = useState<{
     doc: PlanSyncDoc;
     changes: number;
-    resolve: (ok: boolean) => void;
+    resolve: (ok: import("./PlanSyncLine").SyncPublishResult) => void;
   } | null>(null);
   const planSync = useMemo<PlanSyncHand>(
     () => ({
@@ -195,7 +197,7 @@ export function ChatColumn({
       ...(project?.confluence?.writable === true
         ? {
             publish: (doc: PlanSyncDoc) =>
-              new Promise<boolean>((resolve) => {
+              new Promise<import("./PlanSyncLine").SyncPublishResult>((resolve) => {
                 setPublishTarget({ doc, changes: doc.changes, resolve });
               }),
           }
@@ -213,26 +215,43 @@ export function ChatColumn({
   const contextFull = sessions.usage !== null && Math.round(sessions.usage.percentage) >= 85;
 
   // 이 대화의 근거 — 작업 독의 `기획서 N` 칩과 펼쳐진 근거 줄, 기획서 탭이 같은 목록을 읽는다.
-  const [refEntries, setRefEntries] = useState<DraftRefEntry[]>([]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: 사람 말 수는 다시 읽는 방아쇠일 뿐 — 몸에서 쓰지 않는다.
+  const [refResult, setRefResult] = useState<{
+    scope: string;
+    entries: DraftRefEntry[];
+    phase: "loading" | "ready" | "failed";
+  }>({ scope: "", entries: [], phase: "ready" });
+  const [refRetry, setRefRetry] = useState(0);
+  const refScope = `${daemon.activeSlug ?? ""}:${activeId ?? ""}`;
+  const refRequests = useRef(createLatestRequest<string>()).current;
+  const refEntries = refResult.scope === refScope ? refResult.entries : [];
+  const refPhase =
+    activeId === null ? "ready" : refResult.scope === refScope ? refResult.phase : "loading";
+  // 2026-11-12 UI 조사 U-047 — 같은 대화의 실패에는 읽어 둔 근거를 남긴다.
+  // 2026-11-12 CHAT 검토 5 — 같은 대화의 다시 읽기는 기존 칩과 실패 안내를 유지한다.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 보낸 말 수와 재시도는 다시 읽는 방아쇠다.
   useEffect(() => {
+    const ticket = refRequests.begin(refScope);
     if (activeId === null) {
-      setRefEntries([]);
-      return undefined;
+      setRefResult({ scope: refScope, entries: [], phase: "ready" });
+      return () => refRequests.invalidate();
     }
-    let cancelled = false;
+    setRefResult((prev) => ({
+      scope: refScope,
+      entries: prev.scope === refScope ? prev.entries : [],
+      phase: prev.scope === refScope ? prev.phase : "loading",
+    }));
     api
       .draftRefs(activeId)
       .then(({ refs }) => {
-        if (!cancelled) setRefEntries(refs);
+        if (refRequests.isCurrent(ticket, refScope))
+          setRefResult({ scope: refScope, entries: refs, phase: "ready" });
       })
       .catch(() => {
-        if (!cancelled) setRefEntries([]);
+        if (refRequests.isCurrent(ticket, refScope))
+          setRefResult((prev) => ({ ...prev, phase: "failed" }));
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [api, activeId, sentCount]);
+    return () => refRequests.invalidate();
+  }, [api, activeId, refScope, sentCount, refRetry, refRequests]);
 
   // 좁은 창이면 미리보기 탭을 앞에 세운 뒤 옮긴다 — 옮긴 곳이 보여야 한다.
   const openScreen = useCallback(
@@ -563,7 +582,13 @@ export function ChatColumn({
     const el = scroll.current;
     if (!el) return;
     // 부드러운 이동은 사람이 누른 길에만 — 따라가기는 흐르는 답과 싸우지 않게 즉시.
-    if (smooth) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    if (smooth)
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: scrollBehavior(
+          window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+        ),
+      });
     else el.scrollTop = el.scrollHeight;
   }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 블록이 바뀔 때마다(흐르는 답 포함) 따라간다.
@@ -713,7 +738,7 @@ export function ChatColumn({
         requestAnimationFrame(() => {
           const el = scroll.current?.querySelector(`[data-turn='${CSS.escape(turnId)}']`);
           if (!el) return;
-          el.scrollIntoView({ block: "center", behavior: "smooth" });
+          scrollToTarget(el, { block: "center" });
           el.classList.add("nx-band--flash");
           window.setTimeout(() => el.classList.remove("nx-band--flash"), 1600);
         });
@@ -844,12 +869,30 @@ export function ChatColumn({
           nav.showRightTab("chat");
           toBottom(true);
         }}
-        entries={refEntries.length}
+        entries={0}
         daemon={daemon}
         sessionId={activeId}
         nav={nav}
       />
       <Composer
+        references={
+          <WorkDock
+            row={null}
+            runWord={runWord}
+            startedAt={null}
+            plan={null}
+            onStop={stop}
+            stopping={stopping}
+            onAskGo={() => {}}
+            entries={refEntries.length}
+            refEntries={refEntries}
+            refPhase={refPhase}
+            onRefsRetry={() => setRefRetry((n) => n + 1)}
+            daemon={daemon}
+            sessionId={activeId}
+            nav={nav}
+          />
+        }
         daemon={daemon}
         sessions={sessions}
         subject={sessions.activeId ? "session" : "next"}
@@ -1112,10 +1155,10 @@ export function ChatColumn({
             }}
             onQueueNow={(itemId) => void sessions.queueSendNow(itemId).catch(() => undefined)}
             onBackgroundTask={(toolUseId) => {
-              if (activeId) void api.backgroundTask(activeId, toolUseId).catch(() => undefined);
+              if (activeId) return api.backgroundTask(activeId, toolUseId);
             }}
             onStopTask={(taskId) => {
-              if (activeId) void api.stopTask(activeId, taskId).catch(() => undefined);
+              if (activeId) return api.stopTask(activeId, taskId);
             }}
           />
         )}

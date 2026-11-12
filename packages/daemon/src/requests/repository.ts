@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { recordComments } from "../comments.js";
 import { browseFiles, listFiles } from "../environment.js";
+import { FRESH_CHECK_FAILED_DETAIL, FRESH_FETCH_TIMEOUT_MS } from "../repo-core.js";
 import { undoLog } from "../undo-log.js";
 import type { RequestHandlers, RouterDeps } from "./types.js";
 
@@ -103,6 +104,9 @@ export function repositoryHandlers(
             message.sessionId,
             message.note || undefined,
             message.sent,
+            // 확정한 지문을 감독자의 원격 확인(fetch) 뒤 재점검에도 쓴다(2026-11-12) —
+            // 이 앞의 검사는 fetch 전 값이다.
+            message.expectedPreview,
           );
         });
       } else {
@@ -194,7 +198,7 @@ export function repositoryHandlers(
       const route = found.startsWith("/") && !found.startsWith("//") ? found : "/";
       return { route, image: null };
     },
-    "repo.submitPreview": async () => {
+    "repo.submitPreview": async (message) => {
       const active = deps.fleet.requireActive();
       // 웹은 repo.status 를 받을 때마다 다시 묻고, 이 읽기의 git 출력이 다시
       // repo.status 를 방송한다. git 이 느린 Windows 에서는 한 바퀴가 방송 간격보다
@@ -202,10 +206,31 @@ export function repositoryHandlers(
       // 시작하지 않은 읽기에 합류해 줄에는 많아야 하나만 선다 — 합류한 읽기도 요청
       // 뒤에 시작하므로 신선하다. 칸은 "review": "submit" 은 실제 제출 · 넘기기가
       // 쓰는 칸이라 거기에 합류하면 다른 모양의 결과를 받는다.
+      //
+      // 새로 읽기(freshBase, 2026-11-12 채택)는 확인 창을 여는 · 다시 읽는 누름에만 온다.
+      // 칸과 합류 짝을 나눈다("review-fresh") — 진행 중인 배경 읽기에 합류한 fresh 요청이
+      // fetch 전의 옛 읽기를 받는 일이 없게 한다. 배경(freshBase 없음)은 여전히 로컬만 읽어
+      // 방송 → 재조회 → fetch 의 돌이 돌지 않는다.
+      const fresh = message.freshBase === true;
       return active.repo.repoCore().lane.run(
-        "review",
+        fresh ? "review-fresh" : "review",
         async () => {
           const core = active.repo.repoCore();
+          if (fresh) {
+            try {
+              await core.fetchBase(FRESH_FETCH_TIMEOUT_MS);
+            } catch {
+              // 최신인지 확인하지 못했다 — 확인됐다고 속이지 않는다(다시 열면 된다).
+              throw new Error(FRESH_CHECK_FAILED_DETAIL);
+            }
+            const [, behind] = await core.aheadBehindBase().then(
+              (counts) => counts,
+              () => {
+                throw new Error(FRESH_CHECK_FAILED_DETAIL);
+              },
+            );
+            active.supervisor.noteRemoteBehind(behind);
+          }
           const head = await core.headCommitFiles();
           if (!head) throw new Error("제출할 작업을 읽지 못했어요.");
           await core.refreshPendingChanges(true);

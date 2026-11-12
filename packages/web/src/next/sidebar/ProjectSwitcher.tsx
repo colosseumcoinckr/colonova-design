@@ -90,10 +90,14 @@ export function ProjectSwitcher({
         <ProjectMark slug={active.slug} name={active.name} />
         <span className="nx-proj-nm">
           <b>{active.name}</b>
-          <span>
-            <NoteMark note={status} cycle={cycleDotOf(active)} />
-            {status.text}
-          </span>
+          {(active.phase !== "ready" ||
+            status.kind !== "cycle" ||
+            projectCycle(active) !== "draft") && (
+            <span>
+              <NoteMark note={status} cycle={cycleDotOf(active)} />
+              {status.text}
+            </span>
+          )}
         </span>
         <span className="nx-proj-caret">
           <ChevronsUpDownIcon />

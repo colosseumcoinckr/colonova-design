@@ -40,6 +40,7 @@ export function NewDraftDialog({
   /** 만들어진 초안 — 칸이 그 초안의 편집기를 연다. */
   onCreated: (view: DraftView) => void;
 }) {
+  const titleRef = useRef<HTMLInputElement>(null);
   const apiRef = useRef(daemon.api);
   apiRef.current = daemon.api;
   const selectable = useMemo(() => rows.filter((row) => row.kind !== "unsupported"), [rows]);
@@ -71,13 +72,20 @@ export function NewDraftDialog({
   };
 
   return (
-    <ModalFrame onClose={onClose} locked={creating} label={L.drafts.newDocTitle} className="nx-nd">
+    <ModalFrame
+      initialFocus={titleRef}
+      onClose={onClose}
+      locked={creating}
+      label={L.drafts.newDocTitle}
+      className="nx-nd"
+    >
       <ModalHead title={L.drafts.newDocTitle} sub={L.drafts.newDocSub} />
       <ModalBody>
         <div className="nx-nd-fields">
           <label className="nx-field">
             <span className="nx-field-label">{L.drafts.titleField}</span>
             <input
+              ref={titleRef}
               className="nx-input"
               aria-label={L.drafts.titleField}
               value={title}

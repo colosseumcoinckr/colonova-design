@@ -2,6 +2,7 @@ import type { DocLabel } from "@colonova-design/protocol";
 import { useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../../lib/daemon-client";
 import { L } from "../../labels";
+import { composing } from "../../lib/ime";
 import { CloseIcon, PlusIcon, Spin } from "../../ui/icons";
 import { labelProblem, labelResultLine } from "./doc-view-model";
 
@@ -127,6 +128,7 @@ export function DocLabels({
             autoFocus
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {
+              if (composing(event)) return;
               if (event.key === "Escape") {
                 event.stopPropagation();
                 setAdding(false);

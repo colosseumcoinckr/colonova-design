@@ -40,41 +40,46 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding-top: 4px;
+  padding-top: var(--sp-1);
   animation: nx-rise-in var(--nx-t-move) var(--drift) backwards;
 }
 
 /* ── 확인 단계 — 영향의 크기가 한눈에 읽히게: 새로 → 바뀜 → 그대로, 행마다 칩. */
 .nx-inv .nx-inv-listhd {
-  margin: 4px 0 -2px;
-  font-size: 12px;
-  font-weight: 600;
+  margin: var(--sp-1) 0 -2px;
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
   color: var(--ink3);
 }
 
 .nx-inv .nx-inv-list {
   display: grid;
-  gap: 8px;
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  overflow: hidden;
 }
 
 .nx-inv .nx-inv-row {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  column-gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 0;
+  border-radius: 0;
   font-size: var(--fs-ui);
 }
 
 /* 새로 오는 행이 이 판의 소식이다 — 연한 브랜드 바탕. */
+.nx-inv .nx-inv-row + .nx-inv-row {
+  border-top: 1px solid var(--line);
+}
 .nx-inv .nx-inv-row--add {
-  border-color: var(--accent-line);
-  background: var(--accent-soft);
+  background: var(--nx-selected);
 }
 
 /* 행의 갈래 알약 — 모양 · 색은 공통 부품 nx-pill(새로 = 포인트 · 바뀜 = 호박 · 그대로 = 물),
@@ -90,20 +95,20 @@
 
 .nx-inv .nx-inv-main b {
   display: block;
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   overflow-wrap: anywhere;
 }
 
 .nx-inv .nx-inv-main small {
   display: block;
-  margin-top: 2px;
-  font-size: 12px;
+  margin-top: var(--sp-0_5);
+  font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--ink3);
 }
 
 .nx-inv .nx-inv-fine {
-  margin: 2px 0 0;
+  margin: var(--sp-0_5) 0 0;
   font-size: var(--fs-sm);
   line-height: 1.6;
   color: var(--ink3);
@@ -112,22 +117,22 @@
 /* 개발자의 말 — 인용처럼 왼쪽에 줄. */
 .nx-inv .nx-inv-readme {
   margin: 0;
-  padding: 10px 12px;
+  padding: 10px var(--sp-3);
   border-left: 3px solid var(--line2);
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 var(--r-md) var(--r-md) 0;
   background: var(--bg);
 }
 
 .nx-inv .nx-inv-readme figcaption {
-  margin-bottom: 2px;
-  font-size: 12px;
-  font-weight: 600;
+  margin-bottom: var(--sp-0_5);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
   color: var(--ink3);
 }
 
 .nx-inv .nx-inv-readme p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -142,7 +147,7 @@
 
 .nx-inv .nx-inv-author label {
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   color: var(--ink2);
 }
 
@@ -157,13 +162,13 @@
 }
 
 .nx-inv .nx-fill {
-  margin: 4px 0 2px;
+  margin: var(--sp-1) 0 var(--sp-0_5);
 }
 
 /* ── 한 줄 안내 · 오류 — 왼쪽 줄이 기운을 말한다(위험은 붉게 · 주의는 노랗게). 글자는 읽기 좋게 잉크색. */
 .nx-inv .nx-inv-callout {
   margin: 0;
-  padding: 10px 12px;
+  padding: 10px var(--sp-3);
   border-left: 3px solid var(--line2);
   border-radius: 0 var(--r) var(--r) 0;
   background: var(--bg);
@@ -196,11 +201,11 @@
 }
 
 .nx-inv .nx-inv-raw {
-  margin: 4px 0 0;
-  padding: 8px 10px;
-  border-radius: 8px;
+  margin: var(--sp-1) 0 0;
+  padding: var(--sp-2) 10px;
+  border-radius: var(--r);
   background: var(--bg);
-  font-size: 12px;
+  font-size: var(--fs-cap);
   line-height: 1.55;
   color: var(--ink2);
   white-space: pre-wrap;
@@ -210,23 +215,23 @@
 /* ── 결과 — 일부만 · 모두 실패한 행. */
 .nx-inv .nx-inv-fails {
   display: grid;
-  gap: 8px;
+  gap: var(--sp-2);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
 .nx-inv .nx-inv-fail {
-  padding: 10px 12px;
+  padding: 10px var(--sp-3);
   border: 1px solid color-mix(in srgb, var(--red) 30%, var(--line));
   border-left: 3px solid var(--red);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--red-soft);
 }
 
 .nx-inv .nx-inv-fail b {
   font-size: var(--fs-ui);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   overflow-wrap: anywhere;
 }
 
@@ -242,20 +247,20 @@
 .nx-inv .nx-inv-done {
   display: grid;
   justify-items: center;
-  gap: 4px;
-  padding: 10px 0 4px;
+  gap: var(--sp-1);
+  padding: 10px 0 var(--sp-1);
   text-align: center;
 }
 
 .nx-inv .nx-inv-done > b {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: var(--fs-read);
+  font-weight: var(--fw-bold);
   letter-spacing: -0.01em;
 }
 
 .nx-inv .nx-inv-done > p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
@@ -264,7 +269,7 @@
   place-items: center;
   width: 52px;
   height: 52px;
-  margin-bottom: 8px;
+  margin-bottom: var(--sp-2);
   border-radius: 50%;
   background: var(--green-soft);
   color: var(--green);
@@ -280,10 +285,10 @@
 .nx-inv .nx-inv-cleanup {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: var(--sp-3);
+  padding: 10px var(--sp-3);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--bg);
 }
 
@@ -293,7 +298,7 @@
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--r);
   background: var(--nx-hover);
   color: var(--ink2);
 }
@@ -319,14 +324,14 @@
 /* ── 바닥 — 주 단추는 늘 맨 오른쪽 끝이다. 가져오기가 잠기면 이유가 한 줄을 통째로 쓴다. */
 .nx-modal--frame .nx-mfoot--frame.nx-inv-foot {
   flex-wrap: wrap;
-  row-gap: 8px;
+  row-gap: var(--sp-2);
 }
 
 .nx-inv .nx-inv-footnote {
   flex: 1 1 100%;
   margin: 0;
   font-size: var(--fs-sm);
-  line-height: 1.45;
+  line-height: var(--lh-ui);
   color: var(--ink2);
 }
 

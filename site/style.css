@@ -790,17 +790,7 @@ main {
   stroke-linejoin: round;
   flex: none;
 }
-.ms-cnt {
-  margin-left: auto;
-  font-size: 9.5px;
-  font-weight: 700;
-  color: var(--on-accent);
-  background: var(--accent);
-  border-radius: 999px;
-  padding: 0 5px;
-  line-height: 15px;
-}
-/* 왼쪽 줄의 차례는 홈 · 찾기 · 기획서 · 연결 · 화면이다(2026-10-24). */
+/* 왼쪽 줄의 차례는 찾기 · 기획서 · 화면이다(2026-10-31 홈 걷음 · 2026-10-30 연결 자리 걷음). */
 .ms-row--on {
   color: var(--accent-strong);
   background: var(--accent-soft);
@@ -2090,8 +2080,7 @@ main {
   background: var(--line-soft);
 }
 
-/* 눌러 보는 셀에서 함께 쓰는 알약 토글 — 크기 고르기 · 이렇게 말하면 */
-.br-bar,
+/* 눌러 보는 셀에서 함께 쓰는 알약 토글 — 이렇게 말하면(기기 마디 크기 고르기는 2026-11-11 걷음) */
 .bp-say {
   display: inline-flex;
   align-self: flex-start;
@@ -2100,7 +2089,6 @@ main {
   padding: 2px;
   background: var(--panel);
 }
-.br-size,
 .bp-say__btn {
   font-family: var(--sans);
   font-size: 11.5px;
@@ -2116,11 +2104,9 @@ main {
     background 0.15s,
     color 0.15s;
 }
-.br-size:hover,
 .bp-say__btn:hover {
   color: var(--text);
 }
-.br-size.on,
 .bp-say__btn.on {
   background: var(--accent);
   color: var(--on-accent);
@@ -2288,10 +2274,7 @@ main {
   bottom: 10px;
 }
 
-/* 진짜 서비스 — 크기를 바꾸고, 검색해 본다 */
-.br-bar {
-  margin-top: 8px;
-}
+/* 진짜 서비스 — 검색해 본다(기기 마디 — 크기 전환은 2026-11-11 에 걷었다) */
 .br-stage {
   display: flex;
   flex: 1;
@@ -2315,16 +2298,6 @@ main {
   border-radius: 10px;
   background: var(--bg);
   box-shadow: 0 14px 34px -22px rgba(0, 0, 0, 0.5);
-  transition:
-    width 0.45s var(--spring),
-    border-radius 0.3s;
-}
-.br-frame[data-size="tablet"] {
-  width: 76%;
-}
-.br-frame[data-size="phone"] {
-  width: 48%;
-  border-radius: 16px;
 }
 .br-url {
   padding: 2px 8px;
@@ -2431,7 +2404,7 @@ main {
   color: var(--muted);
 }
 
-/* 기획서 놀이 — 문서 한 장과 기획 대화가 나란히, 변경안을 골라 채택한다(2026-10-24) */
+/* 기획서 놀이 — 문서 한 장과 기획 대화가 나란히, AI 가 초안을 바로 고치고 되돌리기는 판으로 한다(2026-10-31) */
 .pd-stage {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
@@ -2475,20 +2448,20 @@ main {
 .pd-block--plain {
   background: transparent;
 }
-.pd-before,
-.pd-after {
-  display: block;
+.pd-before {
+  display: none;
 }
 .pd-after {
-  display: none;
+  display: block;
   padding-left: 10px;
   border-left: 2px solid var(--accent);
 }
-.pd-stage[data-state="adopted"] .pd-before {
-  display: none;
-}
-.pd-stage[data-state="adopted"] .pd-after {
+/* 되돌리기는 초안의 판으로 — 한 판 앞의 원문이 잠깐 돌아온다(2026-10-31 채택 걷음). */
+.pd-stage[data-state="reverted"] .pd-before {
   display: block;
+}
+.pd-stage[data-state="reverted"] .pd-after {
+  display: none;
 }
 .pd-badge {
   display: inline-block;
@@ -2590,20 +2563,21 @@ main {
   background: var(--ok-soft);
   font-weight: 600;
 }
-.pd-card__offer,
+.pd-card__act,
 .pd-card__done {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
-.pd-stage[data-state="offer"] .pd-card__done {
+/* 되돌린 뒤에만 완료 줄이 서고, 고침이 살아 있는 동안에만 되돌리기 단추가 선다. */
+.pd-stage:not([data-state="reverted"]) .pd-card__done {
   display: none;
 }
-.pd-stage:not([data-state="offer"]) .pd-card__offer {
+.pd-stage[data-state="reverted"] .pd-card__act {
   display: none;
 }
-.pd-adopt {
+.pd-revert {
   flex: 1;
   padding: 8px 12px;
   border: none;
@@ -2615,7 +2589,7 @@ main {
   cursor: pointer;
   transition: filter 0.15s;
 }
-.pd-adopt:hover {
+.pd-revert:hover {
   filter: brightness(1.08);
 }
 .pd-card__done {
@@ -2637,60 +2611,29 @@ main {
   color: var(--text);
 }
 
-/* 연결 지도 놀이 — 문서 노드를 끌어 화면 노드에 잇는다(2026-10-24) */
-.lm-stage {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 18px;
+/* 연결 — 쓰는 곳에서 생긴다. 끌어 잇는 체험은 2026-11-12 에 걷고 정적인 그림으로만 보인다. */
+.lk-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   margin-top: 10px;
-  min-height: 190px;
-  padding: 12px;
+  padding: 14px 12px;
   border: 1px solid var(--line-soft);
   border-radius: 12px;
   background: var(--panel);
-  overflow: hidden;
 }
-.lm-svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-}
-.lm-svg line {
-  stroke: var(--accent);
-  stroke-width: 1.6;
-  stroke-linecap: round;
-  pointer-events: stroke;
-  cursor: pointer;
-}
-.lm-svg line.lm-svg--temp {
-  stroke-dasharray: 4 4;
-  opacity: 0.75;
-  cursor: inherit;
-  pointer-events: none;
-}
-.lm-col {
+.lk-line {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  z-index: 1;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
 }
-.lm-col-title {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-.lm-node {
-  position: relative;
+.lk-node {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  border: 1px solid var(--line);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--line));
   border-radius: 10px;
   background: var(--panel-2);
   font-size: 12px;
@@ -2698,31 +2641,35 @@ main {
   color: var(--text);
   word-break: keep-all;
 }
-.lm-node--linked {
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+.lk-flow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--accent-strong);
 }
-.lm-handle {
-  position: absolute;
-  right: -7px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--accent);
-  background: var(--bg-2);
-  padding: 0;
-  cursor: grab;
-  touch-action: none;
-}
-.lm-handle:hover {
+.lk-flow::before,
+.lk-flow::after {
+  content: "";
+  width: 18px;
+  height: 1.5px;
   background: var(--accent);
+  opacity: 0.55;
 }
-.lm-handle:active {
-  cursor: grabbing;
+.lk-note {
+  margin: 0;
+  padding: 6px 9px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-lg);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+  word-break: keep-all;
 }
-.lm-note {
-  margin: auto 0 0;
+.lk-note b {
+  font-weight: 700;
+  color: var(--text-2);
 }
 @media (max-width: 560px) {
   .pd-stage {
@@ -3540,59 +3487,6 @@ main {
 #bento-notify .btn {
   margin-top: auto;
   align-self: flex-start;
-}
-
-/* 홈 */
-.bm-home {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.bm-greet {
-  margin: 0;
-  font-size: 13px;
-  font-weight: 700;
-}
-.bm-input {
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--panel);
-  padding: 9px 12px;
-  font-size: 11.5px;
-  color: var(--text-2);
-  display: flex;
-  align-items: center;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.12);
-}
-.bm-input i {
-  width: 1.5px;
-  height: 12px;
-  background: var(--accent-strong);
-  margin-left: 2px;
-  animation: caret 1.05s steps(1) infinite;
-}
-.bm-inbox {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid var(--line-soft);
-  border-radius: 10px;
-  background: var(--panel);
-  padding: 7px 10px;
-  font-size: 11px;
-  color: var(--text-2);
-}
-.bm-badge {
-  margin-left: auto;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--on-accent);
-  background: var(--accent);
-  border-radius: 999px;
-  padding: 0 7px;
-  line-height: 16px;
-  box-shadow: 0 2px 8px -2px var(--accent-glow);
 }
 
 /* 테마 카드 — 앱의 설정처럼, 그 테마를 입은 작은 앱 창이 미리 보인다 */
@@ -5201,7 +5095,6 @@ main {
   }
   .hero__pulse,
   .mc-caret,
-  .bm-input i,
   .jy-dot.making i,
   .jy-dot.making::before,
   .bg-stage[data-step="2"] .bg-log li[data-at="2"]::before {

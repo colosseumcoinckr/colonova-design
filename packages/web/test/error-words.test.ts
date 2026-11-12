@@ -4,8 +4,8 @@ import { test } from "node:test";
 import { errorWords, plainErrorTitle, RAW_ERROR_WORDS } from "../src/lib/error-words.ts";
 
 test("오류 id 의 한국어 — 아는 것만, 모르면 null", () => {
-  assert.equal(errorWords("overloaded"), "AI가 붐빕니다");
-  assert.equal(errorWords("api_error"), "잠시 문제가 있었습니다");
+  assert.equal(errorWords("overloaded"), "AI 가 붐벼요");
+  assert.equal(errorWords("api_error"), "잠시 문제가 있었어요");
   assert.equal(errorWords("nope"), null);
 });
 

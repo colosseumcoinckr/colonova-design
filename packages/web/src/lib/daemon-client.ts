@@ -46,6 +46,7 @@ import type {
   GitHubRepoInspection,
   HandoffPreviewInfo,
   HandoffStatusReport,
+  InviteSupport,
   LostSend,
   OnboardingFixKind,
   OnboardingStep,
@@ -68,6 +69,7 @@ import type {
   SessionSelectors,
   SessionState,
   SessionSummary,
+  SubmitPreview,
   SubmitSent,
 } from "@colonova-design/protocol";
 import { PROTOCOL_VERSION } from "@colonova-design/protocol";
@@ -420,8 +422,8 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
           level: "warn",
           text:
             event.error === "rate_limit"
-              ? `구독 사용량을 채웠습니다 — ${Math.round(event.delayMs / 1000)}초 후에 다시 시도해요 (${event.attempt}/${event.maxRetries}).`
-              : `${errorWords(event.error) ?? "잠시 문제가 생겼습니다"} — ${Math.round(event.delayMs / 1000)}초 후에 다시 시도해요.`,
+              ? `구독 사용량을 채웠어요 — ${Math.round(event.delayMs / 1000)}초 뒤에 다시 시도해요 (${event.attempt}/${event.maxRetries}).`
+              : `${errorWords(event.error) ?? "잠시 문제가 생겼어요"} — ${Math.round(event.delayMs / 1000)}초 뒤에 다시 시도해요.`,
         },
       ];
 
@@ -447,7 +449,7 @@ function foldEvent(blocks: Block[], event: ChatEvent): Block[] {
           id: `n${++noticeSeq}`,
           level: "info",
           subtype: "compact",
-          text: "이전 대화가 요약으로 이어졌습니다",
+          text: "이전 대화가 요약으로 이어졌어요",
         },
       ];
 
@@ -952,7 +954,12 @@ interface DaemonApi {
    * 저장 기록: the saved commits of this cycle, `base` → HEAD.
    */
   saveHistory: () => Promise<SaveHistory>;
-  submitPreview: () => Promise<import("@colonova-design/protocol").SubmitPreview>;
+  /**
+   * 제출 확인의 내용 사진 — `freshBase` 가 참이면 데몬이 베이스를 새로 읽어
+   * `repo.baseSync.behind` 를 지금 값으로 돌려준다(2026-11-12 사용자 요청 — 제출 확인의 오래된 기준 검출).
+   * 확인 창을 열 때와 사람이 `다시 확인` 을 누를 때만 true 다 — 배경 감시(`useSubmitReview`)는 보내지 않는다.
+   */
+  submitPreview: (freshBase?: boolean) => Promise<SubmitPreview>;
   /**
    * 되돌리기: put the worktree back to `sha` as a NEW commit — no
    * reset, no force-push; a developer may be reading the branch. Refuses
@@ -1042,6 +1049,8 @@ interface DaemonApi {
   ) => Promise<{ ok: true; latestVersion?: string | null; phase?: string }>;
   /** 넘긴 요청에 적을 작성자 이름 — null 이면 지운다(P1-3). */
   machineAuthorSet: (name: string | null) => Promise<{ ok: true }>;
+  /** 초대 파일의 창구 칸 저장 — null 이면 지운다(2026-11-12 설계 결정 ㉱). */
+  machineSupportSet: (support: InviteSupport | null) => Promise<{ ok: true }>;
   /** Judge one repo before any clone. */
   githubRepoInspect: (owner: string, repo: string) => Promise<GitHubRepoInspection>;
   /** 기획서(Confluence) 연결 — 자격은 응답에 다시 나오지 않는다. */
@@ -1373,22 +1382,22 @@ function backgroundNotice(
     case "idle":
       return {
         title: `${title} · 완료`,
-        body: "AI가 답을 마쳤습니다. 열어서 확인해 보세요.",
+        body: "AI 가 답을 마쳤어요. 대화를 열어 확인해 주세요.",
       };
     case "error":
       return {
         title: `${title} · 중단`,
-        body: "AI가 중단됐습니다. 대화에서 이유를 확인할 수 있습니다.",
+        body: "AI 가 멈췄어요. 대화에서 이유를 확인해 주세요.",
       };
     case "waiting_permission":
       return {
         title: `${title} · 확인 필요`,
-        body: "AI가 진행 허락을 기다리고 있습니다.",
+        body: "AI 가 작업 허용을 기다려요. 대화에서 확인해 주세요.",
       };
     case "waiting_question":
       return {
         title: `${title} · 답 필요`,
-        body: "AI가 질문에 대한 답을 기다리고 있습니다.",
+        body: "AI 가 질문의 답을 기다려요. 대화에서 답해 주세요.",
       };
     default:
       return null;
@@ -1601,7 +1610,7 @@ export function useDaemon(url: string | null): Daemon {
     const flushPending = () => {
       for (const call of pendingCalls.current.values()) {
         clearTimeout(call.timer);
-        call.reject(new Error("연결이 끊어졌습니다 — 잠시 뒤 대화나 화면을 다시 확인해 주세요"));
+        call.reject(new Error("연결이 끊어졌어요 — 잠시 뒤 대화나 화면을 다시 확인해 주세요"));
       }
       pendingCalls.current.clear();
     };
@@ -1697,7 +1706,7 @@ export function useDaemon(url: string | null): Daemon {
           // is genuinely down. Show the connect screen; the retry below still
           // brings the app back if the daemon appears afterwards.
           setConnection("error");
-          setConnectionError("연결하지 못했습니다 — 자동으로 다시 연결합니다.");
+          setConnectionError("연결하지 못했어요 — 자동으로 다시 연결해요");
         } else {
           // 한 번은 붙었던 선이 끊긴 것 — 화면은 살아 있으니 ConnectScreen이
           // 아니라 "closed" 배너가 알린다. 백오프 재시도는 아래에서 계속 돈다.
@@ -1957,7 +1966,7 @@ export function useDaemon(url: string | null): Daemon {
     <T>(payload: Record<string, unknown>, timeoutMs = 60_000, commandId?: string): Promise<T> => {
       const ws = socket.current;
       if (!ws || ws.readyState !== ws.OPEN)
-        return Promise.reject(new Error("아직 연결되지 않았습니다"));
+        return Promise.reject(new Error("아직 연결되지 않았어요"));
       // 명시적 commandId (PLAN-FEEDBACK): 응답을 못 받은 뒤의 재전송이 같은
       // id 로 가게 하는 안정된 열쇠 — 데몬이 id 로 멱등 답하므로 두 번 실행되지
       // 않는다. 기본 발행은 그대로 새 id 다.
@@ -2001,7 +2010,7 @@ export function useDaemon(url: string | null): Daemon {
         if (pendingCalls.current.get(id) === entry) {
           pendingCalls.current.delete(id);
           entry.timer = undefined;
-          reject(new Error("응답이 늦어졌습니다 — 잠시 뒤 대화나 화면을 다시 확인해 주세요."));
+          reject(new Error("응답이 늦어졌어요 — 잠시 뒤 대화나 화면을 다시 확인해 주세요."));
         }
       }, timeoutMs);
       return promise;
@@ -2361,6 +2370,8 @@ export function useDaemon(url: string | null): Daemon {
       escalationTest: () => call<{ ok: true }>({ type: "escalation.test" }, 30_000),
       machineAuthorSet: (name: string | null) =>
         call<{ ok: true }>({ type: "machine.author.set", name }, 15_000),
+      machineSupportSet: (support: InviteSupport | null) =>
+        call<{ ok: true }>({ type: "machine.support.set", support }, 15_000),
       githubRepoInspect: (owner: string, repo: string) =>
         call<GitHubRepoInspection>({ type: "github.repo.inspect", owner, repo }, 60_000),
       // 기획서(Confluence) 연결 — 검증이 이겨야 저장되고, 자격은 응답에 다시 나오지 않는다.
@@ -2484,7 +2495,11 @@ export function useDaemon(url: string | null): Daemon {
         ),
       // The draft runs one short agent turn on the daemon.
       handoffDraft: () => call<HandoffDraft>({ type: "repo.handoffDraft" }, 120_000),
-      submitPreview: () => call({ type: "repo.submitPreview" }, 60_000),
+      submitPreview: (freshBase?: boolean) =>
+        call<SubmitPreview>(
+          { type: "repo.submitPreview", ...(freshBase ? { freshBase: true } : {}) },
+          60_000,
+        ),
       saveHistory: () => call<SaveHistory>({ type: "repo.history" }, 60_000),
       // A restore commits and pushes, and the repo's checks may run on the
       // way: the same window a save is given.

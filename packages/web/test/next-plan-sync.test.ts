@@ -52,8 +52,8 @@ test("맡긴 첫 말 — 문서의 초안 열쇠로 한 번만 꺼내고, 나중
   const key = pageDraftKey("123");
   assert.equal(key, "p-123");
   assert.equal(takeAsk(key), null);
-  stashAsk(key, "예외를 더해 줘");
-  stashAsk(key, "표를 다듬어 줘");
-  assert.equal(takeAsk(key), "표를 다듬어 줘");
+  stashAsk(key, { text: "예외를 더해 줘", refs: [], selection: null });
+  stashAsk(key, { text: "표를 다듬어 줘", refs: [], selection: null });
+  assert.deepEqual(takeAsk(key), { text: "표를 다듬어 줘", refs: [], selection: null });
   assert.equal(takeAsk(key), null);
 });

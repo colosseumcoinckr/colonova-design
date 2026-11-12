@@ -4,6 +4,7 @@
 import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DiffFile, RepoHandoffDraft } from "@colonova-design/protocol";
+import { type AtomicPlanInput, type AtomicPlanResult, createAtomicPlanner } from "./atomic-plan.js";
 import { readComments } from "./comments.js";
 import {
   buildChecksSection,
@@ -75,6 +76,7 @@ function clipBody(body: string): string {
 }
 
 export class RepoSummarizer {
+  private readonly atomicPlanner = createAtomicPlanner();
   constructor(
     private readonly core: RepoCore,
     private readonly machineTurn: MachineTurn = NO_MACHINE_TURN,
@@ -313,5 +315,17 @@ export class RepoSummarizer {
     // 화면 코드의 흔적이 든 문장은 기본 문구로 물러난다 — 작업 기록에 개발 어휘가
     // 오르는 것보다 겜란한 한 줄이 낫다(2026-11-02 실사용 관찰).
     return line ? line.slice(0, MEMO_MAX_CHARS) : null;
+  }
+
+  /** 2026-11-12: 화면 요청의 조각 분류도 기존 Haiku 단발 경로를 쓴다. */
+  atomicPlan(input: AtomicPlanInput): Promise<AtomicPlanResult> {
+    return this.atomicPlanner.plan(
+      { ...input, model: "haiku" },
+      {
+        turn: this.machineTurn,
+        cwd: this.summaryCwd(),
+        timeoutMs: 30_000,
+      },
+    );
   }
 }

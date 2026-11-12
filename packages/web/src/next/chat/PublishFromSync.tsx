@@ -4,6 +4,7 @@ import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
 import { PublishDialog } from "../plans/draft/PublishDialog";
 import type { ShellNav } from "../slots";
+import type { SyncPublishResult } from "./PlanSyncLine";
 
 /**
  * 곁줄 발행의 감싸개 팝(2026-11-02 · 같이 고치기 UX 계획 C3) — 발행 확인 부품을 그대로 화면 자리에
@@ -24,7 +25,7 @@ export function PublishFromSync({
   /** 같이 고침으로 들어간 걸음 수 — 미리보기의 바뀐 곳과 견주어 밖의 바뀐 곳을 센다. */
   changes: number;
   /** 창이 닫힐 때 한 번 — 발행이 끝났는지를 돌려준다(곁줄 문구가 바뀐다). */
-  onDone: (published: boolean) => void;
+  onDone: (result: SyncPublishResult) => void;
 }) {
   const api = daemon.api;
   const docKey = doc.docKey ?? "";
@@ -62,7 +63,7 @@ export function PublishFromSync({
 
   // 초안을 못 읽으면 팝을 열 수 없다 — 닫고 곁줄이 실패 문구를 말하게 한다.
   useEffect(() => {
-    if (failed) onDone(false);
+    if (failed) onDone("failed");
   }, [failed, onDone]);
 
   if (failed || ready === null) return null;
@@ -77,7 +78,7 @@ export function PublishFromSync({
       banner={ready.banner}
       onClose={() => {
         const was = published;
-        onDone(was);
+        onDone(was ? "published" : "cancelled");
         if (was) nav.toast(L.planSync.publishedDone(doc.title));
       }}
       // 발행이 끝나면 편집기의 다시 읽기처럼 여기서는 마쳤음만 기억한다 — 곁줄 문구는 닫힐 때의 약속이 바꾼다.

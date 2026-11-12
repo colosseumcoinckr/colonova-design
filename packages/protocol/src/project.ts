@@ -1,4 +1,5 @@
 import type { Attention } from "./attention.js";
+import type { InviteSupport } from "./invite.js";
 import type { HandoffStatus, RepoPhase } from "./repo.js";
 import type { PlanUsage, SessionModelInfo } from "./session.js";
 import type { EffortLevel } from "./shared.js";
@@ -361,6 +362,12 @@ export interface DaemonStatus {
   dev?: boolean;
   /** 넘긴 요청에 적을 작성자 이름 — 온보딩이 묻고 machine.json 이 기억한다. */
   authorName?: string | null;
+  /**
+   * 초대 파일의 창구 칸(2026-11-12 설계 결정 ㉱) — 막혔을 때 앱이 세우는
+   * 물어볼 사람 · 대화방. machine.json 이 기억하고, 초대장에 칸이 없으면
+   * 이미 있는 값을 지우지 않는다. null/없음이면 «개발팀»이라고만 말한다.
+   */
+  support?: InviteSupport | null;
   /**
    * 새 AI 버전이 나오면 스스로 설치할지(PLAN-UI U12) — 기본 켬, `machine.set`
    * 으로 바꾸고 machine.json 이 기억한다.

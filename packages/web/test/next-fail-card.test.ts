@@ -28,7 +28,7 @@ test("failWhy: 계정류가 아니면 예전 순서 그대로 — 한도 · 다�
 
 test("계정류 문장은 사용자 어휘 — 요금제 · 크레딧 · 다시 로그인을 말하고 개발 어휘가 없다", () => {
   assert.match(L.account.failWhy, /요금제/);
-  assert.match(L.account.failWhy, /크레딧/);
+  assert.match(L.account.failWhy, /결제 잔액/);
   assert.match(L.account.failWhy, /다시 로그인/);
   assert.match(L.account.failLoginNote, /다시 시도/);
 });

@@ -52,12 +52,10 @@
   /* 그림자 — 카드는 선으로 서고 그림자는 옅다. 팝 · 모달은 팔레트의 그림자를 빌린다. */
   --elev-1: 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent);
   --elev-2: var(--shadow-pop);
-  --elev-3: var(--shadow-pop), 0 24px 64px -24px color-mix(in srgb, var(--ink) 22%, transparent);
 
   /* 초점 — 불투명한 포인트 색(styles.css 의 :focus-visible 와 같은 색 — 밝은 팔레트에서도 대비 3:1). */
   --focus: var(--accent);
 
   /* 글 폭 — 읽는 글(기획서 본문) · 홈. */
   --w-read: 760px;
-  --w-home: 1040px;
 }

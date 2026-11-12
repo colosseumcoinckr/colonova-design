@@ -35,10 +35,12 @@ import {
   toggleComposerSheet,
 } from "../lib/composer-sheet";
 import { routePath } from "../lib/follow-edit";
+import { createLatestRequest } from "../lib/latest-request";
 import { arriveOnTurnEnd, refreshOnTurnEnd } from "../lib/preview-geometry";
 import { requestResults } from "../lib/request-results";
 import { useDiagnosticsText } from "../lib/use-diagnostics";
 import type { PreviewColumnProps } from "../slots";
+import { createFrozenRequest } from "./frozen-request";
 import { clockOf, HISTORY_DRAWER_EVENT, HistoryDrawer } from "./HistoryDrawer";
 import { ArrowIcon, PinSmallIcon } from "./icons";
 import { LiveLayer } from "./LiveLayer";
@@ -169,6 +171,22 @@ export function PreviewColumn({
     getComposerSheet,
   );
   const sheetHostId = useId();
+  const foldedComposer = useRef<HTMLButtonElement>(null);
+  const openedFromFold = useRef(false);
+  useEffect(() => {
+    if (composerSheet.open || !openedFromFold.current) return;
+    openedFromFold.current = false;
+    if (!narrow || offstage) return;
+    const frame = requestAnimationFrame(() => {
+      if (
+        document.activeElement === document.body ||
+        sectionRef.current?.contains(document.activeElement)
+      ) {
+        foldedComposer.current?.focus();
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [composerSheet.open, narrow, offstage]);
   /** 서랍을 연 단추 — 닫히면 초점이 그곳으로 돌아간다(막대의 `···` — S6). */
   const historyBtn = useRef<HTMLButtonElement | null>(null);
   /** 시계 단추가 `aria-controls` 로 가리키는 서랍. */
@@ -668,23 +686,54 @@ export function PreviewColumn({
     }
     return times.sort();
   }, [daemon.sessions, handoff]);
+  const frozenRequests = useRef(createFrozenRequest()).current;
+  const frozenScope = JSON.stringify([root, handoff?.state, handoff?.number, herePath, offstage]);
+  frozenRequests.update(frozenScope, api);
+  const frozenInFlight = useRef(false);
+  const [frozenBusy, setFrozenBusy] = useState(false);
+  useEffect(() => () => frozenRequests.invalidate(), [frozenRequests]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 사이클이 움직이면 얼린 얼굴은 거짓말이다.
   useEffect(() => setFrozen(null), [root, handoff?.state, handoff?.number]);
   const openFrozen = async () => {
     noteUser();
-    ++viewEpoch.current;
+    if (frozenInFlight.current) return;
+    frozenInFlight.current = true;
+    setFrozenBusy(true);
+    const startedEpoch = ++viewEpoch.current;
+    const ticket = frozenRequests.begin(frozenScope, startedEpoch);
     const route = herePath.split("?")[0] ?? "/";
-    const shot = await api.handoffShot(route).catch(() => null);
-    if (!shot) {
-      toast(L.preview.frozenNoShot);
-      return;
+    try {
+      const shot = await api.handoffShot(route).catch(() => null);
+      if (!frozenRequests.accepts(ticket, viewEpoch.current)) return;
+      if (!shot) {
+        toast(L.preview.frozenNoShot);
+        return;
+      }
+      setCommentsOn(false);
+      setFrozen({ shot, at: submits[submits.length - 1] ?? null });
+    } finally {
+      frozenInFlight.current = false;
+      setFrozenBusy(false);
     }
-    setCommentsOn(false);
-    setFrozen({ shot, at: submits[submits.length - 1] ?? null });
   };
 
   // --- AI에게 이 화면 보여 주기 ----------------------------------------
   const [lookBusy, setLookBusy] = useState(false);
+  const [lookError, setLookError] = useState<"capture" | "send" | null>(null);
+  const lookRequests = useRef(createLatestRequest<object>()).current;
+  const lookScope = useMemo(
+    () => ({ slug, root, session: sessions.activeId, api }),
+    [slug, root, sessions.activeId, api],
+  );
+  const lookScopeRef = useRef(lookScope);
+  lookScopeRef.current = lookScope;
+  const lookInFlight = useRef(false);
+  // 2026-11-12 UI 조사 U-012 — 전환 뒤 옛 그림과 늦은 안내를 가져오지 않는다.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 범위 전환 때 안내를 걷고 진행 중 요청을 무효화한다.
+  useEffect(() => {
+    setLookError(null);
+    return () => lookRequests.invalidate();
+  }, [lookScope, lookRequests]);
   const lookSent = useRef(false);
   const lookCount = useRef<{ route: string; n: number }>({ route: "", n: 0 });
   useEffect(() => {
@@ -692,14 +741,23 @@ export function PreviewColumn({
   }, [turnLive]);
   const showAi = async () => {
     noteUser();
-    if (lookBusy) return;
+    if (lookInFlight.current) return;
     if (turnLive && lookSent.current) {
       toast(L.preview.showAiAgain);
       return;
     }
     setLookBusy(true);
+    setLookError(null);
+    lookInFlight.current = true;
+    const ticket = lookRequests.begin(lookScope);
+    const current = () => lookRequests.isCurrent(ticket, lookScopeRef.current);
     try {
       const snapshot = await window.colonovaDesignDesktop?.preview?.snapshot?.();
+      if (!current()) return;
+      if (native && !snapshot?.jpeg) {
+        setLookError("capture");
+        return;
+      }
       const attachment = snapshot?.jpeg
         ? { name: L.preview.shotName(screenName), mediaType: "image/jpeg", data: snapshot.jpeg }
         : null;
@@ -724,16 +782,18 @@ export function PreviewColumn({
       ].filter(Boolean);
       const delivered = await machineTurn(
         lookToTurn(herePath, lines.join("\n\n"), count),
-        // 대화를 처음 열 때 도구의 이름을 붙인다(2026-11-03 실앱 감사 — 이름 없이 열면 CLI 의 영어 요약이 대화 이름이 된다).
         PREVIEW_RECOVERY_TITLE,
         attachment ? [attachment] : undefined,
         [{ screen: herePath }],
       );
+      if (!current()) return;
       lookSent.current = delivered;
       if (delivered) toast(L.preview.showAiSent);
-    } catch (cause) {
-      console.error("[colonova-design] look", cause);
+      else setLookError("send");
+    } catch {
+      if (current()) setLookError("capture");
     } finally {
+      lookInFlight.current = false;
       setLookBusy(false);
     }
   };
@@ -981,6 +1041,7 @@ export function PreviewColumn({
           void window.colonovaDesignDesktop?.preview?.zoom?.(kind);
         }}
         frozenReady={frozenReady}
+        frozenBusy={frozenBusy}
         onFrozen={() => void openFrozen()}
         onShowAi={() => void showAi()}
         showAiBusy={lookBusy}
@@ -988,6 +1049,11 @@ export function PreviewColumn({
         addrSignal={addrSignal}
       />
 
+      {lookError && (
+        <div className="nx-look-error" role="alert">
+          <span>{lookError === "capture" ? L.preview.captureFailed : L.preview.showAiFailed}</span>
+        </div>
+      )}
       <PreviewHost
         url={previewUrl}
         epoch={epoch}
@@ -1084,9 +1150,14 @@ export function PreviewColumn({
         <button
           type="button"
           className="nx-fold-cmp"
+          ref={foldedComposer}
           aria-expanded={composerSheet.open}
           aria-controls={sheetHostId}
-          onClick={toggleComposerSheet}
+          tabIndex={composerSheet.open || offstage ? -1 : 0}
+          onClick={() => {
+            openedFromFold.current = true;
+            toggleComposerSheet();
+          }}
         >
           {pinCount > 0 ? L.narrow.composeFoldPins(pinCount) : L.narrow.composeFold}
           <ArrowIcon />

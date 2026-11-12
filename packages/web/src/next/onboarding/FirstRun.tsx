@@ -3,9 +3,12 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useInstallStep } from "../../hooks/use-install-step";
 import type { InviteImportController } from "../../hooks/use-invite-import";
 import type { Daemon } from "../../lib/daemon-client";
+import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
 import { accountLine, accountText } from "../lib/account-line";
+import { composing } from "../lib/ime";
 import { INSTALL_STEPS } from "../lib/install-step";
+import { supportFor } from "../lib/support";
 import { useDiagnosticsText } from "../lib/use-diagnostics";
 import { Spin } from "../ui/icons";
 import { CopyButton } from "./CopyButton";
@@ -79,6 +82,7 @@ export function FirstRun({
 
   // ── 도구 칸의 고침이 도는 동안(2026-10-25 설치 인지 손질) — pnpm 설치는 요청이 corepack 을
   //    끝까지 돌리고 돌아오는 길이라 그 사이 방송이 없다. 누름 즉시 돌림이 서고 단추가 꺼진다.
+  const [requestError, setRequestError] = useState<"tools" | "agent" | null>(null);
   const [toolFixBusy, setToolFixBusy] = useState<string | null>(null);
   // macOS git 설치 — OS 설치 창을 열었다는 답. 앱은 끝을 모르므로 다시 확인이 지운다.
   const [toolInstallOpened, setToolInstallOpened] = useState(false);
@@ -147,7 +151,7 @@ export function FirstRun({
     setLoginLaunching(true);
     void daemon.api
       .onboardingFix("login-claude", provider)
-      .catch(() => undefined)
+      .catch(() => setRequestError("agent"))
       .finally(() => setLoginLaunching(false));
   }, [loginStarted, loginLive, installing, claudeStep, daemon.api, provider]);
 
@@ -159,13 +163,17 @@ export function FirstRun({
     if (installing || daemon.installDone) setInstallLaunching(false);
   }, [installing, daemon.installDone]);
   const startClaudeInstall = () => {
+    setRequestError(null);
     setInstallLaunching(true);
     void daemon.api
       .onboardingFix("install-claude")
       .then((reply) => {
         if (!fixReplyStarted(reply)) setInstallLaunching(false);
       })
-      .catch(() => setInstallLaunching(false));
+      .catch(() => {
+        setInstallLaunching(false);
+        setRequestError("agent");
+      });
   };
 
   const runFix = (step: OnboardingStep) => {
@@ -174,9 +182,10 @@ export function FirstRun({
       startClaudeInstall();
       return;
     }
+    setRequestError(null);
     void daemon.api
       .onboardingFix(kind, kind === "login-claude" ? provider : undefined)
-      .catch(() => undefined);
+      .catch(() => setRequestError("agent"));
   };
 
   // ── 다시 확인 — 앱 밖에서 고친 것(설치 창 · IT 의 허용 · 다시 설치)을 앱을 다시 켜지 않고 읽는다.
@@ -184,11 +193,12 @@ export function FirstRun({
   const [rechecking, setRechecking] = useState(false);
   const recheck = () => {
     if (rechecking) return;
+    setRequestError(null);
     setToolInstallOpened(false);
     setRechecking(true);
     void daemon.api
       .onboardingCheck(provider)
-      .catch(() => undefined)
+      .catch(() => setRequestError("tools"))
       .finally(() => setRechecking(false));
   };
   // 첫 검사의 답이 오래 오지 않으면 도는 표시만 두지 않는다 — 검사는 AI 의 로그인 확인까지 돌아 몇 초는 걸린다.
@@ -207,6 +217,7 @@ export function FirstRun({
   const runToolFix = (step: OnboardingStep) => {
     const kind = step.fix?.kind;
     if (!kind || toolFixBusy !== null) return;
+    setRequestError(null);
     setToolNote(null);
     setToolInstallOpened(false);
     setToolFixBusy(kind);
@@ -219,13 +230,13 @@ export function FirstRun({
         // 이 고침은 끝까지 돌고 돌아온다 — 곧바로 다시 확인한다.
         if (kind === "install-pnpm") recheck();
       })
-      .catch(() => undefined)
+      .catch(() => setRequestError("tools"))
       .finally(() => setToolFixBusy(null));
   };
-  const recheckButton = (primary: boolean) => (
+  const recheckButton = (primary: boolean, gate: "tools" | "agent" = "tools") => (
     <button
       type="button"
-      className={`nx-btn${primary ? " nx-btn--pri" : ""}`}
+      className={`nx-btn${primary && current === gate ? " nx-btn--pri" : ""}`}
       disabled={rechecking || checking || toolFixBusy !== null}
       onClick={recheck}
     >
@@ -256,6 +267,27 @@ export function FirstRun({
 
   // ── 초대 파일 — 첫 프로젝트가 생기면 끝난다.
   const inviteImporting = invite.state.phase === "reading" || invite.state.phase === "applying";
+
+  // ── 개발팀 창구(2026-11-12 설계 결정 ㉱) — 놓은 초대 파일(미리보기)이 먼저,
+  //    이미 저장된 기계 설정이 뒤다(`authorName` 을 읽는 것과 같은 두 곳).
+  const support = supportFor(
+    invite.state.phase === "confirm" ||
+      invite.state.phase === "applying" ||
+      invite.state.phase === "done"
+      ? invite.state.invite.support
+      : null,
+    daemon.status?.support,
+  );
+  const devSupportLine =
+    support === null
+      ? L.support.devLineNone
+      : support.kind === "both"
+        ? L.support.devLineBoth(support.name ?? "", support.room ?? "")
+        : support.kind === "name"
+          ? L.support.devLineName(support.name ?? "")
+          : support.kind === "room"
+            ? L.support.devLineRoom(support.room ?? "")
+            : L.support.devLineUrl;
 
   // 이번에 통과한 항목만 반응한다 — 앱을 켰을 때 이미 통과한 항목은 첫 그림에서
   // '본 것'으로 새겨 튀지 않는다(onboarding/motion 의 판정).
@@ -328,6 +360,7 @@ export function FirstRun({
           waiting={{ agent: agentWaiting }}
           done={done}
           title={done ? L.onboarding.doneTitle : L.onboarding.title}
+          lead={done ? undefined : L.onboarding.lead}
           sub={done ? L.onboarding.doneSub : L.onboarding.sub}
           need={done ? [] : L.onboarding.needs}
         />
@@ -346,15 +379,15 @@ export function FirstRun({
             <Fold open={toolsOpen.length > 0}>
               {toolsOpen.map((step) => (
                 <p key={step.id} className="nx-ob-d">
-                  {step.detail}
+                  {step.detail.includes("winget ") ? L.onboarding.toolsNeedHelp : step.detail}
                 </p>
               ))}
               <div className="nx-ob-acts">
-                {toolsOpen.map((step) =>
+                {toolsOpen.map((step, index) =>
                   !step.fix ? null : step.fix.href ? (
                     <a
                       key={step.id}
-                      className="nx-btn nx-btn--pri"
+                      className={`nx-btn${current === "tools" && index === toolsOpen.findIndex((item) => item.fix) ? " nx-btn--pri" : ""}`}
                       href={step.fix.href}
                       target="_blank"
                       rel="noreferrer"
@@ -365,7 +398,7 @@ export function FirstRun({
                     <button
                       key={step.id}
                       type="button"
-                      className="nx-btn nx-btn--pri"
+                      className={`nx-btn${current === "tools" && index === toolsOpen.findIndex((item) => item.fix) ? " nx-btn--pri" : ""}`}
                       disabled={toolFixBusy !== null}
                       onClick={() => runToolFix(step)}
                     >
@@ -377,11 +410,19 @@ export function FirstRun({
               </div>
               {toolNote && (
                 <p className="nx-ob-d" role="status">
-                  {toolNote}
+                  {/corepack|winget|npm i -g/i.test(toolNote)
+                    ? L.onboarding.toolsNeedHelp
+                    : toolNote}
                 </p>
               )}
             </Fold>
 
+            {requestError === "tools" && (
+              <div className="nx-ob-d nx-ob-d--red" role="alert">
+                {L.onboarding.requestFailed}
+                <div className="nx-ob-acts">{recheckButton(false)}</div>
+              </div>
+            )}
             {/* 첫 검사의 답이 오래 오지 않는다 — 도는 표시만 두지 않고 다시 확인을 건넨다. */}
             <Fold open={firstCheckPending && checkSlow}>
               <p className="nx-ob-d">{L.onboarding.checkSlow}</p>
@@ -400,6 +441,21 @@ export function FirstRun({
             title={L.onboarding.agent}
             status={agentRight}
           >
+            {requestError === "agent" && (
+              <div className="nx-ob-d nx-ob-d--red" role="alert">
+                {L.onboarding.requestFailed}
+                <div className="nx-ob-acts">
+                  <button
+                    type="button"
+                    className="nx-btn"
+                    disabled={agentBusy || loginLaunching}
+                    onClick={() => (claudeStep?.fix ? runFix(claudeStep) : recheck())}
+                  >
+                    {L.onboarding.retry}
+                  </button>
+                </div>
+              </div>
+            )}
             {/* 무엇을 설치하는지 먼저 말한다 — 설치가 도는 동안에도 같은 말이 남는다. */}
             <Fold open={(agentState === "idle" && !loginFailed) || agentState === "installing"}>
               <p className="nx-ob-d">{L.onboarding.agentWhat}</p>
@@ -415,7 +471,7 @@ export function FirstRun({
               <div className="nx-ob-acts">
                 <button
                   type="button"
-                  className="nx-btn nx-btn--pri"
+                  className={`nx-btn${current === "agent" ? " nx-btn--pri" : ""}`}
                   disabled={agentBusy || loginLaunching}
                   onClick={() => claudeStep && runFix(claudeStep)}
                 >
@@ -426,8 +482,12 @@ export function FirstRun({
 
             {/* 고칠 단추가 없는 막힘 — 도구가 알려 준 이유와 다시 확인. */}
             <Fold open={agentState === "stuck"}>
-              <p className="nx-ob-d">{claudeStep?.detail}</p>
-              <div className="nx-ob-acts">{recheckButton(true)}</div>
+              <p className="nx-ob-d">
+                {claudeStep?.detail.includes("ANTHROPIC_API_KEY")
+                  ? L.onboarding.billingNeedHelp
+                  : claudeStep?.detail}
+              </p>
+              <div className="nx-ob-acts">{recheckButton(true, "agent")}</div>
             </Fold>
 
             {/* 아직 시작 전 — 설치 · 로그인의 첫 걸음. */}
@@ -447,7 +507,7 @@ export function FirstRun({
               <div className="nx-ob-acts">
                 <button
                   type="button"
-                  className="nx-btn nx-btn--pri"
+                  className={`nx-btn${current === "agent" ? " nx-btn--pri" : ""}`}
                   disabled={agentBusy || loginLaunching}
                   onClick={() => claudeStep && runFix(claudeStep)}
                 >
@@ -492,7 +552,7 @@ export function FirstRun({
                   <div className="nx-ob-acts">
                     {failureParts.itLine && (
                       <CopyButton
-                        primary
+                        primary={current === "agent"}
                         text={failureParts.itLine}
                         label={L.onboarding.copyText}
                         doneLabel={L.onboarding.copied}
@@ -519,7 +579,7 @@ export function FirstRun({
                   <div className="nx-ob-acts">
                     <button
                       type="button"
-                      className="nx-btn nx-btn--pri"
+                      className={`nx-btn${current === "agent" ? " nx-btn--pri" : ""}`}
                       onClick={() => window.open(daemon.login?.url, "_blank", "noopener")}
                     >
                       {L.onboarding.loginReopen}
@@ -547,7 +607,7 @@ export function FirstRun({
                 <div className="nx-ob-acts">
                   <button
                     type="button"
-                    className="nx-btn nx-btn--pri"
+                    className={`nx-btn${current === "agent" ? " nx-btn--pri" : ""}`}
                     disabled={agentBusy}
                     onClick={() => claudeStep && runFix(claudeStep)}
                   >
@@ -591,11 +651,58 @@ export function FirstRun({
                 {toolsPass && !agentPass && !inviteImporting && (
                   <p className="nx-ob-early">{L.onboarding.inviteEarly}</p>
                 )}
-                <InviteDrop invite={invite} importing={inviteImporting} />
+                <InviteDrop
+                  invite={invite}
+                  importing={inviteImporting}
+                  primary={current === "invite"}
+                />
               </>
             )}
           </Step>
+
+          {/* 기획서(Confluence) — 안내만 서는 넷째 줄(2026-11-12 설계 결정 ㉯). 연결은 프로젝트가 있어야
+              하므로 단추가 없고, 진행 수 · 링 · 자동 넘어감에도 들지 않는다 — 카드가 아니라 옅은 안내 줄. */}
+          <li className="nx-ob-note">
+            <span className="nx-ob-note-m" aria-hidden="true">
+              ·
+            </span>
+            <span className="nx-ob-note-b">
+              <span className="nx-ob-note-t">{L.onboarding.plansRow}</span>
+              <span className="nx-ob-note-s">{L.onboarding.plansRowSub}</span>
+            </span>
+          </li>
         </ol>
+
+        {/* 개발팀이 끼는 곳(2026-11-12 설계 결정 ㉱ · 그림 1 나) — 처음부터 선다. 체크리스트가 사라진 뒤에
+            띄우면 읽히지 않으므로 초대 파일을 놓기 전에도 자리가 있다. */}
+        {!done && (
+          <section className="nx-ob-dev" aria-label={L.onboarding.devTitle}>
+            <h2 className="nx-ob-dev-t">{L.onboarding.devTitle}</h2>
+            <ul className="nx-ob-dev-list">
+              {L.onboarding.devLines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+              {/* 셋째 줄 — 창구 칸이 있으면 이름 · 대화방으로, 주소가 있으면 «대화방 열기» 링크가 선다. */}
+              <li>
+                {devSupportLine}
+                {support?.url && (
+                  <>
+                    {" "}
+                    <a
+                      className="nx-ob-dev-link"
+                      href={support.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={linkClick}
+                    >
+                      {L.support.openRoom}
+                    </a>
+                  </>
+                )}
+              </li>
+            </ul>
+          </section>
+        )}
 
         {/* 막혔나요 — 도움말 메뉴를 찾지 않아도(Windows 는 Alt 뒤에 숨는다) 담당자에게 보낼 진단을 복사한다. */}
         {!done && (
@@ -603,11 +710,36 @@ export function FirstRun({
             <span>{L.onboarding.stuckAsk}</span>
             <CopyButton
               small
-              text={() => buildReport()}
+              text={async () => {
+                const report = await buildReport();
+                const command = "winget install --id Git.Git -e --source winget";
+                const details = [
+                  ...(toolNote ? [toolNote] : []),
+                  ...(toolSteps.some((step) => step.detail.includes(command)) ? [command] : []),
+                  ...(claudeStep?.detail.includes("ANTHROPIC_API_KEY")
+                    ? ["ANTHROPIC_API_KEY"]
+                    : []),
+                ];
+                return [report, ...details].join("\n");
+              }}
               label={L.onboarding.stuckCopy}
               doneLabel={L.help.reportCopied}
               failLabel={L.help.reportFailed}
             />
+            {/* 창구를 알면 곁에 선다 — 진단 복사가 어느 대화방으로 가는지 안다(2026-11-12 결정 ㉱). */}
+            {support !== null && (
+              <span className="nx-ob-foot-support">
+                {L.support.contact({ name: support.name, room: support.room })}
+                {support.url && (
+                  <>
+                    {" "}
+                    <a href={support.url} target="_blank" rel="noreferrer" onClick={linkClick}>
+                      {L.support.openRoom}
+                    </a>
+                  </>
+                )}
+              </span>
+            )}
           </div>
         )}
       </div>
@@ -784,6 +916,7 @@ function LoginCodeForm({ daemon }: { daemon: Daemon }) {
           disabled={busy}
           onChange={(event) => setCode(event.target.value)}
           onKeyDown={(event) => {
+            if (composing(event)) return;
             if (event.key === "Enter" && code.trim() && !busy) void send();
           }}
         />

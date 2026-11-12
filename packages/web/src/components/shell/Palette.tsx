@@ -52,7 +52,7 @@ type Row =
       thread: ThreadSummary;
       label: string;
       /** 사이드바의 상태 표식: 도는 중 · 답을 기다리는 중. */
-      mark: "live" | "ask" | null;
+      mark: "live" | "ask" | "error" | null;
       /** 지금 보고 있는 대화. */
       now: boolean;
       /** 프레임 전체를 걷는 동안 다른 프로젝트의 대화면 그 프로젝트 — 이름 알약이 선다. */
@@ -276,7 +276,14 @@ export function Palette({
             thread,
             label,
             // 사이드바가 그리는 표식만 — 도는 것과 답을 기다리는 것.
-            mark: thread.state === "running" ? "live" : thread.state === "awaiting" ? "ask" : null,
+            mark:
+              thread.state === "running"
+                ? "live"
+                : thread.state === "awaiting"
+                  ? "ask"
+                  : transcripts[thread.id]?.state === "error"
+                    ? "error"
+                    : null,
             now: project.slug === activeSlug && thread.id === activeSessionId,
             other: projectSlug || project.slug === activeSlug ? null : project,
             state:
@@ -284,7 +291,9 @@ export function Palette({
                 ? L.journey.making
                 : thread.state === "awaiting"
                   ? L.sidebar.waitingAnswer
-                  : "",
+                  : transcripts[thread.id]?.state === "error"
+                    ? L.vocab.aiFailed
+                    : "",
             at: Number.isNaN(stamp) ? null : stamp,
             ...(line ? { match: line } : {}),
           },
@@ -708,6 +717,9 @@ export function Palette({
                             {row.kind === "session" && row.mark === "ask" && (
                               <i className="nx-dot nx-dot--amber" aria-hidden="true" />
                             )}
+                            {row.kind === "session" && row.mark === "error" && (
+                              <i className="nx-dot nx-dot--red" aria-hidden="true" />
+                            )}
                           </span>
                           {busy ? (
                             <span className="nx-pal-meta nx-pal-meta--busy">
@@ -729,7 +741,9 @@ export function Palette({
                               {row.folder}
                             </span>
                           ) : row.now ? (
-                            <span className="nx-pal-meta">{L.palette.nowOpen}</span>
+                            <span className="nx-pal-meta">
+                              {[row.state, L.palette.nowOpen].filter(Boolean).join(" · ")}
+                            </span>
                           ) : (
                             <span className="nx-pal-meta">
                               {row.other && (

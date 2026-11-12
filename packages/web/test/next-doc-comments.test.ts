@@ -157,7 +157,7 @@ test("실패의 말 — 여덟 기계 이름은 각각 사람의 말, 그 밖은
   }
   assert.equal(
     commentFailLine("publish-disabled").line,
-    "지금은 이 앱에서 Confluence 에 쓰기가 꺼져 있어요 — Confluence 에서 직접 남겨 주세요",
+    "이 앱의 Confluence 쓰기가 꺼져 있어 보내도 남지 않아요 — 코멘트는 Confluence 에서 직접 남겨 주세요",
   );
   // 모르는 이름 — 실패의 한 줄과 작은 둘째 줄.
   assert.deepEqual(commentFailLine("token-expired"), {

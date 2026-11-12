@@ -69,7 +69,7 @@ test("제출 전 — 첫 점이 지금 점이고 화면 수를 말한다", () =>
   assert.deepEqual(
     j.points.map((p) => [p.label, p.state]),
     [
-      ["제출 전 · 화면 1개", "cur"],
+      ["제출 전 · 화면 1곳", "cur"],
       ["개발자 확인", "todo"],
       ["개발자 반영", "todo"],
     ],

@@ -604,7 +604,16 @@ const clientMessageSchema = z.discriminatedUnion("type", [
    * is what the `저장 기록` drawer lists — messages and times, no git words.
    */
   z.object({ ...withId, type: z.literal("repo.history") }),
-  z.object({ ...withId, type: z.literal("repo.submitPreview") }),
+  z.object({
+    ...withId,
+    type: z.literal("repo.submitPreview"),
+    /**
+     * 참이면 읽기 전에 베이스를 새로 받아온다(2026-11-12 채택) — 제출 확인 창을 여는 ·
+     * 다시 읽는 누름에만 켠다. 배경 읽기(상태 방송마다의 재조회)는 값을 싣지 않아 로컬만
+     * 읽는다 — fetch 가 방송을 낳고 방송이 다시 fetch 를 부르는 돌이 돌지 않게.
+     */
+    freshBase: z.boolean().optional(),
+  }),
   /**
    * 서비스의 첫 화면 사진 한 장 (2026-10-07 베타 준비 분석 · 첫 5분) — 홈의 `서비스가 떴어요` 줄이 부른다. 데몬이 준비가
    * 끝나며 읽은 첫 주소(`RepoStatus.firstScreen`, 모르면 `/`)를 숨은 창으로 열어 한 장 찍는다. 실패는 `image: null`.
@@ -701,6 +710,23 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     ...withId,
     type: z.literal("machine.author.set"),
     name: z.string().min(1).max(80).nullable(),
+  }),
+  /**
+   * 초대 파일의 창구 칸 저장(2026-11-12 설계 결정 ㉱) — 가져올 때 초대장에
+   * `support` 가 있으면 machine.json 에 둔다. null 이면 지운다. 데몬은
+   * normalizeInvite 와 같은 판정(parseSupport)으로 다시 거른다. 지금 앱에는
+   * 지우는 손이 없다 — null 은 내부 계약이다(검토 WF-14).
+   */
+  z.object({
+    ...withId,
+    type: z.literal("machine.support.set"),
+    support: z
+      .object({
+        name: z.string().min(1).max(40).optional(),
+        room: z.string().min(1).max(60).optional(),
+        url: z.string().min(1).max(300).optional(),
+      })
+      .nullable(),
   }),
   /**
    * One repo, judged before any clone: does package.json carry a dev-family

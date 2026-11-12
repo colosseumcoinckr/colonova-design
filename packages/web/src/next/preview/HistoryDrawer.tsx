@@ -26,6 +26,7 @@ import {
 } from "../lib/revert-summary";
 import { useFreshKeys } from "../lib/use-fresh-keys";
 import { InlineConfirm } from "../ui/InlineConfirm";
+import { historyRequestTitle } from "./history-request-title";
 import {
   AlertIcon,
   CloseIcon,
@@ -486,7 +487,7 @@ export function HistoryPanel({
                         ? L.history.eventRestore
                         : row.node === "comment"
                           ? L.history.eventComment
-                          : originalTitle;
+                          : historyRequestTitle(originalTitle);
                   // 코멘트 반영의 제목은 같은 말뿐이라 줄을 가를 수 없다 — 머리말 뒤의 코멘트 요지를 둘째 줄로 싣는다.
                   const detail =
                     row.node === "comment" && originalTitle.startsWith(L.history.commentPrefix)

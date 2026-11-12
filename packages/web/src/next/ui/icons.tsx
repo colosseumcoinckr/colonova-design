@@ -4,8 +4,10 @@ import {
   ArrowLeft,
   ArrowUp,
   Check,
+  ChevronDown,
   ChevronRight,
   ChevronsUpDown,
+  Copy,
   CornerDownLeft,
   Download,
   ExternalLink,
@@ -41,12 +43,14 @@ function make(Glyph: LucideIcon, size: number, strokeWidth = 1.8) {
   };
 }
 
+export const CopyIcon = make(Copy, 16);
 export const PlusIcon = make(Plus, 16);
 export const SearchIcon = make(Search, 16);
 export const GearIcon = make(Settings, 16);
 export const MenuIcon = make(Menu, 17);
 export const PanelIcon = make(PanelLeft, 16);
 export const PencilIcon = make(Pencil, 13, 2);
+export const ChevronDownIcon = make(ChevronDown, 12, 2);
 export const ChevronRightIcon = make(ChevronRight, 12, 2);
 /** 고르는 상자의 오른쪽 끝 — 프로젝트 전환기가 쓴다(2026-10-06). */
 export const ChevronsUpDownIcon = make(ChevronsUpDown, 14, 2);

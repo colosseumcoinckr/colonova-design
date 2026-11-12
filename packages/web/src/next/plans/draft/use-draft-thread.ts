@@ -4,8 +4,9 @@ import type {
   DraftThread,
   EffortLevel,
 } from "@colonova-design/protocol";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Daemon } from "../../../lib/daemon-client";
+import { createLatestRequest } from "../../lib/latest-request";
 
 /**
  * 기획 대화의 판(2026-10-23 · 최종 구현 계획 F1) — 한 초안의 대화와 변경안을 읽고 옮기는 손.
@@ -46,6 +47,17 @@ export function useDraftThread(
   pickedThreadId?: string | null,
 ): DraftThreadHand {
   const [thread, setThread] = useState<DraftThread | null>(null);
+  // 2026-11-12 UI 조사 U-113 — 전송의 실패도 시작한 문서·대화에만 남는다.
+  const askGate = useRef(createLatestRequest<object>()).current;
+  const askScope = useMemo(
+    () => ({ api: daemon.api, docKey, pickedThreadId }),
+    [daemon.api, docKey, pickedThreadId],
+  );
+  const askScopeRef = useRef(askScope);
+  askScopeRef.current = askScope;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 대상을 바꾸거나 떠나면 전송 응답을 무효화한다.
+  useEffect(() => () => askGate.invalidate(), [askGate, askScope]);
+
   const [phase, setPhase] = useState<DraftThreadPhase>("idle");
   const [running, setRunning] = useState(false);
   const [streamText, setStreamText] = useState<string | null>(null);
@@ -58,7 +70,10 @@ export function useDraftThread(
   eventsRef.current = daemon.onDraftEvent;
   /** 지금 판이 보는 문서 — 늦게 온 답의 docKey 대조와 방송 거름의 기준이다. */
   const keyRef = useRef<string | null>(docKey);
+  keyRef.current = docKey;
   const seqRef = useRef(0);
+  const progressSeq = useRef(0);
+  const [loadedScope, setLoadedScope] = useState(askScope);
   /** 대화를 한 번이라도 읽었는가 — 이미 읽은 판은 읽기 실패에도 지우지 않는다. */
   const haveRef = useRef(false);
 
@@ -73,6 +88,7 @@ export function useDraftThread(
     if (key === null) return;
     seqRef.current += 1;
     const seq = seqRef.current;
+    const progress = progressSeq.current;
     apiRef.current
       .draftThread(key, pickedThreadId ?? undefined)
       .then((next) => {
@@ -80,6 +96,14 @@ export function useDraftThread(
         haveRef.current = true;
         setThread(next);
         setPhase("ready");
+        // 2026-11-12 U-113·114 — 읽는 동안 받은 진행 방송이 더 새롭다.
+        if (progress === progressSeq.current) {
+          setRunning(next.running);
+          if (!next.running) {
+            setStreamText(null);
+            setReads([]);
+          }
+        }
         // 읽기가 성공했으면 지난 실패 문장은 거둔다 — 성공한 읽기가 실패의 말보다 새로운 것이다
         // (2026-11-02 실사용 관찰: 고치기 첫 진입의 실패 문장이 초안이 생긴 뒤에도 남았다).
         setError(null);
@@ -95,7 +119,15 @@ export function useDraftThread(
 
   // 문서가 열릴 때(문서가 없을 때는 아무것도 하지 않는다) — 편집기가 docKey 를 알아낸 뒤에 연다.
   useEffect(() => {
-    keyRef.current = docKey;
+    seqRef.current += 1;
+    progressSeq.current += 1;
+    setLoadedScope(askScope);
+    setThread(null);
+    setRunning(false);
+    setStreamText(null);
+    setReads([]);
+    setError(null);
+    haveRef.current = false;
     if (docKey === null) {
       setThread(null);
       setPhase("idle");
@@ -104,9 +136,13 @@ export function useDraftThread(
     }
     setPhase("loading");
     reload();
-  }, [docKey, reload]);
+    return () => {
+      seqRef.current += 1;
+    };
+  }, [docKey, reload, askScope]);
 
   // 같은 문서의 방송 — AI 의 진행은 눈으로, 초안의 변화는 대화의 다시 읽기로.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: API·대화 범위가 바뀌면 방송 구독도 옮긴다.
   useEffect(
     () =>
       eventsRef.current((message) => {
@@ -115,6 +151,20 @@ export function useDraftThread(
           reload();
           return;
         }
+        // running은 데몬의 문서 단위 잠금이다. 다른 대화의 본문만 숨기고 종료는 받는다.
+        if (pickedThreadId != null && message.threadId !== pickedThreadId) {
+          progressSeq.current += 1;
+          const active =
+            message.phase === "started" || message.phase === "text" || message.phase === "read";
+          setRunning(active);
+          if (!active) {
+            setStreamText(null);
+            setReads([]);
+            reload();
+          }
+          return;
+        }
+        progressSeq.current += 1;
         if (message.phase === "started") {
           setRunning(true);
           setStreamText(null);
@@ -142,7 +192,7 @@ export function useDraftThread(
         setReads([]);
         reload();
       }),
-    [reload],
+    [reload, pickedThreadId, askScope],
   );
 
   const ask = useCallback(
@@ -154,19 +204,21 @@ export function useDraftThread(
     ): Promise<boolean> => {
       const key = keyRef.current;
       if (key === null) return Promise.resolve(false);
+      const ticket = askGate.begin(askScopeRef.current);
       setError(null);
       return apiRef.current
         .draftAsk(key, text, refs, pick, threadId)
         .then(() => {
+          if (!askGate.isCurrent(ticket, askScopeRef.current)) return false;
           reload(); // 사람의 말이 곧 대화에 선다
           return true;
         })
         .catch((err: unknown) => {
-          setError(fail(err));
+          if (askGate.isCurrent(ticket, askScopeRef.current)) setError(fail(err));
           return false;
         });
     },
-    [fail, reload],
+    [fail, reload, askGate],
   );
 
   const cancel = useCallback(() => {
@@ -201,12 +253,12 @@ export function useDraftThread(
   );
 
   return {
-    thread,
-    phase,
-    running,
-    streamText,
-    reads,
-    error,
+    thread: loadedScope === askScope ? thread : null,
+    phase: loadedScope === askScope ? phase : docKey === null ? "idle" : "loading",
+    running: loadedScope === askScope && running,
+    streamText: loadedScope === askScope ? streamText : null,
+    reads: loadedScope === askScope ? reads : [],
+    error: loadedScope === askScope ? error : null,
     ask,
     cancel,
     reject,

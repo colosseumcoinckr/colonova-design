@@ -13,9 +13,9 @@ import { nextReady, type SeenView, sameList, stepFirstPrep } from "./ready-watch
 const NARROW_QUERY = "(max-width: 900px)";
 
 /** 토스트가 머무는 시간 — 토스트의 줄어드는 막대가 같은 값으로 닳는다. */
-export const TOAST_MS = 2600;
+export const TOAST_MS = 8000;
 /** 단추가 달린 토스트는 읽고 누를 시간이 더 필요하다(2026-10-07 베타 준비 분석 · 첫 5분). */
-export const TOAST_ACTION_MS = 8000;
+export const TOAST_ACTION_MS = 12000;
 
 /** 지금 떠 있는 토스트 — `seq` 가 달라지면 같은 문장도 새 알림이다. `action` 이 있으면 단추가 달리고 더 오래 머문다. */
 export interface ToastNote {

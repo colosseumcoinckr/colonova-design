@@ -1,17 +1,20 @@
 import type { ThreadSummary } from "@colonova-design/protocol";
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useId, useRef, useState } from "react";
 import { ShortcutsSheet } from "../components/dialogs/ShortcutsSheet";
 import { Palette } from "../components/shell/Palette";
 import { Splitter } from "../components/shell/Splitter";
-import { overlayOpen } from "../hooks/use-modal-focus";
+import { focusableElements } from "../hooks/focusable";
+import { overlayOpen, useModalFocus } from "../hooks/use-modal-focus";
 import { usePins } from "../hooks/usePins";
 import { useSessions } from "../hooks/useSessions";
 import { ChatColumn } from "./chat/ChatColumn";
 import { FeedbackDialog } from "./feedback/FeedbackDialog";
 import { L } from "./labels";
+import { composing } from "./lib/ime";
 import { deriveJourney } from "./lib/journey";
 import { CHAT_MIN, PREVIEW_MIN } from "./lib/shell-metrics";
 import { submitCopy } from "./lib/submit-copy";
+import { nextTabIndex } from "./lib/tab-keys";
 import { useNarrow, useShellNav } from "./lib/use-shell-nav";
 import { useSidebarWidth } from "./lib/use-sidebar-width";
 import { useToday } from "./lib/use-today";
@@ -87,6 +90,8 @@ export function Workspace({
   });
   const pins = usePins(daemon.activeSlug, daemon.api);
   const narrow = useNarrow();
+  const tabsId = useId();
+  const drawerOpen = useRef(false);
   // 설정 대화상자(단계 6) — 사이드바 바퀴 · ⌘, · 팔레트가 같은 문으로 연다.
   const [settingsPage, setSettingsPage] = useState<SettingsPage | "default" | null>(null);
   // 설정도 기능 제안처럼 좁은 창의 서랍 위에 겹치지 않게 서랍을 먼저 닫는다(⌘, · 팔레트 · 바퀴 모두 —
@@ -315,15 +320,13 @@ export function Workspace({
       ".nx-cmp-wrap",
     ];
     const visible = (el: Element) => el.getClientRects().length > 0;
-    const firstFocusable = (el: HTMLElement): HTMLElement | null => {
-      const inner = el.querySelector<HTMLElement>(
-        "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
-      );
-      if (inner && visible(inner)) return inner;
-      return visible(el) ? el : null;
-    };
+
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "F6" || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (overlayOpen() || drawerOpen.current) {
+        event.preventDefault();
+        return;
+      }
       const found = stops
         .map((selector) => document.querySelector<HTMLElement>(selector))
         .filter((el): el is HTMLElement => el !== null && visible(el));
@@ -331,11 +334,10 @@ export function Workspace({
       const active = document.activeElement;
       const at = found.findIndex((el) => el === active || el.contains(active));
       const next = event.shiftKey ? (at <= 0 ? found.length : at) - 1 : (at + 1) % found.length;
-      const target = firstFocusable(found[next] as HTMLElement);
-      if (target) {
-        event.preventDefault();
-        target.focus({ preventScroll: false });
-      }
+      const region = found[next];
+      const target = region ? focusableElements(region)[0] : undefined;
+      target?.focus();
+      if (target && document.activeElement === target) event.preventDefault();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -415,13 +417,21 @@ export function Workspace({
   // 좁은 창 서랍 — Esc 로 닫히고, 열리면 첫 줄로 초점이 간다. 위에 대화상자가
   // 떠 있으면 물러난다(위의 조합키와 같은 규칙).
   const sidebarRef = useRef<HTMLElement>(null);
+  drawerOpen.current = narrow && state.drawer;
+  useModalFocus(sidebarRef, narrow && state.drawer);
   useEffect(() => {
     if (!(narrow && state.drawer)) return;
     if (!sidebarRef.current?.contains(document.activeElement)) {
       sidebarRef.current?.querySelector<HTMLElement>(".nx-side-nav .nx-side-row")?.focus();
     }
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (
+        event.key !== "Escape" ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.keyCode === 229
+      )
+        return;
       if (overlayOpen()) return;
       setDrawer(false);
     };
@@ -525,7 +535,7 @@ export function Workspace({
         )}
 
         {/* 좁은 창의 서랍이 열려 있는 동안 뒷화면은 눌리지도 초점을 받지도 않는다(서랍은 모달처럼 보인다). */}
-        <main className="nx-main">
+        <main className="nx-main" inert={narrow && state.drawer}>
           <div className="nx-view nx-work">
             {plansOn ? (
               <PlansHeader
@@ -559,16 +569,36 @@ export function Workspace({
               onClearInvite={() => nav.setDiscardableInvitePath(null)}
               onToast={nav.toast}
             />
-            {narrow && !paneOn && (
+            {narrow && (
               // 좁은 창의 탭(S12) — 화면이 첫 탭이다(S15 와 같은 뜻). 기획서는 세 번째
               // 탭으로, 누르면 기획서 자리가 앞에 선다(기획서 자리의 머리에서 돌아온다).
-              <div className="nx-tabs" role="tablist" data-f6="rtabs">
+              <div
+                className="nx-tabs"
+                role="tablist"
+                data-f6="rtabs"
+                onKeyDown={(event) => {
+                  if (composing(event) || event.altKey || event.ctrlKey || event.metaKey) return;
+                  const buttons = [
+                    ...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'),
+                  ];
+                  const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+                  if (at < 0) return;
+                  const next = nextTabIndex(event.key, buttons.length, at);
+                  if (next === null) return;
+                  event.preventDefault();
+                  buttons[next]?.click();
+                  buttons[next]?.focus();
+                }}
+              >
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={state.tab === "preview"}
-                  className={state.tab === "preview" ? "nx-tab--on" : ""}
-                  onClick={() => nav.showTab("preview")}
+                  id={`${tabsId}-preview-tab`}
+                  aria-controls={`${tabsId}-preview-panel`}
+                  tabIndex={!paneOn && state.tab === "preview" ? 0 : -1}
+                  aria-selected={!paneOn && state.tab === "preview"}
+                  className={!paneOn && state.tab === "preview" ? "nx-tab--on" : ""}
+                  onClick={() => nav.showScreen()}
                 >
                   {/* 2026-10-04 ux-review(2차): 긴 화면 이름은 말줄임으로 — 익명 플렉스
                       항목은 CSS 만 줄일 수 없어 이름만 감싼다. */}
@@ -580,16 +610,26 @@ export function Workspace({
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={state.tab === "chat"}
-                  className={state.tab === "chat" ? "nx-tab--on" : ""}
-                  onClick={() => nav.showTab("chat")}
+                  id={`${tabsId}-chat-tab`}
+                  aria-controls={`${tabsId}-chat-panel`}
+                  tabIndex={!paneOn && state.tab === "chat" ? 0 : -1}
+                  aria-selected={!paneOn && state.tab === "chat"}
+                  className={!paneOn && state.tab === "chat" ? "nx-tab--on" : ""}
+                  onClick={() => {
+                    nav.showScreen();
+                    nav.showTab("chat");
+                  }}
                 >
                   {L.narrow.chatTab}
                 </button>
                 <button
                   type="button"
                   role="tab"
-                  aria-selected={false}
+                  id={`${tabsId}-plans-tab`}
+                  aria-controls={`${tabsId}-plans-panel`}
+                  tabIndex={paneOn ? 0 : -1}
+                  className={paneOn ? "nx-tab--on" : ""}
+                  aria-selected={paneOn}
                   onClick={() => nav.openPlans()}
                 >
                   {L.narrow.plansTab}
@@ -611,12 +651,22 @@ export function Workspace({
                     }
               }
             >
-              <PreviewColumn
-                {...slot}
-                onScreenName={reportScreenName}
-                onScreenRoute={setScreenRoute}
-                offstage={(narrow && state.tab === "chat") || state.pane !== "preview"}
-              />
+              <div
+                className="nx-panel-slot"
+                id={`${tabsId}-preview-panel`}
+                {...(narrow
+                  ? { role: "tabpanel" as const, "aria-labelledby": `${tabsId}-preview-tab` }
+                  : {})}
+                aria-hidden={paneOn || (narrow && state.tab !== "preview")}
+                inert={paneOn || (narrow && state.tab !== "preview")}
+              >
+                <PreviewColumn
+                  {...slot}
+                  onScreenName={reportScreenName}
+                  onScreenRoute={setScreenRoute}
+                  offstage={(narrow && state.tab === "chat") || state.pane !== "preview"}
+                />
+              </div>
               {!narrow && !paneOn && (
                 <Splitter
                   // 오른쪽 칸의 폭을 잰다(S15) — 경계는 칸의 왼쪽 가장자리에 매달리고,
@@ -657,6 +707,10 @@ export function Workspace({
                 />
               )}
               <div
+                id={`${tabsId}-chat-panel`}
+                {...(narrow
+                  ? { role: "tabpanel" as const, "aria-labelledby": `${tabsId}-chat-tab` }
+                  : {})}
                 className={`nx-chat-slot${chatHidden ? " nx-offstage" : ""}`}
                 aria-hidden={chatHidden}
                 inert={chatHidden}
@@ -665,7 +719,7 @@ export function Workspace({
                   {...slot}
                   offstage={paneOn}
                   pane="preview"
-                  rightTab={state.rightTab}
+                  rightTab={narrow ? "chat" : state.rightTab}
                   screenRoute={screenRoute}
                   screenName={
                     project !== null && chatScreen.slug === project.slug ? chatScreen.name : null
@@ -673,17 +727,27 @@ export function Workspace({
                   sheetOn={narrow && !paneOn && state.tab === "preview"}
                 />
               </div>
-              {plansMounted && (
-                <PlansColumn
-                  daemon={daemon}
-                  project={project}
-                  nav={nav}
-                  offstage={!plansOn}
-                  header={false}
-                  onFocusTree={openSidebar}
-                  onDraftOpen={setPlanDraft}
-                />
-              )}
+              <div
+                className="nx-panel-slot"
+                id={`${tabsId}-plans-panel`}
+                {...(narrow
+                  ? { role: "tabpanel" as const, "aria-labelledby": `${tabsId}-plans-tab` }
+                  : {})}
+                aria-hidden={!plansOn}
+                inert={!plansOn}
+              >
+                {plansMounted && (
+                  <PlansColumn
+                    daemon={daemon}
+                    project={project}
+                    nav={nav}
+                    offstage={!plansOn}
+                    header={false}
+                    onFocusTree={openSidebar}
+                    onDraftOpen={setPlanDraft}
+                  />
+                )}
+              </div>
             </div>
           </div>
         </main>

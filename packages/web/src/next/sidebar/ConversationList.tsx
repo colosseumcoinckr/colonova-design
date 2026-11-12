@@ -78,7 +78,7 @@ export function ConversationList({
     threads.map((thread) => thread.id),
     project?.slug ?? "",
   );
-  // «답이 끝났어요» — 도는 중 → 끝남 전이를 이 실행 안에서 관찰한 대화만 단다(순수 판정은
+  // «AI 답이 끝났어요» — 도는 중 → 끝남 전이를 이 실행 안에서 관찰한 대화만 단다(순수 판정은
   // lib/unseen-done). 보고 있는 대화 · 다시 도는 대화 · 목록에서 사라진 대화는 거둔다.
   const unseenDone = useRef(new UnseenDone()).current;
   const [doneTick, setDoneTick] = useState(0);
@@ -306,7 +306,7 @@ export function ConversationList({
     const system = Boolean(SYSTEM_THREAD_TITLES[thread.title]);
     const menuOpen = menuFor === thread.id;
     const screens = screensById.get(thread.id) ?? "";
-    // «답이 끝났어요» — 이 실행에서 도는 중 → 끝남 을 관찰했고 지금 보지 않는 대화만
+    // «AI 답이 끝났어요» — 이 실행에서 도는 중 → 끝남 을 관찰했고 지금 보지 않는 대화만
     // (2026-11-12 비개발자 사용성 토론 · 끝남 표시). 묻는 중 · 실패는 기존 표시가 이긴다.
     const done =
       thread.state === "finished" && unseenDone.marked.has(thread.id) && thread.id !== viewingId;
@@ -333,7 +333,7 @@ export function ConversationList({
 
     if (renaming?.id === thread.id) {
       return (
-        <div className="nx-conv-row">
+        <div className={`nx-conv-row nx-conv-row--rename${sub ? " nx-conv-row--two" : ""}`}>
           <input
             ref={renameInput}
             className="nx-input nx-conv-rename"

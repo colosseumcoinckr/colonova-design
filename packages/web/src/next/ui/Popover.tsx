@@ -1,7 +1,11 @@
 import { type ReactNode, type RefObject, useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
-const FOCUSABLE = "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])";
+import { FOCUSABLE, focusableElements, visibleFocusable } from "../../hooks/focusable";
+import { MODAL_ROOT_SELECTOR, topmostOverlay } from "../../hooks/use-modal-focus";
+import { createPopoverStack } from "../lib/popover-stack";
+
+const popovers = createPopoverStack<HTMLElement>();
 
 /** 메뉴 역할의 팝에서 화살표가 걸어 다니는 줄 — 안 보이는 줄과 `:disabled` 는 건너뛴다. */
 const MENU_ITEMS =
@@ -39,8 +43,8 @@ function leaveAsGhost(el: HTMLElement): void {
 
 /** 메뉴의 줄 — 보이는 것만, 문서 순서대로. */
 function menuItems(el: HTMLElement): HTMLElement[] {
-  return Array.from(el.querySelectorAll<HTMLElement>(MENU_ITEMS)).filter(
-    (item) => item.getClientRects().length > 0,
+  return Array.from(el.querySelectorAll<HTMLElement>(MENU_ITEMS)).filter((element) =>
+    visibleFocusable(element, false),
   );
 }
 
@@ -98,6 +102,16 @@ export function Popover({
   anchorNow.current = anchor;
   const roleNow = useRef(role);
   roleNow.current = role;
+  // 2026-11-12 UI 조사 U-130 — 형제 팝은 닫고, 자식 팝을 열 때는 부모를 남긴다.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    return popovers.add(
+      el,
+      () => close.current(),
+      (other) => other.contains(anchorNow.current.current),
+    );
+  }, []);
   /* 열릴 때 한 번 — 키보드로 연 팝이면 첫 초점 요소로 건너간다. 마우스로 연 팝은 건드리지
      않는다. 이미 안에 초점이 있으면(부르는 쪽이 입력칸에 심었다) 그대로 둔다. */
   useEffect(() => {
@@ -112,8 +126,8 @@ export function Popover({
     const first =
       roleNow.current === "menu"
         ? (items.find((item) => item.getAttribute("aria-checked") === "true") ?? items[0])
-        : el.querySelector<HTMLElement>(FOCUSABLE);
-    first?.focus();
+        : focusableElements(el)[0];
+    (first ?? el).focus();
   }, []);
   /* 닫힘 — 안에 있던 초점이 body 로 떨어지면 여는 요소로 되돌리고, 노드는 짧게 물러난다.
      위치(흐름 안인가)는 마운트 때 한 번 재 둔다 — 정리 함수에서 재면 렌더마다 스타일을 다시 푼다. */
@@ -127,9 +141,9 @@ export function Popover({
       if (hadFocus && opener) {
         queueMicrotask(() => {
           if (document.activeElement !== document.body || !opener.isConnected) return;
-          (opener.matches(FOCUSABLE)
+          (opener.matches(FOCUSABLE) && visibleFocusable(opener)
             ? opener
-            : opener.querySelector<HTMLElement>(FOCUSABLE)
+            : focusableElements(opener)[0]
           )?.focus();
         });
       }
@@ -183,17 +197,29 @@ export function Popover({
     };
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      const el = ref.current;
+      if (!el || !popovers.isTop(el)) return;
+      const modal = topmostOverlay(
+        Array.from(document.querySelectorAll<HTMLElement>(MODAL_ROOT_SELECTOR)),
+      );
+      if (modal && !modal.contains(el) && !modal.contains(anchor.current)) return;
       // 한글 조합 중의 Esc 는 조합을 취소하는 키다 — 팝까지 닫지 않는다.
-      if (event.isComposing) return;
+      if (event.isComposing || event.keyCode === 229) return;
+      // 2026-11-12 NOTE-1 — 안쪽 확인이 먼저 Esc를 받아 확인만 접는다.
+      const owner = event.target instanceof Element ? event.target.closest(".nx-iconf") : null;
+      if (owner && el.contains(owner)) return;
       /* 다른 Esc 처리기(서랍 닫기 등)까지 내려가지 않게 여기서 멈춘다. */
-      event.stopPropagation();
+      event.preventDefault();
+      event.stopImmediatePropagation();
       close.current();
       /* 닫힌 뒤 초점이 허공에 남지 않게 여는 요소로 되돌린다. 앵커가 단추를 감싼 상자
          (`nx-anchor`)면 초점을 받을 수 없으니 그 안의 첫 초점 요소 — 여는 단추 — 로. */
       const opener = anchor.current;
-      (opener?.matches(FOCUSABLE)
+      (opener?.matches(FOCUSABLE) && visibleFocusable(opener)
         ? opener
-        : opener?.querySelector<HTMLElement>(FOCUSABLE)
+        : opener
+          ? focusableElements(opener)[0]
+          : undefined
       )?.focus();
     };
     /* 미리보기(`<webview>`) 안을 눌러도 이 문서에는 mousedown 이 오지 않는다 — 초점이 웹뷰로
@@ -202,11 +228,11 @@ export function Popover({
       if ((event.target as HTMLElement | null)?.tagName === "WEBVIEW") close.current();
     };
     document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
+    document.addEventListener("keydown", onKey, true);
     document.addEventListener("focusin", onFocusIn);
     return () => {
       document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("keydown", onKey, true);
       document.removeEventListener("focusin", onFocusIn);
     };
   }, [anchor]);
@@ -333,7 +359,7 @@ export function Popover({
   // 역할은 `dialog` · `menu` 둘뿐이고 둘 다 이름(aria-label)을 받는다 — 동적 역할이라 한데 묶어 건넨다.
   const aria = { role, "aria-label": label };
   const panel = (
-    <div ref={ref} className={classes} data-side={up ? "up" : "down"} {...aria}>
+    <div ref={ref} tabIndex={-1} className={classes} data-side={up ? "up" : "down"} {...aria}>
       {children}
     </div>
   );

@@ -529,8 +529,8 @@
   max-width: calc(100% - 24px);
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 13px 6px 11px;
+  gap: var(--sp-2);
+  padding: var(--sp-1_5) 13px var(--sp-1_5) 11px;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--r-pill);
@@ -814,7 +814,7 @@
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   padding: var(--sp-1_5) var(--sp-2) var(--sp-1_5) var(--sp-3);
   /* 틴트를 불투명한 바탕 위에 겹친다 — 반투명 알약은 레포 화면의 사진 · 그림 위에서 글자가 녹는다. */
   background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--bg);
@@ -829,7 +829,7 @@
 }
 
 .nx .nx-pinstrip b {
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .nx-pinstrip span {
@@ -855,7 +855,7 @@
   z-index: 9;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   background: var(--ink);
   color: var(--bg);
   border-radius: var(--r-pill);
@@ -936,25 +936,23 @@
 .nx-pinbub-id {
   flex: 1 1 auto;
   display: flex;
-  align-items: center;
+  align-items: baseline;
+  flex-wrap: wrap;
   gap: var(--sp-2);
   min-width: 0;
 }
 
 .nx-pinbub-name {
   font-weight: var(--fw-semi);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .nx-pinbub-screen {
   min-width: 0;
   font-size: var(--fs-sm);
   color: var(--ink3);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
 }
 
 /* 몸 — 메모와 요소 정보. 칸이 모자라면 여기만 굴러가고 머리 · 바닥 단추는 선다. */
@@ -1257,7 +1255,7 @@
   overscroll-behavior: contain;
   /* 확인 카드를 굴려 보일 때 위에 붙은 날의 머리 밑으로 들어가지 않게. */
   scroll-padding: 36px 0 12px;
-  padding: 0 10px 20px;
+  padding: 0 10px var(--sp-5);
 }
 
 /* 날의 머리는 굴러도 위에 붙는다 — 어느 날의 줄을 보고 있는지 잃지 않는다. 바탕은 불투명이어야 밑으로 들어가는 줄
@@ -1271,7 +1269,7 @@
   padding: var(--sp-4) var(--sp-5) var(--sp-1_5) 44px;
   font-size: var(--fs-sm);
   font-weight: var(--fw-semi);
-  line-height: 1.3;
+  line-height: var(--lh-tight);
   color: var(--ink3);
   background: var(--card);
   /* 위에 붙었을 때만 아래로 옅은 그늘이 번진다 — 밑으로 들어가는 줄이 딱 잘려 보이지 않게(스크롤 상태 질의를 아는
@@ -1313,9 +1311,9 @@
 .nx-hitem {
   position: relative;
   display: grid;
-  grid-template-columns: 20px minmax(0, 1fr);
-  column-gap: 4px;
-  padding-bottom: 2px;
+  grid-template-columns: var(--sp-5) minmax(0, 1fr);
+  column-gap: var(--sp-1);
+  padding-bottom: var(--sp-2);
 }
 
 /* 타임라인의 선 — 마디와 마디를 잇는다. 줄 · 날의 머리 · 제출 구분선이 같은 자리에 한 토막씩 그어 끊기지 않는다
@@ -1584,8 +1582,8 @@
    세운다(되돌릴 수 있는 일이라 붉지 않다). 안쪽 틀(제목 · 단추)은 `InlineConfirm`(.nx-iconf)이 정한다. */
 .nx-hconfirm.nx-iconf {
   grid-column: 2;
-  margin: 4px 0 6px;
-  padding: 12px 12px 10px 14px;
+  margin: var(--sp-1) 0 var(--sp-1_5);
+  padding: var(--sp-3) var(--sp-3) 10px 14px;
   border: 0;
   border-left: 2px solid var(--accent);
   border-radius: 3px var(--r-md) var(--r-md) 3px;
@@ -1643,7 +1641,7 @@
 }
 
 .nx-hconfirm-ic {
-  margin-top: 2px;
+  margin-top: var(--sp-0_5);
   color: var(--green);
 }
 
@@ -1719,23 +1717,23 @@
    넘을 때만 떠오른다 — 로컬 데몬은 거의 곧바로 답해서 뼈대가 번쩍였다 사라지면 서랍이 깜빡여 보였다. */
 .nx-hist-skel {
   display: grid;
-  gap: 4px;
-  padding: 10px 0 4px;
+  gap: var(--sp-1);
+  padding: 10px 0 var(--sp-1);
   animation: nx-fade var(--nx-t-move) var(--drift) 150ms backwards;
 }
 
 .nx-hist-skelrow {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr);
-  column-gap: 4px;
-  padding: 8px 0;
+  column-gap: var(--sp-1);
+  padding: var(--sp-2) 0;
 }
 
 .nx-hist-skelrow > span {
   justify-self: center;
   width: 10px;
   height: 10px;
-  margin-top: 4px;
+  margin-top: var(--sp-1);
   border-radius: 50%;
   background: var(--line2);
 }
@@ -1743,8 +1741,8 @@
 .nx-hist-skelrow > i {
   display: block;
   height: 11px;
-  margin: 4px 10px;
-  border-radius: 6px;
+  margin: var(--sp-1) 10px;
+  border-radius: var(--r-sm);
   background:
     linear-gradient(100deg, var(--nx-hover) 30%, var(--nx-selected) 50%, var(--nx-hover) 70%) 0 0 /
     200% 100%;
@@ -1818,7 +1816,7 @@
   place-items: center;
   min-width: 30px;
   height: 16px;
-  padding: 0 4px;
+  padding: 0 var(--sp-1);
   border-radius: var(--r-pill);
   background: var(--accent-soft);
   border: 1px solid var(--accent-line);
@@ -1833,4 +1831,23 @@
 .nx-pvbar[data-tier="tiny"] .nx-changedby .nx-pin-w,
 .nx-pvbar[data-tier="tiny"] .nx-pin-w {
   display: none;
+}
+
+.nx-pin-w {
+  display: grid;
+}
+.nx-pin-w > span {
+  grid-area: 1 / 1;
+}
+.nx-pin-reserve {
+  visibility: hidden;
+}
+
+.nx-look-error {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  color: var(--ink);
+  background: var(--card);
 }

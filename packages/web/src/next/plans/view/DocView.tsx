@@ -17,6 +17,7 @@ import { Markdown } from "../../../components/Markdown";
 import type { Daemon } from "../../../lib/daemon-client";
 import { linkClick } from "../../../lib/open-link";
 import { L } from "../../labels";
+import { scrollToTarget } from "../../lib/scroll-to-target";
 import { Spin } from "../../ui/icons";
 import { ModalBody, ModalFrame, ModalHead } from "../../ui/ModalFrame";
 import { fencedCode, isImageType, tocDepths } from "./doc-view-model";
@@ -260,7 +261,7 @@ function Toc({ entries, root }: { entries: Array<{ level: number; text: string }
     const headings = Array.from(
       root.current.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6"),
     ).filter((node) => (node.textContent ?? "").replace(/\s+/gu, " ").trim() === entry.text);
-    headings[same]?.scrollIntoView({ behavior: "smooth", block: "start" });
+    scrollToTarget(headings[same] ?? null, { block: "start" });
   };
   return (
     <nav className="nx-dv-toc" aria-label={L.confluence.tocTitle}>
@@ -367,14 +368,21 @@ function PageLink({
 }) {
   const [missing, setMissing] = useState(false);
   return (
-    <button
-      type="button"
-      className="nx-dv-page"
-      title={missing ? L.confluence.pageMissing : L.confluence.pageOpen(title)}
-      onClick={() => setMissing(!open(title))}
-    >
-      {children}
-    </button>
+    <>
+      <button
+        type="button"
+        className="nx-dv-page"
+        title={L.confluence.pageOpen(title)}
+        onClick={() => setMissing(!open(title))}
+      >
+        {children}
+      </button>
+      {missing && (
+        <span className="nx-dv-inline-fail" role="status">
+          {L.confluence.pageMissing}
+        </span>
+      )}
+    </>
   );
 }
 
@@ -388,22 +396,29 @@ function AttachmentChip({ filename }: { filename: string }) {
         ? L.confluence.tooLarge
         : L.confluence.downloadOf(filename);
   return (
-    <button
-      type="button"
-      className="nx-dv-chip"
-      title={note}
-      aria-label={note}
-      disabled={phase === "busy"}
-      onClick={() => {
-        setPhase("busy");
-        void downloadAttachment(view.api, view.pageId, filename).then((done) =>
-          setPhase(done === "ok" ? "idle" : done),
-        );
-      }}
-    >
-      {phase === "busy" ? <Spin /> : <Paperclip className="nx-i" size={13} aria-hidden="true" />}
-      {L.plans.attachInline(filename)}
-    </button>
+    <>
+      <button
+        type="button"
+        className="nx-dv-chip"
+        title={note}
+        aria-label={note}
+        disabled={phase === "busy"}
+        onClick={() => {
+          setPhase("busy");
+          void downloadAttachment(view.api, view.pageId, filename).then((done) =>
+            setPhase(done === "ok" ? "idle" : done),
+          );
+        }}
+      >
+        {phase === "busy" ? <Spin /> : <Paperclip className="nx-i" size={13} aria-hidden="true" />}
+        {L.plans.attachInline(filename)}
+      </button>
+      {(phase === "failed" || phase === "too-large") && (
+        <span className="nx-dv-inline-fail" role="status">
+          {note}
+        </span>
+      )}
+    </>
   );
 }
 

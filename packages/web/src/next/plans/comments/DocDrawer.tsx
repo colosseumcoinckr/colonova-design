@@ -1,5 +1,6 @@
 import type { ReactNode, RefObject } from "react";
 import { L } from "../../labels";
+import { composing } from "../../lib/ime";
 import { CloseIcon } from "../../ui/icons";
 
 /**
@@ -25,6 +26,7 @@ export function DocDrawer({
     <aside
       className="nx-pl-drawer"
       onKeyDown={(event) => {
+        if (composing(event)) return;
         if (event.key === "Escape" && !event.defaultPrevented) {
           event.preventDefault();
           event.stopPropagation();

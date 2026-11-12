@@ -4,17 +4,19 @@ import type {
   RepoStatus,
   TurnMarker,
 } from "@colonova-design/protocol";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Block, PendingPermission, PendingQuestion } from "../../lib/daemon-client";
+import { koreanNoticeWords } from "../../lib/error-words";
 import { composing } from "../../lib/ime";
 import { bashHeadline, toolLabel } from "../../lib/labels";
 import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
 import { previewDoc } from "../lib/ask-preview";
+import { createLatestRequest } from "../lib/latest-request";
 import { receiptFacts } from "../lib/receipt";
 import { noteAllowed } from "../lib/thread";
-import { useCopied } from "../lib/use-copied";
 import { whenText } from "../status/parts";
+import { CopyButton } from "../ui/CopyButton";
 import { PreviewBig, PreviewGrid } from "./AskPreview";
 import { AlertIcon, CheckIcon, ClockIcon, ExtIcon, EyeIcon, SparkIcon } from "./icons";
 
@@ -139,7 +141,7 @@ export function NoticeCard({
     <div className="nx-card nx-card--gate">
       <div className="nx-ch">
         <ClockIcon />
-        <b>{marker.text}</b>
+        <b>{koreanNoticeWords(marker.text) ? marker.text : L.chat.sendFailed}</b>
       </div>
       <Received body={body} />
     </div>
@@ -197,13 +199,17 @@ export function ReplyBox({
   // 접근 이름은 고정으로 — placeholder 는 답할 사람에 따라 바뀌어도 이름이
   // 흔들리지 않게 하고, 바뀌는 자리 표시는 힌트로 묶는다(2026-10-04 ux-review).
   const hintId = useId();
+  const requests = useRef(createLatestRequest<string>()).current;
+  useEffect(() => () => requests.invalidate(), [requests]);
   const send = async () => {
     const text = draft.trim();
     if (!text || busy) return;
+    const ticket = requests.begin(text);
     setBusy(true);
     setFailed(false);
     try {
       await onSend(text);
+      if (!requests.isCurrent(ticket, text)) return;
       setDraft("");
       onSent(text);
     } catch {
@@ -220,6 +226,7 @@ export function ReplyBox({
           autoFocus
           className="nx-input"
           value={draft}
+          disabled={busy}
           placeholder={placeholder}
           aria-label={L.composer.noteToDev}
           aria-describedby={hintId}
@@ -368,7 +375,6 @@ export function ReceiptCard({
 }) {
   const same = handoff && handoff.number === block.pr ? handoff : null;
   const { reviewers, sent, nobody } = receiptFacts(block, same, more);
-  const { copied, copy } = useCopied(() => onToast(L.transcript.copyFailed));
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteSentAt, setNoteSentAt] = useState<string | null>(null);
   const noteOk = noteAllowed(block, handoff);
@@ -423,9 +429,11 @@ export function ReceiptCard({
             </a>
           )}
           {nobody && same?.url && (
-            <button type="button" className="nx-btn" onClick={() => copy(same.url)}>
-              {copied ? L.cards.receiptLinkCopied : L.cards.receiptCopyLink}
-            </button>
+            <CopyButton
+              text={same.url}
+              label={L.cards.receiptCopyLink}
+              doneLabel={L.cards.receiptLinkCopied}
+            />
           )}
           {noteOk && (
             <button type="button" className="nx-btn" onClick={() => setNoteOpen((open) => !open)}>
@@ -452,10 +460,6 @@ export function ReceiptCard({
           <span>{L.cards.noteSent(noteSentAt)}</span>
         </div>
       )}
-      {/* 복사했다는 말은 단추 글자만 바뀌어서는 낭독기가 모른다. */}
-      <span className="nx-sr" role="status">
-        {copied ? L.cards.receiptLinkCopied : ""}
-      </span>
     </div>
   );
 }

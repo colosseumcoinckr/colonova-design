@@ -52,7 +52,7 @@ test("맡겨 둔 첫 말은 대화가 준비된 뒤에 한 번 간다 — 회복
   // 대화가 준비됐고 AI 가 돌지 않을 때만 꺼낸다 — 꺼내면 비워 두 번 가지 않는다.
   assert.match(
     chatTsx,
-    /if \(docKey === null \|\| threadPhase !== "ready" \|\| threadRunning\) return;/,
+    /if \(docKey === null \|\| threadPhase !== "ready" \|\| threadRunning \|\| mutationLocked\) return;/,
   );
   assert.match(chatTsx, /const waiting = takeAsk\(docKey\);/);
 });

@@ -427,7 +427,7 @@ test("가져오기 줄 — 도는 중 · 끊김 · 방금 끝남 · 마지막 �
     syncLine(alive, false, { kind: "done", imported: 2, capped: false }).text,
     L.plans.importChanged(2),
   );
-  assert.ok(syncLine(alive, false, null).text.endsWith(L.plans.statusImported("", 12).trim()));
+  assert.ok(syncLine(alive, false, null).text.endsWith(L.plans.statusImportedWhen("").trim()));
   assert.equal(
     syncLine({ expired: false, lastImportAt: null, pages: 0 }, false, null).text,
     L.plans.syncNever,

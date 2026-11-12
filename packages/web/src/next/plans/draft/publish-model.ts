@@ -58,6 +58,18 @@ export function changeSummary(preview: DraftPublishPreview): string[] {
   return lines;
 }
 
+/** 발행 창의 한 줄 상태 열쇠(2026-11-12 결정 ㉰) — 판 숫자 대신 처지를 말한다.
+ *  새 문서(기준 없음) → 원본 못 읽음 → 원본이 더 새 판 → 같은 판(최신에서 출발).
+ *  원본이 기준보다 낮은 것은 본 적 없는 처지라 최신으로 둔다. */
+export function previewStateOf(
+  preview: Pick<DraftPublishPreview, "baseVersion" | "remoteVersion">,
+): keyof typeof L.drafts.previewState {
+  if (preview.baseVersion === null) return "new";
+  if (preview.remoteVersion === null) return "unread";
+  if (preview.remoteVersion > preview.baseVersion) return "moved";
+  return "latest";
+}
+
 /** 단계 표기가 1.0 이상 — 발행에 새 표기와 사유가 필요하다(개정 발행). */
 export function stageInputNeeded(preview: DraftPublishPreview): boolean {
   return preview.stage.required;

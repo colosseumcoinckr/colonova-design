@@ -17,6 +17,11 @@ const FORBIDDEN: Array<{ word: string; pattern: RegExp }> = [
   { word: "데몬", pattern: /데몬/ },
   { word: "커밋", pattern: /커밋/ },
   { word: "브랜치", pattern: /브랜치/ },
+  // 2026-11-12 UI 조사 U-213 — 사용자 면에서 걷어 낸 낱말만 막는다.
+  ...["API", "URL", "레포", "빌드", "서버", "세션", "캐시", "HTTP", "종료 코드"].map((word) => ({
+    word,
+    pattern: new RegExp(word),
+  })),
   { word: "PR", pattern: /(?<![A-Za-z])PR(?![A-Za-z])/ },
 ];
 
@@ -153,12 +158,8 @@ const KOREAN_EXEMPT: Record<string, string> = {
   "ConnectScreen.tsx": "브라우저 개발 경로의 연결 화면 — 데몬 주소를 붙여넣는 개발자의 화면",
   "lib/preview-turns.ts": "AI 가 읽는 턴 본문(핀 · 오류 · 화면 보여 주기) — 카드로 접어 그린다",
   "lib/transcript-export.ts": "내보낸 markdown 의 머리 — 파일을 받는 개발자가 읽는다",
-  "components/CopyButton.tsx": "낡은 공용 단추의 복사 · 복사됨",
-  "components/Markdown.tsx": "대화록 마크다운의 접기 · 복사 · 표 — 낡은 면의 어휘",
-  "components/transcript/activity.tsx": "낡은 대화록의 활동 머리",
-  "components/transcript/blocks.tsx": "낡은 대화록의 도구 · 생각 카드",
-  "components/transcript/shared.ts": "낡은 대화록의 시각 · 날짜 읽기",
-  "components/transcript/todo.tsx": "낡은 대화록의 할 일 카드",
+  "components/CopyButton.tsx": "낡은 대화록의 복사 손 — 라벨은 쓰는 곳이 덮을 수 있다",
+  "components/Markdown.tsx": "낡은 대화록의 마크다운 — 표 · 코드 접기 · 미리보기 링크 문장",
   "lib/chat-options.ts": "노력 안내 문장 — 설정과 칩이 함께 읽는다",
   "lib/daemon-client.ts": "선로 사건을 카드로 접는 층의 문장 — L 이동은 별도 작업로 둔다",
   "lib/error-words.ts": "오류 id → 한국어 문장의 사전",

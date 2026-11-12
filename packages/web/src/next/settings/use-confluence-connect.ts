@@ -1,6 +1,7 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../lib/daemon-client";
 import { timeAgo } from "../../lib/format";
+import { createLatestRequest } from "../lib/latest-request";
 import {
   type ConfluenceConnection,
   type ConfluenceFormState,
@@ -68,6 +69,20 @@ export function useConfluenceConnect(daemon: Daemon): ConfluenceConnectModel {
     site: summary?.expired === true ? summary.site : "",
   }));
   const site = effectiveSite(state, summary);
+  const requests = useRef(createLatestRequest<string>()).current;
+  const scope = JSON.stringify([daemon.activeSlug, state.rootQuery]);
+  const finding = useRef<object | null>(null);
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 프로젝트 · 연결이 바뀌면 앞선 검색을 버리려고 일부러 단다(2026-11-12 U-119).
+  useEffect(() => {
+    finding.current = null;
+    setState((current) => ({ ...current, finding: false, roots: null }));
+    return () => {
+      requests.invalidate();
+      finding.current = null;
+    };
+  }, [requests, daemon.api, daemon.activeSlug]);
 
   const connect = useCallback(() => {
     setState({ ...state, phase: "connecting", failure: null, roots: null });
@@ -80,18 +95,30 @@ export function useConfluenceConnect(daemon: Daemon): ConfluenceConnectModel {
   }, [daemon, state, summary]);
 
   const findRoots = useCallback(() => {
-    setState({ ...state, finding: true, failure: null });
+    if (finding.current || state.finding || !state.rootQuery) return;
+    const ticket = requests.begin(scope);
+    finding.current = ticket;
+    setState((current) => ({ ...current, finding: true, failure: null }));
     daemon.api
       .confluenceSuggestRoots(state.rootQuery)
-      .then((reply) => setState((next) => settleRoots(next, reply.roots)))
-      .catch((error: unknown) =>
-        setState((next) => failConnect(next, error instanceof Error ? error.message : null)),
-      );
-  }, [daemon, state]);
+      .then((reply) => {
+        if (requests.isCurrent(ticket, currentScope.current))
+          setState((next) => settleRoots(next, reply.roots));
+      })
+      .catch((error: unknown) => {
+        if (requests.isCurrent(ticket, currentScope.current))
+          setState((next) => failConnect(next, error instanceof Error ? error.message : null));
+      })
+      .finally(() => {
+        if (finding.current === ticket) finding.current = null;
+      });
+  }, [daemon, state.finding, state.rootQuery, requests, scope]);
 
   const pickRoot = useCallback(
     (pageId: string) => {
       if (site === "") return;
+      requests.invalidate();
+      finding.current = null;
       setState((current) => startPick(current, pageId));
       daemon.api
         .confluenceConnect({ site, rootPageId: pageId })
@@ -100,11 +127,18 @@ export function useConfluenceConnect(daemon: Daemon): ConfluenceConnectModel {
           setState((next) => failConnect(next, error instanceof Error ? error.message : null)),
         );
     },
-    [daemon, site],
+    [daemon, site, requests],
   );
 
-  const set = (key: "site" | "email" | "token" | "rootQuery") => (value: string) =>
+  const set = (key: "site" | "email" | "token" | "rootQuery") => (value: string) => {
+    if (key === "rootQuery") {
+      requests.invalidate();
+      finding.current = null;
+      setState((current) => ({ ...current, rootQuery: value, finding: false, roots: null }));
+      return;
+    }
     setState((current) => ({ ...current, [key]: value }));
+  };
 
   return {
     state,
@@ -123,6 +157,10 @@ export function useConfluenceConnect(daemon: Daemon): ConfluenceConnectModel {
     startReconnect: () => setState((current) => startReconnect(current, summary)),
     cancelReconnect: () => setState(cancelReconnect),
     startChangeRoot: () => setState(startChangeRoot),
-    cancelChangeRoot: () => setState(cancelChangeRoot),
+    cancelChangeRoot: () => {
+      requests.invalidate();
+      finding.current = null;
+      setState(cancelChangeRoot);
+    },
   };
 }

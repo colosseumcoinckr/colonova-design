@@ -10,6 +10,7 @@ import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
 import { connectionLock } from "../lib/connection-copy";
 import { keyHint } from "../lib/key-hint";
+import { CopyButton } from "../ui/CopyButton";
 import { LightbulbIcon, Spin } from "../ui/icons";
 import { ModalBody, ModalFoot, ModalFrame, ModalHead, useModalClose } from "../ui/ModalFrame";
 import "./feedback.css";
@@ -23,7 +24,7 @@ import {
   stageCopy,
   stepStates,
 } from "./gate";
-import { BigCheckIcon, CopyIcon, GlobeIcon, LinkOutIcon, StepCheckIcon } from "./icons";
+import { BigCheckIcon, GlobeIcon, LinkOutIcon, StepCheckIcon } from "./icons";
 import {
   clearDraft,
   contextError,
@@ -49,8 +50,6 @@ interface BrowserInfo {
 /** 고정 접수 대상의 게시판 — 확인 불가 때에도 같은 곳을 가리킨다(임의 저장소 없음). */
 const ISSUES_LIST_URL = `https://github.com/${RELEASES_REPO}/issues`;
 const ISSUES_NEW_URL = `https://github.com/${RELEASES_REPO}/issues/new`;
-
-type CopyTarget = "title" | "body" | "submitted";
 
 /** 세 점 — 쓰기 · 확인 · 접수. 지금 어디쯤인지 한눈에, 낭독에는 `aria-current` 로. */
 function Steps({ phase }: { phase: Phase }) {
@@ -140,7 +139,6 @@ export function FeedbackDialog({
   onToast?: (text: string) => void;
 }) {
   const requestRef = useRef<HTMLTextAreaElement>(null);
-  const preRef = useRef<HTMLPreElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   // 전송 시작의 문지기 — 같은 틱의 두 이벤트가 상태만으로는 못 막는다(ref 병행).
   const attemptedRef = useRef(false);
@@ -161,7 +159,6 @@ export function FeedbackDialog({
   const [sent, setSent] = useState<SentInfo | null>(null);
   const [browser, setBrowser] = useState<BrowserInfo | null>(null);
   const [uncertainUrl, setUncertainUrl] = useState<string | null>(null);
-  const [copy, setCopy] = useState<{ target: CopyTarget; state: "ok" | "failed" } | null>(null);
   // 요청이 나가기도 전에 막혔다 — 확인 단계에 되돌아와 그 말을 한다.
   const [notSent, setNotSent] = useState(false);
 
@@ -368,43 +365,6 @@ export function FeedbackDialog({
     goUncertain(null);
   };
 
-  const copyText = (target: CopyTarget, text: string) => {
-    setCopy(null);
-    let write: Promise<void> | undefined;
-    try {
-      write = navigator.clipboard?.writeText(text);
-    } catch {
-      write = undefined;
-    }
-    if (!write) {
-      // 클립보드가 없는 실행도 조용히 넘어가지 않는다 — 실패를 보이고 내용을
-      // 직접 고를 수 있게 남긴다.
-      setCopy({ target, state: "failed" });
-      selectPre();
-      return;
-    }
-    write
-      .then(() => setCopy({ target, state: "ok" }))
-      .catch(() => {
-        setCopy({ target, state: "failed" });
-        selectPre();
-      });
-  };
-
-  /** 복사 실패의 대체품 — pre 요소에는 select() 가 없으므로 Range 로 고른다.
-   * 고르기 전에 pre 에 초점을 준다 — 초점 없는 선택은 화면 낭독기와 붙여넣기가
-   * 놓치고, 키보드로도 다시 고를 수 있게 pre 가 초점을 받는다. */
-  const selectPre = () => {
-    const pre = preRef.current;
-    if (pre === null) return;
-    pre.focus({ preventScroll: true });
-    const range = document.createRange();
-    range.selectNodeContents(pre);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-  };
-
   /** 확인 불가의 끝 — 목록을 확인했다는 사람의 표시만 빈 새 제안을 연다. */
   const acknowledgeList = () => {
     clearDraft();
@@ -421,16 +381,6 @@ export function FeedbackDialog({
     ? `${L.feedback.requestHeading}: ${requestTrimmed}\n${L.feedback.contextHeading}: ${contextTrimmed}`
     : `${L.feedback.requestHeading}: ${requestTrimmed}`;
   const stage = stageCopy(phase, L);
-  const copyLine = (target: CopyTarget) =>
-    copy !== null && copy.target === target ? (
-      <p
-        className={copy.state === "ok" ? "nx-snote" : "nx-fb-err"}
-        role={copy.state === "ok" ? "status" : "alert"}
-        aria-live="polite"
-      >
-        {copy.state === "ok" ? L.feedback.copied : L.feedback.copyFailed}
-      </p>
-    ) : null;
 
   return (
     <ModalFrame open={open} onClose={finishClose} onRequestClose={onRequestClose} className="nx-fb">
@@ -549,29 +499,27 @@ export function FeedbackDialog({
                 {L.feedback.browserNote}
               </p>
               {/* 클립보드가 막힌 실행의 대체품 — 실패하면 이 내용을 통째로 골라 준다. */}
-              <pre ref={preRef} tabIndex={-1} className="nx-fb-pre">
+              <pre tabIndex={-1} className="nx-fb-pre">
                 {`${browser.title}\n\n${browser.body}`}
               </pre>
               <details className="nx-fb-fold nx-fb-fold--lone">
                 <summary>{L.feedback.browserFold}</summary>
                 <p>{L.feedback.browserFoldNote}</p>
                 <div className="nx-fb-acts">
-                  <button
-                    type="button"
-                    className="nx-btn nx-btn--sm"
-                    onClick={() => copyText("title", browser.title)}
-                  >
-                    <CopyIcon />
-                    {L.feedback.copyTitle}
-                  </button>
-                  <button
-                    type="button"
-                    className="nx-btn nx-btn--sm"
-                    onClick={() => copyText("body", browser.body)}
-                  >
-                    <CopyIcon />
-                    {L.feedback.copyBody}
-                  </button>
+                  <CopyButton
+                    small
+                    text={browser.title}
+                    label={L.feedback.copyTitle}
+                    doneLabel={L.feedback.copied}
+                    failLabel={L.feedback.copyFailed}
+                  />
+                  <CopyButton
+                    small
+                    text={browser.body}
+                    label={L.feedback.copyBody}
+                    doneLabel={L.feedback.copied}
+                    failLabel={L.feedback.copyFailed}
+                  />
                   <a
                     className="nx-fb-link"
                     href={ISSUES_NEW_URL}
@@ -583,7 +531,6 @@ export function FeedbackDialog({
                     <LinkOutIcon />
                   </a>
                 </div>
-                {copyLine("title") ?? copyLine("body")}
               </details>
             </>
           )}
@@ -602,19 +549,17 @@ export function FeedbackDialog({
               {/* 보낸 내용 — 다시 보내는 단추는 없다. 목록 확인이 먼저다. */}
               <div className="nx-fb-prehd">
                 <h3 className="nx-fb-head">{L.feedback.submittedHeading}</h3>
-                <button
-                  type="button"
-                  className="nx-btn nx-btn--sm nx-btn--ghost"
-                  onClick={() => copyText("submitted", submittedText)}
-                >
-                  <CopyIcon />
-                  {L.feedback.copySubmitted}
-                </button>
+                <CopyButton
+                  small
+                  text={submittedText}
+                  label={L.feedback.copySubmitted}
+                  doneLabel={L.feedback.copied}
+                  failLabel={L.feedback.copyFailed}
+                />
               </div>
-              <pre ref={preRef} tabIndex={-1} className="nx-fb-pre">
+              <pre tabIndex={-1} className="nx-fb-pre">
                 {submittedText}
               </pre>
-              {copyLine("submitted")}
             </>
           )}
         </div>

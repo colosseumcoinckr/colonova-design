@@ -86,7 +86,14 @@ export function Sidebar({
   );
 
   return (
-    <aside className="nx-sidebar" aria-hidden={hidden} inert={hidden} ref={containerRef}>
+    <aside
+      {...(drawer && !hidden ? { role: "dialog" as const, "aria-modal": true as const } : {})}
+      aria-label={drawer ? L.shell.menu : undefined}
+      className="nx-sidebar"
+      aria-hidden={hidden}
+      inert={hidden}
+      ref={containerRef}
+    >
       <div className="nx-side-top">
         <span className="nx-brand">
           <img src="/colonova-icon.svg" alt="" width={20} height={20} />

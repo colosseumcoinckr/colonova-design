@@ -40,7 +40,7 @@
   gap: 7px;
   min-width: 0;
   max-width: 100%;
-  padding: 6px 9px;
+  padding: var(--sp-1_5) 9px;
   border-radius: var(--r);
   font-size: var(--fs-ui);
   font-weight: var(--fw-semi);
@@ -232,8 +232,8 @@
 
 /* 60초 안내는 페이드로 붙는다. */
 .nx-since-hint {
-  margin-left: 6px;
-  font-weight: 400;
+  margin-left: var(--sp-1_5);
+  font-weight: var(--fw-regular);
   color: var(--ink3);
   animation: nx-fade 0.25s ease-out;
 }
@@ -352,10 +352,10 @@
   z-index: var(--nx-z-pop);
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--sp-2);
   width: max-content;
   max-width: 300px;
-  padding: 10px 12px;
+  padding: 10px var(--sp-3);
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -402,7 +402,8 @@
   border-bottom: 1px solid var(--line);
 }
 
-.nx-wp-h b {
+.nx-wp-h h2 {
+  margin: 0;
   font-size: var(--fs-read);
   font-weight: var(--fw-semi);
 }
@@ -514,7 +515,7 @@
 }
 
 /* 묶음 머리 — 13px 굵게. 글자색은 한 단 진하게(ink2) 해서 아래 줄의 부제(ink3)보다 앞선다. */
-.nx-wp-sec h5 {
+.nx-wp-sec h3 {
   margin: 0 0 var(--sp-2);
   font-size: var(--fs-sm);
   color: var(--ink2);
@@ -739,7 +740,7 @@
 /* 도는 점은 `.nx-i` 가 아니라 위 간격(`.nx-wp-icon .nx-i`)을 받지 못한다 — 첫 줄의 가운데에 맞춘다. */
 .nx-wp-ci--pending .nx-wp-ci-i,
 .nx-wp-ci--fixing .nx-wp-ci-i {
-  margin-top: 4px;
+  margin-top: var(--sp-1);
 }
 
 .nx-wp-ci--passing .nx-wp-ci-i {
@@ -986,7 +987,7 @@
 
 .nx-st-skel {
   display: grid;
-  gap: 2px;
+  gap: var(--sp-0_5);
   animation: nx-st-breathe 1.4s ease-in-out infinite;
 }
 
@@ -1248,4 +1249,10 @@
   font-size: var(--fs-cap);
   color: var(--ink3);
   font-variant-numeric: tabular-nums;
+}
+
+/* 2026-11-12 UI 조사 U-006 — 상태를 누르면 이번 작업이 열린다. */
+.nx-journey-caret {
+  color: var(--ink3);
+  flex: none;
 }

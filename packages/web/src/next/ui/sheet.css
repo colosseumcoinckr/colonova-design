@@ -11,23 +11,23 @@
 /* 묶음은 폭이 되는 만큼 열을 이루고(다단 — 격자와 달리 짧은 묶음 밑이 비지 않는다), 좁으면 한 줄로 쌓인다. */
 .nx-sc-grid {
   columns: 2 280px;
-  column-gap: 40px;
-  padding-top: 6px;
+  column-gap: var(--sp-6);
+  padding-top: var(--sp-2);
 }
 
 /* 묶음은 차례로 내려앉는다 — 열리는 판 안에서 눈이 위에서 아래로 훑게. 동작을 줄이면 곧바로 선다. */
 .nx-sc-group {
   min-width: 0;
-  margin-bottom: 22px;
+  margin-bottom: var(--sp-6);
   break-inside: avoid;
   animation: nx-rise-in var(--nx-t-move) var(--drift) backwards;
   animation-delay: calc(var(--i, 0) * 45ms + 90ms);
 }
 
 .nx-sc-group h3 {
-  margin: 0 0 4px;
+  margin: 0 0 var(--sp-1);
   font-size: var(--fs-sm);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   letter-spacing: 0.02em;
   color: var(--ink3);
 }
@@ -42,13 +42,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  min-height: 38px;
-  border-bottom: 1px solid var(--line-soft);
-}
-
-.nx-sc-row:last-child {
-  border-bottom: 0;
+  gap: var(--sp-2);
+  min-height: var(--h-md);
 }
 
 .nx-sc-label {
@@ -68,12 +63,12 @@
 .nx-sc-alt {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .nx-sc-alt + .nx-sc-alt::before {
   content: "·";
-  margin: 0 7px 0 4px;
+  margin: 0 7px 0 var(--sp-1);
   color: var(--ink3);
 }
 
@@ -87,7 +82,7 @@
 
 .nx-modal--frame .nx-mfoot--frame.nx-sc-foot {
   justify-content: center;
-  gap: 8px;
+  gap: var(--sp-2);
   font-size: var(--fs-sm);
   color: var(--ink3);
 }

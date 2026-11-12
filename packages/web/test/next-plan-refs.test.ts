@@ -52,14 +52,14 @@ test("칩의 글 — 미발행 새 초안은 개정과 함께 미발행임을 �
         published: false,
       }),
     ),
-    "새 문서 · 미발행 초안 · 개정 2",
+    "새 문서 · 미발행 초안 · 판 2",
   );
 });
 
 test("칩의 글 — 기존 문서의 초안도 미발행 개정으로 선다", () => {
   assert.equal(
     refChipText(ref({ docKey: "p-123", version: 30, revision: 1, published: false })),
-    "로그인 화면 · 미발행 초안 · 개정 1",
+    "로그인 화면 · 미발행 초안 · 판 1",
   );
 });
 

@@ -185,9 +185,9 @@ test("새 기획 대화 문장이 모두 살아 있다", () => {
   // 채택 걸음은 걷었다(2026-10-31 2단계) — 대신 바로 반영의 문서 카드와 되돌리기가 선다.
   assert.equal(L.drafts.appliedCard, "초안을 고쳤어요");
   assert.equal(L.drafts.appliedOps(2), "고침 2");
-  assert.equal(L.drafts.appliedKept(1), "1곳은 직접 고르세요");
+  assert.equal(L.drafts.appliedKept(1), "겹친 1곳 고르기");
   // 2026-11-02 D 개선 — 남은 고침 손 · 떠 있는 단추 · ⋯ 메뉴.
-  assert.equal(L.drafts.appliedKeptHint, "문서 판의 남은 고침으로 가요");
+  assert.equal(L.drafts.appliedKeptHint, "문서에서 적용 여부를 고를 고침 보기");
   assert.equal(L.drafts.toBottom, "맨 아래로");
   assert.equal(L.drafts.newContent, "새 내용");
   assert.equal(L.drafts.convMenu, "대화 메뉴");
@@ -198,10 +198,10 @@ test("새 기획 대화 문장이 모두 살아 있다", () => {
   assert.equal(L.drafts.reaskPrompt, "앞 변경안을 다시 써 줘");
   assert.equal(
     L.drafts.opStale,
-    "초안이 바뀌어 이 고침은 더 이상 맞지 않아요 — 다시 부탁하면 바뀐 초안에 맞게 다시 써 줘요",
+    "초안이 바뀌어 이 제안을 적용할 수 없어요. AI 에 최신 초안에 맞춰 다시 고쳐 달라고 요청해 주세요.",
   );
   assert.equal(L.drafts.readBy(2), "AI 가 문서 2개를 읽었어요");
-  assert.equal(L.drafts.addRef, "근거 더하기");
+  assert.equal(L.drafts.addRef, "근거 문서 더하기");
   assert.equal(L.drafts.startWithAi, "AI 와 시작하기");
   // 대화 목록과 시작 문장(2026-10-31 3단계) — Claude 앱의 대화 목록과 같은 말이다.
   assert.equal(L.drafts.convList, "기획 대화");
@@ -217,7 +217,7 @@ test("새 기획 대화 문장이 모두 살아 있다", () => {
   assert.equal(L.drafts.revConfluence(7), "Confluence 판 7");
   assert.equal(L.drafts.revAi("노쇼 규칙 정리"), "AI · 노쇼 규칙 정리");
   assert.equal(L.drafts.revRestore(3), "3판으로 되돌리기");
-  assert.equal(L.drafts.writeOff, "Confluence 쓰기 꺼짐");
+  assert.equal(L.drafts.writeOff, "Confluence 변경 잠김");
   // 근거 칩 — 제목 · 판 · 절이 남고, 없는 자리는 빠진다.
   assert.equal(
     L.drafts.refChip("로그인 개선", 3, ["배경", "목표"]),

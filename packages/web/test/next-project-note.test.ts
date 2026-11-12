@@ -46,7 +46,7 @@ test("우선순위 — 준비 중 > 만드는 중 > 답을 기다려요 > AI 실
   assert.equal(note({ ...all, phase: "ready" }, extra).kind, "making");
   const waiting = note({ ...all, phase: "ready", working: false }, extra);
   assert.equal(waiting.kind, "waiting");
-  assert.equal(waiting.text, "답을 기다려요 2");
+  assert.equal(waiting.text, "답을 기다려요 · 2개");
   const failed = note({ ...all, phase: "ready", working: false, pendingCount: 0 }, extra);
   assert.equal(failed.kind, "failed");
   assert.equal(failed.text, L.vocab.aiFailed);
@@ -55,7 +55,7 @@ test("우선순위 — 준비 중 > 만드는 중 > 답을 기다려요 > AI 실
     { comments: 3 },
   );
   assert.equal(comments.kind, "comments");
-  assert.equal(comments.text, "코멘트 3");
+  assert.equal(comments.text, "코멘트 3개");
   const merged = note({ handoff: handoff("merged"), lastEventKind: "merged" });
   assert.equal(merged.kind, "merged");
   assert.equal(merged.tone, "green");

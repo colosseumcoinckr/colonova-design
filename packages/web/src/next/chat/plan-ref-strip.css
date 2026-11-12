@@ -13,8 +13,8 @@
 .nx-pref {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 0 0 8px 4px;
+  gap: var(--sp-1_5);
+  margin: 0 0 var(--sp-2) var(--sp-1);
   min-width: 0;
   animation: nx-fade 0.2s;
   /* 줄의 폭을 질의가 읽는다 — 좁은 칸에서만 절의 글자를 접는다. */
@@ -33,10 +33,10 @@
 .nx-pref-chips {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   min-width: 0;
   overflow: hidden;
-  padding: 4px;
+  padding: var(--sp-1);
   margin: -4px;
 }
 
@@ -58,7 +58,7 @@
 .nx .nx-pref-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;

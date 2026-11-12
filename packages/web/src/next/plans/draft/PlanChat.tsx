@@ -3,11 +3,11 @@ import type {
   DraftMessage,
   DraftProposal,
   DraftReadRef,
-  DraftRefInput,
 } from "@colonova-design/protocol";
 import { Ellipsis } from "lucide-react";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -16,12 +16,17 @@ import {
 } from "react";
 import { Markdown } from "../../../components/Markdown";
 import type { Daemon } from "../../../lib/daemon-client";
+import { koreanNoticeWords } from "../../../lib/error-words";
 import { timeAgo } from "../../../lib/format";
 import { ModelChip } from "../../chat/ModelChip";
 import { L } from "../../labels";
 import { hasLeadSentence } from "../../lib/answer-lead";
+import { composing } from "../../lib/ime";
+import { createLatestRequest } from "../../lib/latest-request";
 import { offerMismatchToComposer, sendMismatchNow } from "../../lib/mismatch-model";
+import { scrollBehavior } from "../../lib/scroll-to-target";
 import type { ShellNav } from "../../slots";
+import { CopyButton } from "../../ui/CopyButton";
 import { InlineConfirm } from "../../ui/InlineConfirm";
 import { CloseIcon, PlusIcon, SendIcon, SparkIcon, Spin } from "../../ui/icons";
 import { MismatchCard } from "../../ui/MismatchCard";
@@ -29,11 +34,15 @@ import { Popover } from "../../ui/Popover";
 import { escapeOwnedByLayer } from "../escape-layer";
 import { type PlanListRow, planRows } from "../plans-list";
 import { DRAFT_LIMITS } from "./limits";
-import { takeAsk } from "./pending-ask";
+import { type PendingAsk, takeAsk } from "./pending-ask";
 import { refChoices, refSectionOptions, toggleRefSection } from "./thread-model";
 import type { DraftHand } from "./use-draft";
 import { draftRefreshUsage, useDraftPick } from "./use-draft-pick";
 import type { DraftThreadHand } from "./use-draft-thread";
+
+export function questionText(text: string, selection: string | null): string {
+  return selection === null ? text : L.drafts.questionWithSelection(text, selection);
+}
 
 /**
  * 기획 대화 칸(2026-10-31 기획서 칸 개선 — Claude 앱의 대화 칸) — 문서 판의 오른쪽에 늘 서 있는
@@ -42,6 +51,12 @@ import type { DraftThreadHand } from "./use-draft-thread";
  * 문서 고르기로 이 대화가 다룰 문서를 바꾼다. 이 컴퓨터의 말은 전부 `L.drafts` 이고, 클래스는
  * `nx-dr-*` 로만 산다.
  */
+
+/** 2026-11-12 UI 조사 U-197 — 사용자가 읽을 수 있는 오류 문장만 그대로 남긴다. */
+function planNotice(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? error.message : String(error ?? "");
+  return koreanNoticeWords(raw) ? raw : fallback;
+}
 
 /** 근거 고르기 판 — 찾는 말로 문서를 걸러 고르고, 절 이름을 쉼표로 적어 담는다. 대화의 문서 옮기기도 같은 판을 쓴다. */
 function RefPicker({
@@ -394,7 +409,6 @@ function MessageRow({
     docKey: string | null;
   };
 }) {
-  const [copied, setCopied] = useState(false);
   // 판정 실패의 다시 시도(2026-11-03 A안 1A-2) — 돌고 실패 여부는 이 답 아래에만 둔다.
   const [retrying, setRetrying] = useState(false);
   const [retryFailed, setRetryFailed] = useState(false);
@@ -414,15 +428,19 @@ function MessageRow({
             ))}
           </ul>
         )}
-        {at !== "" && <p className="nx-dr-msg-at">{at}</p>}
-        <div className="nx-dr-msg-acts">
-          <button
-            type="button"
-            className="nx-btn nx-btn--xs nx-btn--ghost"
-            onClick={() => onFill(message.text)}
-          >
-            {L.drafts.editResend}
-          </button>
+        {/* 시각과 손은 한 줄이다(2026-11-12 기획 대화 칸 손질) — 숨은 손이 따로 한 줄을 차지해
+            말 사이가 들쭉날쭉 벌어졌다. */}
+        <div className="nx-dr-msg-foot">
+          <div className="nx-dr-msg-acts">
+            <button
+              type="button"
+              className="nx-btn nx-btn--xs nx-btn--ghost"
+              onClick={() => onFill(message.text)}
+            >
+              {L.drafts.editResend}
+            </button>
+          </div>
+          {at !== "" && <span className="nx-dr-msg-at">{at}</span>}
         </div>
       </div>
     );
@@ -453,7 +471,7 @@ function MessageRow({
         )}
         {message.error !== undefined && (
           <p className="nx-dr-msg-err" role="alert">
-            {message.error === "" ? L.drafts.aiFailed : `${L.drafts.aiFailed} — ${message.error}`}
+            {planNotice(message.error, L.drafts.aiFailed)}
           </p>
         )}
         {/* 화면 제안 카드(2026-11-02 · 같이 고치기 UX 계획 C8) — 정책을 바꾼 고침 뒤 화면이 옛 규칙이면 답 아래에
@@ -508,7 +526,8 @@ function MessageRow({
             <p className="nx-dr-msg-err" role="alert">
               {L.compare.judgeFailed}
             </p>
-            <div className="nx-dr-msg-acts">
+            {/* 실패 줄의 고침 손은 늘 보인다 — 말의 손(`nx-dr-msg-acts`)처럼 hover 에 숨지 않는다. */}
+            <div className="nx-dr-msg-retry">
               <button
                 type="button"
                 className="nx-btn nx-btn--xs nx-btn--ghost"
@@ -536,35 +555,35 @@ function MessageRow({
             )}
           </>
         )}
-        {at !== "" && <p className="nx-dr-msg-at">{at}</p>}
-        {message.text !== "" && (
-          <div className="nx-dr-msg-acts">
-            <button
-              type="button"
-              className="nx-btn nx-btn--xs nx-btn--ghost"
-              onClick={() => {
-                void navigator.clipboard?.writeText(message.text).then(() => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1_600);
-                });
-              }}
-            >
-              {copied ? L.drafts.copied : L.drafts.copyText}
-            </button>
-            <button
-              type="button"
-              className="nx-btn nx-btn--xs nx-btn--ghost"
-              onClick={() => {
-                // 다시 요청 — 근거는 이 말의 앞 사람 메시지에서 찾지 않고 비운 채 둔다(말만 다시 쓴다).
-                onFill(L.drafts.reaskPrompt);
-              }}
-            >
-              {L.drafts.reask}
-            </button>
-          </div>
-        )}
+        {/* 문서 카드는 답의 결과라 답 바로 뒤에 선다 — 말 전체의 손(복사 · 다시 요청)과 시각은
+            맨 끝 한 줄로 모은다(2026-11-12 기획 대화 칸 손질). */}
         {proposal !== null && (
           <DocCard proposal={proposal} busy={busy} onShowInDoc={onShowInDoc} onUndo={onUndo} />
+        )}
+        {(at !== "" || message.text !== "") && (
+          <div className="nx-dr-msg-foot">
+            {at !== "" && <span className="nx-dr-msg-at">{at}</span>}
+            {message.text !== "" && (
+              <div className="nx-dr-msg-acts">
+                <CopyButton
+                  text={message.text}
+                  label={L.drafts.copyText}
+                  doneLabel={L.drafts.copied}
+                  small
+                />
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--xs nx-btn--ghost"
+                  onClick={() => {
+                    // 다시 요청 — 근거는 이 말의 앞 사람 메시지에서 찾지 않고 비운 채 둔다(말만 다시 쓴다).
+                    onFill(L.drafts.reaskPrompt);
+                  }}
+                >
+                  {L.drafts.reask}
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>
@@ -572,9 +591,21 @@ function MessageRow({
 }
 
 /** 비어 있는 대화의 시작 문장 — 누르면 입력 칸에 채운다(Claude 앱의 시작 화면과 같은 모양). */
-function Starters({ onPick }: { onPick: (text: string) => void }) {
+function Starters({
+  onPick,
+  docTitle,
+  hintId,
+}: {
+  onPick: (text: string) => void;
+  docTitle: string;
+  hintId: string;
+}) {
   return (
     <div className="nx-dr-starters">
+      <p className="nx-dr-empty-target">{docTitle}</p>
+      <p className="nx-dr-empty-scope" id={hintId}>
+        {L.drafts.threadScope}
+      </p>
       <p className="nx-dr-starters-h">{L.drafts.startersHead}</p>
       <div className="nx-dr-starters-list">
         {[L.drafts.starter1, L.drafts.starter2, L.drafts.starter3].map((text) => (
@@ -609,6 +640,7 @@ export function PlanChat({
   offstage = false,
   panelId,
   labelledBy,
+  mutationLocked = false,
 }: {
   daemon: Daemon;
   nav: ShellNav;
@@ -617,7 +649,7 @@ export function PlanChat({
   /** 읽는 문서의 페이지 id — 초안이 없을 때의 첫 말이 이 문서의 초안을 연다(2026-10-30). */
   pageId?: string;
   /** 읽는 문서에서 보낸 첫 말 — 초안을 열고 말을 건네는 손(칸의 고치기와 같은 길). */
-  onStartDraft?: (pageId: string, text: string) => void;
+  onStartDraft?: (pageId: string, ask: PendingAsk) => void;
   docTitle: string;
   thread: DraftThreadHand;
   /** 초안의 판 — 있으면 남은 걸음의 채택이 이 판의 개정을 쓴다. */
@@ -640,6 +672,8 @@ export function PlanChat({
   /** 좁은 칸의 두 탭 연결(2026-11-11) — `문서` · `대화` 탭의 aria-controls / labelledby. */
   panelId?: string;
   labelledBy?: string;
+  /** 2026-11-12 U-097 — 같은 문서의 판 복원 동안 변경 손을 잠근다. */
+  mutationLocked?: boolean;
 }) {
   // 기획 AI 의 모델 · 생각 시간 칩의 주인(2026-10-26 사용자 요청) — 화면 대화와 같은 부품, 다른 주인.
   const chip = useDraftPick(daemon);
@@ -656,12 +690,38 @@ export function PlanChat({
   // 근거 고르기 팝의 닻(2026-11-02 D8) — `+ 근거 더하기` 단추에 붙어 뜬다.
   const addAnchor = useRef<HTMLButtonElement>(null);
   const [inputText, setInputText] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [localBusy, setBusy] = useState(false);
+  const busy = localBusy || mutationLocked;
   const [selection, setSelection] = useState<string | null>(null);
   // `새 기획 대화`(2026-10-31 3단계 · G) — 사이드바의 단추가 켠다. 다음 말은 붙은 대화를 이어 받지 않고 새 대화로 간다.
   const [fresh, setFresh] = useState(false);
   // 근거 수의 한계 이유 — 선로의 상한(문서 20개)에 닿아 더 담지 못할 때 한 줄로 말한다.
   const [refNotice, setRefNotice] = useState<string | null>(null);
+  // 2026-11-12 UI 조사 U-109·113 — 보낸 재료만 성공 뒤 거둔다.
+  const sendGate = useRef(createLatestRequest<object>()).current;
+  const sendScope = useMemo(
+    () => ({ api: daemon.api, docKey, pickedThreadId }),
+    [daemon.api, docKey, pickedThreadId],
+  );
+  const sendScopeRef = useRef(sendScope);
+  sendScopeRef.current = sendScope;
+  const [sending, setSending] = useState(false);
+  const previousRunning = useRef(false);
+  const [answerFinished, setAnswerFinished] = useState(false);
+  useEffect(() => {
+    if (thread.running) setAnswerFinished(false);
+    else if (previousRunning.current) setAnswerFinished(true);
+    previousRunning.current = thread.running;
+  }, [thread.running]);
+  const sendingRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 대상을 바꾸면 앞 요청을 무효화한다.
+  useEffect(() => {
+    sendGate.invalidate();
+    sendingRef.current = false;
+    setSending(false);
+    return () => sendGate.invalidate();
+  }, [sendGate, sendScope]);
+
   // 접힌 동안 열려 있던 팝은 접는다(2026-11-11) — 숨은 팝이 화면 위에 떠 있거나 닫힘의
   // 초점 복귀가 보이지 않는 손으로 향하는 것을 막는다.
   useEffect(() => {
@@ -762,75 +822,81 @@ export function PlanChat({
     [thread.thread],
   );
 
-  // 읽는 문서의 대화 칸에서 맡긴 첫 말(2026-10-30) — 초안이 열려 대화를 읽고 나면 한 번 보낸다.
-  // `새 기획 대화`의 표식도 여기서 존중한다(2026-11-03 수리) — 안 넘기면 붙은 대화를 묵묵히 이어 받았다.
   const { phase: threadPhase, running: threadRunning, ask: threadAsk } = thread;
+  const sendAsk = useCallback(
+    async (ask: PendingAsk) => {
+      if (sendingRef.current || mutationLocked) return;
+      const text = questionText(ask.text, ask.selection);
+      if (text.length > DRAFT_LIMITS.questionLength) return;
+      sendingRef.current = true;
+      setSending(true);
+      const ticket = sendGate.begin(sendScopeRef.current);
+      const refs = ask.refs.map((ref) => ({
+        pageId: ref.pageId,
+        ...(ref.sections?.length ? { sections: ref.sections } : {}),
+      }));
+      const ok = await threadAsk(
+        text,
+        refs,
+        { model: chip.pick.model, effort: chip.pick.effort },
+        fresh ? null : shownThreadId,
+      );
+      if (!sendGate.isCurrent(ticket, sendScopeRef.current)) return;
+      sendingRef.current = false;
+      setSending(false);
+      if (!ok) return;
+      setInputText((current) => (current.trim() === ask.text ? "" : current));
+      setPendingRefs((current) => current.filter((ref) => !ask.refs.includes(ref)));
+      setSelection((current) => (current === ask.selection ? null : current));
+      setRefNotice(null);
+      setFresh(false);
+      if (fresh) pickThread(null);
+      onConversationsChanged();
+    },
+    [
+      threadAsk,
+      mutationLocked,
+      chip.pick.model,
+      chip.pick.effort,
+      fresh,
+      shownThreadId,
+      pickThread,
+      onConversationsChanged,
+      sendGate,
+    ],
+  );
+
+  // 첫 말도 같은 전송 길을 쓴다. 실패하면 입력과 칩은 그대로 남는다.
   useEffect(() => {
-    if (docKey === null || threadPhase !== "ready" || threadRunning) return;
+    if (docKey === null || threadPhase !== "ready" || threadRunning || mutationLocked) return;
     const waiting = takeAsk(docKey);
     if (waiting === null) return;
-    // 새 대화로 보내는 말은 고름을 먼저 거둔다(2026-11-03) — 옛 대화를 골라 둔 채 새 말을
-    // 보내면 판이 읽을 때마다 골른 대화로 돌아와 새 대화가 만들어지고도 묻히는 일이 생긴다.
-    if (fresh) pickThread(null);
-    void threadAsk(
-      waiting,
-      [],
-      { model: chip.pick.model, effort: chip.pick.effort },
-      fresh ? null : shownThreadId,
-    ).then((ok) => {
-      // 보내지 못했으면 입력 칸에 돌려 둔다 — 쓴 말을 잃지 않게. 표식은 성공에만 거둔다.
-      if (ok) setFresh(false);
-      else setInputText(waiting);
-    });
-  }, [
-    docKey,
-    threadPhase,
-    threadRunning,
-    threadAsk,
-    chip.pick.model,
-    chip.pick.effort,
-    fresh,
-    shownThreadId,
-    pickThread,
-  ]);
+    void sendAsk(waiting);
+  }, [docKey, threadPhase, threadRunning, sendAsk, mutationLocked]);
 
   const submit = (override?: string) => {
     const text = (override ?? inputText).trim();
-    if (text === "" || thread.running) return;
-    // 아직 초안이 없는 문서의 첫 말(2026-10-30) — 초안이 열리고 말이 건네진다.
+    if (
+      text === "" ||
+      mutationLocked ||
+      questionText(text, selection).length > DRAFT_LIMITS.questionLength ||
+      thread.running ||
+      sendingRef.current ||
+      (docKey !== null && thread.phase !== "ready") ||
+      draft?.phase === "loading"
+    )
+      return;
+    const ask = { text, refs: pendingRefs, selection };
     if (docKey === null) {
       if (pageId === undefined || onStartDraft === undefined) return;
-      onStartDraft(pageId, text);
-      setInputText("");
-      setPendingRefs([]);
+      onStartDraft(pageId, ask);
       return;
     }
-    const refs: DraftRefInput[] = pendingRefs.map((ref) => {
-      const sections = ref.sections?.filter((section) => section.trim() !== "");
-      return sections !== undefined && sections.length > 0
-        ? { pageId: ref.pageId, sections }
-        : { pageId: ref.pageId };
-    });
-    // 새 대화로 보내는 말은 고름을 먼저 거둔다(2026-11-03) — 위 맡긴 첫 말과 같은 이유다.
-    if (fresh) pickThread(null);
-    void threadAsk(
-      text,
-      refs,
-      { model: chip.pick.model, effort: chip.pick.effort },
-      fresh ? null : shownThreadId,
-    ).then((ok) => {
-      if (!ok) return;
-      setInputText("");
-      setPendingRefs([]);
-      setPickerOpen(false);
-      setRefNotice(null);
-      setSelection(null);
-      setFresh(false);
-      onConversationsChanged();
-    });
+    void sendAsk(ask);
   };
 
   const onInputKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (composing(event)) return;
     // ⌘/Ctrl+Enter 로 보낸다 — 그냥 Enter 는 줄을 나눈다.
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
@@ -872,7 +938,7 @@ export function PlanChat({
         nav.toast(L.drafts.undoDone(result.restored, result.kept));
       })
       .catch((err: unknown) => {
-        nav.toast(err instanceof Error ? err.message : L.drafts.undoFailed);
+        nav.toast(planNotice(err, L.drafts.undoFailed));
       })
       .finally(() => {
         setBusy(false);
@@ -907,7 +973,12 @@ export function PlanChat({
     stick.current = true;
     setUnpinned(false);
     setHasNew(false);
-    log.scrollTo({ top: log.scrollHeight, behavior: "smooth" });
+    log.scrollTo({
+      top: log.scrollHeight,
+      behavior: scrollBehavior(
+        window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false,
+      ),
+    });
   };
   // biome-ignore lint/correctness/useExhaustiveDependencies: 말 수 · 도는 글이 바뀔 때만 따라간다
   useEffect(() => {
@@ -924,19 +995,26 @@ export function PlanChat({
   // 멈춘다(칸 · 편집기의 Esc 가 물러서게). 치던 글은 남는다(2026-10-23 화면 확인 · R2 검토 8).
   const onColumnKey = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape" || event.defaultPrevented) return;
-    if (event.nativeEvent.isComposing) return;
+    if (composing(event)) return;
     if (escapeOwnedByLayer()) return;
     event.preventDefault();
     event.stopPropagation();
     if (pickerOpen) setPickerOpen(false);
   };
 
+  const questionLimit = Math.max(
+    0,
+    DRAFT_LIMITS.questionLength - questionText("", selection).length,
+  );
+  const questionTooLong =
+    questionText(inputText.trim(), selection).length > DRAFT_LIMITS.questionLength;
   const empty = messages.length === 0 && !thread.running;
   const hintId = useId();
 
   return (
     <aside
       className="nx-dr-thread nx-pl-chat"
+      data-empty={empty || undefined}
       aria-label={labelledBy === undefined ? L.drafts.threadTitle : undefined}
       {...(panelId !== undefined ? { id: panelId, role: "tabpanel" } : {})}
       {...(labelledBy !== undefined ? { "aria-labelledby": labelledBy } : {})}
@@ -956,18 +1034,22 @@ export function PlanChat({
             aria-label={L.drafts.convMenu}
             title={L.drafts.convMenu}
             aria-haspopup="menu"
-            disabled={deleting}
+            disabled={deleting || mutationLocked}
             onClick={() => setMenuOpen((before) => !before)}
           >
             <Ellipsis className="nx-i" size={16} strokeWidth={1.8} aria-hidden="true" />
           </button>
         </div>
-        <p className="nx-dr-thread-target" title={docTitle}>
-          {docTitle}
-        </p>
-        <p className="nx-dr-thread-scope" title={L.drafts.threadScope} id={hintId}>
-          {L.drafts.threadScope}
-        </p>
+        {!empty && (
+          <>
+            <p className="nx-dr-thread-target" title={docTitle}>
+              {docTitle}
+            </p>
+            <p className="nx-dr-thread-scope" id={hintId}>
+              {L.drafts.threadScope}
+            </p>
+          </>
+        )}
         {menuOpen && (
           <Popover
             anchor={menuAnchor}
@@ -976,7 +1058,7 @@ export function PlanChat({
             align="end"
             float
             onClose={() => {
-              if (deleting) return;
+              if (deleting || mutationLocked) return;
               setMenuOpen(false);
               setConfirmDelete(false);
             }}
@@ -987,10 +1069,10 @@ export function PlanChat({
                 body={L.drafts.convRemoveBody}
                 confirmLabel={L.drafts.convDelete}
                 cancelLabel={L.convMenu.removeCancel}
-                busy={deleting}
+                busy={deleting || mutationLocked}
                 busyWhy={deleting ? L.drafts.convDeleting : undefined}
                 onConfirm={() => {
-                  if (deleting) return;
+                  if (deleting || mutationLocked) return;
                   // 지우는 동안 확인판은 닫히지 않는다(2026-11-12) — 성공이 닫고, 실패는 이유와 함께 남는다.
                   setDeleting(true);
                   setDeleteError(null);
@@ -1006,7 +1088,7 @@ export function PlanChat({
                     })
                     .catch((err: unknown) => {
                       setDeleting(false);
-                      setDeleteError(err instanceof Error ? err.message : String(err));
+                      setDeleteError(planNotice(err, L.drafts.convDeleteFailed));
                     });
                 }}
                 onCancel={() => {
@@ -1029,11 +1111,11 @@ export function PlanChat({
                   type="button"
                   role="menuitem"
                   className="nx-mi"
-                  disabled={conversation === null}
+                  disabled={conversation === null || mutationLocked}
                   title={L.drafts.convMoveHint}
                   onClick={() => {
                     setMenuOpen(false);
-                    if (conversation === null) return;
+                    if (conversation === null || mutationLocked) return;
                     // 문서 고르기 — 목록의 문서를 고르는 작은 판은 근거 고르기 판을 다시 쓴다.
                     setMoveOpen(true);
                   }}
@@ -1045,6 +1127,7 @@ export function PlanChat({
                     type="button"
                     role="menuitem"
                     className="nx-mi nx-mi--dng"
+                    disabled={mutationLocked}
                     onClick={() => setConfirmDelete(true)}
                   >
                     {L.drafts.convDelete}
@@ -1055,13 +1138,18 @@ export function PlanChat({
           </Popover>
         )}
       </header>
+      {mutationLocked && (
+        <p className="nx-dr-limit" role="status">
+          {L.drafts.revRestoring}
+        </p>
+      )}
       {/* 편집기가 초안을 여는 동안(첫 고치기 — 초안이 이제 생긴다)의 실패 문장은 누른다:
           문서로 여는 길(draft.open)이 초안을 만들고 방송하면 대화는 곧 읽힌다. 그 자리를
           실패 면이 앞질러 「열려 있는 초안이 없습니다」 를 번쩍이는 일을 막는다
           (2026-11-02 실사용 관찰 — 고치기 첫 진입에서 실패 문장이 열림 내내 남았다). */}
       {thread.phase === "failed" && draft?.phase !== "loading" ? (
         <p className="nx-banner nx-banner--red nx-dr-fail" role="alert">
-          {thread.error ?? L.drafts.loadFailed}
+          {planNotice(thread.error, L.drafts.convLoadFailed)}
           <button type="button" className="nx-btn nx-btn--sm" onClick={thread.retry}>
             {L.plans.retry}
           </button>
@@ -1070,9 +1158,12 @@ export function PlanChat({
         <>
           {thread.error !== null && draft?.phase !== "loading" && (
             <p className="nx-banner nx-banner--red nx-dr-fail" role="alert">
-              {thread.error}
+              {planNotice(thread.error, L.chat.somethingWrong)}
             </p>
           )}
+          <p className="nx-sr-only" role="status">
+            {thread.running ? L.drafts.aiWorking : answerFinished ? L.drafts.answerFinished : ""}
+          </p>
           <div className="nx-dr-thread-log" ref={logRef} onScroll={onLogScroll}>
             {thread.phase === "loading" || draft?.phase === "loading" ? (
               <p className="nx-dr-thread-empty">
@@ -1080,7 +1171,7 @@ export function PlanChat({
               </p>
             ) : (
               <>
-                {published !== null && (
+                {published !== null && published.docKey === docKey && (
                   <p className="nx-dr-doccard nx-dr-doccard--pub" role="status">
                     {L.drafts.publishedCard(published.version)}
                   </p>
@@ -1104,7 +1195,13 @@ export function PlanChat({
                     mismatchDoc={{ daemon, nav, docTitle, pageId: pageId ?? null, docKey }}
                   />
                 ))}
-                {empty && <Starters onPick={(text) => setInputText(text)} />}
+                {empty && (
+                  <Starters
+                    docTitle={docTitle}
+                    hintId={hintId}
+                    onPick={(text) => setInputText(text)}
+                  />
+                )}
                 {thread.running && (
                   <div className="nx-dr-msg nx-dr-turn nx-m-ai--live" data-role="ai">
                     {/* 도는 중에도 닻은 제자리(2026-11-02 D2) — 얼굴이 숨 쉬고 답이 그 자리에 이어진다. */}
@@ -1113,7 +1210,7 @@ export function PlanChat({
                         <SparkIcon />
                       </span>
                     </div>
-                    <div className="nx-dr-working" role="status">
+                    <div className="nx-dr-working">
                       {thread.streamText !== null && thread.streamText !== "" && (
                         <div className="nx-dr-msg-md">
                           <Markdown text={thread.streamText} />
@@ -1123,7 +1220,7 @@ export function PlanChat({
                         <p className="nx-dr-msg-reads">{L.drafts.readBy(thread.reads.length)}</p>
                       )}
                       <div className="nx-dr-working-row">
-                        <p className="nx-dr-working-line">
+                        <p className="nx-dr-working-line" aria-hidden="true">
                           <Spin /> {L.drafts.aiWorking}
                         </p>
                         <button
@@ -1155,9 +1252,14 @@ export function PlanChat({
               }}
             >
               {selection !== null && (
-                <p className="nx-dr-refchip nx-dr-selchip">
-                  {L.drafts.selectionChip}:{" "}
-                  {selection.length > 80 ? `${selection.slice(0, 80)}…` : selection}
+                <div className="nx-dr-refchip nx-dr-selchip">
+                  <details>
+                    <summary>
+                      {L.drafts.selectionChip}:{" "}
+                      {selection.length > 80 ? `${selection.slice(0, 80)}…` : selection}
+                    </summary>
+                    <p className="nx-dr-selection-full">{selection}</p>
+                  </details>
                   <button
                     type="button"
                     className="nx-ibtn nx-ibtn--xs nx-dr-refchip-x"
@@ -1167,7 +1269,7 @@ export function PlanChat({
                   >
                     <CloseIcon />
                   </button>
-                </p>
+                </div>
               )}
               {pendingRefs.length > 0 && (
                 <ul className="nx-dr-refchips">
@@ -1199,7 +1301,7 @@ export function PlanChat({
                   className="nx-input nx-input--area nx-dr-area"
                   rows={2}
                   value={inputText}
-                  maxLength={DRAFT_LIMITS.questionLength}
+                  maxLength={questionLimit}
                   placeholder={L.drafts.inputHint}
                   aria-label={L.drafts.threadTitle}
                   aria-describedby={hintId}
@@ -1217,24 +1319,45 @@ export function PlanChat({
                     <PlusIcon />
                     {L.drafts.addRef}
                   </button>
-                  {/* 화면 대화와 같은 모델 칩 — 이 대화의 AI 는 모델 · 생각 시간만 고른다(2026-10-26 사용자 요청). */}
-                  <ModelChip
-                    daemon={daemon}
-                    sessions={{ refreshUsage: draftRefreshUsage(daemon) }}
-                    target={chip.target}
-                  />
-                  <button
-                    type="submit"
-                    className="nx-btn nx-btn--accent"
-                    disabled={thread.running || inputText.trim() === ""}
-                  >
-                    <SendIcon />
-                    {L.drafts.send}
-                  </button>
+                  {/* 모델 칩과 보내기는 한 묶음이다(2026-11-12 기획 대화 칸 손질) — 좁은 칸에서 줄이 넘치면
+                      묶음째 오른쪽 끝의 다음 줄로 내려가고, 보내기만 왼쪽 끝에 홀로 떨어지지 않는다. */}
+                  <div className="nx-dr-send">
+                    {/* 화면 대화와 같은 모델 칩 — 이 대화의 AI 는 모델 · 생각 시간만 고른다(2026-10-26 사용자 요청). */}
+                    <ModelChip
+                      daemon={daemon}
+                      sessions={{ refreshUsage: draftRefreshUsage(daemon) }}
+                      target={chip.target}
+                    />
+                    <button
+                      type="submit"
+                      className="nx-btn nx-btn--accent"
+                      disabled={
+                        mutationLocked ||
+                        questionTooLong ||
+                        thread.running ||
+                        sending ||
+                        inputText.trim() === "" ||
+                        (docKey !== null && thread.phase !== "ready") ||
+                        draft?.phase === "loading"
+                      }
+                    >
+                      <SendIcon />
+                      {L.drafts.send}
+                    </button>
+                  </div>
                 </div>
               </div>
-              {inputText.length >= DRAFT_LIMITS.questionLength && (
-                <p className="nx-dr-limit">{L.drafts.limitQuestionLength}</p>
+              {(selection !== null || inputText.length >= questionLimit) && (
+                <p className="nx-dr-limit" role="status">
+                  {selection !== null && (
+                    <span>{L.drafts.questionBudget(inputText.length, questionLimit)} </span>
+                  )}
+                  {questionTooLong ? (
+                    <span>{L.drafts.questionTooLong}</span>
+                  ) : selection === null ? (
+                    L.drafts.limitQuestionLength
+                  ) : null}
+                </p>
               )}
             </form>
             {/* 근거 고르기 · 문서 옮기기 판은 팝으로 뜬다(2026-11-02 D8) — 입력창을 밀치지 않고
@@ -1263,6 +1386,7 @@ export function PlanChat({
                   onAdd={() => undefined}
                   onClose={() => setMoveOpen(false)}
                   moveTo={(pageId) => {
+                    if (mutationLocked) return;
                     setMoveOpen(false);
                     void daemon.api
                       .draftThreadMove(conversation.threadId, `p-${pageId}`)
@@ -1271,7 +1395,7 @@ export function PlanChat({
                         thread.reload();
                       })
                       .catch((err: unknown) => {
-                        nav.toast(err instanceof Error ? err.message : String(err));
+                        nav.toast(planNotice(err, L.drafts.convMoveFailed));
                       });
                   }}
                 />

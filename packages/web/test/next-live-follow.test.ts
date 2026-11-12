@@ -228,12 +228,12 @@ test("isFreshSignal: 막 도착한 신호만", () => {
 
 test("문장: 이름 앞 · 뒤의 말 — 이름이 `화면` 으로 끝나면 그 말을 겹치지 않아 조사가 늘 맞는다", () => {
   const whole = (parts: [string, string], name: string) => `${parts[0]}${name}${parts[1]}`;
-  assert.equal(L.live.driving, "AI가 화면을 직접 눌러 보는 중");
+  assert.equal(L.live.driving, "AI 가 화면을 직접 눌러 보는 중");
   assert.equal(
     whole(L.live.editing("회원 목록"), "회원 목록"),
-    "AI가 지금 ‘회원 목록’ 화면을 고치는 중",
+    "AI 가 지금 ‘회원 목록’ 화면을 고치는 중",
   );
-  assert.equal(whole(L.live.editing("첫 화면"), "첫 화면"), "AI가 지금 ‘첫 화면’을 고치는 중");
+  assert.equal(whole(L.live.editing("첫 화면"), "첫 화면"), "AI 가 지금 ‘첫 화면’을 고치는 중");
   assert.equal(whole(L.live.moved("결제"), "결제"), "‘결제’ 화면으로 옮겼어요");
   assert.equal(whole(L.live.moved("첫 화면"), "첫 화면"), "‘첫 화면’으로 옮겼어요");
 });

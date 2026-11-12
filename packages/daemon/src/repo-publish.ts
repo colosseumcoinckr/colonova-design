@@ -15,6 +15,9 @@ import {
   markTurn,
 } from "@colonova-design/protocol";
 import { isOwnAppComment } from "./app-comment.js";
+import { recoverAtomicSave } from "./atomic-git.js";
+import type { AtomicPlanInput, AtomicPlanResult } from "./atomic-plan.js";
+import { hasCommitHooks, runAtomicSave } from "./atomic-save.js";
 import { readComments } from "./comments.js";
 import { replyFooter } from "./developer-replies.js";
 import {
@@ -190,6 +193,7 @@ export class PublishCycle {
 
   async runSave(options: {
     message?: string;
+    atomicRequest?: string;
     onSessionTurn?: (brief: string) => void;
     /** hero-synthesis D1: the conversation this save belongs to. */
     sessionId?: string;
@@ -202,6 +206,13 @@ export class PublishCycle {
         gate: "diff",
         detail: "연결 레포가 준비되지 않았습니다 — 잠시 후 다시 시도해 주세요.",
       });
+    }
+    // ref 이동 후 종료되면 작업 파일은 이미 HEAD와 같아 diff가 비어 있을 수 있다.
+    // 깨끗한 트리의 조기 반환보다 먼저 우리 index 전환을 복구한다.
+    try {
+      await recoverAtomicSave(this.core);
+    } catch (error) {
+      return this.failGate("commit", error, options.onSessionTurn, options.sessionId);
     }
     // 저장은 차선의 save 칸 안에서 돈다(PLAN L1) — 최신화·치워두기와의 순서는
     // 차선이 지키므로 손으로 슬롯을 기다리던 자리는 없다. 몸통의 diff 는
@@ -319,17 +330,42 @@ export class PublishCycle {
     const memo = retryPush
       ? null
       : options.message?.trim() ||
-        (await this.deps.machineMemo(saveable).catch(() => null)) ||
+        (!options.atomicRequest && (await this.deps.machineMemo(saveable).catch(() => null))) ||
         DEFAULT_COMMIT_MESSAGE;
 
     // Commit exactly the paths the planner approved — never `git add -A`, so
     // unreviewed output cannot ride along in the save.
     this.core.setDiff({ stage: "pushing" });
+    let turnCommits: DiffStatus["turnCommits"];
+    let atomic: DiffStatus["atomic"];
     // 브랜치 준비와 커밋은 push 와 다른 단계다 — 둘을 한 gate 로 보내면
     // 커밋 실패의 원인을 "올리기" 에서 찾게 된다.
     try {
       await this.ensureCycleBranch();
-      if (memo !== null) await this.commitApproved(memo, approved);
+      if (memo !== null) {
+        if (
+          options.atomicRequest !== undefined &&
+          this.deps.atomicPlan &&
+          !(await hasCommitHooks(this.core))
+        ) {
+          const saved = await runAtomicSave(this.core, {
+            paths: approved,
+            request: options.atomicRequest,
+            fallbackMessage: memo,
+            plan: this.deps.atomicPlan,
+          });
+          turnCommits = saved.commits;
+          atomic = saved.atomic;
+        } else {
+          await this.commitApproved(memo, approved);
+          if (options.atomicRequest !== undefined)
+            atomic = {
+              status: "fallback",
+              checked: false,
+              reason: this.deps.atomicPlan ? "commit-hooks" : "no-planner",
+            };
+        }
+      }
     } catch (error) {
       return this.failGate("commit", error, options.onSessionTurn, options.sessionId);
     }
@@ -345,6 +381,8 @@ export class PublishCycle {
       message,
       // 이번 저장이 담은 경로 전부 — 라우트↔파일 지도의 재료다(2026-10-11).
       turnFiles: approved.length > 0 ? approved : retryFiles,
+      ...(turnCommits ? { turnCommits } : {}),
+      ...(atomic ? { atomic } : {}),
     });
     this.markSaveOk();
     // hero-synthesis D1: the save lands on the session tape — a reloaded
@@ -1117,6 +1155,7 @@ export class PublishCycle {
 
 /** Cross-module services the cycle needs — wired by the facade. */
 export interface PublishDeps {
+  atomicPlan?(input: AtomicPlanInput): Promise<AtomicPlanResult>;
   /** The save-time memo the PR body quotes — the summarizer's one turn. */
   machineMemo(files: DiffFile[]): Promise<string | null>;
   /**

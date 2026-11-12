@@ -1,10 +1,12 @@
 import { type UIEvent, useEffect, useRef } from "react";
 import type { Daemon } from "../../lib/daemon-client";
 import { composing } from "../../lib/ime";
+import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
 import type { ConnectionCopy } from "../lib/connection-copy";
 import { resetScope } from "../lib/reset-scope";
 import { nameEscape } from "../lib/settings-shell";
+import { supportFor } from "../lib/support";
 import { CheckIcon, Spin } from "../ui/icons";
 import { ConfluenceConnect } from "./ConfluenceConnect";
 import { BandAlertIcon } from "./icons";
@@ -104,6 +106,37 @@ export function ConnectionPage({
             {L.settings.nameSaveFailed}
           </p>
         )}
+        {/* 개발팀 창구(2026-11-12 결정 ㉱) — 초대 파일의 창구 칸을 그대로 보인다. 칸이 없으면
+            «초대 파일에 적혀 있지 않아요» 라고 말한다 — 사용자가 창구를 거기서 정하는 일은 없다. */}
+        <SRow title={L.support.settingsTitle}>
+          {(() => {
+            const support = supportFor(daemon.status?.support);
+            if (support === null) {
+              return <span className="nx-sval">{L.support.settingsUnknown}</span>;
+            }
+            return (
+              <span className="nx-sval">
+                {support.kind === "url"
+                  ? L.support.settingsUrl
+                  : L.support.contact({ name: support.name, room: support.room })}
+                {support.url && (
+                  <>
+                    {" "}
+                    <a
+                      className="nx-slink"
+                      href={support.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={linkClick}
+                    >
+                      {L.support.openRoom}
+                    </a>
+                  </>
+                )}
+              </span>
+            );
+          })()}
+        </SRow>
         <SRow title={L.settings.connectionCode}>
           <span className={`nx-schip nx-schip--${connection.dot}`}>
             <i className={`nx-dot nx-dot--${connection.dot}`} />

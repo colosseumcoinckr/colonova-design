@@ -1,10 +1,12 @@
 import type { DocOpKind, DocOpPreview, DocOpResult } from "@colonova-design/protocol";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../../lib/daemon-client";
 import { L } from "../../labels";
+import { createLatestRequest } from "../../lib/latest-request";
 import { Spin } from "../../ui/icons";
 import { ModalBody, ModalFoot, ModalFrame, ModalHead } from "../../ui/ModalFrame";
 import { ParentPicker } from "../draft/ParentPicker";
+import { PlansContext } from "../PlansWorkspace";
 import type { PlanListRow } from "../plans-list";
 import {
   defaultCopyTitle,
@@ -37,6 +39,7 @@ export function DocOpDialog({
   onApplied: (result: DocOpResult) => void;
   onClose: () => void;
 }) {
+  const plans = useContext(PlansContext);
   const apiRef = useRef(daemon.api);
   apiRef.current = daemon.api;
   const picksParent = op === "copy" || op === "move";
@@ -52,16 +55,24 @@ export function DocOpDialog({
   const [result, setResult] = useState<DocOpResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [retry, setRetry] = useState(0);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState(false);
+  const recoveryBusy = useRef(false);
+  const writeStarted = useRef(false);
+  const previews = useRef(createLatestRequest<string>()).current;
   // 미리보기 — 창이 설 때와 자리를 다시 고를 때 읽는다. 늦게 온 답은 창이 닫혔으면 버린다.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 재시도 번호와 API 교체도 같은 대상의 읽기를 다시 연다.
   useEffect(() => {
-    let alive = true;
+    const scope = `${op}:${pageId}:${parent}`;
+    const ticket = previews.begin(scope);
     setPhase("loading");
     const at = parent.indexOf(":");
     const parentId = picksParent && at > 0 ? parent.slice(at + 1) : undefined;
     apiRef.current
       .docOpPreview(op, pageId, parentId)
       .then((next) => {
-        if (!alive) return;
+        if (!previews.isCurrent(ticket, scope)) return;
         setPreview(next);
         setPhase("ready");
         // 복제의 처음 제목 — 문서의 지금 제목에서 사본 이름을 만든다(미리보기가 제목을 안다).
@@ -69,17 +80,36 @@ export function DocOpDialog({
           setTitle((before) => (before === "" ? defaultCopyTitle(next.title) : before));
       })
       .catch((err: unknown) => {
-        if (!alive) return;
+        if (!previews.isCurrent(ticket, scope)) return;
         setPhase("failed");
         setLoadError(err instanceof Error ? err.message : String(err));
       });
     return () => {
-      alive = false;
+      previews.invalidate();
     };
-  }, [op, pageId, parent, picksParent]);
+  }, [daemon.api, op, pageId, parent, picksParent, previews, retry]);
 
+  // 2026-11-12 UI 조사 U-073 — 원격 쓰기는 반복하지 않고 목록만 다시 가져온다.
+  const recover = async () => {
+    if (recoveryBusy.current) return;
+    recoveryBusy.current = true;
+    setRecovering(true);
+    setRecoveryError(false);
+    try {
+      await apiRef.current.confluenceImportNow();
+      if (plans === null) throw new Error("PlansContext is required");
+      await plans.refreshListAndWait();
+      onClose();
+    } catch {
+      setRecoveryError(true);
+    } finally {
+      recoveryBusy.current = false;
+      setRecovering(false);
+    }
+  };
   const send = async () => {
-    if (sending || locked || phase !== "ready" || preview === null) return;
+    if (writeStarted.current || sending || locked || phase !== "ready" || preview === null) return;
+    writeStarted.current = true;
     setSending(true);
     setError(null);
     const commandId = crypto.randomUUID().toLowerCase();
@@ -122,7 +152,7 @@ export function DocOpDialog({
   return (
     <ModalFrame
       onClose={onClose}
-      locked={sending}
+      locked={sending || recovering}
       label={L.docOps.dialogTitle(op)}
       className="nx-da"
     >
@@ -134,9 +164,16 @@ export function DocOpDialog({
           </p>
         )}
         {phase === "failed" && (
-          <p className="nx-banner nx-banner--red" role="alert">
-            {loadError}
-          </p>
+          <div className="nx-banner nx-banner--red" role="alert">
+            <p>{loadError}</p>
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm"
+              onClick={() => setRetry((n) => n + 1)}
+            >
+              {L.plans.retry}
+            </button>
+          </div>
         )}
         {keepBody && preview !== null && (
           <>
@@ -205,6 +242,22 @@ export function DocOpDialog({
         )}
       </ModalBody>
       <ModalFoot>
+        {(result?.state === "unknown" || error !== null) && (
+          <button
+            type="button"
+            className="nx-btn"
+            disabled={recovering}
+            onClick={() => void recover()}
+          >
+            {recovering ? <Spin /> : null}
+            {recovering ? L.plans.importing : L.plans.importNow}
+          </button>
+        )}
+        {recoveryError && (
+          <p className="nx-banner nx-banner--red" role="alert">
+            {L.plans.importFailed}
+          </p>
+        )}
         <button
           type="button"
           className="nx-btn nx-btn--pri"

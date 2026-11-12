@@ -82,7 +82,7 @@ test("토큰 안내 — 글에 나타난 토큰만, 나타난 순서대로", () 
   );
   assert.deepEqual(
     legend.map((item) => item.label),
-    ["이미지", "코멘트 닻", "정보 상자"],
+    ["이미지", "코멘트가 붙은 위치", "정보 상자"],
   );
   assert.deepEqual(tokenLegend("토큰이 없는 글", tokens), []);
 });
@@ -165,7 +165,7 @@ test("토큰의 사람 말 — 대표 갈래와 매크로 · 모르는 이름", 
   assert.equal(say("macro:custom-thing"), "custom-thing 매크로");
   assert.equal(say("image"), "이미지");
   assert.equal(say("link:user"), "사람 멘션");
-  assert.equal(say("comment-anchor"), "코멘트 닻");
+  assert.equal(say("comment-anchor"), "코멘트가 붙은 위치");
   assert.equal(say("table:merged"), "병합 셀이 있는 표");
   assert.equal(say("heading:complex"), "복잡한 단락");
   assert.equal(say("format:bold"), "글 모양");

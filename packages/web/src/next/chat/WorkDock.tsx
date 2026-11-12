@@ -1,3 +1,4 @@
+import type { DraftRefEntry } from "@colonova-design/protocol";
 import { useRef, useState } from "react";
 import { todoProgress } from "../../lib/todo-plan";
 import { L } from "../labels";
@@ -5,6 +6,7 @@ import type { DockRow } from "../lib/dock";
 import type { RunPlan as PlanShape } from "../lib/run-plan";
 import { Elapsed } from "../status/Elapsed";
 import { Popover } from "../ui/Popover";
+import { ReadState } from "../ui/ReadState";
 import { ChevIcon, FileSmIcon, SparkIcon } from "./icons";
 import { PlanRefStrip } from "./PlanRefStrip";
 import { RunPlanList } from "./RunPlan";
@@ -26,6 +28,9 @@ export function WorkDock({
   stopping,
   onAskGo,
   entries,
+  refEntries,
+  refPhase = "ready",
+  onRefsRetry = () => {},
   daemon,
   sessionId,
   nav,
@@ -46,6 +51,9 @@ export function WorkDock({
   onAskGo: () => void;
   /** 이 대화의 근거 — 0 이면 칩이 없다. */
   entries: number;
+  refEntries?: DraftRefEntry[];
+  refPhase?: "loading" | "ready" | "failed";
+  onRefsRetry?: () => void;
   daemon: Parameters<typeof PlanRefStrip>[0]["daemon"];
   sessionId: string | null;
   nav: Parameters<typeof PlanRefStrip>[0]["nav"];
@@ -53,7 +61,7 @@ export function WorkDock({
   const [open, setOpen] = useState(false);
   const [refsOpen, setRefsOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
-  if (row === null && entries === 0) return null;
+  if (row === null && entries === 0 && refPhase === "ready") return null;
   return (
     <div className="nx-dock" role="status">
       {row?.kind === "run" && (
@@ -63,8 +71,9 @@ export function WorkDock({
             ref={anchor}
             type="button"
             className="nx-dock-main"
-            aria-haspopup="dialog"
-            aria-expanded={open}
+            disabled={plan === null}
+            aria-haspopup={plan === null ? undefined : "dialog"}
+            aria-expanded={plan === null ? undefined : open}
             title={L.chat.plan.title}
             onClick={() => setOpen((was) => !was)}
           >
@@ -100,7 +109,19 @@ export function WorkDock({
           <span className="nx-dock-act">{L.chat.dock.askGo}</span>
         </button>
       )}
-      {row?.kind === "notice" && <div className="nx-dock-note">{row.text}</div>}
+      {row?.kind === "notice" && (
+        <div className="nx-dock-note" title={row.text}>
+          {row.text}
+        </div>
+      )}
+      {refPhase !== "ready" && (
+        <ReadState
+          state={
+            refPhase === "failed" ? { phase: "failed", onRetry: onRefsRetry } : { phase: "loading" }
+          }
+          title={refPhase === "failed" ? L.planTab.refsReadFailed : L.readState.loading}
+        />
+      )}
       {entries > 0 && (
         <button
           type="button"
@@ -116,7 +137,14 @@ export function WorkDock({
       {/* 근거 줄은 칩이 열 때만 아래로 펼쳐진다 — 펼침은 사람이 청한 두 번째 줄이라
           한 줄 규칙을 깨지 않는다(알약의 목록과 같은 길). */}
       {refsOpen && entries > 0 && (
-        <PlanRefStrip daemon={daemon} sessionId={sessionId} sentCount={0} nav={nav} forceOpen />
+        <PlanRefStrip
+          daemon={daemon}
+          sessionId={sessionId}
+          sentCount={0}
+          nav={nav}
+          entries={refEntries}
+          forceOpen
+        />
       )}
     </div>
   );

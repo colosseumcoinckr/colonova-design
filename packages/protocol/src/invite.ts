@@ -52,6 +52,42 @@ export interface InviteNotify {
   slack?: { kind: "webhook"; url: string } | { kind: "bot"; token: string; channel: string };
 }
 
+/** 초대 파일의 창구 칸(2026-11-12 설계 결정 ㉱) — 막혔을 때 앱이 사용자에게 보여 줄
+ *  물어볼 곳. 셋 다 선택이고 전부 비면 칸 자체가 없는 것이다(읽는 쪽이 모르는 칸은
+ *  무시하므로 `v` 는 올리지 않는다). 데몬은 기계 설정(machine.json)에 저장해
+ *  `DaemonStatus.support` 로 내보낸다. */
+export interface InviteSupport {
+  /** 물어볼 사람 — 40자까지. */
+  name?: string;
+  /** 대화방 이름 — 60자까지. */
+  room?: string;
+  /** 대화방 주소 — `https://` 만 받고 300자까지. */
+  url?: string;
+}
+
+/** support 칸의 글자 한도 — 읽는 쪽(normalizeInvite · 데몬의 저장 판정)이 함께 쓴다. */
+const SUPPORT_LIMITS = { name: 40, room: 60, url: 300 } as const;
+
+/**
+ * 초대 파일의 support 칸 판독 — 형식이 틀리면(문자열 · 배열 · 숫자) 초대 전체를
+ * 거절하지 않고 없는 칸으로 친다. 칸마다 앞뒤 공백을 걷고, 한도를 넘거나 `url` 이
+ * `https://` 가 아니면 그 칸만 버린다 — 나머지 칸은 산다. 셋 다 비면 undefined.
+ * machine.support.set 선로와 상태의 저장 값(JSON 문자열)도 같은 판정을 거친다.
+ */
+export function parseSupport(value: unknown): InviteSupport | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  const name = trimmed(raw.name);
+  const room = trimmed(raw.room);
+  const url = trimmed(raw.url);
+  const support: InviteSupport = {
+    ...(name && name.length <= SUPPORT_LIMITS.name ? { name } : {}),
+    ...(room && room.length <= SUPPORT_LIMITS.room ? { room } : {}),
+    ...(url && url.length <= SUPPORT_LIMITS.url && url.startsWith("https://") ? { url } : {}),
+  };
+  return Object.keys(support).length > 0 ? support : undefined;
+}
+
 /** 정규화된 초대장 — 토큰과 프로젝트 목록이 전부다. */
 export interface NormalizedInvite {
   token: string;
@@ -59,6 +95,8 @@ export interface NormalizedInvite {
   readme?: string;
   /** 초대 v4: 개발자 알림의 Slack 길 — 없으면 이 초대장은 알림을 건드리지 않는다. */
   notify?: InviteNotify;
+  /** 창구 칸(2026-11-12 결정 ㉱) — 막혔을 때 물어볼 곳. 없으면 앱은 «개발팀»이라고만 말한다. */
+  support?: InviteSupport;
   projects: InviteProject[];
 }
 
@@ -270,7 +308,8 @@ export function disambiguateProjectNames(
  *   (fallbackName), approveCommands 는 `!== false`, reviewers·authorName 은
  *   v2 에서만, baseBranch 없으면 "main".
  * - v3 · v4 → projects 목록을 그대로 검증한다. v4 는 여기에 기계 몫(notify)과
- *   프로젝트별 defaults·lifecycle 을 더 읽는다 — 모르는 값은 버린다.
+ *   프로젝트별 defaults·lifecycle 을 더 읽는다 — 모르는 값은 버린다. 창구 칸
+ *   (support, 2026-11-12 결정 ㉱)은 판과 무관하게 읽는다 — 형식이 틀리면 그 칸만 버린다.
  * - v 가 1·2·3·4 가 아니면 "version", token 이 비면 "token", 목록이 비었거나
  *   repoUrl 없는 항목이 있으면 "projects", 선로 한도를 넘으면 "limit".
  * - 같은 레포(sameRepo)가 목록에 두 번 있으면 뒤의 것을 버린다 — 한도 검사보다
@@ -393,6 +432,8 @@ export function normalizeInvite(value: unknown): NormalizeResult {
       ...(trimmed(file.readme) ? { readme: trimmed(file.readme) } : {}),
       // 초대 v4 의 기계 몫 — 개발자 알림의 Slack 길(PLAN L11). 옛 판에는 없다.
       ...(file.v === 4 && parseNotify(file.notify) ? { notify: parseNotify(file.notify) } : {}),
+      // 창구 칸(2026-11-12 결정 ㉱) — 형식이 틀려도 초대 전체는 산다. 그 칸만 없는 것이다.
+      ...(parseSupport(file.support) ? { support: parseSupport(file.support) } : {}),
       projects: named,
     },
   };

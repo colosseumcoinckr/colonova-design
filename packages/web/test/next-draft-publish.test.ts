@@ -8,6 +8,7 @@ import {
   changeSummary,
   newCommandId,
   nextNotation,
+  previewStateOf,
   resultLine,
   stageInputNeeded,
 } from "../src/next/plans/draft/publish-model.ts";
@@ -89,6 +90,22 @@ test("막는 이유 — 열한 갈래마다 글이 있고 다음 행동이 맞�
   );
 });
 
+test("한 줄 상태 — 판 숫자 셋 대신 처지를 고른다(2026-11-12 결정 ㉰)", () => {
+  // 새 문서는 기준 판이 없다 — 원본 판과 무관하게 «새 문서» 가 선다.
+  assert.equal(previewStateOf(preview({ baseVersion: null, remoteVersion: null })), "new");
+  // 원본을 읽지 못하면 «확인하지 못했어요» — 기준 판과 견주는 말은 세우지 않는다.
+  assert.equal(previewStateOf(preview({ remoteVersion: null })), "unread");
+  // 원본이 출발 판보다 앞서면 «바뀌었어요» — 막는 판정(`remote-newer`)과는 다른 표시다.
+  assert.equal(previewStateOf(preview({ baseVersion: 3, remoteVersion: 5 })), "moved");
+  // 같은 판 · 본 적 없는 처지(원본이 기준보다 낮음)는 «최신에서 출발» 로 둔다.
+  assert.equal(previewStateOf(preview({ baseVersion: 3, remoteVersion: 3 })), "latest");
+  assert.equal(previewStateOf(preview({ baseVersion: 3, remoteVersion: 2 })), "latest");
+  // 네 열쇠 모두 사람의 말이 있다 — 칸과 판정이 어긋나면 여기서 잡힌다.
+  for (const key of ["new", "unread", "moved", "latest"] as const) {
+    assert.ok(L.drafts.previewState[key].length > 0, `${key} 의 글이 비어 있다`);
+  }
+});
+
 test("바뀜 요약 — 바뀜 · 새로 · 지움 수를 한 줄로 세고 지운 보호 조각은 사람의 말로 선다", () => {
   const lines = changeSummary(
     preview({
@@ -129,13 +146,24 @@ test("결과 처지 — 여섯 처지마다 한 줄이 선다", () => {
   assert.equal(resultLine(result("applied", { version: 7 })), "발행했어요 — Confluence 판 7");
   assert.equal(resultLine(result("unknown")), "결과 확인 필요");
   assert.equal(resultLine(result("conflict")), L.drafts.resultConflict);
-  assert.equal(resultLine(result("not-applied")), L.drafts.resultNotApplied);
+  assert.equal(
+    resultLine(result("not-applied")),
+    "이번 발행이 적용되지 않은 것으로 확인됐어요. 내용을 확인하고 다시 발행해 주세요.",
+  );
   assert.equal(
     resultLine(result("failed", { detail: "Confluence 가 거절했어요" })),
     "Confluence 가 거절했어요",
   );
-  assert.equal(resultLine(result("failed")), "발행이 실패했어요");
+  assert.equal(resultLine(result("failed")), "발행하지 못했어요");
   assert.equal(resultLine(result("closed-unconfirmed")), L.drafts.resultClosed);
+});
+
+// 2026-11-12 UI 조사 검토 R5 — 새 문서가 없을 때도 같은 한 줄로 미적용과 다음 행동을 말한다.
+test("새 문서 미적용 안내는 기존 원본이나 아래 이유를 전제하지 않는다", () => {
+  assert.equal(
+    resultLine(result("not-applied", { pageId: null, detail: "원격에 새 문서가 없다" })),
+    "이번 발행이 적용되지 않은 것으로 확인됐어요. 내용을 확인하고 다시 발행해 주세요.",
+  );
 });
 
 test("결과 처치의 실패 — 막는 이유의 기계 이름은 사람의 말로 바꿔 선다", () => {

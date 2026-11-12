@@ -71,7 +71,7 @@ test("초안 머리의 상태 줄 — 어디서 시작했고 무엇이 바뀌었
   assert.equal(L.drafts.metaLine(11, 0, 0), "Confluence 판 11 에서 시작");
   assert.equal(L.drafts.metaLine(null, 0, 3), "새 문서 초안 · 새로 3");
   // 개정 번호는 툴팁(`meta`)에 남는다 — 기획 근거 칩의 `개정 N` 과 맞춰 볼 때 쓴다.
-  assert.match(L.drafts.meta(5, 11), /개정 5/);
+  assert.match(L.drafts.meta(5, 11), /판 5/);
 });
 
 /** 창 대신 — 이벤트를 받는 손 하나를 꽂을 수 있는 과녁. */

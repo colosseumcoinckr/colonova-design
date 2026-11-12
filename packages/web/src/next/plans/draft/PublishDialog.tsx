@@ -18,6 +18,7 @@ import {
   blockerLines,
   newCommandId,
   nextNotation,
+  previewStateOf,
   resultLine,
   stageInputNeeded,
 } from "./publish-model";
@@ -242,44 +243,29 @@ export function PublishDialog({
                 {banner}
               </p>
             )}
-            <dl className="nx-pb-facts">
-              <div className="nx-pb-fact">
-                <dt>{L.drafts.previewTarget}</dt>
-                <dd>
-                  {preview.kind === "create"
-                    ? preview.parent === null
-                      ? L.drafts.newDoc
-                      : `${preview.parent.title} · ${L.drafts.newDoc}`
-                    : preview.title}
-                </dd>
-              </div>
-              {preview.kind === "update" && preview.titleChanged && (
+            <section className="nx-pb-summary" aria-label={L.drafts.previewTarget}>
+              <dl className="nx-pb-facts">
                 <div className="nx-pb-fact">
-                  <dt>{L.drafts.previewTitle}</dt>
+                  <dt>{L.drafts.previewTarget}</dt>
                   <dd>
-                    <span className="nx-pb-before">{baseTitle ?? "—"}</span>
-                    {" → "}
-                    {preview.title}
+                    {preview.kind === "create"
+                      ? preview.parent === null
+                        ? L.drafts.newDoc
+                        : `${preview.parent.title} · ${L.drafts.newDoc}`
+                      : preview.title}
                   </dd>
                 </div>
-              )}
-            </dl>
-            {/* 발행 전 점검(2026-10-31 F) — 막지 않고 한 줄씩 알린다. */}
-            <section className="nx-pb-precheck" aria-label={L.drafts.precheckHead}>
-              <h3 className="nx-pb-sec-t">{L.drafts.precheckHead}</h3>
-              <ul className="nx-pb-precheck-list">
-                <li>
-                  {L.drafts.precheckChanges(
-                    preview.changes.changed + preview.changes.inserted + preview.changes.deleted,
-                  )}
-                </li>
-                {keptOps > 0 && <li>{L.drafts.precheckKept(keptOps)}</li>}
-                {commentCount !== null && <li>{L.drafts.precheckComments(commentCount)}</li>}
-                <li>{L.drafts.precheckScreen}</li>
-              </ul>
-            </section>
-            <section className="nx-pb-changes" aria-label={L.drafts.changeHeading}>
-              <h3 className="nx-pb-sec-t">{L.drafts.changeHeading}</h3>
+                {preview.kind === "update" && preview.titleChanged && (
+                  <div className="nx-pb-fact">
+                    <dt>{L.drafts.previewTitle}</dt>
+                    <dd>
+                      <span className="nx-pb-before">{baseTitle ?? "—"}</span>
+                      {" → "}
+                      {preview.title}
+                    </dd>
+                  </div>
+                )}
+              </dl>
               <p className="nx-pb-counts">
                 {L.drafts.changeCounts(
                   preview.changes.changed,
@@ -291,136 +277,159 @@ export function PublishDialog({
                     : L.drafts.blocker["nothing-to-publish"])}
               </p>
             </section>
-            {review !== null && (
-              <DraftChanges
-                base={review.base}
-                title={review.draft.title}
-                blocks={review.draft.blocks}
-                api={daemon.api}
-                pageId={review.draft.pageId}
-              />
-            )}
-            {preview.changes.protectedRemoved.length > 0 && (
-              <section
-                className="nx-banner nx-banner--amber"
-                aria-label={L.drafts.protectedHeading}
-              >
-                <div className="nx-banner-body">
-                  <b>{L.drafts.protectedHeading}</b>
-                  <ul className="nx-pb-change-list">
-                    {preview.changes.protectedRemoved.map((machine, at) => (
-                      // biome-ignore lint/suspicious/noArrayIndexKey: 같은 종류의 조각도 각각 보인다.
-                      <li key={`${at}-${machine}`}>
-                        {L.drafts.protectedRemoved(L.drafts.tokenLabel(machine))}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </section>
-            )}
-            <p className="nx-pb-vers">
-              {L.drafts.previewVersions(
-                preview.baseVersion,
-                preview.remoteVersion,
-                preview.draftRevision,
+            <section className="nx-pb-changes" aria-label={L.drafts.changeHeading}>
+              <h3 className="nx-pb-sec-t">{L.drafts.changeHeading}</h3>
+              {review !== null && (
+                <DraftChanges
+                  base={review.base}
+                  title={review.draft.title}
+                  blocks={review.draft.blocks}
+                  api={daemon.api}
+                  pageId={review.draft.pageId}
+                />
               )}
-            </p>
-            {stageNeeded && (
-              <section className="nx-pb-stage" aria-label={L.drafts.stageNotation}>
-                <p className="nx-pb-stage-note">{L.drafts.stageRevision}</p>
-                <div className="nx-pb-stage-row">
-                  <label className="nx-field">
-                    <span className="nx-field-label">{L.drafts.stageNotation}</span>
-                    <input
-                      className="nx-input nx-pb-stage-in"
-                      aria-label={L.drafts.stageNotation}
-                      value={notation}
-                      disabled={sending}
-                      // 선로의 표기 한계 — 데몬의 검사에 부딪치기 전에 칸이 먼저 멈춘다(2026-10-23 화면 확인 · R2 검토 3).
-                      maxLength={DRAFT_LIMITS.notationLength}
-                      onChange={(event) => setNotation(event.target.value)}
-                    />
-                  </label>
-                  <label className="nx-field">
-                    <span className="nx-field-label">{L.drafts.stageReason}</span>
-                    <select
-                      className="nx-input"
-                      aria-label={L.drafts.stageReason}
-                      value={reason}
-                      disabled={sending}
-                      onChange={(event) => setReason(event.target.value)}
-                    >
-                      <option value="">{L.drafts.stageReasonPick}</option>
-                      {REASONS.map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                {notation.length >= DRAFT_LIMITS.notationLength && (
-                  <p className="nx-pb-limit">{L.drafts.limitNotationLength}</p>
-                )}
-              </section>
-            )}
-            {blockers.length > 0 && (
-              <ul className="nx-pb-blockers">
-                {blockers.map((line) => (
-                  <li key={line.text} className="nx-banner nx-banner--amber nx-pb-blocker">
-                    <InfoIcon />
-                    <span className="nx-banner-body">{line.text}</span>
-                    {line.action === "rebase" && (
-                      <button
-                        type="button"
-                        className="nx-btn nx-btn--sm"
-                        disabled={busy || sending}
-                        onClick={() => void rebase()}
-                      >
-                        {L.drafts.actionRebase}
-                      </button>
-                    )}
-                    {line.action === "open-confluence" && link !== null && (
-                      <a
-                        className="nx-btn nx-btn--sm"
-                        href={link}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={linkClick}
-                      >
-                        {L.drafts.actionOpen}
-                        <ExternalIcon />
-                      </a>
-                    )}
-                    {line.action === "resolve" && (
-                      <button type="button" className="nx-btn nx-btn--sm" onClick={onClose}>
-                        {L.drafts.actionResolve}
-                      </button>
-                    )}
-                    {line.action === "recheck" && pendingCommandId !== null && (
-                      <button
-                        type="button"
-                        className="nx-btn nx-btn--sm"
-                        disabled={busy || sending}
-                        onClick={() => void recheck(pendingCommandId)}
-                      >
-                        {L.drafts.actionRecheck}
-                      </button>
+            </section>
+            <div className="nx-pb-guidance">
+              {/* 발행 전 점검(2026-10-31 F) — 막지 않고 한 줄씩 알린다. */}
+              <section className="nx-pb-precheck" aria-label={L.drafts.precheckHead}>
+                <h3 className="nx-pb-sec-t">{L.drafts.precheckHead}</h3>
+                <ul className="nx-pb-precheck-list">
+                  <li>
+                    {L.drafts.precheckChanges(
+                      preview.changes.changed + preview.changes.inserted + preview.changes.deleted,
                     )}
                   </li>
-                ))}
-              </ul>
-            )}
-            {result !== null && (
-              <p className="nx-banner nx-banner--blue" role="status">
-                {resultLine(result)}
-              </p>
-            )}
-            {error !== null && (
-              <p className="nx-banner nx-banner--red" role="alert">
-                {error}
-              </p>
-            )}
+                  {keptOps > 0 && <li>{L.drafts.precheckKept(keptOps)}</li>}
+                  {commentCount !== null && <li>{L.drafts.precheckComments(commentCount)}</li>}
+                  <li>{L.drafts.precheckScreen}</li>
+                </ul>
+              </section>
+              {preview.changes.protectedRemoved.length > 0 && (
+                <section
+                  className="nx-banner nx-banner--amber"
+                  aria-label={L.drafts.protectedHeading}
+                >
+                  <div className="nx-banner-body">
+                    <b>{L.drafts.protectedHeading}</b>
+                    <ul className="nx-pb-change-list">
+                      {preview.changes.protectedRemoved.map((machine, at) => (
+                        // biome-ignore lint/suspicious/noArrayIndexKey: 같은 종류의 조각도 각각 보인다.
+                        <li key={`${at}-${machine}`}>
+                          {L.drafts.protectedRemoved(L.drafts.tokenLabel(machine))}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </section>
+              )}
+              <p className="nx-pb-vers">{L.drafts.previewState[previewStateOf(preview)]}</p>
+              <details className="nx-pb-vers-fold">
+                <summary>{L.drafts.previewVersionsToggle}</summary>
+                <p className="nx-pb-vers">
+                  {L.drafts.previewVersions(
+                    preview.baseVersion,
+                    preview.remoteVersion,
+                    preview.draftRevision,
+                  )}
+                </p>
+              </details>
+              {stageNeeded && (
+                <section className="nx-pb-stage" aria-label={L.drafts.stageNotation}>
+                  <p className="nx-pb-stage-note">{L.drafts.stageRevision}</p>
+                  <div className="nx-pb-stage-row">
+                    <label className="nx-field">
+                      <span className="nx-field-label">{L.drafts.stageNotation}</span>
+                      <input
+                        className="nx-input nx-pb-stage-in"
+                        aria-label={L.drafts.stageNotation}
+                        value={notation}
+                        disabled={sending}
+                        // 선로의 표기 한계 — 데몬의 검사에 부딪치기 전에 칸이 먼저 멈춘다(2026-10-23 화면 확인 · R2 검토 3).
+                        maxLength={DRAFT_LIMITS.notationLength}
+                        onChange={(event) => setNotation(event.target.value)}
+                      />
+                    </label>
+                    <label className="nx-field">
+                      <span className="nx-field-label">{L.drafts.stageReason}</span>
+                      <select
+                        className="nx-input"
+                        aria-label={L.drafts.stageReason}
+                        value={reason}
+                        disabled={sending}
+                        onChange={(event) => setReason(event.target.value)}
+                      >
+                        <option value="">{L.drafts.stageReasonPick}</option>
+                        {REASONS.map(([value, label]) => (
+                          <option key={value} value={value}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  {notation.length >= DRAFT_LIMITS.notationLength && (
+                    <p className="nx-pb-limit">{L.drafts.limitNotationLength}</p>
+                  )}
+                </section>
+              )}
+              {blockers.length > 0 && (
+                <ul className="nx-pb-blockers">
+                  {blockers.map((line) => (
+                    <li key={line.text} className="nx-banner nx-banner--amber nx-pb-blocker">
+                      <InfoIcon />
+                      <span className="nx-banner-body">{line.text}</span>
+                      {line.action === "rebase" && (
+                        <button
+                          type="button"
+                          className="nx-btn nx-btn--sm"
+                          disabled={busy || sending}
+                          onClick={() => void rebase()}
+                        >
+                          {L.drafts.actionRebase}
+                        </button>
+                      )}
+                      {line.action === "open-confluence" && link !== null && (
+                        <a
+                          className="nx-btn nx-btn--sm"
+                          href={link}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={linkClick}
+                        >
+                          {L.drafts.actionOpen}
+                          <ExternalIcon />
+                        </a>
+                      )}
+                      {line.action === "resolve" && (
+                        <button type="button" className="nx-btn nx-btn--sm" onClick={onClose}>
+                          {L.drafts.actionResolve}
+                        </button>
+                      )}
+                      {line.action === "recheck" && pendingCommandId !== null && (
+                        <button
+                          type="button"
+                          className="nx-btn nx-btn--sm"
+                          disabled={busy || sending}
+                          onClick={() => void recheck(pendingCommandId)}
+                        >
+                          {L.drafts.actionRecheck}
+                        </button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {result !== null && (
+                <p className="nx-banner nx-banner--blue" role="status">
+                  {resultLine(result)}
+                </p>
+              )}
+              {error !== null && (
+                <p className="nx-banner nx-banner--red" role="alert">
+                  {error}
+                </p>
+              )}
+            </div>
           </>
         )}
       </ModalBody>

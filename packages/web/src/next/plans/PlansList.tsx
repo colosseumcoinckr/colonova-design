@@ -8,6 +8,7 @@ import {
   useRef,
 } from "react";
 import { L } from "../labels";
+import { composing } from "../lib/ime";
 import { ChevronRightIcon, CloseIcon, SearchIcon, Spin } from "../ui/icons";
 import { PlansEmpty as Empty } from "./PlansEmpty";
 import { draftMarkOf, filterPlanRows, type PlanListRow, visiblePlanRows } from "./plans-list";
@@ -15,6 +16,21 @@ import type { PlanPhase } from "./use-plans";
 import { bodyOnlyHits, highlightParts } from "./view/doc-view-model";
 import type { BodySearch } from "./view/use-body-search";
 import "./view/doc-view.css";
+
+/** 2026-11-12 UI 조사 U-068 — 꼬리의 종류와 판을 남기고 가운데를 줄인다. 전체 제목은 줄의 title로 읽는다. */
+function MiddleTitle({ title }: { title: string }) {
+  const chars = Array.from(
+    new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(title),
+    (part) => part.segment,
+  );
+  const at = Math.max(0, chars.length - 12);
+  return (
+    <span className="nx-pl-title">
+      <span className="nx-pl-title-main">{at === 0 ? title : chars.slice(0, at).join("")}</span>
+      {at > 0 && <span className="nx-pl-title-tail">{chars.slice(at).join("")}</span>}
+    </span>
+  );
+}
 
 /** 찾기 · 작성 중인 초안 · 문서 트리. 자리를 옮겨도 접힘과 스크롤을 지킨다(2026-10-23 화면 전면 재설계 §3.2). */
 
@@ -143,7 +159,10 @@ export function PlansList({
   let body: ReactNode;
   // 안내 한 장(연결 전 · 비었을 때 · 읽지 못했을 때)은 칸의 세로 한가운데에 선다 — 목록은 위에서부터 선다.
   let centered = true;
-  if (compact && rows.length === 0) {
+  if (compact && rows.length === 0 && (phase === "failed" || expired)) {
+    centered = false;
+    body = null;
+  } else if (compact && rows.length === 0) {
     centered = false;
     body = (
       <p className="nx-pl-note" role="status">
@@ -231,6 +250,7 @@ export function PlansList({
             spellCheck={false}
             onChange={(event) => onQuery(event.target.value)}
             onKeyDown={(event) => {
+              if (composing(event)) return;
               if (event.key === "Escape" && query !== "") {
                 event.preventDefault();
                 onQuery("");
@@ -304,7 +324,7 @@ export function PlansList({
                       className="nx-pl-row nx-pl-row--off"
                       title={`${row.title} · ${L.plans.unsupportedKind(row.type ?? "")}`}
                     >
-                      <span className="nx-pl-title">{row.title}</span>
+                      <MiddleTitle title={row.title} />
                       <span className="nx-pl-kind">{L.plans.unsupportedKind(row.type ?? "")}</span>
                     </span>
                   ) : (
@@ -315,13 +335,16 @@ export function PlansList({
                       }`}
                       data-page-id={row.pageId}
                       data-fold={folding ? (isClosed ? "closed" : "open") : undefined}
-                      aria-current={lastViewed === row.pageId ? "true" : undefined}
+                      aria-current={
+                        row.kind === "doc" && lastViewed === row.pageId ? "page" : undefined
+                      }
+                      aria-expanded={row.kind === "folder" ? !isClosed : undefined}
                       title={row.title}
                       onClick={() =>
                         row.kind === "folder" ? onToggle(row.pageId) : onOpen(row.pageId)
                       }
                     >
-                      <span className="nx-pl-title">{row.title}</span>
+                      <MiddleTitle title={row.title} />
                       {filtering && row.folder !== "" && (
                         <span className="nx-pl-folder">{row.folder}</span>
                       )}
@@ -349,11 +372,12 @@ export function PlansList({
                   <button
                     type="button"
                     className={`nx-pl-row nx-pl-row--ghost${activeDraftKey === draft.docKey ? " nx-pl-row--on" : ""}`}
+                    aria-current={activeDraftKey === draft.docKey ? "page" : undefined}
                     aria-label={`${draft.title} · ${L.drafts.newDraftGroup}`}
                     title={draft.title}
                     onClick={() => onOpenDraft(draft.docKey)}
                   >
-                    <span className="nx-pl-title">{draft.title}</span>
+                    <MiddleTitle title={draft.title} />
                     {draft.parentTitle != null && (
                       <span className="nx-pl-folder">{draft.parentTitle}</span>
                     )}
@@ -383,11 +407,12 @@ export function PlansList({
                       <button
                         type="button"
                         className={`nx-pl-row nx-pl-row--hit${lastViewed === hit.pageId ? " nx-pl-row--on" : ""}`}
+                        aria-current={lastViewed === hit.pageId ? "page" : undefined}
                         data-page-id={hit.pageId}
                         title={hit.title}
                         onClick={() => onOpen(hit.pageId, query)}
                       >
-                        <span className="nx-pl-title">{hit.title}</span>
+                        <MiddleTitle title={hit.title} />
                         <span className="nx-pl-snippet">
                           {highlightParts(hit.snippet, query).map((part, at) =>
                             part.hit ? (

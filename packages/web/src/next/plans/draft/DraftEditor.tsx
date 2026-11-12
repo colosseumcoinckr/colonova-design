@@ -10,6 +10,7 @@ import type {
 } from "@colonova-design/protocol";
 import { ArrowDown, ArrowUp, History, type LucideIcon, Maximize2 } from "lucide-react";
 import {
+  Fragment,
   type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -20,9 +21,13 @@ import {
 } from "react";
 import { Markdown } from "../../../components/Markdown";
 import type { Daemon, PlanDocComment } from "../../../lib/daemon-client";
+import { timeAgo } from "../../../lib/format";
 import { linkClick } from "../../../lib/open-link";
 import { L } from "../../labels";
+import { composing } from "../../lib/ime";
+import { createLatestRequest } from "../../lib/latest-request";
 import type { ShellNav } from "../../slots";
+import { CopyButton } from "../../ui/CopyButton";
 import { InlineConfirm } from "../../ui/InlineConfirm";
 import {
   CloseIcon,
@@ -36,6 +41,7 @@ import {
   TrashIcon,
 } from "../../ui/icons";
 import { Popover } from "../../ui/Popover";
+import { ReadState } from "../../ui/ReadState";
 import { DocComments } from "../comments/DocComments";
 import { DocDrawer } from "../comments/DocDrawer";
 import { DocMenu } from "../doc-actions/DocMenu";
@@ -130,6 +136,7 @@ function TitleField({
   busy: boolean;
   onApply: (title: string) => void;
 }) {
+  const titleTrigger = useRef<HTMLButtonElement>(null);
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(title);
   useEffect(() => {
@@ -139,6 +146,7 @@ function TitleField({
     return (
       <button
         type="button"
+        ref={titleTrigger}
         className="nx-dr-title"
         disabled={locked}
         title={L.drafts.blockEdit}
@@ -167,9 +175,11 @@ function TitleField({
       onChange={(event) => setValue(event.target.value)}
       onBlur={commit}
       onKeyDown={(event) => {
+        if (composing(event)) return;
         if (event.key === "Enter") {
           event.preventDefault();
           commit();
+          requestAnimationFrame(() => titleTrigger.current?.focus());
           return;
         }
         if (event.key === "Escape") {
@@ -179,6 +189,7 @@ function TitleField({
           event.stopPropagation();
           setEditing(false);
           setValue(title);
+          requestAnimationFrame(() => titleTrigger.current?.focus());
         }
       }}
     />
@@ -228,6 +239,7 @@ function InlineEdit({
   onApply,
   onApplyEdits,
   onCancel,
+  onBuffer,
 }: {
   block: DraftBlock;
   busy: boolean;
@@ -235,6 +247,7 @@ function InlineEdit({
   /** 여러 블록을 한 요청에 싣는 길(붙여넣기) — 성공하면 칸은 닫힌다. 없으면 기본 붙여넣기. */
   onApplyEdits?: (edits: DraftEdit[]) => Promise<boolean>;
   onCancel: () => void;
+  onBuffer: (view: DraftBlockView) => void;
 }) {
   const view = block.view;
   // 종류가 바뀌는 동안의 모양 — 표식을 치면 문단이 목록 · 제목 모양으로 옮겨 앉는다.
@@ -262,6 +275,15 @@ function InlineEdit({
     }
     return viewOf(value);
   };
+  useEffect(() => {
+    onBuffer(
+      shape.kind === "heading"
+        ? { ...shape, text: value }
+        : shape.kind === "list"
+          ? { ...shape, items: textToList(value) }
+          : { kind: "paragraph", text: value },
+    );
+  }, [onBuffer, shape, value]);
   const commit = () => {
     if (value.trim() === "" || (value === initial && shape.kind === view.kind)) {
       onCancel();
@@ -338,6 +360,7 @@ function InlineEdit({
         onChange={(event) => onValue(event.target.value)}
         onPaste={onPaste}
         onKeyDown={(event) => {
+          if (composing(event)) return;
           if (event.key === "Escape" && !escapeOwnedByLayer()) {
             event.preventDefault();
             event.stopPropagation();
@@ -473,6 +496,7 @@ function BlockEdit({
   onApply,
   onApplyEdits,
   onCancel,
+  onBuffer,
 }: {
   block: DraftBlock;
   busy: boolean;
@@ -480,8 +504,10 @@ function BlockEdit({
   /** 여러 블록을 한 요청에 싣는 길(붙여넣기) — 성공하면 칸은 닫힌다. 없으면 기본 붙여넣기. */
   onApplyEdits?: (edits: DraftEdit[]) => Promise<boolean>;
   onCancel: () => void;
+  onBuffer: (view: DraftBlockView) => void;
 }) {
   const [draft, setDraft] = useState<DraftBlockView>(block.view);
+  useEffect(() => onBuffer(draft), [draft, onBuffer]);
   const legend = useMemo(() => tokenLegend(paneText(draft), block.tokens), [draft, block.tokens]);
   // 서식 있는 붙여넣기 — 칸의 값(`field` 로 읽고 쓰는 글)에 커서 자리로 끼우고 남는 조각을 뒤에 잇는다.
   const onPaste = (
@@ -518,6 +544,7 @@ function BlockEdit({
   // ⌘/Ctrl+Enter 로 적용하고, Esc 는 제 자리에서만 멈춘다(편집기 닫기로 새지 않게). 창 · 메뉴(겹판 · 팝)가
   // 열려 있으면 그것의 Esc 다 — 고치던 블록을 취소하지 않는다(2026-10-23 · R3 발견 3).
   const onPaneKey = (event: ReactKeyboardEvent) => {
+    if (composing(event)) return;
     if (event.key === "Escape") {
       if (escapeOwnedByLayer()) return;
       event.preventDefault();
@@ -671,6 +698,7 @@ function BlockCard({
   onInlineApply,
   onApplyEdits,
   onCancelEdit,
+  onBuffer,
   keptStep,
   onKeptApply,
   onKeptDrop,
@@ -703,6 +731,7 @@ function BlockCard({
   /** 여러 블록을 한 요청에 싣는 길(붙여넣기 · 2026-11-02 마크다운 길) — 성공하면 고치는 칸은 닫힌다. */
   onApplyEdits?: (edits: DraftEdit[]) => Promise<boolean>;
   onCancelEdit: () => void;
+  onBuffer: (view: DraftBlockView) => void;
   /** 사람이 고친 블록에 남은 AI 걸음(2026-10-31 2단계) — 없으면 null. */
   keptStep: { proposalId: string; opId: string; summary: string } | null;
   onKeptApply: () => void;
@@ -713,12 +742,21 @@ function BlockCard({
   pageId: string | null;
 }) {
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const removeTrigger = useRef<HTMLButtonElement>(null);
+  const editTrigger = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(editing);
+  useEffect(() => {
+    if (wasEditing.current && !editing) editTrigger.current?.focus();
+    wasEditing.current = editing;
+  }, [editing]);
+
   // 좁힌 값 — JSX 안에서 다시 좁히지 않게 처지와 원격 쪽을 미리 가린다.
   const preserved = block.view.kind === "preserved" ? block.view : null;
   const theirs = block.status === "conflict" && block.theirs !== undefined ? block.theirs : null;
   // 제자리 고치기(2026-10-31 4단계) — 두 번 누르거나 연필로 연다. 표는 모양이 있어 기존의 고치는 칸이 이긴다.
   const inline =
     editing &&
+    block.editable &&
     theirs === null &&
     (block.view.kind === "paragraph" ||
       block.view.kind === "heading" ||
@@ -752,6 +790,7 @@ function BlockCard({
           busy={busy}
           onApply={onInlineApply}
           onApplyEdits={onApplyEdits}
+          onBuffer={onBuffer}
           onCancel={onCancelEdit}
         />
       ) : (
@@ -767,12 +806,14 @@ function BlockCard({
           }}
           title={L.drafts.inlineEdit}
         >
-          <Markdown
-            text={viewToMarkdown(block.view, block.tokens)}
-            tokens={tokens}
-            machineTokens={block.tokens}
-            onTokenRemove={onTokenRemove}
-          />
+          <fieldset className="nx-dr-token-guard" disabled={locked || busy}>
+            <Markdown
+              text={viewToMarkdown(block.view, block.tokens)}
+              tokens={tokens}
+              machineTokens={block.tokens}
+              onTokenRemove={locked || busy ? undefined : onTokenRemove}
+            />
+          </fieldset>
         </div>
       )}
       {/* 사람이 고친 블록 위의 남은 걸음(2026-10-31 2단계) — AI 의 고침 · 버리기가 그 자리에 선다. */}
@@ -784,7 +825,7 @@ function BlockCard({
             <button
               type="button"
               className="nx-btn nx-btn--sm"
-              disabled={busy}
+              disabled={locked || busy}
               onClick={onKeptApply}
             >
               {L.drafts.keptApply}
@@ -792,7 +833,7 @@ function BlockCard({
             <button
               type="button"
               className="nx-btn nx-btn--sm nx-btn--ghost"
-              disabled={busy}
+              disabled={locked || busy}
               onClick={onKeptDrop}
             >
               {L.drafts.keptDrop}
@@ -816,7 +857,7 @@ function BlockCard({
           <button
             type="button"
             className="nx-btn nx-btn--sm"
-            disabled={busy}
+            disabled={locked || busy}
             onClick={() => onResolve(block.id, "mine")}
           >
             {L.drafts.useMine}
@@ -824,7 +865,7 @@ function BlockCard({
           <button
             type="button"
             className="nx-btn nx-btn--sm"
-            disabled={busy}
+            disabled={locked || busy}
             onClick={() => onResolve(block.id, "theirs")}
           >
             {L.drafts.useTheirs}
@@ -838,6 +879,7 @@ function BlockCard({
             className="nx-ibtn nx-ibtn--sm"
             title={L.drafts.blockEdit}
             aria-label={L.drafts.blockEdit}
+            ref={editTrigger}
             disabled={locked || busy}
             onClick={onEdit}
           >
@@ -882,6 +924,7 @@ function BlockCard({
           className="nx-ibtn nx-ibtn--sm"
           title={L.drafts.remove}
           aria-label={L.drafts.remove}
+          ref={removeTrigger}
           disabled={locked || busy}
           onClick={() => (preserved !== null ? setConfirmRemove(true) : onDelete())}
         >
@@ -926,6 +969,7 @@ function BlockCard({
       {confirmRemove && (
         <InlineConfirm
           className="nx-dr-confirm"
+          returnRef={removeTrigger}
           title={L.drafts.removePreservedTitle}
           body={L.drafts.removePreservedBody}
           confirmLabel={L.drafts.removeConfirm}
@@ -933,18 +977,19 @@ function BlockCard({
           tone="danger"
           onConfirm={() => {
             setConfirmRemove(false);
-            onDelete();
+            if (!locked && !busy) onDelete();
           }}
           onCancel={() => setConfirmRemove(false)}
         />
       )}
       {/* 표는 모양이 있어 기존의 고치는 칸이 이긴다 — 문단 · 제목 · 목록은 제자리 고치기가 앞선다. */}
-      {editing && theirs === null && !inline && (
+      {editing && block.editable && preserved === null && theirs === null && !inline && (
         <BlockEdit
           block={block}
           busy={busy}
           onApply={onApplySet}
           onApplyEdits={onApplyEdits}
+          onBuffer={onBuffer}
           onCancel={onCancelEdit}
         />
       )}
@@ -956,6 +1001,13 @@ function BlockCard({
  * 초안 편집기의 몸통 — 판(useDraft 의 결과)이 건네진 뒤의 모양. 연결은 `DraftEditor` 가 맡고,
  * 여기는 문장과 손길만 산다 — 시험 · 견본이 판을 넣어 그림을 볼 수 있는 자리다.
  */
+export type RecoveredEdit = { id: string; at: number; text: string };
+export type DraftRecovery = {
+  items: RecoveredEdit[];
+  add: (saved: RecoveredEdit) => void;
+  dismiss: (id: string) => void;
+};
+
 export function DraftEditorSurface({
   daemon,
   draft,
@@ -970,6 +1022,9 @@ export function DraftEditorSurface({
   rows,
   onExpandChat,
   onDocApplied,
+  onRestoreChange,
+  mutationLocked = false,
+  recovery,
 }: {
   daemon: Daemon;
   draft: DraftHand;
@@ -993,11 +1048,82 @@ export function DraftEditorSurface({
   onExpandChat?: () => void;
   /** 문서 관리가 마쳤음 — 목록 갱신과 열기는 칸의 몫이다. */
   onDocApplied?: (result: DocOpResult) => void;
+  onRestoreChange?: (docKey: string, active: boolean) => void;
+  mutationLocked?: boolean;
+  recovery?: DraftRecovery;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const editingRef = useRef(editingId);
+  editingRef.current = editingId;
+  const editBuffer = useRef<{
+    at: number;
+    kind: DraftBlockView["kind"];
+    text: string;
+    tokens: Record<string, string>;
+  } | null>(null);
+  // 단독 견본의 계약만 남긴다. 앱에서는 PlansColumn의 문서별 목록을 받는다(2026-11-12 U-098).
+  const [localRecovered, setLocalRecovered] = useState<RecoveredEdit[]>([]);
+  const addLocalRecovery = useCallback((saved: RecoveredEdit) => {
+    setLocalRecovered((before) => [...before, saved]);
+  }, []);
+  const recovered = recovery?.items ?? localRecovered;
+  const addRecovery = recovery?.add ?? addLocalRecovery;
+  const captureBuffer = useCallback((view: DraftBlockView) => {
+    const saved = editBuffer.current;
+    if (saved !== null) saved.text = viewToMarkdown(view, saved.tokens);
+  }, []);
+  // 2026-11-12 U-098 R2 — 종류가 달라진 자식은 그리지 않고 이전 입력부터 문서별 목록으로 옮긴다.
+  useEffect(() => {
+    if (editingId === null || draft.view === null) return;
+    const block = draft.view.blocks.find((one) => one.id === editingId);
+    const saved = editBuffer.current;
+    if (
+      block?.editable &&
+      block.view.kind !== "preserved" &&
+      block.status !== "conflict" &&
+      block.view.kind === saved?.kind
+    )
+      return;
+    if (saved !== null) {
+      editBuffer.current = null;
+      addRecovery({ id: crypto.randomUUID(), at: saved.at, text: saved.text });
+    }
+    editingRef.current = null;
+    setEditingId(null);
+  }, [draft.view, editingId, addRecovery]);
+
   const [addingFor, setAddingFor] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const restoreBusy = useRef(false);
+  const [revisionLoading, setRevisionLoading] = useState<number | null>(null);
+  const [revisionFailed, setRevisionFailed] = useState<number | null>(null);
+  const [revisionsFailed, setRevisionsFailed] = useState(false);
+  const [revisionAttempt, setRevisionAttempt] = useState(0);
+  const [restoreNotice, setRestoreNotice] = useState<string | null>(null);
+  const revisionGate = useRef(createLatestRequest<object>()).current;
+  const revisionScope = useMemo(
+    () => ({ api: daemon.api, docKey: draft.view?.docKey }),
+    [daemon.api, draft.view?.docKey],
+  );
+  const revisionScopeRef = useRef(revisionScope);
+  revisionScopeRef.current = revisionScope;
+  const closeTrigger = useRef<HTMLButtonElement>(null);
+  const discardTrigger = useRef<HTMLElement | null>(null);
+  const discardMenuRef = useRef<HTMLSpanElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 대상을 바꾸면 앞 요청을 무효화한다.
+  useEffect(() => {
+    revisionGate.invalidate();
+    setViewing(null);
+    restoreBusy.current = false;
+    setRestoring(false);
+    setRestoreNotice(null);
+    setRevisionLoading(null);
+    setRevisionFailed(null);
+    return () => revisionGate.invalidate();
+  }, [revisionScope, revisionGate]);
+
   // 발행 확인 창과 결과 띠의 손(2026-10-23 · 최종 구현 계획 F2).
   const [publishOpen, setPublishOpen] = useState(false);
   const [bandBusy, setBandBusy] = useState(false);
@@ -1029,8 +1155,6 @@ export function DraftEditorSurface({
   const [compareOpen, setCompareOpen] = useState(false);
   // 다른 창 · 대화에서 초안이 바뀌어 다시 읽은 판 — 고치는 칸이 열려 있으면 한 줄로 알린다. 칸의 글은
   // 지우지 않는다(2026-10-23 화면 확인 · R2 검토 의심 완화). 제 손으로 바꾼 개정은 알림을 세우지 않는다.
-  const editingRef = useRef(false);
-  editingRef.current = editingId !== null;
   const seenRevision = useRef<number | null>(null);
   // 보존 블록의 읽기 전용 그림(2026-10-30 사용자 요청) — 상자 · 표 · 그림을 자리 표시 대신 보인다.
   const previews = useBlockPreviews(
@@ -1045,39 +1169,48 @@ export function DraftEditorSurface({
     const first = seenRevision.current === null;
     seenRevision.current = revision;
     // 개정 어긋남의 한 줄(staleReloaded)이 서 있으면 그것으로 족하다.
-    if (!first && draft.notice === null && editingRef.current) nav.toast(L.drafts.reloadedOutside);
+    if (!first && draft.notice === null && editingRef.current !== null)
+      nav.toast(L.drafts.reloadedOutside);
   }, [draft.view, draft.notice, nav]);
 
   // 판 고르기의 목록(2026-10-31 2단계) — 개정이 오를 때마다 조용히 다시 읽는다.
   const viewDocKey = draft.view?.docKey ?? null;
   const viewRevision = draft.view?.revision ?? null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 다시 읽기 횟수는 요청의 방아쇠다.
   useEffect(() => {
     if (viewDocKey === null || viewRevision === null) return;
     let live = true;
+    setRevisions(null);
+    setRevisionsFailed(false);
     daemon.api
       .draftRevisions(viewDocKey)
       .then((rows) => {
         if (live) setRevisions(rows);
       })
       .catch(() => {
-        if (live) setRevisions(null);
+        if (live) setRevisionsFailed(true);
       });
     return () => {
       live = false;
     };
-  }, [daemon.api, viewDocKey, viewRevision]);
+  }, [daemon.api, viewDocKey, viewRevision, revisionAttempt]);
 
   // 옛 판의 읽기(2026-10-31 2단계) — 판 고르기에서 고른 판을 읽기로 내려 놓는다.
   const openRevision = async (revision: number) => {
+    if (viewDocKey === null || restoreBusy.current || mutationLocked || editingId !== null) return;
     setRevOpen(false);
-    // 옛 판의 읽기가 견주기를 대신 보인다 — 단추의 켜짐과 같은 그림으로 맞춘다(2026-11-12 B5).
     setCompareOpen(false);
-    if (viewDocKey === null) return;
+    setViewing(null);
+    setRevisionLoading(revision);
+    setRevisionFailed(null);
+    const ticket = revisionGate.begin(revisionScopeRef.current);
     try {
       const old = await daemon.api.draftRevision(viewDocKey, revision);
-      setViewing(old);
-    } catch (err: unknown) {
-      nav.toast(err instanceof Error ? err.message : String(err));
+      if (revisionGate.isCurrent(ticket, revisionScopeRef.current)) setViewing(old);
+    } catch {
+      if (revisionGate.isCurrent(ticket, revisionScopeRef.current)) setRevisionFailed(revision);
+    } finally {
+      if (revisionGate.isCurrent(ticket, revisionScopeRef.current)) setRevisionLoading(null);
     }
   };
 
@@ -1101,6 +1234,9 @@ export function DraftEditorSurface({
     setComments(null);
     setCommentsOpen(false);
     if (commentsPageId !== null) loadComments();
+    return () => {
+      commentsSeq.current += 1;
+    };
   }, [commentsPageId, loadComments]);
   // DocComments 의 다시 읽기는 문서 단위다 — 같은 읽기로 갈음한다.
   const refreshComments = useCallback(() => loadComments(), [loadComments]);
@@ -1184,7 +1320,13 @@ export function DraftEditorSurface({
   }, [draft, nav]);
 
   const applyEdits = useCallback(
-    async (edits: DraftEdit[]) => {
+    async (edits: DraftEdit[], owner?: string) => {
+      if (
+        restoreBusy.current ||
+        mutationLocked ||
+        (editingRef.current !== null && editingRef.current !== owner)
+      )
+        return null;
       setApplying(true);
       const next = await draft.apply(edits);
       // 제 손으로 바꾼 개정은 다시 읽음 알림을 세우지 않는다 — 판이 이미 새것이다.
@@ -1192,7 +1334,7 @@ export function DraftEditorSurface({
       setApplying(false);
       return next;
     },
-    [draft.apply],
+    [draft.apply, mutationLocked],
   );
 
   // 더하기 — 꽂은 자리 바로 다음의 새 블록을 고치는 칸으로 연다.
@@ -1204,19 +1346,29 @@ export function DraftEditorSurface({
     if (next === null) return;
     const at = afterId === null ? 0 : next.blocks.findIndex((block) => block.id === afterId) + 1;
     const fresh = next.blocks[at];
-    if (fresh !== undefined) setEditingId(fresh.id);
+    if (fresh !== undefined) {
+      editBuffer.current = {
+        at,
+        kind: fresh.view.kind,
+        text: viewToMarkdown(fresh.view, fresh.tokens),
+        tokens: fresh.tokens,
+      };
+      setEditingId(fresh.id);
+    }
   };
 
   const setBlock = async (blockId: string, next: DraftBlockView) => {
-    const reply = await applyEdits([{ type: "set", blockId, view: next }]);
-    if (reply !== null) setEditingId(null);
+    const reply = await applyEdits([{ type: "set", blockId, view: next }], blockId);
+    if (reply !== null) setEditingId((current) => (current === blockId ? null : current));
   };
 
   // 붙여넣기의 여러 블록(2026-11-02 마크다운 길) — 한 요청에 싣고 성공하면 고치는 칸을 닫는다.
   const pasteEdits = useCallback(
     async (edits: DraftEdit[]) => {
-      const next = await applyEdits(edits);
-      if (next !== null) setEditingId(null);
+      const owner = editingRef.current;
+      if (owner === null) return false;
+      const next = await applyEdits(edits, owner);
+      if (next !== null) setEditingId((current) => (current === owner ? null : current));
       return next !== null;
     },
     [applyEdits],
@@ -1224,11 +1376,13 @@ export function DraftEditorSurface({
 
   // 편집기의 Esc — 고치는 칸 · 입력 칸의 Esc 는 제 자리에서 멈추고, 여기까지 오면 읽는 화면으로 돌아간다.
   const onEscape = (event: ReactKeyboardEvent) => {
+    if (composing(event)) return;
     if (event.key !== "Escape" || event.defaultPrevented) return;
     // 발행 창 · 근거 보내기 · 메뉴의 Esc 는 그것들이 닫는다 — 편집기까지 닫지 않는다(2026-10-23 화면 확인).
     if (escapeOwnedByLayer()) return;
     event.preventDefault();
     event.stopPropagation();
+    if (editingId !== null || restoreBusy.current) return;
     onClose();
   };
 
@@ -1248,15 +1402,30 @@ export function DraftEditorSurface({
 
   // 고른 옛 판으로 되돌리기 — 스냅숏의 모습을 그대로 붙인다(2026-10-31 2단계).
   const restoreTo = async (revision: number) => {
-    if (viewDocKey === null) return;
+    if (viewDocKey === null || restoreBusy.current || mutationLocked || editingId !== null) return;
+    restoreBusy.current = true;
+    onRestoreChange?.(viewDocKey, true);
+    setRestoring(true);
+    setRestoreNotice(null);
+    const ticket = revisionGate.begin(revisionScopeRef.current);
     try {
       const next = await daemon.api.draftRevisionRestore(viewDocKey, revision);
+      if (!revisionGate.isCurrent(ticket, revisionScopeRef.current)) return;
       setViewing(null);
       seenRevision.current = next.revision;
-      nav.toast(L.drafts.revRestoreDone(revision));
+      setRestoreNotice(L.drafts.revRestoreDone(revision));
       draft.reload();
-    } catch (err: unknown) {
-      nav.toast(err instanceof Error ? err.message : String(err));
+    } catch {
+      if (revisionGate.isCurrent(ticket, revisionScopeRef.current))
+        setRestoreNotice(L.drafts.revRestoreFailed);
+    } finally {
+      onRestoreChange?.(viewDocKey, false);
+      if (revisionGate.isCurrent(ticket, revisionScopeRef.current)) {
+        draft.reload();
+        thread?.reload();
+        restoreBusy.current = false;
+        setRestoring(false);
+      }
     }
   };
 
@@ -1266,6 +1435,7 @@ export function DraftEditorSurface({
     view: DraftBlockView,
     name: string,
   ): Promise<void> => {
+    if (editingRef.current !== null || restoreBusy.current || mutationLocked) return;
     const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
     const pattern = new RegExp(`⟦/?${escaped}⟧`, "gu");
     const strip = (text: string): string =>
@@ -1282,8 +1452,7 @@ export function DraftEditorSurface({
         })),
       };
     if (next === null) return;
-    const reply = await applyEdits([{ type: "set", blockId, view: next }]);
-    if (reply !== null) setEditingId(null);
+    await applyEdits([{ type: "set", blockId, view: next }]);
   };
 
   // 사람이 고친 블록에 남은 AI 걸음(2026-10-31 2단계) — 대화의 변경안 가운데 이 블록을 겨눈 열린 걸음.
@@ -1314,6 +1483,7 @@ export function DraftEditorSurface({
 
   // 남은 걸음의 AI 의 고침 — 사람이 고른 덮어쓰기라 직접 고침의 길(edit)로 들어가고, 걸음은 거절로 닫는다.
   const applyKeptStep = async (blockId: string): Promise<void> => {
+    if (editingRef.current !== null || restoreBusy.current || mutationLocked) return;
     const step = keptStepOf(blockId);
     if (step === null) return;
     const op = (thread?.thread?.proposals ?? [])
@@ -1338,6 +1508,7 @@ export function DraftEditorSurface({
 
   // 남은 걸음의 버리기 — 걸음만 거절로 닫는다. 초안은 그대로다.
   const dropKeptStep = (blockId: string): void => {
+    if (editingRef.current !== null || restoreBusy.current || mutationLocked) return;
     const step = keptStepOf(blockId);
     if (step === null) return;
     void thread?.reject(step.proposalId, [step.opId]);
@@ -1376,7 +1547,42 @@ export function DraftEditorSurface({
 
   const view = draft.view;
   const blocks = view.blocks;
-  const locked = view.state === "publishing" || view.state === "result-unknown";
+  const locked =
+    mutationLocked ||
+    view.state === "publishing" ||
+    view.state === "result-unknown" ||
+    restoring ||
+    revisionLoading !== null;
+  const recoveredAt = (at: number) =>
+    recovered.map((saved) =>
+      Math.min(saved.at, blocks.length) === at ? (
+        <li className="nx-dr-block" key={saved.id}>
+          <p className="nx-dr-limit" role="status">
+            {L.drafts.editRecovered}
+          </p>
+          <textarea
+            className="nx-input nx-input--area nx-dr-area"
+            aria-label={L.drafts.editRecovered}
+            readOnly
+            value={saved.text}
+          />
+          <p className="nx-dr-limit">{L.drafts.editRecoveredNote}</p>
+          <div className="nx-dr-recovered-acts">
+            <CopyButton text={saved.text} label={L.drafts.copyText} />
+            <button
+              type="button"
+              className="nx-btn"
+              onClick={() => {
+                if (recovery !== undefined) recovery.dismiss(saved.id);
+                else setLocalRecovered((before) => before.filter((one) => one.id !== saved.id));
+              }}
+            >
+              {L.modal.close}
+            </button>
+          </div>
+        </li>
+      ) : null,
+    );
   const viewLink = site !== null && view.pageId !== null ? docUrl(site, view.pageId) : null;
   // 머리의 한 줄 상태 — 기계의 개정 번호 대신 어디서 시작했고 무엇이 바뀌었는지를 말한다(2026-10-23 기획자
   // 화면 손질 D3). 개정 번호는 툴팁에 남는다 — 기획 근거 칩의 `개정 N` 과 맞춰 볼 때 쓴다.
@@ -1391,7 +1597,7 @@ export function DraftEditorSurface({
     (view.state === "editing" || view.state === "conflict") &&
     (pending > 0 || view.baseVersion === null);
   // 코멘트 수(B8) — 안 풀린 것만 센다(읽는 문서 머리와 같은 잣대). 아직 읽는 중이거나 실패면
-  // 단추가 서지 않는다 — 수를 모르면 세지 않는다.
+  // 단추는 남기고 수를 모르면 세지 않는다(2026-11-12 UI 조사 U-094).
   const commentCount =
     comments !== null && comments !== "failed"
       ? comments.filter((one) => one.resolved !== true).length
@@ -1405,92 +1611,21 @@ export function DraftEditorSurface({
     (pending === 0 && view.state === "editing" && !titleChanged && view.baseVersion !== null);
   return (
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 편집기의 Esc 는 읽는 화면으로 돌아오는 길이다
-    <article className="nx-dr" aria-busy={applying} onKeyDown={onEscape}>
-      {/* 머리는 두 줄이다 — 제목이 첫 줄을 다 쓰고, 상태와 단추가 둘째 줄에 선다. 단추가 제목과 한 줄을 나누면
-          제목이 낱말마다 꺾였다(2026-10-23 기획자 화면 손질 F4). */}
+    <article className="nx-dr" aria-busy={applying || restoring} onKeyDown={onEscape}>
+      {/* 2026-11-12 UI 조사 U-084 — 제목 / 상태와 발행 / 보조 손 세 줄이다. */}
       <header className="nx-dr-hd">
         <div className="nx-dr-heading">
           <TitleField
             title={view.title}
-            locked={locked}
+            locked={locked || applying || editingId !== null}
             busy={applying}
             onApply={(title) => void applyEdits([{ type: "title", title }])}
           />
         </div>
         <div className="nx-dr-hd-row">
           <div className="nx-dr-meta" title={L.drafts.meta(view.revision, view.baseVersion)}>
-            {/* 판 고르기(2026-10-31 2단계) — 문서 판 머리의 `초안 판 N ▾`. 옛 판을 읽고 있는 동안에는
-                그 판의 이름이 서고 눌러 지금 판으로 돌아온다. */}
-            {viewing !== null ? (
-              <button
-                type="button"
-                className="nx-btn nx-btn--sm nx-dr-revpick"
-                onClick={() => setViewing(null)}
-              >
-                {L.drafts.revOldTitle(viewing.revision)}
-                <CloseIcon />
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="nx-btn nx-btn--sm nx-dr-revpick"
-                ref={revAnchor}
-                aria-expanded={revOpen}
-                aria-haspopup="menu"
-                aria-label={L.drafts.revMenu}
-                onClick={() => setRevOpen((before) => !before)}
-              >
-                <History className="nx-i" size={13} aria-hidden="true" />
-                {L.drafts.revPicker(view.revision)}
-              </button>
-            )}
-            {revOpen && viewing === null && (
-              <Popover
-                anchor={revAnchor}
-                role="menu"
-                label={L.drafts.revMenu}
-                align="start"
-                float
-                onClose={() => setRevOpen(false)}
-              >
-                {view.baseVersion !== null && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="nx-mi"
-                    onClick={() => void openRevision(0)}
-                  >
-                    <span className="nx-mi-t">{L.drafts.revConfluence(view.baseVersion)}</span>
-                    <span className="nx-mi-s">{L.drafts.revStart}</span>
-                  </button>
-                )}
-                {(revisions ?? []).map((row) => (
-                  <button
-                    key={row.revision}
-                    type="button"
-                    role="menuitem"
-                    className="nx-mi"
-                    onClick={() => void openRevision(row.revision)}
-                  >
-                    <span className="nx-mi-t">
-                      {L.drafts.revPicker(row.revision)}
-                      {row.revision === view.revision && (
-                        <span className="nx-mi-s"> · {L.drafts.revCurrent}</span>
-                      )}
-                    </span>
-                    <span className="nx-mi-s">
-                      {revisionOriginLabel(row)} ·{" "}
-                      {L.drafts.revChanges(
-                        row.changes.changed,
-                        row.changes.inserted,
-                        row.changes.deleted,
-                      )}
-                    </span>
-                  </button>
-                ))}
-              </Popover>
-            )}
             <span>{L.drafts.metaLine(view.baseVersion, changed, inserted)}</span>
+            <span>{L.plans.docUpdated(timeAgo(Date.parse(view.updatedAt)))}</span>
             {unpublished && <span className="nx-pill">{L.drafts.unpublished}</span>}
             {view.stage.notation !== null && (
               <span className="nx-pill nx-pill--accent" title={L.drafts.stageClosed}>
@@ -1501,34 +1636,7 @@ export function DraftEditorSurface({
               </span>
             )}
           </div>
-          <div className="nx-dr-acts-hd">
-            {view.baseVersion !== null && (
-              <button
-                type="button"
-                className={`nx-btn${compareOpen ? " nx-btn--accent" : ""}`}
-                aria-pressed={compareOpen}
-                onClick={() => {
-                  setViewing(null);
-                  setCompareOpen((before) => !before);
-                }}
-              >
-                {L.drafts.compareConfluence}
-              </button>
-            )}
-            {view.pageId !== null && commentCount !== null && (
-              <button
-                type="button"
-                className="nx-btn"
-                ref={commentsTriggerRef}
-                aria-expanded={commentsOpen}
-                onClick={() => setCommentsOpen((before) => !before)}
-              >
-                {L.plans.drawerComments(commentCount)}
-              </button>
-            )}
-            <button type="button" className="nx-btn" onClick={() => setSendOpen(true)}>
-              {L.drafts.sendToScreen}
-            </button>
+          <div className="nx-dr-primary">
             {/* 으뜸 단추는 `발행` 하나다 — 쓰기가 꺼져 있으면(게이트) 이 자리만 보통 단추가 되고
                 옆의 칩 하나가 잠긴 것을 한 번에 말한다(2026-10-31 E · 쓰기 꺼짐은 한 곳). 발행할
                 고침이 없으면(publishDemoted) 보통 단추다 — 누르면 창이 이유를 말한다(2026-11-12 B4). */}
@@ -1540,35 +1648,179 @@ export function DraftEditorSurface({
             <button
               type="button"
               className={`nx-btn${writable === false || publishDemoted ? "" : " nx-btn--pri"}`}
-              disabled={locked || applying}
+              disabled={locked || applying || editingId !== null}
               onClick={() => setPublishOpen(true)}
             >
               {L.drafts.publish}
             </button>
-            {onExpandChat !== undefined && (
-              <button
-                type="button"
-                className="nx-ibtn"
-                title={L.drafts.threadExpand}
-                aria-label={L.drafts.threadExpand}
-                onClick={onExpandChat}
-              >
-                <Maximize2 className="nx-i" size={15} strokeWidth={1.8} aria-hidden="true" />
-              </button>
-            )}
+          </div>
+        </div>
+        <div className="nx-dr-acts-hd">
+          {/* 판 고르기(2026-10-31 2단계) — 문서 판 머리의 `초안 판 N ▾`. 옛 판을 읽고 있는 동안에는
+                그 판의 이름이 서고 눌러 지금 판으로 돌아온다. */}
+          {viewing !== null ? (
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm nx-dr-revpick"
+              disabled={locked || applying}
+              onClick={() => setViewing(null)}
+            >
+              {L.drafts.revOldTitle(viewing.revision)}
+              <CloseIcon />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm nx-dr-revpick"
+              ref={revAnchor}
+              aria-expanded={revOpen}
+              aria-haspopup="menu"
+              disabled={locked || applying || editingId !== null}
+              aria-label={L.drafts.revMenu}
+              onClick={() => setRevOpen((before) => !before)}
+            >
+              <History className="nx-i" size={13} aria-hidden="true" />
+              {L.drafts.revPicker(view.revision)}
+            </button>
+          )}
+          {revOpen && viewing === null && (
+            <Popover
+              anchor={revAnchor}
+              role="menu"
+              label={L.drafts.revMenu}
+              align="start"
+              float
+              onClose={() => setRevOpen(false)}
+            >
+              {view.baseVersion !== null && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="nx-mi"
+                  onClick={() => void openRevision(0)}
+                >
+                  <span className="nx-mi-t">{L.drafts.revConfluence(view.baseVersion)}</span>
+                  <span className="nx-mi-s">{L.drafts.revStart}</span>
+                </button>
+              )}
+              <ReadState
+                state={
+                  revisionsFailed
+                    ? { phase: "failed", onRetry: () => setRevisionAttempt((n) => n + 1) }
+                    : {
+                        phase:
+                          revisions === null
+                            ? "loading"
+                            : revisions.length === 0
+                              ? "empty"
+                              : "ready",
+                      }
+                }
+                title={revisionsFailed ? L.drafts.revisionsFailed : undefined}
+              />
+              {(revisions ?? []).map((row) => (
+                <button
+                  key={row.revision}
+                  type="button"
+                  role="menuitem"
+                  className="nx-mi"
+                  onClick={() => void openRevision(row.revision)}
+                >
+                  <span className="nx-mi-t">
+                    {L.drafts.revPicker(row.revision)}
+                    {row.revision === view.revision && (
+                      <span className="nx-mi-s"> · {L.drafts.revCurrent}</span>
+                    )}
+                  </span>
+                  <span className="nx-mi-s">
+                    {revisionOriginLabel(row)} ·{" "}
+                    {L.drafts.revChanges(
+                      row.changes.changed,
+                      row.changes.inserted,
+                      row.changes.deleted,
+                    )}
+                  </span>
+                </button>
+              ))}
+            </Popover>
+          )}
+
+          {view.baseVersion !== null && (
+            <button
+              type="button"
+              className={`nx-btn nx-btn--sm${compareOpen ? " nx-btn--accent" : ""}`}
+              disabled={locked || applying || editingId !== null}
+              aria-pressed={compareOpen}
+              onClick={() => {
+                setViewing(null);
+                setCompareOpen((before) => !before);
+              }}
+            >
+              {L.drafts.compareConfluence}
+            </button>
+          )}
+          {view.pageId !== null && (
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm"
+              ref={commentsTriggerRef}
+              aria-expanded={commentsOpen}
+              onClick={() => setCommentsOpen((before) => !before)}
+            >
+              {commentCount === null
+                ? L.drafts.commentsUnknown
+                : L.plans.drawerComments(commentCount)}
+            </button>
+          )}
+          <button type="button" className="nx-btn nx-btn--sm" onClick={() => setSendOpen(true)}>
+            {L.drafts.sendToScreen}
+          </button>
+          {onExpandChat !== undefined && (
+            <button
+              type="button"
+              className="nx-ibtn nx-ibtn--sm"
+              title={L.drafts.threadExpand}
+              aria-label={L.drafts.threadExpand}
+              onClick={onExpandChat}
+            >
+              <Maximize2 className="nx-i" size={15} strokeWidth={1.8} aria-hidden="true" />
+            </button>
+          )}
+          <span ref={discardMenuRef}>
             <DocMenu
               daemon={daemon}
               site={site}
               pageId={view.pageId}
               rows={rows}
               draft
-              locked={locked}
+              locked={locked || applying || editingId !== null}
               onApplied={onDocApplied}
-              onDiscard={() => setConfirmDiscard(true)}
+              onDiscard={() => {
+                discardTrigger.current = discardMenuRef.current?.querySelector("button") ?? null;
+                setConfirmDiscard(true);
+              }}
             />
-          </div>
+          </span>
         </div>
       </header>
+      {editingId !== null && (
+        <p className="nx-dr-draft-note" role="status">
+          {L.drafts.finishEditingFirst}
+        </p>
+      )}
+      {restoring && (
+        <p role="status">
+          <Spin /> {L.drafts.revRestoring}
+        </p>
+      )}
+      {restoreNotice !== null && <p role="status">{restoreNotice}</p>}
+      {revisionLoading !== null && <ReadState state={{ phase: "loading" }} />}
+      {revisionFailed !== null && (
+        <ReadState
+          state={{ phase: "failed", onRetry: () => void openRevision(revisionFailed) }}
+          title={L.drafts.revisionFailed}
+        />
+      )}
       {/* 옛 판의 읽기 띠(2026-10-31 2단계) — 판 고르기에서 앞 판을 열면 읽기만 한다. */}
       {viewing !== null && (
         <div className="nx-banner nx-banner--blue nx-dr-oldrev" role="status">
@@ -1577,6 +1829,7 @@ export function DraftEditorSurface({
           <button
             type="button"
             className="nx-btn nx-btn--sm nx-banner-act"
+            disabled={locked || applying}
             onClick={() => void restoreTo(viewing.revision)}
           >
             {L.drafts.revRestore(viewing.revision)}
@@ -1584,6 +1837,7 @@ export function DraftEditorSurface({
           <button
             type="button"
             className="nx-btn nx-btn--sm nx-btn--ghost nx-banner-act"
+            disabled={locked || applying}
             onClick={() => setViewing(null)}
           >
             {L.drafts.revBack}
@@ -1592,12 +1846,15 @@ export function DraftEditorSurface({
       )}
       {!locked && viewing === null && <p className="nx-dr-draft-note">{L.drafts.draftOnlyNote}</p>}
       {/* 잠금의 한 줄 — 결과 확인 필요 띠가 서면 그 띠가 함께 말한다(띠 둘이 겹쳐 서지 않게 · 2026-10-23 기획자 화면 손질). */}
-      {locked && !(view.state === "result-unknown" && view.pendingCommandId !== null) && (
-        <p className="nx-banner nx-banner--amber nx-dr-lock" role="status">
-          <InfoIcon />
-          {L.drafts.locked}
-        </p>
-      )}
+      {locked &&
+        !restoring &&
+        revisionLoading === null &&
+        !(view.state === "result-unknown" && view.pendingCommandId !== null) && (
+          <p className="nx-banner nx-banner--amber nx-dr-lock" role="status">
+            <InfoIcon />
+            {L.drafts.locked}
+          </p>
+        )}
       {view.state === "result-unknown" && view.pendingCommandId !== null && (
         <div className="nx-dr-bandwrap">
           {/* 띠(role="status")는 상태 문장만 읽힌다 — 단추와 확인판은 띠 밖 같은 자리 아래에 선다
@@ -1635,6 +1892,7 @@ export function DraftEditorSurface({
               type="button"
               className="nx-btn nx-btn--sm nx-btn--ghost"
               disabled={bandBusy}
+              ref={closeTrigger}
               onClick={() => setCloseConfirm(true)}
             >
               {L.drafts.closeNoResend}
@@ -1643,6 +1901,7 @@ export function DraftEditorSurface({
           {closeConfirm && (
             <InlineConfirm
               className="nx-dr-confirm"
+              returnRef={closeTrigger}
               title={L.drafts.closeNoResendTitle}
               body={L.drafts.closeNoResendBody}
               confirmLabel={L.drafts.closeNoResendConfirm}
@@ -1673,6 +1932,7 @@ export function DraftEditorSurface({
       {confirmDiscard && (
         <InlineConfirm
           className="nx-dr-confirm"
+          returnRef={discardTrigger}
           title={L.drafts.discardTitle}
           body={L.drafts.discardBody}
           confirmLabel={L.drafts.discardConfirm}
@@ -1732,77 +1992,105 @@ export function DraftEditorSurface({
               pageId={view.pageId}
             />
           )
-        ) : blocks.length === 0 ? (
-          <div className="nx-dr-empty">
-            <p>{L.drafts.emptyGuide}</p>
-            <div className="nx-dr-empty-acts">
-              {startWithAi !== undefined && (
-                <button
-                  type="button"
-                  className="nx-btn nx-btn--sm"
-                  disabled={locked || applying}
-                  onClick={startWithAi}
-                >
-                  <SparkIcon />
-                  {L.drafts.startWithAi}
-                </button>
-              )}
-              <button
-                type="button"
-                className="nx-btn nx-btn--sm"
-                disabled={locked || applying}
-                onClick={() => void insertBelow(null, "paragraph")}
-              >
-                <PlusIcon />
-                {L.drafts.writeDirectly}
-              </button>
-            </div>
-          </div>
         ) : (
-          <ol className="nx-dr-blocks">
-            {blocks.map((block, at) => (
-              <BlockCard
-                key={block.id}
-                block={block}
-                at={at}
-                count={blocks.length}
-                locked={locked}
-                busy={applying}
-                editing={editingId === block.id}
-                adding={addingFor === block.id}
-                flash={flashIds?.includes(block.id) === true}
-                onEdit={() => setEditingId(block.id)}
-                onAddToggle={() =>
-                  setAddingFor((before) => (before === block.id ? null : block.id))
-                }
-                onInsert={(kind) => void insertBelow(block.id, kind)}
-                onMoveUp={() =>
-                  void applyEdits([
-                    { type: "move", blockId: block.id, afterBlockId: blocks[at - 2]?.id ?? null },
-                  ])
-                }
-                onMoveDown={() => {
-                  const next = blocks[at + 1];
-                  if (next === undefined) return;
-                  void applyEdits([{ type: "move", blockId: block.id, afterBlockId: next.id }]);
-                }}
-                onDelete={() => void applyEdits([{ type: "delete", blockId: block.id }])}
-                onRevert={() => void applyEdits([{ type: "revert", blockId: block.id }])}
-                onResolve={draft.resolve}
-                onApplySet={(next) => void setBlock(block.id, next)}
-                onTokenRemove={(name) => void removeToken(block.id, block.view, name)}
-                onInlineApply={(next) => void setBlock(block.id, next)}
-                onApplyEdits={pasteEdits}
-                onCancelEdit={() => setEditingId(null)}
-                keptStep={keptStepOf(block.id)}
-                onKeptApply={() => void applyKeptStep(block.id)}
-                onKeptDrop={() => void dropKeptStep(block.id)}
-                preview={previews[block.id]}
-                daemon={daemon}
-                pageId={view.pageId}
-              />
-            ))}
-          </ol>
+          <>
+            {blocks.length === 0 && (
+              <div className="nx-dr-empty">
+                <p>{L.drafts.emptyGuide}</p>
+                <div className="nx-dr-empty-acts">
+                  {startWithAi !== undefined && (
+                    <button
+                      type="button"
+                      className="nx-btn nx-btn--sm"
+                      disabled={locked || applying}
+                      onClick={startWithAi}
+                    >
+                      <SparkIcon />
+                      {L.drafts.startWithAi}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm"
+                    disabled={locked || applying}
+                    onClick={() => void insertBelow(null, "paragraph")}
+                  >
+                    <PlusIcon />
+                    {L.drafts.writeDirectly}
+                  </button>
+                </div>
+              </div>
+            )}
+            <ol className="nx-dr-blocks">
+              {blocks.map((block, at) => (
+                <Fragment key={block.id}>
+                  {recoveredAt(at)}
+                  <BlockCard
+                    key={block.id}
+                    block={block}
+                    at={at}
+                    count={blocks.length}
+                    locked={locked || editingId !== null}
+                    busy={applying}
+                    editing={editingId === block.id && editBuffer.current?.kind === block.view.kind}
+                    adding={addingFor === block.id}
+                    flash={flashIds?.includes(block.id) === true}
+                    onEdit={() => {
+                      if (locked || applying || editingRef.current !== null) return;
+                      editBuffer.current = {
+                        at,
+                        kind: block.view.kind,
+                        text: viewToMarkdown(block.view, block.tokens),
+                        tokens: block.tokens,
+                      };
+                      editingRef.current = block.id;
+                      setEditingId(block.id);
+                    }}
+                    onAddToggle={() =>
+                      setAddingFor((before) => (before === block.id ? null : block.id))
+                    }
+                    onInsert={(kind) => void insertBelow(block.id, kind)}
+                    onMoveUp={() =>
+                      void applyEdits([
+                        {
+                          type: "move",
+                          blockId: block.id,
+                          afterBlockId: blocks[at - 2]?.id ?? null,
+                        },
+                      ])
+                    }
+                    onMoveDown={() => {
+                      const next = blocks[at + 1];
+                      if (next === undefined) return;
+                      void applyEdits([{ type: "move", blockId: block.id, afterBlockId: next.id }]);
+                    }}
+                    onDelete={() => void applyEdits([{ type: "delete", blockId: block.id }])}
+                    onRevert={() => void applyEdits([{ type: "revert", blockId: block.id }])}
+                    onResolve={(id, choice) => {
+                      if (editingRef.current === null && !restoreBusy.current && !mutationLocked)
+                        void draft.resolve(id, choice);
+                    }}
+                    onApplySet={(next) => void setBlock(block.id, next)}
+                    onTokenRemove={(name) => void removeToken(block.id, block.view, name)}
+                    onInlineApply={(next) => void setBlock(block.id, next)}
+                    onApplyEdits={pasteEdits}
+                    onBuffer={captureBuffer}
+                    onCancelEdit={() => {
+                      editingRef.current = null;
+                      setEditingId(null);
+                    }}
+                    keptStep={keptStepOf(block.id)}
+                    onKeptApply={() => void applyKeptStep(block.id)}
+                    onKeptDrop={() => void dropKeptStep(block.id)}
+                    preview={previews[block.id]}
+                    daemon={daemon}
+                    pageId={view.pageId}
+                  />
+                </Fragment>
+              ))}
+              {recoveredAt(blocks.length)}
+            </ol>
+          </>
         )}
       </div>
       {/* 코멘트 서랍(2026-11-12 B8) — 읽는 문서와 같은 서랍이다. 코멘트는 초안을 거치지 않는 직접
@@ -1814,9 +2102,10 @@ export function DraftEditorSurface({
           onClose={closeComments}
         >
           {comments === "failed" ? (
-            <p className="nx-pl-note" role="alert">
-              {L.plans.commentsUnavailable}
-            </p>
+            <ReadState
+              state={{ phase: "failed", onRetry: refreshComments }}
+              title={L.plans.commentsUnavailable}
+            />
           ) : comments === null ? (
             <p className="nx-pl-note" role="status">
               <Spin /> {L.plans.reading}
@@ -1881,6 +2170,9 @@ export function DraftEditor({
   rows,
   onExpandChat,
   onDocApplied,
+  onRestoreChange,
+  mutationLocked = false,
+  recovery,
 }: {
   daemon: Daemon;
   /** 초안의 손 — 칸(PlansColumn)이 쥔다. 문서 판과 대화 칸이 같은 손을 보아 첫 고치기의 「읽는 중」과 회복이 한곳에서 흐른다(2026-11-02). */
@@ -1903,10 +2195,16 @@ export function DraftEditor({
   onExpandChat?: () => void;
   /** 문서 관리가 마쳤음 — 목록 갱신은 칸의 몫이다. */
   onDocApplied?: (result: DocOpResult) => void;
+  onRestoreChange?: (docKey: string, active: boolean) => void;
+  mutationLocked?: boolean;
+  recovery: DraftRecovery;
 }) {
   return (
     <DraftEditorSurface
       draft={draft}
+      recovery={recovery}
+      mutationLocked={mutationLocked}
+      {...(onRestoreChange !== undefined ? { onRestoreChange } : {})}
       daemon={daemon}
       site={site}
       nav={nav}

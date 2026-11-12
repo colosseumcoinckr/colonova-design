@@ -17,10 +17,7 @@ const PHASES: Phase[] = ["edit", "review", "sending", "sent", "browser", "failed
 
 test("rejectedBeforeSend: 건네받는 순간 이미 거절된 약속은 나가기 전의 거절이다", async () => {
   // `call` 은 소켓이 열려 있지 않으면 보내지도 않고 곧바로 거절한다.
-  assert.equal(
-    await rejectedBeforeSend(Promise.reject(new Error("아직 연결되지 않았습니다"))),
-    true,
-  );
+  assert.equal(await rejectedBeforeSend(Promise.reject(new Error("아직 연결되지 않았어요"))), true);
 });
 
 test("rejectedBeforeSend: 보낸 뒤에 늦게 거절되는 약속은 나가기 전의 거절이 아니다", async () => {
@@ -37,7 +34,7 @@ test("rejectedBeforeSend: 한참 뒤에 거절돼도 아직 도는 약속은 거
   const judged = rejectedBeforeSend(promise);
   // 판정이 끝난 뒤(다음 매크로 태스크)의 거절 — 시계에 기대지 않아도 같은 답이다.
   await new Promise((resolve) => setTimeout(resolve, 5));
-  reject(new Error("응답이 늦어졌습니다"));
+  reject(new Error("응답이 늦어졌어요"));
   assert.equal(await judged, false);
   await promise.catch(() => undefined);
 });

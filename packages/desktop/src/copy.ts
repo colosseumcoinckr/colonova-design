@@ -34,59 +34,68 @@ export interface NoticeText {
 // ---------------------------------------------------------------------------
 
 export const NOTICE = {
-  done: { tail: "완료", body: "AI가 화면 작업을 마쳤어요. 미리보기를 확인해 보세요." },
+  done: { tail: "완료", body: "AI 가 화면 작업을 마쳤어요. 미리보기를 확인해 주세요." },
   // 설정의 알림 줄이 `확인 요청과 멈춤은 언제나 알려요` 라고 말한다 — 같은 말로 부른다.
-  crashed: { tail: "멈춤", body: "AI가 멈췄어요. 대화에서 이유를 확인할 수 있어요." },
-  askQuestion: { tail: "답 필요", body: "AI가 질문의 답을 기다려요. 대화에서 답해 주세요." },
+  crashed: { tail: "멈춤", body: "AI 가 멈췄어요. 대화에서 이유를 확인할 수 있어요." },
+  askQuestion: {
+    tail: "답 필요",
+    body: "AI 가 답변을 기다리고 있어요. 대화에서 질문을 확인하고 답해 주세요.",
+  },
   askPermission: {
     tail: "확인 필요",
-    body: "AI가 진행해도 되는지 기다려요. 대화에서 확인해 주세요.",
+    body: "AI 가 작업 허용을 기다려요. 대화에서 허용하거나 거절해 주세요.",
   },
   // 게이트의 네 단계 — 사용자 말로는 보관 · 제출 · 화면 확인 · 개발자 작업과의 겹침이다.
   gate: {
-    save: { tail: "보관하지 못했어요", body: "보관을 마치지 못했어요. AI에게 고치도록 맡겼어요." },
+    save: { tail: "보관하지 못했어요", body: "보관을 마치지 못했어요. AI 에게 고치도록 맡겼어요." },
     handoff: {
       tail: "제출하지 못했어요",
-      body: "제출을 마치지 못했어요. AI에게 고치도록 맡겼어요.",
+      body: "제출을 마치지 못했어요. AI 에게 고치도록 맡겼어요.",
     },
-    screen: { tail: "화면 확인", body: "만든 화면에서 오류를 찾았어요. AI에게 고치도록 맡겼어요." },
+    screen: {
+      tail: "화면 확인",
+      body: "만든 화면에서 오류를 찾았어요. AI 에게 고치도록 맡겼어요.",
+    },
     refresh: {
       tail: "최신 작업과 겹쳤어요",
-      body: "개발자가 반영한 최신 작업과 아직 보관하지 않은 작업이 겹쳤어요. AI에게 정리를 맡겼어요.",
+      body: "개발자가 반영한 최신 작업과 아직 보관하지 않은 작업이 겹쳤어요. AI 에게 정리를 맡겼어요.",
     },
   } satisfies Record<"save" | "handoff" | "refresh" | "screen", NoticeLine>,
   // 개발자 쪽 사건 — 단위는 프로젝트다(커미티 B1+A, 2026-09-15).
   handoff: {
     // 웹 L.work.changedEmptyMerged 와 같은 말.
     merged: {
-      tail: "반영됨",
+      tail: "개발자 반영",
       body: "개발자가 이번 작업을 반영했어요. 다음에 고치는 것부터 새 작업이에요.",
     },
     // 웹 L.chat.closed 와 같은 말.
     closed: {
       tail: "요청 닫힘",
-      body: "개발자가 이번 요청을 닫았어요 — 작업은 새 요청으로 옮겨 두었어요. 다시 만든 뒤 제출을 누르면 새 요청으로 가요",
+      body: "개발자가 이번 요청을 닫았어요. 만든 화면은 남아 있어요. 다시 제출하면 새 요청으로 보내요.",
     },
     changes_requested: {
       tail: "코멘트가 왔어요",
-      body: "개발자가 코멘트를 남겼어요. AI에게 반영을 맡겼어요 — 끝나면 알려 드려요.",
+      body: "개발자가 수정을 요청했어요. 대화에서 내용과 AI 대응 상황을 확인해 주세요.",
     },
     // 웹 L.cards.reviewDone(`반영해 같은 요청에 다시 제출했어요`)과 같은 말 — 개발자에게 가는 일은 제출이다.
     replied: {
       tail: "다시 제출됨",
-      body: "개발자 코멘트를 AI가 반영해 같은 요청에 다시 제출했어요.",
+      body: "개발자 코멘트를 AI 가 반영해 같은 요청에 다시 제출했어요",
     },
   } satisfies Record<"merged" | "closed" | "changes_requested" | "replied", NoticeLine>,
   comments: (count: number): NoticeLine => ({
     tail: "개발자 코멘트",
-    body: `개발자 코멘트 ${count}건 — AI에게 반영을 맡겼어요.`,
+    body: `개발자 코멘트 ${count}개가 도착했어요. 대화에서 내용과 AI 대응 상황을 확인해 주세요.`,
   }),
   // 병합이 어떤 일인지 알면 그 일의 이름으로 말한다(2026-10-08 베타 준비 분석 · A2b) — 웹 L.landed.head 와 같은 말.
   mergedTitled: (title: string): NoticeLine => ({
-    tail: "반영됨",
-    body: `‘${title}’ 일이 반영됐어요. 다음에 고치는 것부터 새 작업이에요.`,
+    tail: "개발자 반영",
+    body: `‘${title}’ 일을 개발자가 반영했어요. 다음에 고치는 것부터 새 작업이에요.`,
   }),
-  ready: { tail: "준비됐어요", body: "처음 여는 준비가 끝났어요. 바로 말을 걸 수 있어요." },
+  ready: {
+    tail: "준비됐어요",
+    body: "프로젝트의 화면 준비가 끝났어요. 원하는 고침을 AI 에 요청해 주세요.",
+  },
   // 제목은 짧게, `개발자에게 알렸어요` 는 몸글로(2026-10-06). 연결 코드가 끝난 막힘은 개발자에게 알린 것이
   // 아니라 사용자의 손이 필요한 일이다 — 알렸다고 말하지 않는다(웹 L.problem.notifiedSubmit · reconnectInvite).
   submitBlocked: {
@@ -102,7 +111,7 @@ export const NOTICE = {
     // 연결 코드의 권한 부족 — 새 초대 파일이 해결이 아니다(웹 L.problem.blockedPermission 과 같은 말).
     permission: {
       tail: "제출하지 못했어요",
-      body: "연결 코드의 권한이 모자라요. 작업은 보관돼 있고, 개발자가 코드의 권한을 고치면 도구가 다시 제출해요.",
+      body: "개발자에게 제출할 권한이 없어요. 작업은 보관돼 있어요. 개발자가 권한을 고치면 자동으로 다시 제출해요.",
     },
     // 이 기계의 인터넷 문제 — 개발자에게 알렸다고 말하지 않는다(웹 L.problem.blockedNetwork 와 같은 말).
     network: {
@@ -111,8 +120,8 @@ export const NOTICE = {
     },
   } satisfies Record<"notified" | "auth" | "permission" | "network", NoticeLine>,
   updateDone: (agent: string, version: string): NoticeText => ({
-    title: "AI를 업데이트했어요",
-    body: `${agent} ${version} — 다음 새 대화부터 써요.`,
+    title: "AI 를 업데이트했어요",
+    body: `${agent} ${version} — 다음 새 대화부터 써요`,
   }),
 };
 
@@ -127,41 +136,43 @@ const SWAP_UNKNOWN = "알 수 없는 문제가 생겼어요";
 export const UPDATE = {
   available: (version: string): NoticeText => ({
     title: "새 버전이 있어요",
-    body: `ColoNova Design ${version} — 설정 → 업데이트에서 설치할 수 있어요.`,
+    body: `ColoNova Design ${version} — 설정 → 업데이트에서 설치할 수 있어요`,
   }),
   prepared: (version: string): NoticeText => ({
     title: "새 버전이 준비됐어요",
     // 도는 AI 일이 있으면 누른 뒤에도 그 일이 끝나기를 기다린다 — 그래서 `지금` 이라고 말하지 않는다.
-    body: `ColoNova Design ${version} — 다시 시작하면 새 버전이 돼요. 누르면 다시 시작해요.`,
+    body: `ColoNova Design ${version} 설치 준비가 끝났어요. 알림을 누르면 진행 중인 작업이 끝난 뒤 앱을 다시 시작해요.`,
   }),
   prepareFailed: (error: string): NoticeText => ({
     title: "업데이트를 준비하지 못했어요",
-    body: `${error} — 설정 → 업데이트에서 다시 시도할 수 있어요.`,
+    body: `${error} — 설정 → 업데이트에서 다시 시도할 수 있어요`,
   }),
   swapDone: (version: string): NoticeText => ({
     title: "앱을 업데이트했어요",
-    body: `ColoNova Design ${version} — 새 버전으로 바뀌었어요.`,
+    body: `ColoNova Design ${version} — 새 버전으로 바뀌었어요`,
   }),
   swapFailed: (reason: string | undefined): NoticeText => ({
     title: "업데이트하지 못했어요",
-    body: `${reason ?? SWAP_UNKNOWN} — 누르면 기록을 열어요.`,
+    body: `${reason ?? SWAP_UNKNOWN} — 알림을 누르면 문제 확인용 기록 폴더를 열어요`,
   }),
   // 아래는 `{ error }` · 던진 오류로 렌더러에 가서 설정의 업데이트 줄에 그대로 선다.
-  checkTimeout: "업데이트 확인이 시간 안에 끝나지 않았어요",
-  downloadFailed: (status: number): string => `업데이트 파일을 내려받지 못했어요 (HTTP ${status})`,
-  nothingToInstall: "설치할 업데이트를 찾지 못했어요 — 지금 확인을 다시 눌러 주세요.",
-  nothingPrepared: "준비된 업데이트가 없어요 — 지금 확인을 눌러 주세요.",
+  checkTimeout:
+    "새 버전 확인에 시간이 오래 걸려 중단했어요. ‘지금 확인’을 눌러 다시 시도해 주세요.",
+  downloadFailed: (status: number): string =>
+    `업데이트 파일을 내려받지 못했어요 — 오류 ${status}. 잠시 뒤 다시 시도해 주세요.`,
+  nothingToInstall: "설치할 업데이트를 찾지 못했어요 — 지금 확인을 다시 눌러 주세요",
+  nothingPrepared: "준비된 업데이트가 없어요 — 지금 확인을 눌러 주세요",
   devGuarded: "개발 실행에서는 앱을 바꾸지 않아요",
   // 2026-10-20: Gatekeeper 가 옮겨 둔 임시 자리(내려받은 자리에서 바로 연 앱)도 같은 말이다(app-location.ts).
   fromDiskImage:
-    "앱이 설치 디스크(DMG)나 내려받은 자리에서 실행 중이에요 — 응용 프로그램 폴더로 옮긴 뒤 다시 시도해 주세요.",
+    "앱이 설치 디스크(DMG)나 내려받은 자리에서 실행 중이에요 — 응용 프로그램 폴더로 옮긴 뒤 다시 시도해 주세요",
   // self-update.ts 의 검증 · 계획 오류.
   verifyFailed: (name: string): string =>
-    `내려받은 파일을 확인하지 못했어요 (${name}) — 다시 시도해도 안 되면 담당자에게 알려 주세요.`,
+    `업데이트 파일을 확인하지 못해 설치하지 않았어요 · ${name}. 다시 시도해도 안 되면 개발자에게 알려 주세요.`,
   diskLow: (gigabytes: number, where: string): string =>
-    `디스크 공간이 모자라요 — 업데이트에는 ${gigabytes}GB 이상의 여유가 필요해요. (${where})`,
+    `업데이트를 설치할 공간이 부족해요 · ${where}. 여유 공간을 ${gigabytes}GB 이상 확보한 뒤 다시 시도해 주세요`,
   unsupportedPlatform: (platform: string): string =>
-    `이 운영체제(${platform})에서는 앱을 스스로 업데이트할 수 없어요`,
+    `이 운영체제(${platform})에서는 자동 업데이트를 지원하지 않아요. 설치 파일을 내려받아 업데이트해 주세요.`,
   noTarget: "업데이트할 앱의 위치를 알 수 없어요",
 };
 
@@ -173,9 +184,11 @@ export const SWAP_FAILED = {
   notQuit: "앱이 끝나지 않아 업데이트를 마치지 못했어요",
   unpack: "내려받은 파일을 풀지 못했어요",
   noApp: "내려받은 파일 안에 앱이 없어요",
-  moveAway: "기존 앱을 치우지 못했어요 — 설치 위치의 권한을 확인해 주세요",
+  moveAway:
+    "기존 앱을 교체하지 못했어요. 설치 위치의 권한을 확인하거나 개발자에게 도움을 요청해 주세요.",
   place: "새 앱을 놓지 못해 이전 버전으로 되돌렸어요",
-  installerFailed: (code: string): string => `설치 프로그램이 오류로 끝났어요 (종료 코드 ${code})`,
+  installerFailed: (code: string): string =>
+    `설치 프로그램을 마치지 못했어요 — 오류 ${code}. 개발자에게 알려 주세요.`,
   installerLaunch: "설치 프로그램을 실행하지 못했어요",
 };
 
@@ -186,8 +199,8 @@ export const SWAP_FAILED = {
 export const BRIDGE = {
   // 웹 L.settings.testNotify · testNotifyBody 와 같은 말 — 설정의 시험 단추가 이 알림을 띄운다.
   testNotice: { title: "시험 알림", body: "실제 알림은 이렇게 도착해요" },
-  noNotifySettings: "이 컴퓨터에는 알림 설정 화면이 없어요.",
-  inviteMissing: "지울 초대 파일을 찾지 못했어요.",
+  noNotifySettings: "이 컴퓨터에는 알림 설정 화면이 없어요",
+  inviteMissing: "지울 초대 파일을 찾지 못했어요",
 };
 
 // ---------------------------------------------------------------------------
@@ -220,7 +233,7 @@ export const TRAY = {
   /** 창을 처음 닫을 때 한 번(설치마다) — 앱이 어디 남는지, 끝내는 길이 무엇인지. 누르면 창이 다시 열린다. */
   closedNotice: {
     title: "앱은 계속 켜져 있어요",
-    body: "창을 닫아도 미리보기와 하던 일은 그대로예요. 끝내려면 작업 표시줄 오른쪽 아이콘에서 종료를 눌러요.",
+    body: "창을 닫아도 미리보기와 하던 일은 그대로예요. 끝내려면 작업 표시줄 오른쪽 아이콘에서 ‘종료’를 선택해 주세요.",
   } satisfies NoticeText,
 };
 
@@ -253,22 +266,22 @@ export function quitOptions(): MessageBoxOptions {
     "warning",
     {
       title: "작업이 진행 중이에요",
-      message: "AI가 작업 중이에요. 지금 끝내면 하던 작업이 멈춰요.",
+      message: "AI 가 작업 중이에요. 지금 끝내면 하던 작업이 멈춰요.",
       // 보관은 답을 낸 차례마다 도구가 스스로 한다 — 끝난 답은 이미 보관돼 있고, 도는 답은 아니다
       // (docs/DEVELOPERS.md 「자동 보관 · 제출 · 반영됨」).
-      detail: "이미 끝난 답은 보관돼 있어요.",
+      detail: "이미 끝난 AI 답변과 그때까지의 화면 작업은 보관돼 있어요. 진행 중인 작업은 멈춰요.",
     },
-    ["취소", "그만두고 끝내기"],
+    ["그만두기", "작업을 멈추고 앱 종료"],
   );
 }
 
 /** 처음부터 다시 시작 — 지워지는 것과 남는 것을 말하고, 도는 일이 있으면 그 일도 멈춘다고 말한다. */
 export function resetOptions(busy: boolean): MessageBoxOptions {
   const lines = [
-    "프로젝트 파일, 대화와 작업 기록, 앱 설정, 연결 정보를 지워요. 목록에서 삭제했지만 컴퓨터에 남아 있는 프로젝트도 포함돼요. 제출하지 않은 작업은 되돌릴 수 없어요.",
-    "이미 개발자에게 제출한 작업과 Claude 로그인은 유지돼요. 앱이 다시 열리면 새 초대 파일을 넣어 주세요.",
+    "프로젝트 파일, 대화와 작업 기록, 앱 설정, 연결 정보를 지워요. 목록에서 뺐지만 컴퓨터에 남아 있는 프로젝트도 포함돼요. 제출하지 않은 작업은 되돌릴 수 없어요.",
+    "개발자에게 이미 제출한 요청과 AI 로그인은 유지돼요. 이 컴퓨터의 작업 파일은 지워져요. 앱이 다시 열리면 초대 파일을 열어 주세요.",
   ];
-  if (busy) lines.push("지금 AI가 일하는 중이에요. 다시 시작하면 그 일도 멈춰요.");
+  if (busy) lines.push("지금 진행 중인 AI 작업도 중단하고 초기화해요");
   return safeFirst(
     "warning",
     {
@@ -276,7 +289,7 @@ export function resetOptions(busy: boolean): MessageBoxOptions {
       message: "이 컴퓨터의 모든 프로젝트와 설정을 지울까요?",
       detail: lines.join("\n\n"),
     },
-    ["취소", "모두 지우고 다시 시작"],
+    ["그만두기", "전체 초기화"],
   );
 }
 
@@ -298,8 +311,8 @@ export function unresponsiveOptions(): MessageBoxOptions {
     "question",
     {
       title: "화면이 멈췄어요",
-      message: "잠시 기다리면 저절로 돌아올 수 있어요.",
-      detail: "다시 열어도 대화와 작업은 그대로예요.",
+      message: "잠시 기다리면 저절로 돌아올 수 있어요",
+      detail: "다시 열어도 대화와 작업은 그대로예요",
     },
     ["기다리기", "다시 열기"],
   );
@@ -317,7 +330,7 @@ function clip(text: string): string {
 }
 
 /**
- * 시작하지 못했을 때 — 막다른 길에 출구(기록 폴더 열기)를 단다. 날 오류는 `detail` 로 내리고,
+ * 시작하지 못했을 때 — 막다른 길에 출구(기록 폴더 열고 앱 종료)를 단다. 날 오류는 `detail` 로 내리고,
  * 기록 폴더의 자리도 적어 둔다(끝내기를 골라도 담당자에게 전할 수 있게).
  */
 export function startFailedOptions(reason: string, logsDir: string): MessageBoxOptions {
@@ -328,12 +341,12 @@ export function startFailedOptions(reason: string, logsDir: string): MessageBoxO
   return {
     type: "error",
     title: "ColoNova Design",
-    message: "ColoNova Design을 시작하지 못했어요",
+    message: "ColoNova Design 을 시작하지 못했어요",
     detail: [
-      "앱을 다시 열어 주세요. 계속 안 되면 기록 폴더의 내용을 담당자에게 전해 주세요.",
+      "앱을 다시 열어 주세요. 계속 안 되면 기록 폴더의 내용을 개발자에게 전해 주세요.",
       facts.join("\n"),
     ].join("\n\n"),
-    buttons: ["기록 폴더 열기", "끝내기"],
+    buttons: ["기록 폴더 열고 앱 종료", "끝내기"],
     defaultId: START_ANSWER.openLogs,
     cancelId: START_ANSWER.quit,
     noLink: true,
@@ -359,7 +372,7 @@ export function moveToApplicationsOptions(): MessageBoxOptions {
     title: "ColoNova Design",
     message: "응용 프로그램 폴더로 옮길까요?",
     detail:
-      "지금은 설치 디스크(DMG)나 내려받은 자리에서 실행 중이에요. 옮겨 두어야 업데이트가 되고, 디스크를 꺼내도 앱이 사라지지 않아요. 옮기면 앱이 한 번 다시 켜져요.",
+      "앱이 ‘응용 프로그램’ 폴더 밖에서 실행 중이에요. 옮기면 자동 업데이트를 사용할 수 있어요. 옮긴 뒤 앱을 한 번 다시 시작해요.",
     buttons: ["응용 프로그램 폴더로 옮기기", "나중에"],
     defaultId: MOVE_ANSWER.move,
     cancelId: MOVE_ANSWER.later,
@@ -375,7 +388,7 @@ export function moveFailedOptions(): MessageBoxOptions {
     title: "ColoNova Design",
     message: "응용 프로그램 폴더로 옮기지 못했어요",
     detail:
-      "Finder 에서 ColoNova Design 을 응용 프로그램 폴더로 끌어다 놓은 뒤 거기서 다시 열어 주세요. 관리자 암호를 물어 옮길 수 없으면 홈 폴더의 Applications 폴더에 넣어도 돼요.",
+      "Finder 에서 앱을 ‘응용 프로그램’ 폴더로 옮긴 뒤 다시 열어 주세요. 관리자 암호가 없어 옮기지 못하면 내 사용자 폴더 안의 Applications 폴더로 옮길 수도 있어요.",
     buttons: ["확인"],
     defaultId: 0,
     cancelId: 0,
@@ -399,7 +412,7 @@ export function unreadableCredentialsOptions(platform: string): MessageBoxOption
       title: "ColoNova Design",
       message,
       detail:
-        "맥이 'ColoNova Design Safe Storage' 키체인 사용을 물었을 때 '거부'를 눌렀거나 창이 닫히면 이렇게 돼요. 앱을 다시 켜고, 키체인 창이 뜨면 맥 로그인 암호를 넣은 뒤 '항상 허용'을 눌러 주세요. 초대 파일을 다시 받을 필요는 없어요. 그래도 같은 창이 또 뜨면 개발자에게 받은 초대 파일을 다시 열어 주세요.",
+        "앱을 다시 켜 주세요. ‘ColoNova Design Safe Storage’ 접근을 묻는 창이 뜨면 맥 로그인 암호를 넣고 ‘항상 허용’을 눌러 주세요. 연결 정보를 여는 권한이 없어 생긴 문제일 수 있어요. 초대 파일을 다시 받을 필요는 없어요. 계속 읽지 못하면 가지고 있는 초대 파일을 다시 열어 주세요.",
       buttons: ["다시 켜기", "나중에"],
       defaultId: KEYCHAIN_ANSWER.relaunch,
       cancelId: KEYCHAIN_ANSWER.later,
@@ -411,7 +424,7 @@ export function unreadableCredentialsOptions(platform: string): MessageBoxOption
     title: "ColoNova Design",
     message,
     detail:
-      "Windows 가 이 컴퓨터에 둔 연결 정보를 풀지 못했어요(사용자 계정이 바뀌면 이렇게 돼요). 개발자에게 받은 초대 파일을 다시 열어 주세요.",
+      "이 컴퓨터에 보관한 연결 정보를 읽을 수 없어요. Windows 사용자 계정이 바뀌었을 수 있어요. 가지고 있는 초대 파일을 다시 열어 연결해 주세요.",
     buttons: ["확인"],
     defaultId: 0,
     cancelId: 0,

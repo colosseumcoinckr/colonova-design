@@ -54,6 +54,7 @@ export function Splitter({
       // 접근 이름에 되돌림 힌트를 붙인다 — 더블클릭만 보면 키보드의 길이 숨는다
       // (2026-10-04 ux-review).
       aria-label={`${label} · ${resetHint ?? L.shell.chatWidthReset}`}
+      title={`${label} · ${resetHint ?? L.shell.chatWidthReset}`}
       aria-valuemin={bounds.min}
       aria-valuemax={bounds.max}
       aria-valuenow={width}

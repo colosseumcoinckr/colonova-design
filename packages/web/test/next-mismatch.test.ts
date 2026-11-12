@@ -24,20 +24,18 @@ test("줄의 열쇠 — 절과 화면 이름의 짝이 같으면 같은 열쇠�
 
 test("기획서를 화면대로 브리프 — 화면의 말을 옮기고 기준 한 줄로 닫는다", () => {
   const brief = L.compare.applyBrief(row);
-  assert.match(brief, /「비밀번호 규칙」 절의 규칙을 화면과 같게 고쳐 줘/);
+  assert.match(brief, /‘비밀번호 규칙’ 절의 규칙을 화면과 같게 고쳐 줘/);
   assert.match(brief, /화면\(회원가입\)은 10자 이상이다/);
-  assert.ok(brief.endsWith("기준: 「비밀번호 규칙」 절이 화면과 같은 규칙을 말하면 끝이다."));
+  assert.ok(brief.endsWith("기준: ‘비밀번호 규칙’ 절이 화면과 같은 규칙을 말하면 끝이다."));
   assert.ok(!/[A-Za-z0-9_/]+\.(ts|tsx|js)\b/u.test(brief), "브리프에 파일 이름이 없다");
 });
 
 test("화면을 기획서대로 브리프 — 문서 이름과 기획서의 말을 옮기고 기준 한 줄로 닫는다", () => {
   const brief = L.compare.sendBrief(row, "회원가입 정책서");
-  assert.match(brief, /「회원가입 정책서」 의 「비밀번호 규칙」 규칙을 기획서대로 맞춰 줘/);
+  assert.match(brief, /‘회원가입 정책서’ 의 ‘비밀번호 규칙’ 규칙을 기획서대로 맞춰 줘/);
   assert.match(brief, /기획서: 비밀번호는 8자 이상이다/);
   assert.ok(
-    brief.endsWith(
-      "기준: 화면의 비밀번호 규칙 이 「비밀번호 규칙」 절과 같은 규칙을 말하면 끝이다.",
-    ),
+    brief.endsWith("기준: 화면의 비밀번호 규칙 이 ‘비밀번호 규칙’ 절과 같은 규칙을 말하면 끝이다."),
   );
   assert.ok(!/[A-Za-z0-9_/]+\.(ts|tsx|js)\b/u.test(brief), "브리프에 파일 이름이 없다");
 });

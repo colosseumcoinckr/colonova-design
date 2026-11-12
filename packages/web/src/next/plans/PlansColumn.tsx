@@ -11,13 +11,14 @@ import {
 } from "react";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
+import { scrollToTarget } from "../lib/scroll-to-target";
 import { nextTabIndex } from "../lib/tab-keys";
 import type { ShellNav } from "../slots";
 import { TrashDialog } from "./doc-actions/TrashDialog";
-import { DraftEditor } from "./draft/DraftEditor";
+import { DraftEditor, type RecoveredEdit } from "./draft/DraftEditor";
 import { NewDraftDialog } from "./draft/NewDraftDialog";
 import { PlanChat } from "./draft/PlanChat";
-import { pageDraftKey, stashAsk } from "./draft/pending-ask";
+import { type PendingAsk, pageDraftKey, stashAsk } from "./draft/pending-ask";
 import { useDraft } from "./draft/use-draft";
 import { useDraftThread } from "./draft/use-draft-thread";
 import { escapeOwnedByLayer } from "./escape-layer";
@@ -112,6 +113,41 @@ function PlansBody({
   };
   // 기획 대화의 판 — 이 칸이 쥔다. 문서 판(남은 걸음 · 바로 반영의 표시)과 대화 칸이 같은 판을 본다.
   // 사이드바 목록에서 골른 대화가 있으면 그 대화를, 없으면 문서의 최신 대화를 읽는다(2026-11-03).
+  // 2026-11-12 U-098 R2 — 되살린 글은 창이 떠 있는 동안 프로젝트·문서별로 남긴다. 영구 저장하지 않는다.
+  const [recoveredByDoc, setRecoveredByDoc] = useState<Record<string, RecoveredEdit[]>>({});
+  const recoveryKey = JSON.stringify([project?.slug, draftKey]);
+  const addRecovery = useCallback(
+    (saved: RecoveredEdit) => {
+      setRecoveredByDoc((before) => ({
+        ...before,
+        [recoveryKey]: [...(before[recoveryKey] ?? []), saved],
+      }));
+    },
+    [recoveryKey],
+  );
+  const dismissRecovery = useCallback(
+    (id: string) => {
+      setRecoveredByDoc((before) => ({
+        ...before,
+        [recoveryKey]: (before[recoveryKey] ?? []).filter((saved) => saved.id !== id),
+      }));
+    },
+    [recoveryKey],
+  );
+  const [restoringKeys, setRestoringKeys] = useState<Set<string>>(() => new Set());
+  const restoreKey = draftKey === null ? null : JSON.stringify([project?.slug, draftKey]);
+  const onRestoreChange = useCallback(
+    (key: string, active: boolean) => {
+      const scoped = JSON.stringify([project?.slug, key]);
+      setRestoringKeys((before) => {
+        const next = new Set(before);
+        if (active) next.add(scoped);
+        else next.delete(scoped);
+        return next;
+      });
+    },
+    [project?.slug],
+  );
   const thread = useDraftThread(daemon, editingDraft ? draftKey : null, pickedThreadId);
   // 초안의 손 — 같은 이유로 칸이 쥔다(2026-11-02). 문서로 여는 길(첫 고치기 · `draft.open`)과
   // 열쇠로 여는 길을 여기서 갈라 대화 칸에도 내준다 — 편집기가 여는 동안의 「읽는 중」이 같은 손에서 나온다.
@@ -123,6 +159,18 @@ function PlansBody({
         : { docKey: draftKey }
       : {},
   );
+  const previousRestores = useRef(restoringKeys);
+  useEffect(() => {
+    if (
+      restoreKey !== null &&
+      previousRestores.current.has(restoreKey) &&
+      !restoringKeys.has(restoreKey)
+    ) {
+      draftHand.reload();
+      thread.reload();
+    }
+    previousRestores.current = restoringKeys;
+  }, [restoreKey, restoringKeys, draftHand.reload, thread.reload]);
   // 편집기가 초안을 열면 대화를 다시 읽는다(2026-11-01 실사용 관찰 수리) — 초안 없는 문서의 첫
   // `고치기` 에 대화 판이 같은 열쇠로 먼저 물어 「열려 있는 초안이 없습니다」에 죽어 있어도,
   // 초안이 생기면 살아난다(방송이 늦거나 끊긴 뒤에도). 맡겨 둔 첫 말(pending-ask)도 이 다시 읽기에서 풀린다.
@@ -150,9 +198,10 @@ function PlansBody({
     setPlTab("doc");
     // 탭이 갈아 그리고 나서 블록을 찾는다 — `문서` 탭이 서기 전의 숨은 판은 위치를 못 잰다(2026-11-11).
     requestAnimationFrame(() => {
-      docPaneRef.current
-        ?.querySelector(`[data-block-id="${blockIds[0]}"]`)
-        ?.scrollIntoView({ block: "center", behavior: "smooth" });
+      scrollToTarget(
+        docPaneRef.current?.querySelector(`[data-block-id="${blockIds[0]}"]`) ?? null,
+        { block: "center" },
+      );
     });
   }, []);
   useEffect(() => {
@@ -198,8 +247,8 @@ function PlansBody({
   }, [chatWidth]);
 
   // 읽는 문서의 첫 말(2026-10-30) — 아직 초안이 없는 문서에서 보내면 초안이 열리고 말이 건네진다.
-  const startDraft = (pageId: string, text: string) => {
-    stashAsk(pageDraftKey(pageId), text);
+  const startDraft = (pageId: string, ask: PendingAsk) => {
+    stashAsk(pageDraftKey(pageId), ask);
     plans.editDoc(pageId);
   };
 
@@ -230,6 +279,13 @@ function PlansBody({
   if (editingDraft && draftKey !== null) {
     body = (
       <DraftEditor
+        recovery={{
+          items: recoveredByDoc[recoveryKey] ?? [],
+          add: addRecovery,
+          dismiss: dismissRecovery,
+        }}
+        onRestoreChange={onRestoreChange}
+        mutationLocked={restoreKey !== null && restoringKeys.has(restoreKey)}
         key={draftKey}
         daemon={daemon}
         draft={draftHand}
@@ -442,8 +498,10 @@ function PlansBody({
               }}
             />
             <PlanChat
+              key={chatPageId !== null ? pageDraftKey(chatPageId) : draftKey}
               daemon={daemon}
               nav={nav}
+              mutationLocked={restoreKey !== null && restoringKeys.has(restoreKey)}
               docKey={editingDraft ? draftKey : null}
               {...(chatPageId !== null && editingDraft === false ? { pageId: chatPageId } : {})}
               {...(chatPageId !== null && editingDraft === false

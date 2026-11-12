@@ -37,7 +37,7 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
   return (
     <SGroup>
       <SRow title={L.plans.title} sub={L.plans.titleSub}>
-        {projectName !== undefined && <span className="nx-schip">{projectName}</span>}
+        {projectName !== undefined && <span className="nx-svalue">{projectName}</span>}
         <span className={`nx-pill${chipTone}`}>{model.status}</span>
       </SRow>
 
@@ -181,7 +181,13 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
                   onChange={(event) => model.setRootQuery(event.target.value)}
                   onKeyDown={(event) => {
                     if (composing(event)) return;
-                    if (event.key === "Enter" && state.rootQuery !== "") model.findRoots();
+                    if (
+                      event.key === "Enter" &&
+                      state.rootQuery !== "" &&
+                      !state.finding &&
+                      !locked
+                    )
+                      model.findRoots();
                   }}
                 />
               </span>
@@ -211,7 +217,7 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
             </>
           ) : (
             <>
-              <span className="nx-schip">{rootTitle}</span>
+              <span className="nx-svalue">{rootTitle}</span>
               <button
                 type="button"
                 className="nx-btn nx-btn--sm"
@@ -225,13 +231,21 @@ export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: 
         </SRow>
       )}
 
+      {linked && !expired && finder && (
+        <div className="nx-sroots-status" role="status" aria-live="polite">
+          {state.finding
+            ? L.plans.finding
+            : state.roots === null
+              ? ""
+              : state.roots.length === 0
+                ? L.plans.rootsEmpty
+                : L.plans.rootsHeading(state.roots.length)}
+        </div>
+      )}
       {linked && !expired && state.roots !== null && (
         <div className="nx-sroots">
-          {state.roots.length === 0 ? (
-            <p className="nx-snote">{L.plans.rootsEmpty}</p>
-          ) : (
+          {state.roots.length > 0 && (
             <>
-              <p className="nx-sroots-hd">{L.plans.rootsHeading(state.roots.length)}</p>
               <ul className="nx-sroots-list">
                 {state.roots.map((root) => (
                   <li key={root.id} className="nx-sroots-row">

@@ -91,7 +91,19 @@ import {
 import { type DaemonLogger, sanitizeText } from "./log.js";
 import type { RepoWorkspace } from "./repo.js";
 import type { RepoCore } from "./repo-core.js";
-import { conflictBrief, DEFAULT_HANDOFF_TITLE, detailOf, STASH_MESSAGE } from "./repo-core.js";
+import {
+  conflictBrief,
+  DEFAULT_HANDOFF_TITLE,
+  detailOf,
+  FRESH_APPLY_FAILED_DETAIL,
+  FRESH_CHECK_FAILED_DETAIL,
+  FRESH_FETCH_TIMEOUT_MS,
+  FRESH_INSTALL_FAILED_DETAIL,
+  freshGateError,
+  PRE_APPLY_REF,
+  STASH_MESSAGE,
+  SUBMIT_BASE_STALE_DETAIL,
+} from "./repo-core.js";
 import { alignCycleBranch, pickCycleBranchName } from "./repo-publish.js";
 import {
   advanceSubmitTrail,
@@ -188,6 +200,11 @@ export interface SupervisorDeps {
   ledgerPath: string;
   /** SessionManager.busyIn(root) — 턴이 도는 동안은 기다리는 판정이 앞선다. */
   busy: () => boolean;
+  /**
+   * SessionManager 의 바쁨 판정에서 한 대화를 빼고 본다(2026-11-12 채택) — 새 작업 시작 직전
+   * 확인(prepareFreshBase)이 보내려는 대화 자신을 작업으로 오인하지 않게 한다. 없으면 busy 를 그대로 쓴다.
+   */
+  busyWithout?: (sessionId: string) => boolean;
   /** 설치가 낡았는지 — fleet 은 `!RepoWorkspace.installUpToDate()`(installStale)를 넣는다. */
   installStale: () => boolean;
   /** RepoCore 의 GitHub 손잡이들 — observeCycle 에 그대로 건넨다. */
@@ -317,6 +334,8 @@ export class CycleSupervisor {
   private lastBehindBase = 0;
   /** 마지막 요청이 끝난 모양 — `RepoStatus.baseSync.last`. */
   private lastBaseSync: NonNullable<RepoStatus["baseSync"]>["last"] | null = null;
+  /** 새 작업 시작 직전 확인의 단일 비행(2026-11-12) — 동시에 온 보내기가 확인을 두 번 돌리지 않게 한다. */
+  private preflightInFlight: Promise<void> | null = null;
 
   constructor(deps: SupervisorDeps) {
     this.deps = deps;
@@ -436,11 +455,24 @@ export class CycleSupervisor {
     sessionId?: string,
     note?: string,
     sent?: SubmitSent,
+    /**
+     * 확인 창이 확정한 지문(2026-11-12) — 확정 직전의 원격 확인(fetch)이 세상을 움직일 수 있으므로
+     * 그 뒤에도 같은지 다시 잰다. 원격이 뒤로 돌아가 behind 0 이 되어도 지문이 바뀌면 재확인을 청한다.
+     */
+    expectedPreview?: string,
   ): Promise<void> {
     await this.deps.core.lane.run("submit", async () => {
       // 중복 요청은 확정한 버전과 영수증을 바꾸지 않는다.
       if (this.ledger.submit !== null) return;
       if (this.deps.busy()) throw new Error("AI가 고치는 중이에요 — 끝난 뒤에 제출해 주세요.");
+      // 확정 직전의 원격 확인(2026-11-12 채택) — 오래된 기준의 제출을 세우지 않는다.
+      await this.ensureSubmitBaseFresh();
+      // fetch 사이에 턴이 시작했거나 확인한 지문이 달라졌다 — 확정하지 않고 다시 확인을 청한다.
+      if (this.deps.busy()) throw new Error("AI가 고치는 중이에요 — 끝난 뒤에 제출해 주세요.");
+      if (expectedPreview !== undefined) {
+        const token = await this.deps.core.submitPreviewToken();
+        if (token !== expectedPreview) throw new Error(SUBMIT_CHANGED);
+      }
       const version = await captureSubmitVersion(this.deps.core);
       this.submitSessionId = sessionId ?? null;
       this.ledger = {
@@ -459,6 +491,25 @@ export class CycleSupervisor {
       this.syncSubmitTrail();
     });
     void this.tick("manual");
+  }
+
+  /**
+   * 제출 확정 직전의 원격 확인(2026-11-12 채택) — 확인한 결과가 오래된 기준에서 나왔으면 의도를 세우지
+   * 않는다. 베이스를 새로 읽어 이번 작업이 뒤처졌으면 받아오기로 안내한다(자동 합침 금지 — 확인한 결과를
+   * 조용히 바꾸지 않는다). fetch 실패는 확정하지 않고 다시 누를 수 있는 문장으로 거절한다. 확정 뒤의
+   * 이동은 submitStep 의 ls-remote 검사(submittedVersionCurrent)가 잡는다 — 그곳의 문장도 같아졌다.
+   */
+  private async ensureSubmitBaseFresh(): Promise<void> {
+    const core = this.deps.core;
+    try {
+      await core.fetchBase(FRESH_FETCH_TIMEOUT_MS);
+    } catch {
+      throw new Error(FRESH_CHECK_FAILED_DETAIL);
+    }
+    this.lastFetchAt = this.now();
+    const [, behind] = await this.freshBaseBehind();
+    this.noteBehindBase(behind);
+    if (behind > 0) throw new Error(SUBMIT_BASE_STALE_DETAIL);
   }
 
   /**
@@ -524,6 +575,121 @@ export class CycleSupervisor {
     if (outcome !== "overlap") this.baseSyncSessionId = null;
     this.log(`받아오기 끝 (${outcome})`);
     this.deps.onChange?.();
+  }
+
+  /** 관찰 밖의 자리(제출 확인 창의 새로 읽기)가 베이스를 새로 읽었다 — 받아올 수를 얹는다. 같은 수면 조용하다. */
+  noteRemoteBehind(behind: number): void {
+    this.lastFetchAt = this.now();
+    this.noteBehindBase(behind);
+  }
+
+  /**
+   * 새 화면 작업 시작 직전의 최신 확인(2026-11-12 채택) — 말이 실제로 CLI 로 나가는 경계(세션의
+   * beforeAgentSend)에서 기다리므로 AI 가 쓰기 시작하기 전에 끝난다. 이어갈 작업이 없는 프로젝트만 베이스를
+   * 곧게 앞으로 당긴다: 사이클 · 열린 제출 · 미커밋 변경 · 로컬 커밋 · 진행 중 턴 · 회복 조치(충돌 · 재클론 ·
+   * 손상)가 하나라도 있으면 아무것도 하지 않는다 — 진행 중 작업의 자동 합치기 금지는 그대로다. 타이머 ·
+   * 활성화는 이 길에 오지 않으므로 사람이 보는 화면을 저절로 바꾸지도 않는다. 확인 · 당김 · 준비가 실패하면
+   * 게이트의 거절(freshGateError)로 막는다 — 최신이라고 속이고 옛 내용으로 시작하는 길은 없다. fetch 사이에
+   * 세상이 바뀌면(턴 시작 · 변경 · 제출 의도) 당기기를 그만둔다. 당김으로 의존성이 바뀌면 준비(설치)가
+   * 끝나기를 이 안에서 기다린다 — 오래된 의존성 위에서 AI 가 시작하지 않게(말은 재전송 없이 그 뒤에 나간다).
+   * `exceptSessionId` 는 지금 나가려는 대화다 — 스스로 이미 running 상태인 자기 자신을 작업으로 오인하지
+   * 않게 `busyWithout` 로 뺀다.
+   */
+  async prepareFreshBase(exceptSessionId?: string): Promise<void> {
+    if (this.preflightInFlight) return this.preflightInFlight;
+    const promise = this.runFreshBasePreflight(exceptSessionId).finally(() => {
+      if (this.preflightInFlight === promise) this.preflightInFlight = null;
+    });
+    this.preflightInFlight = promise;
+    return promise;
+  }
+
+  private async runFreshBasePreflight(exceptSessionId?: string): Promise<void> {
+    const core = this.deps.core;
+    if (!core.isCloned()) return;
+    let installDue = false;
+    await core.lane.run("preflight", async () => {
+      if (this.freshBaseWorkExists(exceptSessionId)) return;
+      if (!(await this.freshBaseTreeClean())) return;
+      try {
+        await core.fetchBase(FRESH_FETCH_TIMEOUT_MS);
+      } catch {
+        // 최신인지 확인하지 못했다 — 확인됐다고 속이고 시작하는 길은 없다.
+        throw freshGateError("network", FRESH_CHECK_FAILED_DETAIL);
+      }
+      this.lastFetchAt = this.now();
+      // fetch 사이에 턴이 시작했거나 변경 · 제출 의도가 들어왔다 — 당기기를 그만둔다.
+      if (this.freshBaseWorkExists(exceptSessionId)) return;
+      if (!(await this.freshBaseTreeClean())) return;
+      const [, behind] = await this.freshBaseBehind();
+      this.noteBehindBase(behind);
+      // 이미 최신(behind 0)이어도 지난 당김의 설치가 남아 있으면 이번에 마저 끝낸다 — 재시도의 세계다.
+      if (behind === 0) {
+        installDue = this.deps.installStale();
+        return;
+      }
+      try {
+        await core.git(["update-ref", `${PRE_APPLY_REF}${core.baseBranch}`, "HEAD"]);
+        await core.git(["merge", "--ff-only", `origin/${core.baseBranch}`]);
+      } catch (error) {
+        // 곧은 클론의 ff 실패는 거의 없다(앞선 검사가 갈라짐을 걸렀다) — 그래도 옛 내용으로 시작하지 않게 막는다.
+        this.log(`새 작업 시작 전 당기기 실패: ${detailOf(error, core.pat)}`);
+        throw freshGateError("apply", FRESH_APPLY_FAILED_DETAIL);
+      }
+      this.noteBehindBase(0);
+      this.log("새 작업 시작 전 베이스를 앞으로 당겼습니다");
+      installDue = this.deps.installStale();
+    });
+    // 준비(설치)는 차선 칸이 빈 뒤에 차선 밖에서 기다린다 — 칸을 붙잡은 채 sync 를 기다리면
+    // sync 의 차선 작업이 이 칸 뒤에 서로 교착한다. 실패는 게이트의 거절로 막는다(오래된 의존성 금지).
+    if (installDue) {
+      await core.lane.outside(() => this.deps.workspace.sync());
+      if (this.deps.installStale()) {
+        this.log("당긴 뒤 준비(설치)가 끝나지 않았습니다");
+        throw freshGateError("install", FRESH_INSTALL_FAILED_DETAIL);
+      }
+    }
+  }
+
+  /** 이어갈 작업이 있는가 — 메모리가 아는 것만(사이클 · 열린 제출 · 회복 · 진행 중 턴). git 상태는 아래에서 본다. */
+  private freshBaseWorkExists(exceptSessionId?: string): boolean {
+    const handoff = this.deps.core.openHandoff;
+    return (
+      (exceptSessionId !== undefined && this.deps.busyWithout
+        ? this.deps.busyWithout(exceptSessionId)
+        : this.deps.busy()) ||
+      this.deps.core.branch !== null ||
+      // 끝난 요청(병합 · 반려)의 기록은 작업이 아니다 — 착지가 끝나지 않아 남아 있어도 새 작업은 최신에서 시작한다.
+      (handoff !== null && (handoff.state === "open" || handoff.state === "changes_requested")) ||
+      this.ledger.submit !== null ||
+      this.ledger.pendingOp !== null ||
+      this.ledger.reclone !== null ||
+      this.ledger.corrupt !== null
+    );
+  }
+
+  /** 베이스 위의 곧은 클론인가 — 미커밋 변경 · 로컬 커밋 · 딴 가지가 있으면 당기지 않는다. 읽지 못하면 거짓 최신 없이 거절한다. */
+  private async freshBaseTreeClean(): Promise<boolean> {
+    const core = this.deps.core;
+    const status = await core.git(["status", "--porcelain"]).catch(() => null);
+    if (status === null) throw freshGateError("network", FRESH_CHECK_FAILED_DETAIL);
+    if (status.trim() !== "") return false;
+    // 갈라진(따로 떨어진) HEAD 는 가지가 아니므로 당기지 않는다.
+    const head = (
+      await core.git(["symbolic-ref", "--quiet", "--short", "HEAD"]).catch(() => "")
+    ).trim();
+    if (head !== core.baseBranch) return false;
+    const [ahead] = await this.freshBaseBehind();
+    return ahead === 0;
+  }
+
+  /** HEAD 와 베이스의 앞뒤 수 — 읽지 못한 수로 거짓 최신을 만들지 않는다(실패는 게이트의 거절). */
+  private async freshBaseBehind(): Promise<[number, number]> {
+    try {
+      return await this.deps.core.aheadBehindBase();
+    } catch {
+      throw freshGateError("network", FRESH_CHECK_FAILED_DETAIL);
+    }
   }
 
   /**
@@ -1126,7 +1292,9 @@ export class CycleSupervisor {
       }
       case "fastForwardBase": {
         // 받아오기 요청을 여기서 쓴다 — 실패해도 같은 요청으로 다시 돌지 않는다(다시 누르면 된다).
+        // 당기기 직전 HEAD 를 로컬 ref 에 남긴다(2026-11-12 채택) — 적용 직전 모습으로 되돌릴 마지막 지점.
         try {
+          await core.git(["update-ref", `${PRE_APPLY_REF}${core.baseBranch}`, "HEAD"]);
           await core.git(["checkout", core.baseBranch]);
           await core.git(["merge", "--ff-only", `origin/${core.baseBranch}`]);
         } catch (error) {
@@ -1183,8 +1351,12 @@ export class CycleSupervisor {
           this.log("mergeBase: 작업 트리가 더러워 건너뜁니다");
           return false;
         }
+        // 합치기 직전 HEAD 를 로컬 ref 에 남긴다(2026-11-12 채택) — 겹친 정리가 끝난 뒤에도 적용 직전 모습으로 되돌릴 수 있다.
         // 받아오기 요청을 여기서 쓴다 — 합치기가 끝나든 겹치든 실패하든 같은 요청으로 다시 돌지 않는다.
         try {
+          if (core.branch !== null) {
+            await core.git(["update-ref", `${PRE_APPLY_REF}${core.branch}`, "HEAD"]);
+          }
           await core.git([
             ...(await core.identityArgs()),
             "merge",
@@ -1863,7 +2035,9 @@ export class CycleSupervisor {
       const base = remote.get(`refs/heads/${version.baseBranch}`);
       const head = remote.get(`refs/heads/${branch}`) ?? null;
       if (base !== version.base || (head !== version.remoteHead && head !== version.head)) {
-        return this.requireSubmitReview();
+        return this.requireSubmitReview(
+          base !== version.base ? SUBMIT_BASE_STALE_DETAIL : SUBMIT_CHANGED,
+        );
       }
       if (head !== version.head) {
         if (head !== null) {
@@ -2130,11 +2304,12 @@ export class CycleSupervisor {
     return false;
   }
 
-  private requireSubmitReview(): false {
+  /** 문장을 갈아 끼운다(2026-11-12) — 베이스가 움직인 거절은 받아오기로 안내하고, 그 밖은 재확인을 청한다. */
+  private requireSubmitReview(detail: string = SUBMIT_CHANGED): false {
     this.clearSubmitIntent();
     this.ledger = { ...this.ledger, push: null };
     writeLedger(this.ledgerPath, this.ledger);
-    this.deps.core.setDiff({ stage: "failed", gate: "pr", detail: SUBMIT_CHANGED });
+    this.deps.core.setDiff({ stage: "failed", gate: "pr", detail });
     return false;
   }
 

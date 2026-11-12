@@ -48,9 +48,11 @@ const src = (name: string) => readFileSync(new URL(`../src/${name}`, import.meta
 test("sent 는 제출의 두 길(확인 창 · 직접) 모두에서 감독자의 의도로 간다", () => {
   const dispatch = src("requests/repository.ts");
   const calls =
-    dispatch.match(
-      /active\.supervisor\.submit\(\s*"button",\s*message\.sessionId,\s*message\.note \|\| undefined,\s*message\.sent,\s*\)/g,
-    ) ?? [];
+    dispatch
+      .replace(/\/\/[^\n]*/g, "")
+      .match(
+        /active\.supervisor\.submit\(\s*"button",\s*message\.sessionId,\s*message\.note \|\| undefined,\s*message\.sent,\s*(?:message\.expectedPreview,\s*)?\)/g,
+      ) ?? [];
   assert.equal(calls.length, 2);
   // 대화로 낸 제출은 확인 창이 없다 — 화면을 지어내 싣지 않는다.
   assert.doesNotMatch(src("server.ts"), /supervisor\.submit\("chat",[^)]*sent/);

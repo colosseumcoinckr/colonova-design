@@ -81,6 +81,7 @@ export function PreviewBar({
   zoom,
   onZoom,
   frozenReady,
+  frozenBusy = false,
   onFrozen,
   onShowAi,
   showAiBusy,
@@ -117,6 +118,7 @@ export function PreviewBar({
   onZoom: (kind: "in" | "out" | "reset") => void;
   /** 제출한 때의 화면을 볼 수 있는가 — 개발자에게 가 있는 동안만. */
   frozenReady: boolean;
+  frozenBusy?: boolean;
   onFrozen: () => void;
   onShowAi: () => void;
   showAiBusy: boolean;
@@ -297,7 +299,12 @@ export function PreviewBar({
         onClick={onPin}
       >
         <PinIcon />
-        <span className="nx-pin-w">{L.preview.pin}</span>
+        <span className="nx-pin-w">
+          <span aria-hidden="true" className="nx-pin-reserve">
+            {L.preview.pinOnState}
+          </span>
+          <span>{pinOn ? L.preview.pinOnState : L.preview.pin}</span>
+        </span>
         {pinCount > 0 && <Count n={pinCount} className={pinOn ? "nx-cnt--inv" : undefined} />}
       </button>
 
@@ -386,17 +393,18 @@ export function PreviewBar({
               )}
               <button
                 type="button"
-                className={`nx-mi${frozenReady ? "" : " nx-mi--dis"}`}
-                aria-disabled={!frozenReady}
+                className={`nx-mi${frozenReady && !frozenBusy ? "" : " nx-mi--dis"}`}
+                aria-disabled={!frozenReady || frozenBusy}
+                aria-busy={frozenBusy || undefined}
                 onClick={() => {
-                  if (!frozenReady) return;
+                  if (!frozenReady || frozenBusy) return;
                   setMoreOpen(false);
                   onFrozen();
                 }}
               >
                 <EyeIcon />
                 <span className="nx-mt">
-                  <b>{L.preview.frozenOpen}</b>
+                  <b>{frozenBusy ? L.preview.frozenLoading : L.preview.frozenOpen}</b>
                   <small>{frozenReady ? L.preview.frozenOpenSub : L.preview.frozenLocked}</small>
                 </span>
               </button>

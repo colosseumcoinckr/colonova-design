@@ -36,6 +36,7 @@
   --ink2: var(--text-2);
   --ink3: var(--muted);
   --line2: var(--line-strong);
+  --accent-ink: color-mix(in srgb, var(--accent) 40%, var(--ink));
   --accent-line: color-mix(in srgb, var(--accent) 32%, transparent);
   /* 정보 파랑 — 밝은 팔레트의 기본값. 어두운 팔레트에서는 밑의 덮어쓰기가
      각 팔레트의 서명 색으로 밝힌다. */
@@ -54,7 +55,8 @@
   --font:
     "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
     "Noto Sans KR", "Segoe UI", sans-serif;
-  --serif: "AppleMyungjo", "Nanum Myeongjo", "Iowan Old Style", Georgia, serif;
+  /* 2026-11-12 UI 조사 U-168 — 채운 프로젝트 표식의 글자색. */
+  --mark-ink: #fff;
   --pop: var(--shadow-pop);
   --r-sm: 6px;
   --r: 8px;
@@ -68,7 +70,7 @@
 
   box-sizing: border-box;
   font-family: var(--font);
-  font-size: 14px;
+  font-size: var(--fs-ui);
   color: var(--ink);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -81,21 +83,20 @@
   box-sizing: border-box;
 }
 
-.nx button,
-.nx textarea,
-.nx input {
-  font: inherit;
-  color: inherit;
-}
-
-.nx button {
-  font: inherit;
-  color: inherit;
+/* 2026-11-12 NOTE-1 — 글자는 옛 전역 규칙보다 높게, 상자는 부품보다 낮게 둔다. */
+:where(.nx) button {
   background: none;
   border: 0;
   cursor: pointer;
   padding: 0;
   text-align: inherit;
+}
+
+.nx button,
+.nx textarea,
+.nx input {
+  font: inherit;
+  color: inherit;
 }
 
 /*
@@ -165,8 +166,7 @@ html[data-theme="claude-dark"] .nx {
  * 손끝의 답 — 호버 · 선택 · 눌림에서 색이 뚝 바뀌지 않고 한 박자에 옮겨 간다. 누를
  * 수 있는 것 전부(단추 · 접는 머리 · 링크 · 호버로 밝아지는 줄)에 깔리는 기본값이다.
  * :where() 로 특이도를 0 에 둬서 제 전환을 이미 가진 부품(.nx-sw · .nx-shot …)이
- * 어디서 선언했든 그쪽이 이긴다 — `.nx button` 초기화(0-1-1)에 한 클래스 규칙이 조용히
- * 지는 이 파일의 사정 때문에, 이 기본값은 더 세게 쓰지 않고 더 약하게 쓴다. 눌림의
+ * 어디서 선언했든 그쪽이 이긴다. 단추 초기화처럼 부품의 한 클래스 규칙보다 약하게 둔다. 눌림의
  * 80ms 는 위 :active 규칙이 duration 만 덮어써서 그대로 산다(놓을 때는 이 150ms 로
  * 돌아온다). 초점 고리(outline)는 넣지 않는다 — 키보드가 밟는 자리는 즉시 보여야 한다.
  * 같은 까닭으로 화살표 키로 훑는 목록(role="option" — 팔레트 · 주소 목록)도 뺐다:
@@ -228,4 +228,10 @@ html[data-theme="claude-dark"] .nx {
     animation: none !important;
     left: 33%;
   }
+}
+
+/* 2026-11-12 이관 U-167 — 강조 면 위 글자도 읽는 대비를 지킨다. */
+.nx .nx-addr.nx-addr--tint,
+.nx .nx-addr.nx-addr--tint b {
+  color: var(--accent-ink);
 }

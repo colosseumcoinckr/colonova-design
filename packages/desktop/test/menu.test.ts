@@ -132,6 +132,6 @@ test("메뉴 문장은 menu.ts 가 아니라 copy.ts 에 있다 — 도움말 �
     assert.doesNotMatch(text, /니다(?![가-힣])/, `해요체로: ${text}`);
     assert.doesNotMatch(text, /로그 폴더|문제 해결|상태 확인/, `앱에 없는 말: ${text}`);
   }
-  // 기록 폴더는 시작 실패 상자와 같은 이름이다.
+  // 2026-11-12 UI 조사 U-178 — 도움말은 폴더만 열고, 시작 실패 상자는 열고 종료한다.
   assert.equal(MENU.helpLogs, "기록 폴더 열기");
 });

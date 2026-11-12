@@ -131,7 +131,7 @@ test("rawErrorLine: 원문 → 문장 매핑(W3) — 한국어 고지 · 영문 
   });
   // 한도 문장은 그 문장으로 바꾼다.
   assert.deepEqual(rawErrorLine("usage limit reached until 3pm", L), {
-    title: "구독 사용량을 채워 작업이 멈췄습니다",
+    title: "구독 사용량을 채워 작업이 멈췄어요",
     raw: "usage limit reached until 3pm",
   });
 });

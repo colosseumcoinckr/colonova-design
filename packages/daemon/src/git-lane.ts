@@ -13,6 +13,8 @@ export type LaneKind =
   | "submit"
   /** 제출 확인 창의 읽기(repo.submitPreview) — 합류하므로 실제 제출과 칸을 나눈다. */
   | "review"
+  /** 제출 확인 창의 새로 읽기(repo.submitPreview freshBase, 2026-11-12) — 배경 읽기(review)와 합류 짝을 나눠 fresh 요청이 진행 중인 로컬 읽기에 묻히지 않게 한다. */
+  | "review-fresh"
   | "refresh"
   | "land"
   | "push"
@@ -21,7 +23,9 @@ export type LaneKind =
   | "diff"
   | "preview"
   | "hygiene"
-  | "supervise";
+  | "supervise"
+  /** 새 화면 작업 시작 직전의 최신 확인(2026-11-12 채택) — fetch · 곧은 당기기만 한다. */
+  | "preflight";
 
 /** 작업 문맥의 표식 — 차선의 "지금 도는 작업" 목록과 겹쳐야 holding 이다. */
 interface LaneContext {

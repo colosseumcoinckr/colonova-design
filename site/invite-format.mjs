@@ -105,6 +105,27 @@ function repoKey(url) {
 }
 
 /**
+ * 창구 칸(2026-11-12 설계 결정 ㉱) — 막혔을 때 물어볼 곳. 칸마다 앞뒤 공백을 걷고,
+ * `url` 은 `https://` 만 받는다 — packages/protocol/src/invite.ts 의 parseSupport 와
+ * 같은 규칙을 .mjs 로 작게 옮긴 것이다(짝은 거기, 여기는 쓰는 쪽이다). 셋 다 비면
+ * 싣지 않는다 — null 이 돌아오면 칸이 아예 없다.
+ */
+function buildSupport(support) {
+  if (!support || typeof support !== "object") return null;
+  const name = (support.name ?? "").trim();
+  const room = (support.room ?? "").trim();
+  const url = (support.url ?? "").trim();
+  // 읽는 쪽(parseSupport)과 같은 판정 — 한도를 넘거나 https 가 아니면 그 칸만
+  // 버린다. 자르지 않는다: 잘린 주소는 다른 목적지가 되거나 열리지 않는다.
+  const value = {
+    ...(name && name.length <= 40 ? { name } : {}),
+    ...(room && room.length <= 60 ? { room } : {}),
+    ...(url && url.startsWith("https://") && url.length <= 300 ? { url } : {}),
+  };
+  return Object.keys(value).length > 0 ? value : null;
+}
+
+/**
  * 초대 파일의 내용(봉투 안쪽, v4) — 토큰 하나와 프로젝트 목록이다. token 은
  * 호출자가 trim 해 둔 것을 그대로 싣는다 — 이 함수는 비밀을 가공하지 않는다.
  * author 는 모든 프로젝트가 공유하는 "이 작업에 적을 이름"이고, projects 는
@@ -116,7 +137,8 @@ function repoKey(url) {
  * 같은 레포는 한 번만 싣는다 — "프로젝트 3개"라고 말했는데 실제로는 중복이라
  * 2개였던 일이 없게 뒤의 것을 버린다(읽는 쪽 normalizeInvite 와 같은 규칙).
  */
-export function buildInvite({ token, author, projects, notify, ...single }) {
+export function buildInvite({ token, author, projects, notify, support, ...single }) {
+  const supportValue = buildSupport(support);
   const seen = new Set();
   const list = (projects ?? [single]).filter((project) => {
     const key = repoKey(project.repoUrl ?? "") ?? project.repoUrl;
@@ -131,6 +153,8 @@ export function buildInvite({ token, author, projects, notify, ...single }) {
     readme: INVITE_README,
     // 초대 v4 의 기계 몫 — 개발자 알림이 갈 Slack 길(PLAN L11). 없으면 싣지 않는다.
     ...(notify?.slack ? { notify } : {}),
+    // 창구 칸(2026-11-12 결정 ㉱) — 막혔을 때 물어볼 곳. 비면 싣지 않는다.
+    ...(supportValue ? { support: supportValue } : {}),
     projects: list.map((project) => buildProject(project)),
   };
 }

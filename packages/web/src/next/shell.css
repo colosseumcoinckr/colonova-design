@@ -95,6 +95,7 @@
 /* 오른쪽 칸의 두 얼굴(미리보기 · 기획서) 중 숨은 쪽 — 둘 다 마운트된 채 한쪽만 선다. `.nx-preview` 는 뒤에서 읽히는
    `position: relative` 가 위 한 줄 규칙을 이겨 자리 0 짜리 칸이 격자 칸을 차지하고, 뒤에 선 칸이 밀려난다.
    그래서 격자의 직계 자식일 때는 특이도를 한 칸 올려 어느 파일의 순서에도 기대지 않는다. */
+.nx-panel-slot > .nx-offstage,
 .nx-body > .nx-offstage {
   position: absolute;
   inset: 0 auto auto 0;
@@ -129,8 +130,8 @@
 
 .nx-tabs {
   display: flex;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--line);
   flex: none;
 }
@@ -140,12 +141,12 @@
   min-width: 0;
   height: 32px;
   border-radius: var(--r);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--ink2);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   text-align: center;
   /* 2026-10-04 ux-review(2차): 긴 화면 이름이 탭을 넘치지 않게 — 말줄임으로 자리를
      지키고 배지(`Count`)가 밀려 나가지 않게 한다. */
@@ -169,7 +170,7 @@
   color: var(--ink);
   box-shadow:
     0 0 0 1px var(--line),
-    /* 고정 — 고른 탭의 그림자. */ 0 1px 2px rgba(0, 0, 0, 0.05);
+    var(--elev-1);
 }
 
 .nx-scrim {
@@ -293,7 +294,7 @@
   z-index: 29;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: 46px;
   padding: 0 14px;
   border: 0;
@@ -317,4 +318,15 @@
 /* 시트 자리에 입력창이 서면 접힌 한 줄은 걷힌다 — 입력창이 두 줄로 겹치지 않게. */
 .nx-preview:has(.nx-sheet-host:not(:empty)) .nx-fold-cmp {
   display: none;
+}
+
+/* 2026-11-12 UI 조사 U-159 — 패널 이름은 유지하고 기존 격자를 잇는다. */
+.nx-panel-slot {
+  display: contents;
+}
+
+/* 2026-11-12 이관 U-157 — 무대에 잘리지 않는 안쪽 초점 고리. */
+.nx .nx-fold-cmp:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -4px;
 }

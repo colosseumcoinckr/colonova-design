@@ -1,8 +1,8 @@
 import { type UIEvent, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../lib/daemon-client";
 import { DEV, L } from "../labels";
-import { useCopied } from "../lib/use-copied";
 import { useDiagnosticsText } from "../lib/use-diagnostics";
+import { CopyButton } from "../ui/CopyButton";
 import { SGroup, SPage, SRow } from "./parts";
 
 /**
@@ -40,18 +40,6 @@ export function DeveloperPage({
     };
   }, [active]);
 
-  const { copied, copy } = useCopied();
-  const [gathering, setGathering] = useState(false);
-  const copyText = async () => {
-    // 이미 보이는 글이면 그대로(누른 손짓 안에서 바로 복사), 아직이면 지금 모아 복사한다.
-    if (text !== null) return copy(text);
-    setGathering(true);
-    try {
-      copy(await build.current());
-    } finally {
-      setGathering(false);
-    }
-  };
   const lines = text === null ? [] : text.split("\n");
 
   return (
@@ -83,14 +71,12 @@ export function DeveloperPage({
         </SRow>
       </SGroup>
       <div className="nx-sfoot-act">
-        <button
-          type="button"
-          className="nx-btn nx-btn--sm"
-          disabled={gathering}
-          onClick={() => void copyText()}
-        >
-          {copied ? L.problem.copiedHelp : gathering ? L.report.gathering : L.problem.copyHelp}
-        </button>
+        <CopyButton
+          small
+          text={text ?? (() => build.current())}
+          label={L.problem.copyHelp}
+          doneLabel={L.problem.copiedHelp}
+        />
         <p className="nx-snote">{L.report.privateNote}</p>
       </div>
       <p className="nx-stbl" aria-busy={text === null}>

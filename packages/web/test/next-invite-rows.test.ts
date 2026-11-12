@@ -67,7 +67,10 @@ test("inviteRowsCopy: 바뀜 행은 무엇이 바뀌는지까지 한 줄에", ()
   const { rows } = inviteRowsCopy([row], L, [MEMBER, SETTLE]);
   assert.equal(rows[0]?.chip, "바뀜");
   assert.equal(rows[0]?.name, "회원 관리");
-  assert.equal(rows[0]?.detail, "프로젝트의 기준이 바뀌어요 · 받을 개발자 명단이 바뀌어요");
+  assert.equal(
+    rows[0]?.detail,
+    "새 작업을 시작할 때 가져오는 원본이 바뀌어요 · 받을 개발자 명단이 바뀌어요",
+  );
 });
 
 test("inviteRowsCopy: 바뀐 것이 없으면 그대로 행, 판 전체는 연결 코드만", () => {
@@ -151,7 +154,7 @@ test("inviteUpdateChanges: 명령 허용이 새로 켜지면 문장이 더해진
     currentName: "정산",
   } as const;
   const changes = inviteUpdateChanges(row, L, { ...SETTLE, commandsApproved: false });
-  assert.deepEqual(changes, ["개발자가 미리 허락해 둔 작업이 있어요"]);
+  assert.deepEqual(changes, ["개발자가 화면 준비 · 확인 작업의 실행을 미리 허용했어요"]);
 });
 
 test("inviteRowsCopy: 빈 초대장은 그대로도 아니다", () => {
@@ -193,7 +196,10 @@ function done(
 test("inviteTitle: 확인 단계는 질문이다 — 아직 아무것도 바뀌지 않았으니 가져왔다고 말하지 않는다", () => {
   const head = inviteTitle(confirm, L, { reach: 3, reconnected: false });
   assert.equal(head.title, "이 초대 파일을 가져올까요?");
-  assert.equal(head.sub, "가져오면 연결 코드가 새 것으로 바뀌어요 · 프로젝트 3개에 이어져요");
+  assert.equal(
+    head.sub,
+    "아래 프로젝트를 추가하거나 기존 제출 연결을 갱신해요 · 프로젝트 3개에 이어져요",
+  );
   assert.equal(head.tone, "info");
   assert.ok(!head.title.includes("가져왔"));
 });
@@ -216,10 +222,20 @@ test("inviteTitle: 끝난 뒤의 성공만 과거형이다", () => {
     { reach: 3, reconnected: false },
   );
   assert.equal(head.title, "초대 파일을 가져왔어요");
-  assert.equal(head.sub, "연결 코드를 새 것으로 바꿨어요 · 프로젝트 3개에 이어져요");
+  assert.equal(head.sub, "개발자에게 제출하는 연결 정보를 갱신했어요 · 프로젝트 3개에 이어져요");
   assert.equal(head.tone, "ok");
   const again = inviteTitle(done([{ row: KEEP, ok: true }]), L, { reach: 1, reconnected: true });
-  assert.equal(again.sub, "만료됐던 연결이 새 코드로 다시 이어졌어요 · 프로젝트 1개에 이어져요");
+  assert.equal(again.sub, "만료된 연결 정보를 갱신했어요 · 프로젝트 1개에 이어져요");
+});
+
+// 2026-11-12 UI 조사 검토 R4 — 연결 정보 갱신과 기존 프로젝트 제출 가능 여부는 별개다.
+test("inviteTitle: 도달 경고가 남은 성공은 연결 정보 갱신만 알린다", () => {
+  const state = done([{ row: KEEP, ok: true }]);
+  assert.equal(state.phase, "done");
+  if (state.phase !== "done") return;
+  state.result.reachWarnings.push("초대에 없는 기존 프로젝트는 제출할 수 없어요");
+  const head = inviteTitle(state, L, { reach: 1, reconnected: true });
+  assert.equal(head.sub, "만료된 연결 정보를 갱신했어요 · 프로젝트 1개에 이어져요");
 });
 
 test("inviteTitle: 일부만 실패하면 일부만 가져왔다고, 모두 실패하면 못 가져왔다고 말한다", () => {
@@ -300,7 +316,7 @@ test("applyingLine: 지금 하는 행의 이름을 말하고, 끝에 닿으면 �
 test("inviteUntil: 만료 예정이 앞날이면 월 · 일로 말한다 — 모르거나 이미 지난 날짜는 말하지 않는다", () => {
   const now = new Date(2026, 9, 6, 12).getTime();
   const future = new Date(2026, 10, 3, 9).toISOString();
-  assert.equal(inviteUntil(future, now, L), "연결은 11월 3일까지예요");
+  assert.equal(inviteUntil(future, now, L), "연결 유효기간 · 11월 3일까지");
   assert.equal(inviteUntil(null, now, L), null);
   assert.equal(inviteUntil(undefined, now, L), null);
   assert.equal(inviteUntil("아무 말", now, L), null);
@@ -334,7 +350,7 @@ test("tokenFailureText: 연결이 끊겨 있으면 끊겼다고, 아니면 코�
   assert.equal(tokenFailureText(null, L), L.invite.tokenRefused);
   // 어느 쪽도 프로젝트가 안 바뀌었다고 말한다.
   assert.ok(L.invite.tokenOffline.includes("하나도 바뀌지 않았어요"));
-  assert.ok(L.invite.tokenRefused.includes("하나도 바뀌지 않았어요"));
+  assert.ok(L.invite.tokenRefused.includes("프로젝트와 작업은 바뀌지 않았어요"));
 });
 
 test("inviteLockLine: 열려 있으면 잠그지 않고, 끊겼으면 이유 뒤에 약속을 붙인다", () => {
@@ -355,7 +371,7 @@ test("inviteReadError: 읽기 오류는 모두 해요체 한 줄이고 날것이
   const sentences = kinds.map((kind) => inviteReadError(kind, L));
   assert.equal(new Set(sentences).size, kinds.length);
   for (const sentence of sentences) {
-    assert.ok(sentence.endsWith("."), sentence);
+    assert.match(sentence, /요[.]?$/, sentence);
     // 옛 말투(~습니다)와 개발 어휘가 없다.
     assert.ok(!sentence.includes("습니다"), sentence);
     assert.ok(!sentence.includes("레포"), sentence);
@@ -366,7 +382,7 @@ test("inviteReachWarning: 새 연결 코드로 제출할 수 없는 프로젝트
   const line = inviteReachWarning("회원 관리", L);
   assert.equal(
     line,
-    "‘회원 관리’ 프로젝트는 새 연결 코드로 제출할 수 없어요 — 개발자에게 알려 주세요.",
+    "‘회원 관리’ 프로젝트는 새 연결 코드로 제출할 수 없어요 — 개발자에게 알려 주세요",
   );
   assert.ok(!line.includes("넘길"));
 });

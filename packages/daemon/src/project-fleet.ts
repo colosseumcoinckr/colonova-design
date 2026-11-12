@@ -55,7 +55,7 @@ import type { QueueDisk } from "./queue-store.js";
 import { nextReadyWatch } from "./ready-notice.js";
 import { assertClonableRepoUrl, RepoWorkspace } from "./repo.js";
 import { scopeOf } from "./repo-config.js";
-import { appendScreenMap } from "./screen-map.js";
+import { appendScreenMaps } from "./screen-map.js";
 import { screenSessionDirs } from "./session-dirs.js";
 import type { SessionManager } from "./session-manager.js";
 import { appendTape } from "./session-tape.js";
@@ -338,6 +338,7 @@ export class ProjectFleet {
       workspace: workspaces.repo,
       ledgerPath: cycleLedgerFile(paths.root),
       busy: () => this.deps.manager.busyIn(paths.repoRoot),
+      busyWithout: (sessionId) => this.deps.manager.busyIn(paths.repoRoot, sessionId),
       installStale: () => !workspaces.repo.installUpToDate(),
       github: () => this.deps.gitHubClient(),
       githubAuthExpired: () => this.deps.githubAuthExpired(),
@@ -1037,10 +1038,9 @@ export class ProjectFleet {
    * P2-1 자동 저장: 답을 낸 턴이 쌓은 변경을 로컬 커밋으로. 저장 버튼이 사라진
    * 세계에서 이것이 저장이다 — 사람은 제출만 누른다.
    *
-   * 커밋 제목은 그 턴을 연 말의 첫 줄(①): 메모 턴을 돌리면 턴마다 구독이 두
-   * 배로 타므로, 여기서 절대 돌리지 않는다. 말이 없으면(기계가 연 턴)
-   * runSave 의 폴백(② machineMemo → ③ 기본 문구)에 맡긴다.
-   * 2026-10-20 사용자 요청: MCP 보관 계획 없이 한 요청의 변경을 함께 보관한다.
+   * 2026-11-12 사용자 요청: Haiku 분류로 의미 단위 보관을 시도한다.
+   * 사용자 말 첫 줄은 분류의 배경과 단일 보관 폴백 제목이다.
+   * 여러 커밋 모두 같은 requestId에 연결해 요청 전체 되돌리기를 유지한다.
    * 보관은 로컬에서 끝나며 원격 전송은 사용자가 확인한 제출에서만 한다(2026-10-20 MVP).
    * 커밋 게이트가 열리면 세션에 고침 브리프를 보내 화면 확인 게이트와 같은
    * 루프로 스스로 닫는다.
@@ -1072,6 +1072,7 @@ export class ProjectFleet {
     try {
       const saved = await workspaces.repo.save({
         ...subject,
+        atomicRequest: subject.message ?? "화면 변경 보관",
         sessionId,
         onSessionTurn: (brief: string) => {
           this.deps.notice({
@@ -1087,12 +1088,15 @@ export class ProjectFleet {
           }
         },
       });
+      if (saved.stage !== "published") return;
       // 라우트↔파일 지도(2026-09-22): 커밋이 성공했을 때만 한 줄 — sha 와 이
       // 저장이 담은 파일, 그리고 이 턴이 가리킨 화면. 정체 검색이 빈손인
       // 핀의 마지막 길이 이 기록이다. 실패는 조용하다(지도는 판정이 아니다).
       // 저장이 변경 단위로 여러 커밋에 나뉘면(2026-10-11) HEAD 의 파일은
       // 마지막 변경의 것뿐이라, 상태가 싣는 이번 저장의 경로 전부를 쓴다.
-      const head = await workspaces.repo.headCommitFiles().catch(() => null);
+      const head = saved.commit
+        ? { sha: saved.commit, files: saved.turnFiles ?? [] }
+        : await workspaces.repo.headCommitFiles().catch(() => null);
       const files = saved.turnFiles ?? head?.files ?? [];
       if (screenRoutes !== undefined && screenRoutes.length > 0) {
         if (head !== null && files.length > 0) {
@@ -1104,19 +1108,24 @@ export class ProjectFleet {
           } catch {
             origin = null;
           }
-          await appendScreenMap(workspaces.paths.root, {
-            at: new Date().toISOString(),
-            sha: head.sha,
-            sessionId,
-            ...(requestId ? { requestId } : {}),
-            routes: screenRoutes,
-            files,
-            screens: screensOfTurn(screenRoutes, answer, origin),
-            // 이 턴의 자동 확인이 문제 없이 지났다는 기록 — 제출의 `### 확인한 것` 이 센다(2026-10-07).
-            ...(checked ? { checked } : {}),
-            // 이 턴을 쓴 AI 의 종류 — 제출의 「코드는 AI 가 썼어요」 줄이 읽는다(2026-10-07 베타 준비 분석).
-            ...(session.provider ? { provider: session.provider } : {}),
-          }).catch(() => undefined);
+          const commits = saved.turnCommits ?? [{ sha: head.sha, files }];
+          // 2026-11-12: 모든 조각을 같은 요청에 연결해야 요청 전체 되돌리기가 성립한다.
+          await appendScreenMaps(
+            workspaces.paths.root,
+            commits.map((commit) => ({
+              at: new Date().toISOString(),
+              sha: commit.sha,
+              sessionId,
+              ...(requestId ? { requestId } : {}),
+              routes: screenRoutes,
+              files: commit.files,
+              screens: screensOfTurn(screenRoutes, answer, origin),
+              // 이 턴의 자동 확인이 문제 없이 지났다는 기록 — 제출의 `### 확인한 것` 이 센다(2026-10-07).
+              ...(checked ? { checked } : {}),
+              // 이 턴을 쓴 AI 의 종류 — 제출의 「코드는 AI 가 썼어요」 줄이 읽는다(2026-10-07 베타 준비 분석).
+              ...(session.provider ? { provider: session.provider } : {}),
+            })),
+          ).catch(() => undefined);
         }
       }
       return head ? { sha: head.sha, requestId } : undefined;

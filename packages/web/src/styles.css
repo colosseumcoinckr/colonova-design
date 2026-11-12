@@ -380,7 +380,7 @@ button:disabled {
   cursor: not-allowed;
 }
 
-input,
+input:where(:not([type="checkbox"]):not([type="radio"])),
 textarea,
 select {
   font: inherit;
@@ -652,7 +652,7 @@ select {
 }
 
 .tag {
-  font: 500 var(--font-ui-100) var(--mono);
+  font: 500 var(--fs-cap, 12px) var(--mono);
   background: transparent;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
@@ -885,7 +885,7 @@ select {
   border-radius: var(--r-md) var(--r-md) 0 0;
 }
 .md__codelang {
-  font: 500 var(--font-ui-100) var(--mono);
+  font: 500 var(--fs-cap, 12px) var(--mono);
   color: var(--muted);
   letter-spacing: 0.04em;
 }
@@ -896,7 +896,7 @@ select {
   gap: 2px;
 }
 .md__codeacts .ghost {
-  font-size: var(--font-ui-110);
+  font-size: var(--fs-cap, 12px);
   padding: 2px 7px;
 }
 .md__mermaid {
@@ -1009,7 +1009,7 @@ select {
   align-items: baseline;
   gap: 8px;
   min-width: 0;
-  font: 500 var(--font-ui-115) var(--sans);
+  font: 500 var(--fs-cap, 12px) var(--sans);
   color: var(--muted);
   list-style: none;
   user-select: none;
@@ -1060,10 +1060,10 @@ select {
 .nx .thinking pre {
   white-space: pre-wrap;
   font-family: var(--mono);
-  font-size: var(--font-code-115);
+  font-size: var(--fs-cap, 12px);
   line-height: 1.6;
   margin: 8px 0 2px;
-  padding: 9px 11px;
+  padding: var(--sp-2, 8px) var(--sp-3, 12px);
   background: var(--bg-2);
   border: 1px solid var(--line-soft);
   border-radius: 8px;
@@ -1137,12 +1137,12 @@ select {
 }
 
 .tool__name {
-  font: 600 var(--font-ui-115) var(--mono);
+  font: 600 var(--fs-cap, 12px) var(--mono);
   color: var(--accent);
   flex-shrink: 0;
 }
 .tool__headline {
-  font: 400 var(--font-ui-115) var(--mono);
+  font: 400 var(--fs-cap, 12px) var(--mono);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1151,12 +1151,12 @@ select {
 }
 .tool__status--running {
   color: var(--muted);
-  font: 500 var(--font-ui-105) var(--mono);
+  font: 500 var(--fs-cap, 12px) var(--mono);
   flex: none;
 }
 .tool__status--error {
   color: var(--danger);
-  font: 500 var(--font-ui-105) var(--mono);
+  font: 500 var(--fs-cap, 12px) var(--mono);
   flex: none;
 }
 
@@ -1177,8 +1177,8 @@ select {
   padding-right: 6px;
   flex: none;
 }
-.tool__act {
-  font: 500 var(--font-ui-105) var(--sans);
+.nx .tool__act {
+  font: 500 var(--fs-cap, 12px) var(--sans);
   color: var(--muted);
   padding: 2px 6px;
   border-radius: var(--r-sm);
@@ -1192,19 +1192,19 @@ select {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 11px 6px 30px;
+  padding: var(--sp-1, 4px) var(--sp-3, 12px) var(--sp-2, 8px) var(--sp-8, 32px);
   border-top: 1px solid var(--line-soft);
 }
 .tool__tasktext {
-  font: 400 var(--font-ui-115) var(--sans);
+  font: 400 var(--fs-cap, 12px) var(--sans);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .tool__taskmeta {
-  font: 500 var(--font-ui-105) var(--mono);
-  color: var(--muted-2, var(--muted));
+  font: 500 var(--fs-cap, 12px) var(--mono);
+  color: var(--muted);
   flex: none;
 }
 
@@ -1226,14 +1226,13 @@ select {
   text-align: left;
 }
 .subagent__label {
-  font: 500 var(--font-ui-110) var(--sans);
+  font: 500 var(--fs-cap, 12px) var(--sans);
   color: var(--muted);
   flex: none;
 }
 .subagent__peek {
-  font: 400 var(--font-ui-110) var(--sans);
+  font: 400 var(--fs-cap, 12px) var(--sans);
   color: var(--muted);
-  opacity: 0.8;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1253,11 +1252,11 @@ select {
 
 .tool__body {
   border-top: 1px solid var(--line-soft);
-  padding: 9px 11px;
+  padding: var(--sp-2, 8px) var(--sp-3, 12px);
   background: var(--bg);
 }
 .tool__label {
-  font: 500 var(--font-ui-95) var(--mono);
+  font: 500 var(--fs-cap, 12px) var(--mono);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: var(--muted);
@@ -1269,7 +1268,7 @@ select {
 .nx .tool pre,
 .nx .card pre {
   font-family: var(--mono);
-  font-size: var(--font-code-115);
+  font-size: var(--fs-cap, 12px);
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
@@ -1485,19 +1484,25 @@ select {
   min-width: 0;
   max-width: 100%;
 }
+/* 2026-11-12 UI 조사 U-217 — 개별 풍선 폭은 CSS 순서와 관계없이 우선한다. */
 .tip__bubble {
-  position: fixed;
-  /* 겹판(70) · 찾기(75)보다 위, 토스트(95)보다 아래 — 겹판의 단추에 붙은 풍선이 판 위로 올라와야 한다.
-     풍선은 body 로 옮겨 그려져 `.nx` 의 층 토큰(`--nx-z-*`)을 못 물려받아 숫자로 쓴다(ui/overlay.css 와 짝). */
-  z-index: 80;
   max-width: 260px;
-  padding: 5px 9px;
+}
+.nx.tip__bubble {
+  display: block;
+  height: auto;
+  overflow: visible;
+  grid-template-columns: none;
+  position: fixed;
+  /* 2026-11-12 UI 조사 U-217 — 포털도 셸의 토큰을 받고, 찾기보다 한 층 위에 선다. */
+  z-index: calc(var(--nx-z-palette) + 1);
+  padding: var(--sp-1) var(--sp-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   background: var(--panel-3);
   box-shadow: var(--shadow-float);
   color: var(--text);
-  font: 500 var(--font-ui-115) / 1.45 var(--sans);
+  font: var(--fw-medium) var(--fs-cap) / var(--lh-ui) var(--sans);
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
@@ -1507,7 +1512,7 @@ select {
     transform 0.16s var(--drift),
     visibility 0.12s;
 }
-.tip__bubble--shown {
+.nx.tip__bubble--shown {
   opacity: 1;
   visibility: visible;
   transform: none;
@@ -1517,7 +1522,7 @@ select {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tip__bubble {
+  .nx.tip__bubble {
     transition:
       opacity 0.12s,
       visibility 0.12s;
@@ -1916,23 +1921,23 @@ select {
   flex: 1;
 }
 .activity__flag {
-  font: 500 var(--font-ui-105) var(--mono);
+  font: 500 var(--fs-cap, 12px) var(--mono);
   color: var(--danger);
 }
 .activity__body {
   border-top: 1px solid var(--line-soft);
-  padding: 8px;
+  padding: var(--sp-2, 8px);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--sp-2, 8px);
   background: var(--bg-2);
-  border-radius: 0 0 9px 9px;
+  border-radius: 0 0 calc(var(--r-lg) - 1px) calc(var(--r-lg) - 1px);
 }
 /* 펼침의 첫 줄 — 머리에서 내려온 숫자(P3-4). 기록의 머리말이라 본문의
    걸음들보다 한 단 조용하다. */
 .activity__counts {
   padding: 2px 0 6px;
-  font: 400 var(--font-ui-100) var(--sans);
+  font: 400 var(--fs-cap, 12px) var(--sans);
   color: var(--muted);
 }
 
@@ -2502,4 +2507,45 @@ button .ic {
   .nx-fs .nx-fs-badge {
     animation: none;
   }
+}
+
+/* 2026-11-12 UI 조사 U-218 — 선택 상자는 브라우저 화살표를 보존한다. */
+.nx select.nx-input {
+  appearance: auto;
+  -webkit-appearance: auto;
+  background-image: none;
+  padding-right: var(--sp-3);
+}
+
+/* U-220 — 단계의 의미를 지키며 작은 제목도 읽는 크기로 둔다. */
+.md h5,
+.md h6 {
+  margin: var(--sp-3, 12px) 0 var(--sp-1, 4px);
+  line-height: var(--lh-ui, 1.45);
+  font-weight: var(--fw-semi, 600);
+  color: var(--text);
+}
+.md h5 {
+  font-size: var(--fs-ui, 14px);
+}
+.md h6 {
+  font-size: var(--fs-sm, 13px);
+}
+
+/* U-224 — 체크 상자가 표식이므로 글머리표를 겹치지 않는다. */
+.md .task-list-item {
+  list-style: none;
+}
+.md .task-list-item > input[type="checkbox"] {
+  width: var(--fs-ui, 14px);
+  height: var(--fs-ui, 14px);
+  margin-inline-end: var(--sp-1, 4px);
+  vertical-align: middle;
+  accent-color: var(--accent);
+}
+
+/* 2026-11-12 UI 조사 U-041 — 펼친 근황은 말줄임 없이 읽는다. */
+.tool__taskfull {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }

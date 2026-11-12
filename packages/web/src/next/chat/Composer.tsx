@@ -1,3 +1,4 @@
+import { PanelBottomClose } from "lucide-react";
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Tip } from "../../components/Tip";
 import type { PinAttachment } from "../../hooks/usePins";
@@ -6,24 +7,14 @@ import type { Attachment } from "../../lib/attachment";
 import { modelRowOf } from "../../lib/chat-options";
 import type { Daemon } from "../../lib/daemon-client";
 import { koreanNoticeWords } from "../../lib/error-words";
-import { composing } from "../../lib/ime";
 import { isInviteFile, offerInviteFile } from "../../lib/invite-bus";
 import { L } from "../labels";
+import { composing } from "../lib/ime";
 import { keyHint } from "../lib/key-hint";
 import { ghostText, isAcceptKey } from "../lib/next-say";
 import { fastChip, fastCost, fastTipWords, fastToast, sizeText } from "../lib/thread";
 import { SuggestList, useComposerSuggest } from "./ComposerSuggest";
-import {
-  BoltIcon,
-  ChevIcon,
-  ClipIcon,
-  FileIcon,
-  ImageIcon,
-  PinIcon,
-  StopIcon,
-  UpIcon,
-  XIcon,
-} from "./icons";
+import { BoltIcon, ClipIcon, FileIcon, ImageIcon, PinIcon, StopIcon, UpIcon, XIcon } from "./icons";
 import { ModelChip } from "./ModelChip";
 
 /** 첨부 한 건의 상한 — 대기열 저장소의 항목 예산(8MB)과 같다(옛 입력창과 같은 값). */
@@ -175,6 +166,7 @@ export function Composer({
   narrow = false,
   onPinMode,
   leading,
+  references,
   onContentChange,
   disabledProviders,
   lockReason = null,
@@ -210,6 +202,7 @@ export function Composer({
   onPinMode?: () => void;
   /** 도구 줄 맨 앞(프로젝트 칩 등). */
   leading?: ReactNode;
+  references?: ReactNode;
   /**
    * 입력창에 보낼 것이 생기거나 비워질 때 알린다 — 새 대화의 시작점 칩이 쓰던 말을 덮지 않게 물러난다.
    * 처음 그리기 전에 한 번 불러(layout effect) 되살린 초안이 있는 채로 열려도 칩이 깜빡이지 않는다.
@@ -272,6 +265,17 @@ export function Composer({
   const drafts = useRef(new Map<string, Editor>());
   const sendFailures = useRef(new Map<string, string>());
   const keyRef = useRef(draftKey);
+  const mounted = useRef(true);
+  const reads = useRef(new Map<string, number>());
+  const readBatches = useRef(new Set<{ owner: string }>());
+  const readNotices = useRef(new Map<string, string>());
+  const [, refreshReads] = useState(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   // 보낸 말 걷기의 자리 — null 은 걷지 않는 중. 0 이 가장 최신(2026-10-04 ux-plan PR 2).
   const recallIndex = useRef<number | null>(null);
   // 밖에서 채운 말 속에 골라 둘 자리 — 값이 그려진 직후의 layout effect 가 쓰고 거둔다.
@@ -317,8 +321,23 @@ export function Composer({
     const carry = previous.startsWith("new:") && prevEditor.text !== "" && pristine;
     if (carry) {
       shownScreens.current.add(draftKey, shownScreens.current.take(previous));
+      // 2026-11-12 CHAT 검토 2 — 초안과 함께 읽는 중인 묶음의 주인도 옮긴다.
+      for (const batch of readBatches.current) {
+        if (batch.owner === previous) batch.owner = draftKey;
+      }
+      reads.current.set(
+        draftKey,
+        (reads.current.get(draftKey) ?? 0) + (reads.current.get(previous) ?? 0),
+      );
+      reads.current.delete(previous);
+      const readNotice = readNotices.current.get(previous);
+      if (readNotice) readNotices.current.set(draftKey, readNotice);
+      readNotices.current.delete(previous);
+      refreshReads((n) => n + 1);
       drafts.current.delete(previous);
       saveDraft(previous, "");
+      drafts.current.set(draftKey, prevEditor);
+      saveDraft(draftKey, prevEditor.text);
     }
     keyRef.current = draftKey;
     // 대화를 옮기면 걷기도 처음부터 — 인덱스는 옛 대화의 것이었다.
@@ -395,8 +414,34 @@ export function Composer({
       refused.length > 0 ? { tone: "warn", text: L.composer.tooBig(refused.join(", ")) } : null,
     );
     if (accepted.length === 0) return;
-    const read = await Promise.all(accepted.map((file) => toAttachment(file)));
-    setEditor((prev) => ({ text: prev.text, attachments: [...prev.attachments, ...read] }));
+    const batch = { owner: keyRef.current };
+    readBatches.current.add(batch);
+    reads.current.set(batch.owner, (reads.current.get(batch.owner) ?? 0) + 1);
+    readNotices.current.delete(batch.owner);
+    refreshReads((n) => n + 1);
+    const results = await Promise.allSettled(accepted.map((file) => toAttachment(file)));
+    readBatches.current.delete(batch);
+    if (!mounted.current) return;
+    const owner = batch.owner;
+    const read: Attachment[] = [];
+    const failed: string[] = [];
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") read.push(result.value);
+      else failed.push(accepted[index]?.name ?? "");
+    });
+    const append = (prev: Editor): Editor => ({
+      ...prev,
+      attachments: [...prev.attachments, ...read],
+    });
+    if (keyRef.current === owner) setEditor(append);
+    else
+      drafts.current.set(
+        owner,
+        append(drafts.current.get(owner) ?? { text: storedDraft(owner), attachments: [] }),
+      );
+    reads.current.set(owner, Math.max(0, (reads.current.get(owner) ?? 1) - 1));
+    if (failed.length) readNotices.current.set(owner, L.composer.readFailed(failed.join(", ")));
+    refreshReads((n) => n + 1);
   };
   const readRef = useRef(readFiles);
   readRef.current = readFiles;
@@ -440,7 +485,7 @@ export function Composer({
   // 보내기의 몸통 — 입력창의 지금 편집판이 아니라 건네준 편집판을 보낸다. `nx:composer:attach` 의
   // 누름=보내기(`detail.send` — 2026-11-03 A안 1A-1(b))가 붙인 내용을 그대로 보내게 한 갈림이다.
   const submitEditor = (given: Editor) => {
-    if (sendingRef.current || locked) return;
+    if (sendingRef.current || locked || (reads.current.get(keyRef.current) ?? 0) > 0) return;
     const text = given.text.trim();
     if (!text && given.attachments.length === 0 && pins.length === 0) return;
     // 핀만 있고 말이 어디에도 없다 — 보내지 않고 한 줄로 묻는다(말풍선의 `지금 보내기` 도 이 길을 지난다).
@@ -542,6 +587,7 @@ export function Composer({
         editorRef.current.text.trim() === "" &&
         editorRef.current.attachments.length === 0 &&
         pinsRef.current.length === 0 &&
+        (reads.current.get(keyRef.current) ?? 0) === 0 &&
         !sendingRef.current &&
         !lockedRef.current;
       if (sendsNow && detail) {
@@ -784,6 +830,12 @@ export function Composer({
           )}
         </div>
       )}
+      <div role="status" className="nx-cmp-note">
+        {(reads.current.get(draftKey) ?? 0) > 0
+          ? L.composer.readingFiles
+          : readNotices.current.get(draftKey)}
+      </div>
+      {references}
       {editor.attachments.length > 0 && (
         <div className="nx-atts">
           {editor.attachments.map((att, index) => (
@@ -796,14 +848,14 @@ export function Composer({
                 )}
               </span>
               <span className="nx-att-n">
-                <b>{att.name}</b>
+                <b title={att.name}>{att.name}</b>
                 <span>{sizeText(att.size)}</span>
               </span>
               <button
                 type="button"
                 className="nx-ibtn nx-ibtn--sm"
                 title={L.chat.attachRemove}
-                aria-label={L.chat.attachRemove}
+                aria-label={`${L.chat.attachRemove} · ${att.name}`}
                 onClick={() =>
                   setEditor((prev) => ({
                     text: prev.text,
@@ -954,7 +1006,7 @@ export function Composer({
             aria-label={L.composer.foldClose}
             onClick={onSheetFold}
           >
-            <ChevIcon />
+            <PanelBottomClose className="nx-i" size={16} aria-hidden="true" />
           </button>
         )}
         {showStop && (
@@ -975,7 +1027,7 @@ export function Composer({
             className="nx-send"
             title={keyHint(running ? L.composer.sendQueue : L.composer.send)}
             aria-label={keyHint(running ? L.composer.sendQueue : L.composer.send)}
-            disabled={!hasContent || sending || locked}
+            disabled={!hasContent || sending || locked || (reads.current.get(draftKey) ?? 0) > 0}
             onClick={submit}
           >
             <UpIcon />

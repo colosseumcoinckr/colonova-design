@@ -89,6 +89,15 @@
   font-size: var(--fs-cap);
 }
 
+/* 되살린 글의 두 손 — 복사 · 닫기가 같은 높이로 간격을 두고 선다(2026-11-12 UI 조사 U-098 · 감독자). */
+.nx-dr-recovered-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1_5);
+  margin-top: var(--sp-1_5);
+}
+
 /* ---------- 처지 띠 · 발행 확인 창(2026-10-23 · 최종 구현 계획 F2) ---------- */
 /* 결과 확인 필요 — 상태 문장 띠와 그 아래 손(2026-10-23 화면 확인). 둘은 한 틀이다(2026-10-24 QA 16): 앱 공통의 문제 띠
    (`nx-banner` — 톤 · 아이콘 · 글 · 단추)가 한 상자로 서도록 손 줄이 띠 바로 아래에 같은 톤 · 테두리 · 반경으로 이어 닫는다.
@@ -138,7 +147,7 @@
   margin: 0;
   color: var(--ink2);
   font-size: var(--fs-sm);
-  font-weight: var(--fw-sem);
+  font-weight: var(--fw-semi);
 }
 
 /* 읽기 실패 — 문장과 다시 시도 단추가 세로로 선다. */
@@ -238,8 +247,19 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 판 숫자의 접힘(2026-11-12 결정 ㉰) — 여는 말은 작은 보조 글, 안은 상태 줄과 같은 모양. */
+.nx-pb-vers-fold {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--ink3);
+}
+
+.nx-pb-vers-fold summary {
+  width: fit-content;
+}
+
 .nx-pb-sec-t {
-  margin: var(--sp-4) 0 var(--sp-1_5);
+  margin: 0;
   font-size: var(--fs-sm);
   font-weight: var(--fw-semi);
   color: var(--ink2);
@@ -316,7 +336,7 @@
 .nx-dr-skel i {
   display: block;
   height: 12px;
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   background: var(--nx-hover);
   animation: nx-breathe 1.6s ease-in-out infinite;
 }
@@ -663,7 +683,7 @@
   /* 격자 아이의 기본 min-width:auto 는 긴 제목(첫 말이 제목)을 칸 폭 너머로 밀어 칸을 가로로
      굴렀다(2026-11-12 기획자 체험 — aside scrollWidth > clientWidth). minmax(0,…) 로 줄어들게 한다. */
   grid-template-columns: minmax(0, 1fr);
-  gap: 2px;
+  gap: var(--sp-0_5);
   padding-bottom: var(--sp-2);
   border-bottom: 1px solid var(--line-soft);
 }
@@ -698,13 +718,12 @@
   font-size: var(--fs-cap);
 }
 
-/* 이 AI 가 바꾸는 것 — 머리의 마지막 한 줄(줄바꿈 상자의 새 줄). 길면 말줄임하고 `title` 에 전문이 산다. */
+/* 이 AI 가 바꾸는 것 — 머리의 마지막 줄. 말줄임하면 «발행할 때 반영돼요» 가 잘려 정작 알아야 할 말이
+   사라졌다(2026-11-12 기획 대화 칸 손질) — 칸 폭에 맞춰 줄을 바꾼다. */
 .nx-dr-thread-scope {
   margin: 0;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   color: var(--ink3);
   font-size: var(--fs-cap);
   line-height: 1.5;
@@ -783,7 +802,7 @@
 /* 답의 머리 문장(2026-11-02 D2) — 첫 문단이 짧고 뒤에 더 있으면 살짝 크게(화면 대화와 같은 규칙). */
 .nx-dr-msg[data-lead="true"] .nx-dr-msg-md > .md > p:first-child {
   font-size: var(--fs-lg);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   line-height: 1.55;
   letter-spacing: -0.015em;
   color: var(--ink);
@@ -796,20 +815,39 @@
   font-size: var(--fs-cap);
 }
 
+/* 말의 끝줄 — 시각과 손이 한 줄에 선다(2026-11-12 기획 대화 칸 손질). 숨은 손이 따로 한 줄(36px)을
+   차지해 말 사이가 들쭉날쭉했다. 사람의 말은 손 · 시각 순으로 오른쪽에, AI 의 말은 시각 · 손 순으로 왼쪽에. */
+.nx-dr-msg-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  min-width: 0;
+}
+.nx-dr-msg[data-role="user"] .nx-dr-msg-foot {
+  justify-content: flex-end;
+}
+
+/* 판정 실패 줄의 `다시 시도` — 말의 손과 달리 hover 없이도 늘 보인다(실패에는 고칠 손이 곧장 서야 한다). */
+.nx-dr-msg-retry {
+  display: flex;
+  gap: var(--sp-1);
+}
+
 /* 화면 요청에서 온 말의 머리(2026-10-30 같이 고치기) — 말풍선 위의 작은 한 줄. */
 .nx-dr-msg-origin {
-  margin: 0 0 4px;
+  margin: 0 0 var(--sp-1);
   font-size: var(--fs-cap);
   color: var(--ink3);
 }
 .nx-dr-msg[data-role="user"] .nx-dr-msg-text {
   margin: 0;
-  padding: 7px 11px;
-  border-radius: var(--r-md);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-lg);
   background: var(--accent-soft);
   color: var(--ink);
-  font-size: var(--fs-read);
-  line-height: var(--lh-read);
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -898,23 +936,39 @@
 .nx-dr-thread-form {
   display: grid;
   gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+
+.nx-dr-thread-form:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-line);
 }
 
 /* 입력창은 글에 맞춰 자란다(2026-11-02 D7) — 두 줄부터 여섯 줄쯤까지(화면 대화 입력창과 같은 규칙). */
 .nx .nx-dr-thread-row > textarea {
   resize: none;
-  min-height: calc(2lh + var(--sp-4) + 2px);
+  min-height: var(--sp-12);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
   max-height: 180px;
   overflow-y: auto;
 }
 
 .nx-dr-thread-row {
   display: grid;
-  gap: var(--sp-1_5);
+  gap: var(--sp-2);
 }
 
 .nx-dr-thread-acts {
   display: flex;
+  min-height: var(--h-md);
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
@@ -922,9 +976,16 @@
 }
 
 /* 모델 칩은 보내기 곁으로(2026-10-26) — 근거 담기가 왼쪽을 지키고, 칩 · 보내기가 오른쪽에
-   붙는다. margin:auto 가 남은 폭을 모두 삼켜 space-between 의 벌림이 사라진다. 좁은 칸에서는
-   줄바꿈(wrap)이 알아서 다음 줄에 내려놓는다. */
-.nx-dr-thread-acts > .nx-anchor {
+   붙는다. 둘은 한 묶음(`nx-dr-send`)이다(2026-11-12 기획 대화 칸 손질) — 따로 접히면 기본 380px 칸에서
+   보내기만 다음 줄 왼쪽 끝에 홀로 떨어졌다. 묶음은 margin:auto 로 오른쪽에 붙고, 넘치면 묶음째 다음 줄의
+   오른쪽 끝으로 내려간다. 더 좁으면 묶음 안에서 보내기가 칩 아래 오른쪽으로 접힌다. */
+.nx-dr-send {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
   margin-left: auto;
 }
 
@@ -934,9 +995,8 @@
   gap: var(--sp-2);
   width: 300px;
   max-width: calc(100vw - 48px);
-  padding: var(--sp-3);
-  border: 1px dashed var(--line2);
-  border-radius: var(--r-md);
+  padding: 0;
+  border: 0;
 }
 
 .nx-dr-refpick-hd {
@@ -1074,6 +1134,7 @@
 }
 .nx-pb .nx-pb-sec-t,
 .nx-pb .nx-pb-vers,
+.nx-pb .nx-pb-vers-fold,
 .nx-pb .nx-pb-blockers,
 .nx-pb .nx-pb-stage-note {
   margin-top: 0;
@@ -1274,7 +1335,7 @@
   margin-inline: auto;
   width: 100%;
 }
-.nx-dr-starter {
+.nx .nx-dr-starter {
   padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -1284,9 +1345,9 @@
   text-align: left;
   cursor: pointer;
 }
-.nx-dr-starter:hover {
+.nx .nx-dr-starter:hover {
   border-color: var(--ink3);
-  background: var(--hover, rgba(0, 0, 0, 0.04));
+  background: var(--nx-hover);
 }
 
 /* 말의 손 — 복사 · 다시 요청 · 고쳐 보내기(§A). 마지막 말의 손은 hover 없이도 늘 보이고
@@ -1294,7 +1355,6 @@
 .nx-dr-msg-acts {
   display: flex;
   gap: var(--sp-1);
-  margin-top: var(--sp-1);
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -1339,7 +1399,7 @@
 }
 .nx-dr-doccard-n {
   color: var(--ink2);
-  font-weight: var(--fw-normal);
+  font-weight: var(--fw-regular);
   font-size: var(--fs-sm);
 }
 
@@ -1463,7 +1523,7 @@
 /* biome-ignore lint/style/noDescendingSpecificity: 검토의 서쪽 p 는 읽기 판(.md) 문단이 아니라 제목 · 보존 이름표다. */
 .nx-dr-review-side p {
   margin: 0;
-  line-height: 1.7;
+  line-height: var(--lh-read);
 }
 .nx-pb .nx-dr-compare {
   padding: var(--sp-3) 0 0;
@@ -1477,7 +1537,7 @@
 .nx-dr-diff {
   margin: 0;
   font-size: var(--fs-ui);
-  line-height: 1.7;
+  line-height: var(--lh-read);
 }
 .nx-dr-diff del {
   color: var(--ink3);
@@ -1535,19 +1595,24 @@
 /* 토큰 칩(§4단계) — ⟦t1⟧ 글자 대신 사람의 말 칩. */
 .nx-dr-tokenchip {
   display: inline-block;
-  margin-inline: 2px;
+  margin-inline: var(--sp-0_5);
   padding: 1px var(--sp-2);
   border: 1px solid var(--line);
   border-radius: var(--r-full, 999px);
   background: var(--bg-2, transparent);
-  color: var(--ink2);
-  font-size: var(--fs-cap);
   line-height: 1.6;
   cursor: pointer;
 }
 .nx-dr-tokenchip:hover {
-  color: var(--ink);
   border-color: var(--ink3);
+}
+/* 2026-11-12 NOTE-1 — 단추의 글자는 셸 초기화보다 구체적으로 정한다. */
+.nx .nx-dr-tokenchip {
+  color: var(--ink2);
+  font-size: var(--fs-cap);
+}
+.nx .nx-dr-tokenchip:hover {
+  color: var(--ink);
 }
 /* 상태 표시 칩(2026-11-03 실앱 감사) — 겉껍데기를 벗기고 안의 색 알약(nx-dv-status)이 서게 한다.
    알약의 색 클래스는 읽기 화면(doc-view.css)과 같은 것을 재사용한다. */
@@ -1568,9 +1633,108 @@
 @keyframes nx-dr-flash {
   0%,
   40% {
-    background: var(--sel, rgba(15, 98, 254, 0.12));
+    background: var(--nx-selected);
   }
   100% {
     background: transparent;
   }
+}
+
+/* 2026-11-12 UI 조사 U-084·074 — 읽기 머리와 같은 세 줄과 보조 손 높이. */
+.nx-dr-meta {
+  flex: 1;
+  font-size: var(--fs-sm);
+}
+.nx-dr-primary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.nx-dr-acts-hd {
+  justify-content: flex-start;
+  margin-inline-start: 0;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.nx-dr-acts-hd .nx-da-menu > .nx-ibtn {
+  width: var(--h-sm);
+  height: var(--h-sm);
+}
+
+/* 빈 대화도 입력창은 칸 바닥에 선다(2026-11-12 사용자 요청 «입력 채팅창 하단에») — U-116 이 안내 · 예시 · 입력을
+   위쪽 한 묶음으로 올려 입력창이 칸 가운데에 떠 있었다. 지금은 대화가 있을 때와 같은 규칙이다 — 기록의 첫 아이
+   margin-top:auto 로 안내 · 시작 문장이 입력창 바로 위에 붙어, U-116 이 막으려던 «안내와 첫 행동 사이의 큰 빈 면»은 생기지 않는다. */
+.nx-dr-empty-target {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semi);
+  overflow-wrap: anywhere;
+}
+.nx-dr-empty-scope {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--ink3);
+}
+.nx-dr-thread[data-empty="true"] .nx-dr-starters {
+  gap: var(--sp-4);
+  padding-block: var(--sp-4) 0;
+}
+.nx-dr-thread[data-empty="true"] .nx-dr-starters-h {
+  margin: 0;
+  text-align: start;
+}
+/* 넓은 칸(좁은 창의 대화 탭)에서 시작 문장만 가운데로 몰려 왼쪽의 제목 · 물음과 어긋났다(2026-11-12) — 왼쪽에 맞춘다. */
+.nx-dr-thread[data-empty="true"] .nx-dr-starters-list {
+  margin-inline: 0;
+}
+.nx-dr-selchip details {
+  min-width: 0;
+}
+.nx-dr-selchip summary {
+  min-height: var(--h-xs);
+  overflow-wrap: anywhere;
+}
+.nx-dr-selection-full {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 2026-11-12 UI 조사 U-091·107 — 대상과 요약 / 바뀐 곳 / 안내. */
+.nx-pb-summary,
+.nx-pb-changes,
+.nx-pb-guidance {
+  display: grid;
+  gap: var(--sp-3);
+}
+.nx-pb-changes {
+  margin-top: var(--sp-2);
+}
+.nx-pb-precheck-list {
+  margin: var(--sp-2) 0 0;
+  padding-inline-start: var(--sp-4);
+  display: grid;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+}
+.nx-pb .nx-dr-review-side > b {
+  font-size: var(--fs-cap);
+  color: var(--ink3);
+}
+.nx-pb .nx-dr-compare {
+  margin: 0;
+}
+
+/* 2026-11-12 UI 조사 U-181 — 남은 고침의 누름 높이. */
+.nx-dr-doccard-kept {
+  min-height: var(--h-xs);
+}
+
+/* 2026-11-12 U-098 — 보존 조각 단추의 잠금만 전달하고 읽기 배치는 지킨다. */
+.nx-dr-token-guard {
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }

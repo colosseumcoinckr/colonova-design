@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { readTodoList, type TodoItem } from "../../lib/todo-plan";
+import { readTodoList, type TodoItem, todoProgress } from "../../lib/todo-plan";
+import { L } from "../../next/labels";
 import { ToolBlock } from "./blocks";
 import type { TodoToolBlock } from "./shared";
 
@@ -14,8 +15,16 @@ export function TodoList({ todos }: { todos: TodoItem[] }) {
             todo.status === "in_progress" ? "todo__item todo__item--current" : "todo__item"
           }
         >
+          {/* 표식은 장식 — 낭독은 이 문장이 상태를 읽는다(2026-11-12 UI 조사 U-039). */}
           <span className="todo__sign" aria-hidden>
             {todo.status === "completed" ? "✓" : todo.status === "in_progress" ? "●" : "○"}
+          </span>
+          <span className="nx-sr">
+            {todo.status === "completed"
+              ? L.chat.plan.done
+              : todo.status === "in_progress"
+                ? L.chat.plan.doing
+                : L.chat.plan.waiting}{" "}
           </span>
           <span className="todo__text">{todo.text}</span>
         </li>
@@ -36,6 +45,9 @@ export function TodoCard({ block }: { block: TodoToolBlock }) {
   const todos = readTodoList(block.input);
   if (!todos || todos.length === 0) return <ToolBlock block={block} />;
 
+  // 2026-11-12 UI 조사 U-038 — 끝난 턴의 카드는 완료 수를 세어 말한다.
+  const { done, total } = todoProgress(todos);
+
   return (
     <div className="machine todo todo--done">
       <button
@@ -44,7 +56,9 @@ export function TodoCard({ block }: { block: TodoToolBlock }) {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        할 일 {todos.length}개 끝
+        {/* 2026-11-12 UI 조사 U-038 — 끝난 턴의 카드는 완료 수를 세어 말한다:
+            미완료가 남은 답을 «모두 끝» 으로 읽게 하지 않는다. */}
+        {done === total ? L.tape.todoDone(total) : L.tape.todoLeft(done, total - done)}
       </button>
       {open && <TodoList todos={todos} />}
     </div>

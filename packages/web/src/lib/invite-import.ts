@@ -97,6 +97,8 @@ export interface ApplyResult {
   tokenError?: string;
   results: Array<{ row: InviteRow; ok: boolean; error?: string }>;
   reachWarnings: string[];
+  /** 창구 칸은 있었는데 저장이 실패 — 가져오기는 계속됐고 다시 열면 저장된다(검토 WF-7). */
+  supportFailed?: boolean;
 }
 
 /** 선로가 남긴 오류 문장 — Error 가 아니더라도 사람 말로 돌려준다. */
@@ -141,6 +143,18 @@ export async function applyInvite(
     } catch {
       // Slack 길이 안 닿아도 프로젝트 가져오기는 멈추지 않는다 — 알림은
       // 보조 경로(PLAN L11)라 실패를 조용히 견딘다.
+    }
+  }
+  // 창구 칸(2026-11-12 설계 결정 ㉱) — 초대장에 적혀 있으면 기계 설정에 저장해
+  // 준비 화면 · 설정 · 막힘 문장이 그 이름을 세운다. 없으면 지금 값을 그대로 둔다.
+  let supportFailed = false;
+  if (invite.support) {
+    try {
+      await daemon.api.machineSupportSet(invite.support);
+    } catch {
+      // 가져오기는 멈추지 않는다 — 다만 저장이 안 됐다는 사실은 결과에 싣는다:
+      // 준비 화면은 놓은 파일의 칸을 보지만 설정 · 막힘 문장은 저장값을 읽기 때문이다.
+      supportFailed = true;
     }
   }
   const author =
@@ -208,5 +222,5 @@ export async function applyInvite(
     }
   }
 
-  return { results, reachWarnings };
+  return { results, reachWarnings, ...(supportFailed ? { supportFailed: true } : {}) };
 }

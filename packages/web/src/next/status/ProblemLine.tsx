@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../lib/daemon-client";
 import { requestInvitePicker } from "../../lib/invite-bus";
+import { linkClick } from "../../lib/open-link";
 import { AlertIcon, MailIcon, PlugIcon, XIcon } from "../chat/icons";
 import { L } from "../labels";
 import {
@@ -11,7 +12,8 @@ import {
   problemFor,
   problemLineId,
 } from "../lib/problem";
-import { useCopied } from "../lib/use-copied";
+import { supportFor } from "../lib/support";
+import { CopyButton } from "../ui/CopyButton";
 import { blockedHelpText, SentIcon } from "./parts";
 
 /**
@@ -39,7 +41,10 @@ export function ProblemLine({
 }) {
   const problem = problemFor(daemon.status, daemon.repo, L);
   // 줄은 하나뿐이라 나머지 열린 문제는 끝의 `+N` 이 대신 말한다(2026-10-04 ux-review).
+  // 창구(2026-11-12 결정 ㉱) — 막힘 · 다시 연결 문장 아래에 물어볼 곳 한 줄을 세운다.
+  const support = supportFor(daemon.status?.support);
   const hidden = problem === null ? 0 : hiddenProblemCount(daemon.status, daemon.repo);
+  const [cleanup, setCleanup] = useState<"idle" | "busy" | "failed">("idle");
   const [login, setLogin] = useState<"idle" | "busy" | "started">("idle");
   // 닫은 문제의 신원 — 이 탭이 사는 동안 같은 문제의 줄은 다시 서지 않는다.
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set(dismissedProblems()));
@@ -62,7 +67,6 @@ export function ProblemLine({
   heldRef.current = held;
   const [open, setOpen] = useState(false);
   // 복사했다는 답은 1.5초 뒤 돌아온다 — 옛 단추는 `복사했어요` 로 영영 남았다(2026-10-06 겹판 조사).
-  const { copied, copy } = useCopied(() => onToast(L.chat.somethingWrong));
   // 고침이 저절로 풀린 뒤의 체크 단계 — 접히기 전에 잠깐 선다.
   const [fixed, setFixed] = useState(false);
   const timers = useRef<number[]>([]);
@@ -141,25 +145,37 @@ export function ProblemLine({
             <span>
               {line.action === "login" && login === "started" ? L.problem.loginWaiting : line.body}
             </span>
+            {/* 제출 막힘(연결 코드 · 권한) · GitHub 재연결 문장 아래의 물어볼 곳 —
+                인터넷 끊김 · AI 로그인 풀림에는 서지 않는다(problem.ts 의 판정). 창구를 모르면 줄이 없다. */}
+            {line.support === true && support !== null && (
+              <span className="nx-problem-support">
+                {support.kind !== "url" &&
+                  L.support.problemRow(
+                    L.support.contact({ name: support.name, room: support.room }),
+                  )}
+                {support.url && (
+                  <>
+                    {" "}
+                    <a href={support.url} target="_blank" rel="noreferrer" onClick={linkClick}>
+                      {L.support.openRoom}
+                    </a>
+                  </>
+                )}
+              </span>
+            )}
           </div>
           <div className="nx-banner-act">
             {!fixed && line.action === "copy" && (
-              <button
-                type="button"
-                className="nx-btn nx-btn--sm"
-                onClick={() => {
-                  const project = daemon.projects.find((item) => item.slug === daemon.activeSlug);
-                  copy(blockedHelpText(project?.name, line.body, daemon.repo?.submit?.lastError));
-                }}
-              >
-                {copied ? L.problem.copiedHelp : L.problem.copyHelp}
-              </button>
-            )}
-            {/* 복사했다는 답은 눈이 아니라 낭독으로도 한 번 말한다. */}
-            {line.action === "copy" && (
-              <span className="nx-sr" role="status">
-                {copied ? L.problem.copiedHelp : ""}
-              </span>
+              <CopyButton
+                small
+                label={L.problem.copyHelp}
+                doneLabel={L.problem.copiedHelp}
+                text={blockedHelpText(
+                  daemon.projects.find((item) => item.slug === daemon.activeSlug)?.name,
+                  line.body,
+                  daemon.repo?.submit?.lastError,
+                )}
+              />
             )}
             {/* 다시 연결(초대 파일 · 로그인)이 이 줄의 으뜸이다 — 그동안 `제출` 은 잠겨 있어 으뜸이 둘로 서지 않는다. */}
             {!fixed && line.action === "invite" && (
@@ -237,6 +253,7 @@ export function ProblemLine({
         <div className="nx-banner-body">
           <b>{L.inviteCleanup.title}</b>
           <span>{L.inviteCleanup.body}</span>
+          <span role="status">{cleanup === "failed" ? L.inviteCleanup.removeFailed : ""}</span>
         </div>
         <div className="nx-banner-act">
           {discardable && (
@@ -244,12 +261,17 @@ export function ProblemLine({
             <button
               type="button"
               className="nx-btn nx-btn--sm"
+              disabled={cleanup === "busy"}
               onClick={() => {
+                setCleanup("busy");
                 void discardable
                   .discard(discardable.path)
-                  .then(() => onToast(L.inviteCleanup.removed))
-                  .catch(() => onToast(L.inviteCleanup.removeFailed))
-                  .finally(onClearInvite);
+                  .then(() => {
+                    setCleanup("idle");
+                    onToast(L.inviteCleanup.removed);
+                    onClearInvite();
+                  })
+                  .catch(() => setCleanup("failed"));
               }}
             >
               {L.inviteCleanup.remove}
@@ -258,6 +280,7 @@ export function ProblemLine({
           <button
             type="button"
             className="nx-btn nx-btn--sm nx-btn--ghost"
+            disabled={cleanup === "busy"}
             onClick={() => {
               setOpen(false);
               later(240, onClearInvite);

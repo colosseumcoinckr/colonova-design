@@ -490,20 +490,34 @@ async function bootApp(): Promise<void> {
           zoomOut: () => stepAppZoom("out"),
           zoomReset: () => stepAppZoom("reset"),
         },
+        // 메뉴가 여는 코드도 같은 봉투를 싣는다 — 재생 쪽이 필드를 잃지
+        // 않게(U-180). 메뉴 코드에는 수정자가 없다.
         gotoAddress: () =>
           host.window?.webContents.send("colonova-preview:key", {
             key: "l",
             meta: true,
+            shift: false,
+            alt: false,
+            control: false,
+            composing: false,
           }),
         openSettings: () =>
           host.window?.webContents.send("colonova-preview:key", {
             key: ",",
             meta: true,
+            shift: false,
+            alt: false,
+            control: false,
+            composing: false,
           }),
         newSession: () =>
           host.window?.webContents.send("colonova-preview:key", {
             key: "t",
             meta: true,
+            shift: false,
+            alt: false,
+            control: false,
+            composing: false,
           }),
         // 도움말의 세 항목 — 설명서 · 기록 폴더는 메인이 직접 연다(렌더러가 죽어 있어도 닿는다). 진단 복사는 웹이
         // 글을 모으니 신호만 보낸다(창이 없으면 창을 다시 연다).

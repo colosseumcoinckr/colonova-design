@@ -93,7 +93,10 @@ export function DocHistory({
             {phase === "ready" && (
               <ul>
                 {versions.map((version) => (
-                  <li key={version.number} className="nx-li">
+                  <li
+                    key={version.number}
+                    className={`nx-li${version.number === current ? " nx-dm-hist-current" : ""}`}
+                  >
                     <span className="nx-li-main">
                       <span className="nx-li-title">
                         {L.plans.docVersions(version.number)}

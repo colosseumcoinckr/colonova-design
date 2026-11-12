@@ -4,6 +4,7 @@ import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
 import { openPlanTarget } from "../plans/open-plan";
 import type { ShellNav } from "../slots";
+import { ReadState } from "../ui/ReadState";
 import { FileSmIcon } from "./icons";
 import {
   CHIPS_SHOWN,
@@ -52,6 +53,9 @@ export function PlanRefStrip({
 }) {
   const api = daemon.api;
   const [own, setOwn] = useState<DraftRefEntry[]>([]);
+  const [phase, setPhase] = useState<"loading" | "ready" | "failed">("ready");
+  const [retry, setRetry] = useState(0);
+  const owner = useRef(sessionId);
   const entries = controlled ?? own;
   const [open, setOpen] = useState(false);
   // 줄의 폭 — 둘째 칩이 읽히지 않을 만큼 좁은 칸에서는 첫 칩 하나와 `+N` 만 세운다(칩 수 셈이 실제 폭을 읽는다 — 2026-10-24 QA 12).
@@ -61,26 +65,34 @@ export function PlanRefStrip({
 
   // 다시 읽는 때 — 대화가 바뀔 때와 이 대화의 사람 말이 늘 때(보낼 때 기록된다). 프로젝트가
   // 바뀌면 대화도 바뀌니 지난 대화의 근거는 여기서 걷힌다. 늦게 온 답은 지금 대화의 것이
-  // 아니면 버린다(이음이 풀리며 취소 표식이 선다). 못 읽으면 아무것도 서지 않는다.
+  // 아니면 버린다(이음이 풀리며 취소 표식이 선다). 실패에는 안내와 재시도를 세우고 읽어 둔 근거를 남긴다(2026-11-12 UI 조사 U-047).
   // biome-ignore lint/correctness/useExhaustiveDependencies: 사람 말 수는 다시 읽는 방아쇠일 뿐 — 몸에서 쓰지 않는다.
   useEffect(() => {
     if (controlled !== null || sessionId === null) {
       if (controlled === null) setOwn([]);
       return undefined;
     }
+    if (owner.current !== sessionId) {
+      setOwn([]);
+      owner.current = sessionId;
+    }
+    setPhase("loading");
     let cancelled = false;
     api
       .draftRefs(sessionId)
       .then(({ refs }) => {
-        if (!cancelled) setOwn(refs);
+        if (!cancelled) {
+          setOwn(refs);
+          setPhase("ready");
+        }
       })
       .catch(() => {
-        if (!cancelled) setOwn([]);
+        if (!cancelled) setPhase("failed");
       });
     return () => {
       cancelled = true;
     };
-  }, [api, sessionId, sentCount, controlled]);
+  }, [api, sessionId, sentCount, controlled, retry]);
 
   // 줄이 서 있는 동안 폭을 읽는다 — 칸을 끌어 좁히면 그 자리에서 칩 수가 바뀐다. 줄이 없으면(근거 0) 읽을 것이 없다.
   useLayoutEffect(() => {
@@ -99,6 +111,29 @@ export function PlanRefStrip({
     setOpen(false);
   }, [sessionId]);
 
+  if (controlled === null && phase !== "ready")
+    return (
+      <>
+        <ReadState
+          state={
+            phase === "failed"
+              ? { phase: "failed", onRetry: () => setRetry((n) => n + 1) }
+              : { phase: "loading" }
+          }
+          title={phase === "failed" ? L.planTab.refsReadFailed : L.readState.loading}
+        />
+        {entries.length > 0 && (
+          <PlanRefStrip
+            daemon={daemon}
+            sessionId={sessionId}
+            sentCount={sentCount}
+            nav={nav}
+            entries={entries}
+            forceOpen={forceOpen}
+          />
+        )}
+      </>
+    );
   if (entries.length === 0) return null;
   const shown_ = forceOpen ? entries.length : open ? entries.length : 0;
   const fit = Math.min(CHIPS_SHOWN, chipsShownAt(width));

@@ -411,8 +411,8 @@ export interface ChangedFileLite {
 export interface DiffStatus {
   stage: "computing" | "pushing" | "published" | "handing-off" | "handed-off" | "failed";
   /**
-   * Which gate failed. The repo's own `check`/`build` commands are not gates
-   * anymore — a 저장 or 넘기기 never runs them; problems land in the PR.
+   * 실패한 보관 단계. 의미 단위 분리의 중간 검사는 실패해도 단일 보관으로
+   * 물러나므로 보관 자체를 막는 게이트가 아니다(2026-11-12).
    */
   gate?: "commit" | "push" | "diff" | "pr";
   /**
@@ -437,9 +437,18 @@ export interface DiffStatus {
    * 이번 저장이 실제로 담은 경로 전부 — 보관이 변경 단위로 여러 커밋에
    * 나뉘어도(2026-10-11 피드백) 턴의 변경은 전부다. 라우트↔파일 지도가
    * HEAD 커밋만 읽으면 마지막 변경의 파일만 남는다. 계획 없는 저장은
-   * 승인 경로 전부 — 그 커밋의 파일과 같다.
+   * 승인 경로 전부 — 여러 커밋으로 나눈 보관도 이 요청의 전체 파일을 싣는다.
    */
   turnFiles?: string[] | null;
+  /** 2026-11-12 atomic 보관: 한 요청에서 만든 커밋 전부, 오래된 순서. */
+  turnCommits?: Array<{ sha: string; message: string; files: string[] }>;
+  /** 분류 실패의 단일 보관을 의미 단위 분리 성공과 구별한다. */
+  atomic?: {
+    status: "split" | "single" | "fallback";
+    reason?: string;
+    /** 연결 레포가 선언한 검사로 각 중간 상태를 확인했는가. */
+    checked: boolean;
+  };
   /** The pull request, once `stage === "handed-off"`. */
   handoff?: HandoffStatus | null;
 }

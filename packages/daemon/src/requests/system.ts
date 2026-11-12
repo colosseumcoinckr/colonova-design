@@ -1,4 +1,4 @@
-import type { ServerMessage } from "@colonova-design/protocol";
+import { parseSupport, type ServerMessage } from "@colonova-design/protocol";
 import { collectDiagnostics } from "../diagnostics.js";
 import { forgetMissingGit } from "../environment.js";
 import { submitFeatureRequest } from "../feedback.js";
@@ -183,6 +183,19 @@ export function systemHandlers(deps: SystemDeps): RequestHandlers<SystemRequest>
       // 기다리면 초대 파일을 가져온 직후의 홈 인사가 이름 없이 남는다(단계 8 에서 봄).
       const name = message.name === null ? null : message.name.trim();
       deps.machineSetting.set("authorName", name === "" ? null : name);
+      void deps
+        .status()
+        .then((status) => deps.broadcast({ type: "status", status } as ServerMessage));
+      return { ok: true as const };
+    },
+    "machine.support.set": (message) => {
+      // 초대 파일의 창구 칸 — normalizeInvite 와 같은 판정으로 한 번 더 거른 뒤
+      // machine.json 에 둔다(JSON 문자열 — MachineSetting 은 문자열만 안다).
+      // 이름 · 주소를 로그에 남기지 않는다. 상태를 곧바로 다시 보낸다 —
+      // 가져오기 직후의 준비 화면이 창구를 바로 세우게.
+      // 지금 앱에는 지우는 손이 없다 — null(지우기)은 내부 계약이다(검토 WF-14).
+      const parsed = message.support === null ? null : (parseSupport(message.support) ?? null);
+      deps.machineSetting.set("support", parsed === null ? null : JSON.stringify(parsed));
       void deps
         .status()
         .then((status) => deps.broadcast({ type: "status", status } as ServerMessage));

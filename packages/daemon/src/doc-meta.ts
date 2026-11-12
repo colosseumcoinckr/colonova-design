@@ -35,6 +35,7 @@ import { confluenceRootIdKey, confluenceSiteKey } from "./confluence-sync.js";
 import { mentionAccountIds, nameMentions, storageView } from "./confluence-view.js";
 import { type CredentialStore, loadConfluenceCredentials } from "./credentials.js";
 import { DraftStore } from "./draft-store.js";
+import { decodeEntities } from "./entities.js";
 import type { DaemonLogger } from "./log.js";
 import type { RestTransport } from "./rest-transport.js";
 import { projectBlock } from "./storage-blocks.js";
@@ -99,11 +100,14 @@ export function mirrorPlainText(markdown: string): string {
     const close = body.indexOf("\n---", 4);
     if (close !== -1) body = body.slice(close + 4);
   }
+  // 2026-11-12 UI 조사 U-063 — 숫자 참조의 #을 표식보다 먼저 읽고, 풀린 기호는 그대로 둔다.
   return body
     .replace(/\[([^\]\n]*)\]\([^)\n]*\)/gu, "$1")
     .replace(/^\s*```.*$/gmu, " ")
     .replace(/^\s*\|?\s*-{3,}.*$/gmu, " ")
-    .replace(/[#*_`>|~]+/gu, " ")
+    .replace(/&(?:#x[0-9a-fA-F]+|#\d+|[a-zA-Z][a-zA-Z0-9]*);|[#*_`>|~]+/gu, (part) =>
+      part.startsWith("&") ? decodeEntities(part) : " ",
+    )
     .replace(/[ \t\r\n]+/gu, " ")
     .trim();
 }

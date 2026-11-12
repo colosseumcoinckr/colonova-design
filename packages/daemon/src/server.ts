@@ -8,6 +8,7 @@ import {
   type ClientMessage,
   composeAttention,
   type GateChecked,
+  type InviteSupport,
   type PlanSync,
   PROTOCOL_VERSION,
   type ProjectSummary,
@@ -56,6 +57,7 @@ import { HandoffPreviews } from "./handoff-preview.js";
 import { createFileLogger, type DaemonLogger } from "./log.js";
 import { MachineTurns } from "./machine-provider.js";
 import { MachineSetting } from "./machine-setting.js";
+import { machineSupportValue } from "./machine-support.js";
 import { type DaemonNotice, noticeForState } from "./notices.js";
 import { AgentLogin } from "./onboarding.js";
 import { realpathBestEffort } from "./paths.js";
@@ -601,6 +603,16 @@ export class DaemonServer {
           this.stats.noteDelivered(sessionId);
         },
         beforeDeliver: (sessionId, item) => this.prepareTurn(sessionId, item),
+        beforeAgentSend: async (sessionId, item) => {
+          // 찍기·브리프로 시작하는 요청도 새 작업이다. 오류 복구와 안내만 기존 복구 흐름에 맡긴다.
+          const marker = readTurn(item.text).marker;
+          if (marker && marker.kind !== "comments" && marker.kind !== "brief") return;
+          const workspace = this.workspaceOfSession(sessionId);
+          if (!workspace) return;
+          const saving = this.autoSaveLands.get(workspace.slug);
+          if (saving) await saving;
+          await workspace.supervisor.prepareFreshBase(sessionId);
+        },
         onPinned: (sessionId, pins) => {
           for (const pin of pins) this.drivers.notePinned(sessionId, pin.screen);
         },
@@ -1544,6 +1556,9 @@ export class DaemonServer {
       // 개발 전용 면의 판정은 데몬이 내린다 — 웹 번들의 DEV 플래그는 패키징 빌드라 항상 거짓.
       dev: this.config.devAgents === true,
       authorName: this.machineSetting.get("authorName"),
+      // 초대 파일의 창구 칸(2026-11-12 결정 ㉱) — machine.json 의 JSON 문자열을
+      // 초대장과 같은 판정으로 읽는다. 없거나 깨져 있으면 null 이 나간다.
+      support: this.machineSupport(),
       agentAutoUpdate: this.machineSetting.get("agentAutoUpdate") !== "off",
       planLoop: planLoopOn(this.machineSetting),
       ...(this.agentUpdates.snapshot() ? { agentUpdates: this.agentUpdates.snapshot() } : {}),
@@ -1559,6 +1574,15 @@ export class DaemonServer {
       noticeRoute: this.noticeRoute(),
       ...(attention ? { attention } : {}),
     };
+  }
+
+  /**
+   * machine.json 의 창구 칸 — 문자열 키·값만 아는 저장소라 JSON 문자열로 둔다.
+   * 읽기 판정은 machine-support.ts 의 순수 함수로 꺼내 시험이 깨진 값을 직접
+   * 붙잡는다(검토 WF-10). 값 자체는 로그에 남기지 않는다.
+   */
+  private machineSupport(): InviteSupport | null {
+    return machineSupportValue(this.machineSetting.get("support"));
   }
 
   /** 개발자 알림이 실제로 갈 수 있는 경로 — GitHub 우선, Slack 보조. */

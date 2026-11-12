@@ -38,7 +38,7 @@ test("MVP: 전송 단계에서 재확인이 필요해지면 제출 요청을 실
         expectedHead: head,
         expectedPreview: token,
       }),
-      /SUBMIT_CHANGED/,
+      /최신 내용 적용/,
     );
     assert.equal(scene.github.pull(1), undefined);
   } finally {

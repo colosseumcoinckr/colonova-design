@@ -10,6 +10,7 @@ import {
   offerMismatchToComposer,
   sendMismatchNow,
 } from "../lib/mismatch-model";
+import { scrollToTarget } from "../lib/scroll-to-target";
 import { attachEventDetail } from "../plans/doc-actions/doc-actions-model";
 import { DraftReadBlock } from "../plans/draft/DraftReadBlock";
 import { openPlanTarget } from "../plans/open-plan";
@@ -109,6 +110,8 @@ function ScopedPlanTab({
   const [bodyFailed, setBodyFailed] = useState(false);
   const [bodyTick, setBodyTick] = useState(0);
   const [unlinkFailed, setUnlinkFailed] = useState(false);
+  const unlinkLock = useRef(false);
+  const [unlinking, setUnlinking] = useState(false);
   const [sending, setSending] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   const [picking, setPicking] = useState(false);
@@ -321,7 +324,7 @@ function ScopedPlanTab({
         (el.textContent ?? "").includes(want),
       );
       if (hit !== undefined) {
-        hit.scrollIntoView({ block: "start", behavior: "smooth" });
+        scrollToTarget(hit, { block: "start" });
         hit.classList.add("nx-plantab-flash");
         window.setTimeout(() => hit.classList.remove("nx-plantab-flash"), 1600);
         return;
@@ -407,7 +410,9 @@ function ScopedPlanTab({
   };
 
   const unlink = async (row: PlanRow) => {
-    if (row.pageId === null || screenRoute === null) return;
+    if (row.pageId === null || screenRoute === null || unlinkLock.current) return;
+    unlinkLock.current = true;
+    setUnlinking(true);
     const isCurrent = requests.unlink.begin();
     setUnlinkFailed(false);
     try {
@@ -417,6 +422,9 @@ function ScopedPlanTab({
       setReloadTick((n) => n + 1);
     } catch {
       if (isCurrent()) setUnlinkFailed(true);
+    } finally {
+      unlinkLock.current = false;
+      if (isCurrent()) setUnlinking(false);
     }
   };
 
@@ -455,7 +463,7 @@ function ScopedPlanTab({
               {L.chat.dismiss}
             </button>
           </>
-        ) : screenRoute !== null ? (
+        ) : screenRoute !== null && !(rows?.length === 0 && failedSources.length === 0) ? (
           <button
             type="button"
             className="nx-btn nx-btn--sm"
@@ -468,7 +476,9 @@ function ScopedPlanTab({
       </div>
       {picked === null ? (
         <div className="nx-plantab-scroll">
-          <p className="nx-plantab-readonly">{L.planTab.readOnly}</p>
+          {!(rows?.length === 0 && failedSources.length === 0) && (
+            <p className="nx-plantab-readonly">{L.planTab.readOnly}</p>
+          )}
           {picking && screenRoute !== null && (
             <fieldset className="nx-psync-pick" aria-label={L.planTab.pickTitle}>
               <input
@@ -525,7 +535,20 @@ function ScopedPlanTab({
           )}
           {rows === null && <div className="nx-plantab-loading" aria-busy="true" />}
           {rows !== null && rows.length === 0 && failedSources.length === 0 && (
-            <p className="nx-plantab-empty">{L.planTab.empty}</p>
+            <div className="nx-plantab-empty">
+              <p>{L.planTab.empty}</p>
+              <p>{L.planTab.readOnly}</p>
+              {screenRoute !== null && (
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm"
+                  aria-expanded={picking}
+                  onClick={() => setPicking((before) => !before)}
+                >
+                  {L.planTab.pick}
+                </button>
+              )}
+            </div>
           )}
           {groups.map((group) => {
             const members = (rows ?? []).filter((row) => row.source === group.source);
@@ -592,6 +615,7 @@ function ScopedPlanTab({
                           className="nx-ibtn nx-ibtn--sm"
                           title={L.planTab.unlink}
                           aria-label={`${L.planTab.unlink} · ${row.title}`}
+                          disabled={unlinking}
                           onClick={() => void unlink(row)}
                         >
                           <XIcon />

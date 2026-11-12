@@ -62,7 +62,9 @@ import { type CSSProperties, StrictMode, useEffect, useMemo, useRef, useState } 
 import { createRoot } from "react-dom/client";
 import type { Daemon, PlanDocComment } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale, useSettings } from "../src/lib/settings";
+import { DraftEditorSurface } from "../src/next/plans/draft/DraftEditor";
 import { PlanChat } from "../src/next/plans/draft/PlanChat";
+import { stashAsk } from "../src/next/plans/draft/pending-ask";
 import { useDraftThread } from "../src/next/plans/draft/use-draft-thread";
 import { PlanDocView } from "../src/next/plans/PlanDocView";
 import { PlansColumn } from "../src/next/plans/PlansColumn";
@@ -1955,7 +1957,378 @@ function MismatchChatFrame({ id }: { id: string }) {
   );
 }
 
+// 2026-11-12 UI 조사 PLANS-A — 지연·실패를 제어하는 독립 견본. 기존 사례는 그대로 둔다.
+function PlansAFrame() {
+  const [page, setPage] = useState("2001");
+  const [opened, setOpened] = useState(query.get("opened") !== "0");
+  const [view, setView] = useState(() => sampleDraft("2001", "base"));
+  const [line, setLine] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const controls = useMemo(
+    () => ({
+      asks: [] as unknown[][],
+      resolveAsk: () => {},
+      rejectAsk: () => {},
+      resolveRevision: () => {},
+      rejectRevision: () => {},
+      resolveRestore: () => {},
+      rejectRestore: () => {},
+      revisionReads: [] as number[],
+      restores: 0,
+      commentsFail: true,
+      revisionsFail: true,
+    }),
+    [],
+  );
+  const daemon = useMemo(() => {
+    const base = daemonFor("list", setLine);
+    return {
+      ...base,
+      api: {
+        ...base.api,
+        docRead: async (id: string) => {
+          if (controls.commentsFail && id === "2001") throw new Error("fixture read failed");
+          return base.api.docRead(id);
+        },
+        draftThread: async (docKey: string) => ({
+          docKey,
+          threadId: "t-a",
+          messages: [],
+          proposals: [],
+          running: false,
+        }),
+        draftAsk: (...args: unknown[]) => {
+          controls.asks.push(args);
+          return new Promise((resolve, reject) => {
+            controls.resolveAsk = () => resolve({ threadId: "t-a", messageId: "m-a" });
+            controls.rejectAsk = () => reject(new Error("fixture ask failed"));
+          });
+        },
+        draftRevisions: async () => {
+          if (controls.revisionsFail) throw new Error("fixture revisions failed");
+          return base.api.draftRevisions("p-2001");
+        },
+        draftRevision: (key: string, revision: number) => {
+          controls.revisionReads.push(revision);
+          return new Promise((resolve, reject) => {
+            controls.resolveRevision = () =>
+              resolve({
+                docKey: key,
+                revision,
+                title: `이전 판 ${revision}`,
+                blocks: sampleDraft("2001", "base").blocks,
+                at: ago(2),
+                origin: "person",
+                label: null,
+              });
+            controls.rejectRevision = () => reject(new Error("fixture revision failed"));
+          });
+        },
+        draftRevisionRestore: () => {
+          controls.restores++;
+          return new Promise((resolve, reject) => {
+            controls.resolveRestore = () => resolve(sampleDraft("2001", "base"));
+            controls.rejectRestore = () => reject(new Error("fixture restore failed"));
+          });
+        },
+      },
+    } as unknown as Daemon;
+  }, [controls]);
+  useEffect(() => {
+    (window as unknown as { __plansA: typeof controls }).__plansA = controls;
+  }, [controls]);
+  const nav = { toast: setLine, showTab: () => {}, openSettings: () => {} } as unknown as ShellNav;
+  const key = `p-${page}`;
+  const thread = useDraftThread(daemon, opened ? key : null, null);
+  const draft = {
+    phase: "ready",
+    view,
+    error: null,
+    notice: null,
+    retry: () => {},
+    reload: () => {},
+    clearNotice: () => {},
+    discard: async () => true,
+    resolve: async () => {},
+    apply: async (edits: DraftEdit[]) => {
+      let next = { ...view, revision: view.revision + 1 };
+      for (const edit of edits) {
+        if (edit.type === "title") next = { ...next, title: edit.title };
+        if (edit.type === "set")
+          next = {
+            ...next,
+            blocks: next.blocks.map((block) =>
+              block.id === edit.blockId ? { ...block, view: edit.view } : block,
+            ),
+          };
+      }
+      setView(next);
+      return next;
+    },
+  } as unknown as import("../src/next/plans/draft/use-draft").DraftHand;
+  return (
+    <div style={{ width: FRAME_W }}>
+      <button
+        type="button"
+        data-testid="switch-doc"
+        onClick={() => {
+          setPage(page === "2001" ? "2002" : "2001");
+          setView(sampleDraft(page === "2001" ? "2002" : "2001", "base"));
+        }}
+      >
+        문서 전환
+      </button>
+      <p>{line}</p>
+      <div className="nx" style={{ display: "flex", height: FRAME_H, overflow: "auto" }}>
+        <div style={{ flex: 1, minWidth: 0, overflow: "auto", padding: 24 }}>
+          {opened && (
+            <DraftEditorSurface
+              key={key}
+              daemon={daemon}
+              draft={draft}
+              site="https://example.atlassian.net"
+              nav={nav}
+              rows={[]}
+              onClose={() => {}}
+              writable
+            />
+          )}
+        </div>
+        <div
+          className="nx-pl-view"
+          data-chat="on"
+          style={{ width: 420, flex: "0 0 420px", "--nx-pl-chat-w": "420px" } as CSSProperties}
+        >
+          <PlanChat
+            key={key}
+            daemon={daemon}
+            nav={nav}
+            docKey={opened ? key : null}
+            pageId={page}
+            docTitle={`견본 문서 ${page}`}
+            thread={thread}
+            draft={null}
+            inputRef={inputRef}
+            conversation={null}
+            pickedThreadId={null}
+            pickThread={() => {}}
+            onShowInDoc={() => {}}
+            onConversationsChanged={() => {}}
+            onStartDraft={(_, ask) => {
+              stashAsk(key, ask);
+              setOpened(true);
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 2026-11-12 PLANS-A 재검토 — 실제 칸과 훅에 지연 응답·방송을 넣는다.
+function PlansAFixFrame({ recovery = false }: { recovery?: boolean }) {
+  const [line, setLine] = useState("");
+  const controls = useMemo(() => {
+    const views = new Map<string, DraftView>();
+    const watchers = new Set<Parameters<Daemon["onDraftEvent"]>[0]>();
+    const get = (key: string) => {
+      const view = views.get(key) ?? sampleDraft(key.slice(2), "conflict");
+      // 추가 사례는 제목 대신 문단에서 편집을 시작한다.
+      if (recovery && !views.has(key)) {
+        view.blocks = view.blocks.map((block) =>
+          block.id === "b0"
+            ? { ...block, view: { kind: "paragraph", text: "직접 고칠 문단" } }
+            : block,
+        );
+      }
+      views.set(key, view);
+      return view;
+    };
+    return {
+      views,
+      watchers,
+      get,
+      asks: [] as unknown[][],
+      edits: [] as DraftEdit[][],
+      undos: 0,
+      rejects: 0,
+      resolves: 0,
+      restores: 0,
+      threadReads: 0,
+      running: new Set<string>(),
+      pendingAsks: [] as Array<{ resolve: () => void; reject: () => void }>,
+      pendingRestores: [] as Array<{ resolve: () => void; reject: () => void }>,
+      open: (_key: string) => {},
+      pick: (_key: string | null) => {},
+      emit(message: Parameters<Parameters<Daemon["onDraftEvent"]>[0]>[0]) {
+        if (message.type === "draft.ai") {
+          if (["started", "text", "read"].includes(message.phase)) this.running.add(message.docKey);
+          else this.running.delete(message.docKey);
+        }
+        for (const watcher of watchers) watcher(message);
+      },
+      change(id: string, mode: "delete" | "conflict" | "preserved") {
+        const view = get("p-2001");
+        views.set(view.docKey, {
+          ...view,
+          revision: view.revision + 1,
+          blocks:
+            mode === "delete"
+              ? view.blocks.filter((b) => b.id !== id)
+              : view.blocks.map((b) =>
+                  b.id !== id
+                    ? b
+                    : mode === "conflict"
+                      ? {
+                          ...b,
+                          status: "conflict",
+                          theirs: { kind: "paragraph", text: "바깥 고침" },
+                        }
+                      : ({
+                          ...b,
+                          view: { kind: "preserved", label: "macro" },
+                        } as DraftView["blocks"][number]),
+                ),
+        });
+        this.emit({
+          type: "draft.changed",
+          docKey: view.docKey,
+          revision: view.revision + 1,
+          state: "editing",
+        });
+      },
+    };
+  }, [recovery]);
+  const daemon = useMemo(() => {
+    const base = daemonFor("list", setLine);
+    const api: Partial<Daemon["api"]> = {
+      draftOpen: async (pageId) => controls.get(`p-${pageId}`),
+      draftGet: async (key) => controls.get(key),
+      draftEdit: async (key, _revision, edits) => {
+        controls.edits.push(edits);
+        const view = controls.get(key);
+        const next = {
+          ...view,
+          revision: view.revision + 1,
+          blocks: view.blocks.map((block) => {
+            const edit = edits.find((edit) => edit.type === "set" && edit.blockId === block.id);
+            return edit?.type === "set" ? { ...block, view: edit.view } : block;
+          }),
+        };
+        // 2026-11-12 PLANS-A-R2 — 빈 본문에서 직접 쓰기를 여는 추가 사례.
+        if (recovery) {
+          for (const edit of edits) {
+            if (edit.type !== "insert") continue;
+            const at =
+              edit.afterBlockId === null
+                ? 0
+                : next.blocks.findIndex((block) => block.id === edit.afterBlockId) + 1;
+            next.blocks.splice(at, 0, {
+              id: crypto.randomUUID(),
+              view: edit.view,
+              editable: true,
+              status: "new",
+              tokens: {},
+            });
+          }
+        }
+        controls.views.set(key, next);
+        return next;
+      },
+      draftResolve: async (key) => {
+        controls.resolves++;
+        return controls.get(key);
+      },
+      draftReject: async (key) => {
+        controls.rejects++;
+        return base.api.draftThread(key);
+      },
+      draftUndo: async () => {
+        controls.undos++;
+        return { restored: 1, kept: 0 };
+      },
+      draftThread: async (key, threadId) => {
+        controls.threadReads++;
+        const next = await base.api.draftThread(key, threadId);
+        return {
+          ...next,
+          proposals: next.proposals.map((proposal) => ({
+            ...proposal,
+            ops: proposal.ops.map((op) =>
+              op.state === "stale" && "blockId" in op ? { ...op, blockId: "b2" } : op,
+            ),
+          })),
+          running: controls.running.has(key),
+        };
+      },
+      draftAsk: (...args) => {
+        controls.asks.push(args);
+        return new Promise((resolve, reject) =>
+          controls.pendingAsks.push({
+            resolve: () => resolve({ threadId: "t-1", messageId: "m-new" }),
+            reject: () => reject(new Error("요청하지 못했어요")),
+          }),
+        );
+      },
+      draftRevision: async (key, revision) => ({
+        docKey: key,
+        revision,
+        title: "이전 판",
+        blocks: controls.get(key).blocks,
+        at: ago(2),
+        origin: "person",
+        label: null,
+      }),
+      draftRevisionRestore: (key) => {
+        controls.restores++;
+        return new Promise((resolve, reject) =>
+          controls.pendingRestores.push({
+            resolve: () => resolve(controls.get(key)),
+            reject: () => reject(new Error("복원하지 못했어요")),
+          }),
+        );
+      },
+    };
+    return {
+      ...base,
+      api: { ...base.api, ...api },
+      onDraftEvent: (fn: Parameters<Daemon["onDraftEvent"]>[0]) => {
+        controls.watchers.add(fn);
+        return () => {
+          controls.watchers.delete(fn);
+        };
+      },
+    };
+  }, [controls, recovery]);
+  const project = useMemo(() => projectFor("list"), []);
+  const plans = usePlansWorkspace({ daemon, project, active: true });
+  useEffect(() => {
+    plans.openDraftKey("p-2001");
+  }, [plans.openDraftKey]);
+  controls.open = plans.openDraftKey;
+  controls.pick = plans.pickThread;
+  (window as unknown as { __plansR: typeof controls }).__plansR = controls;
+  const nav = {
+    toast: setLine,
+    showPane: () => {},
+    showTab: () => {},
+    openPlans: () => {},
+    openSettings: () => {},
+  } as unknown as ShellNav;
+  return (
+    <PlansContext.Provider value={plans}>
+      <p>{line}</p>
+      <div className="nx" style={{ width: FRAME_W, height: FRAME_H, display: "flex" }}>
+        <PlansColumn daemon={daemon} project={project} nav={nav} />
+      </div>
+    </PlansContext.Provider>
+  );
+}
+
 function Frame({ id }: { id: string }) {
+  if (id === "plans-a-r2") return <PlansAFixFrame recovery />;
+  if (id === "plans-a-fix") return <PlansAFixFrame />;
+  if (id === "plans-a") return <PlansAFrame />;
   // A안 부품 사진(2026-11-03) — 어긋남 카드와 판정 실패 줄은 전체 칸이 아니라 곧장 그리는 장면으로 본다.
   if (id === "mismatch-doc") return <MismatchDocFrame id={id} />;
   if (id === "mismatch-chat" || id === "mismatch-failed") return <MismatchChatFrame id={id} />;

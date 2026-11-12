@@ -240,7 +240,7 @@ test("문장: 네 몫 말이 labels 에 모두 있다 — L.compare 새 다섯 �
   assert.equal(L.compare.retry, "다시 시도");
   assert.match(L.compare.retryFailed, /다시 시도/);
   assert.match(L.planLoop.row, /맞춰/);
-  assert.match(L.planLoop.rowSub, /맞춰/);
+  assert.match(L.planLoop.rowSub, /비교해 고칠 곳을 물어요/);
   assert.match(L.planLoop.saveFailed, /설정/);
-  assert.match(L.planLoop.resumed, /다시/);
+  assert.match(L.planLoop.resumed, /다시 켰어요/);
 });

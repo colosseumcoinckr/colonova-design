@@ -177,7 +177,7 @@ test("제출: 공통 단추 위에 서고 이 자리의 유일한 으뜸이다 �
   );
   assert.ok(locked);
   assert.doesNotMatch(locked[1] ?? "", /panel-3/);
-  // 받아오기는 알 안의 숫자 배지다(S1) — 단추가 따로 서지 않는다.
+  // 최신 내용은 알 안의 `새 내용` 표식이다(S1) — 수를 세는 배지도 따로 단추도 서지 않는다.
   assert.doesNotMatch(statusLine, /nx-base-pull/);
 });
 
@@ -207,12 +207,15 @@ test("제출: 폭은 서 있는 얼굴의 글에 맞는다 — 서 있지 않은
   assert.equal(statusLine.match(/className="nx-submit-face-in"/g)?.length, 5);
 });
 
-test("상태 줄 접힘: 받아오기는 알 안의 배지이고(S1) 접힘은 알 글자 → 배지 · 점 두 단계다", () => {
+test("상태 줄 접힘: 최신 내용은 알 안의 표식이고(S1) 접힘은 알 글자 → 표식 · 점 두 단계다", () => {
   assert.match(statusLine, /nx-project-work--base/);
-  // 받아오기 단추는 알 안의 배지(`Count`)로 접었다 — 옛 따로 단추(`nx-base-pull`)가 돌아오지 않는다.
+  // 표식은 `새 내용` 알약이다 — 받아올 수(건)를 사용자 면에서 말하지 않는다(2026-11-12 사용자 요청).
+  // 옛 따로 단추(`nx-base-pull`)와 숫자 배지(`Count`)가 돌아오지 않는다.
   assert.doesNotMatch(statusLine, /nx-base-pull/);
   assert.doesNotMatch(css, /nx-base-pull/);
-  assert.match(statusLine, /<Count n=\{baseRow\.behind\} \/>/);
+  assert.doesNotMatch(statusLine, /<Count/);
+  assert.match(statusLine, /nx-pill nx-pill--amber/);
+  assert.match(statusLine, /L\.work\.baseNew/);
   // 알의 글자가 접히면 점과 배지가 남는다 — 접힘의 마지막 단계는 컨테이너 질의 하나다.
   assert.match(
     css,

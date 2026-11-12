@@ -61,7 +61,7 @@ test("줄 끝 표시 — 결과 확인 필요가 이기고, 그다음이 충돌,
   });
   assert.deepEqual(draftMarkOf(summary({ changedBlocks: 3 })), {
     tone: "draft",
-    label: "초안 · 3",
+    label: "초안 · 바뀐 곳 3곳",
   });
   // 발행을 마친 초안(바뀐 곳 0 · 발행됨)은 점이 없다 — 발행할 고침이 남은 것과 구별된다(2026-11-12 B3).
   assert.equal(draftMarkOf(summary({ changedBlocks: 0, state: "published" })), null);

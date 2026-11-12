@@ -12,6 +12,7 @@ import { ActivitySummary, groupActivity } from "../../components/transcript/acti
 import { ThinkingBlock, ToolBlock } from "../../components/transcript/blocks";
 import { TodoCard } from "../../components/transcript/todo";
 import type { Block } from "../../lib/daemon-client";
+import { koreanNoticeWords } from "../../lib/error-words";
 import { previewPathOf } from "../../lib/screen-link";
 import { blockOnTape, mergeThinking } from "../../lib/tape-visibility";
 import { turnAnswerText, turnBlockNumbers } from "../../lib/turn-numbering";
@@ -749,7 +750,11 @@ export function Thread(props: ThreadProps) {
         // 데몬은 한국어 한 줄을 앞에 세우고 원문을 빈 줄 뒤에 붙인다 — 앞의 한 줄만 보인다.
         const cut = block.text.search(/\n[ \t]*\n/);
         const lead = (cut === -1 ? block.text : block.text.slice(0, cut)).trim();
-        return <Note tone={block.level === "error" ? "red" : undefined}>{lead}</Note>;
+        return (
+          <Note tone={block.level === "error" ? "red" : undefined}>
+            {koreanNoticeWords(lead) ? lead : L.chat.sendFailed}
+          </Note>
+        );
       }
       case "save":
         // 보관은 답마다 도구가 스스로 한다 — 대화록에 남길 일이 아니다(작업 기록이 그 자리).
@@ -859,6 +864,12 @@ export function Thread(props: ThreadProps) {
         <div key={item.id} className="nx-m-user">
           <div className="nx-bub">
             {item.text && <div className="nx-btxt">{item.text}</div>}
+            {(item.images > 0 || item.files > 0) && (
+              <div className="nx-batts">
+                {item.images > 0 && <span className="nx-tag">{L.chat.images(item.images)}</span>}
+                {item.files > 0 && <span className="nx-tag">{L.chat.files(item.files)}</span>}
+              </div>
+            )}
             <div className="nx-bq">
               <ClockIcon />
               {props.preparing ? L.transcript.queued : L.chat.queuedAfter}

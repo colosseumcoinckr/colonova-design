@@ -9,8 +9,7 @@ import { SUBMIT_SHAKE_MS } from "../lib/submit-story";
 import { useSubmitReview } from "../lib/use-submit-review";
 import type { CycleScreen } from "../lib/work-ledger";
 import type { StatusLineProps } from "../slots";
-import { Count } from "../ui/Count";
-import { MenuIcon, PanelIcon, Spin } from "../ui/icons";
+import { ChevronDownIcon, MenuIcon, PanelIcon, Spin } from "../ui/icons";
 import { ConvTitle } from "./ConvTitle";
 import { DrawnCheck, FailIcon, LockIcon } from "./parts";
 import { SubmitPopover } from "./SubmitPopover";
@@ -29,8 +28,8 @@ const QUIET_AFTER_SEND_MS = 800;
  * 상태 줄(U2 · 2026-10-31 화면 자리 개선안 S1 · S2) — 대화와 미리보기 위에 걸친 한 줄(52px).
  * 왼쪽은 대화 제목(눌러서 이름을 바꾼다), 오른쪽은 **지금 국면의 알 하나**와 `제출`이다 —
  * 여정 세 점은 `이번 작업` 팝의 머리가 크게 그린다(S1). AI 가 도는 동안 알 왼쪽의 점이
- * 포인트 색으로 숨 쉰다(S2) — 단계 말과 시계는 작업 독(S4)이 맡는다. 받아오기는 알 안의
- * 숫자 배지로 서고, 알을 누르면 `이번 작업` 의 `개발자 쪽 새 내용` 이 열린다. 프로젝트
+ * 포인트 색으로 숨 쉰다(S2) — 단계 말과 시계는 작업 독(S4)이 맡는다. 최신 내용이
+ * 있으면 알 안에 `새 내용` 표식이 서고, 알을 누르면 `이번 작업` 의 `개발자 쪽 새 내용` 이 열린다. 프로젝트
  * 이름은 사이드바 전환기가 말한다 — 사이드바가 접혀 있을 때만 제목 앞에 흐린 이름이 선다.
  *
  * 오른쪽 묶음(`nx-project-work`)은 제목이 쓰고 남은 자리를 모두 갖는 컨테이너다 — 자리가
@@ -88,9 +87,10 @@ export function StatusLine({
     } catch {}
   };
   const [workOpen, setWorkOpen] = useState(false);
-  // 받아오기(2026-10-20 사용자 요청) — 개발자가 반영한 내용은 누를 때만 합친다. 단추는 상태 줄과 `이번 작업` 둘이다.
+  // 최신 내용 적용(2026-11-12 사용자 요청 · 옛 `받아오기`) — 개발자가 반영한 내용은 누를 때만 합친다.
+  // 표식은 상태 줄의 알과 `이번 작업` 의 칸, 둘이다.
   const baseRow = baseSyncRow(daemon.repo, journey.making);
-  // 받아오기 단추가 서 있는가 — 서 있으면 여정이 쓸 수 있는 폭이 그만큼 줄어 접힘의 기준 폭이 오른다(status.css 의 `--base`).
+  // 최신 내용 표식이 서 있는가 — 서 있으면 여정이 쓸 수 있는 폭이 그만큼 줄어 접힘의 기준 폭이 오른다(status.css 의 `--base`).
   const basePull =
     baseRow.kind === "ready" || baseRow.kind === "pulling" || baseRow.kind === "waiting";
   const [baseAsking, setBaseAsking] = useState(false);
@@ -102,7 +102,7 @@ export function StatusLine({
       .catch(() => nav.toast(L.work.baseFailed))
       .finally(() => setBaseAsking(false));
   };
-  // 끝난 소식은 한 번 — 같은 클론에서 결과의 시각이 바뀐 순간에만 말한다. 신원은 같은 상태 객체에서 읽는다
+  // 적용이 끝난 소식은 한 번 — 같은 클론에서 결과의 시각이 바뀐 순간에만 말한다. 신원은 같은 상태 객체에서 읽는다
   // (활성 프로젝트 이름과 상태가 잠깐 어긋나는 전환 사이에 남의 결과를 소식으로 읽지 않게).
   const baseSeen = useRef<BaseSyncSeen | null>(null);
   const baseNow = baseSyncSeenOf(daemon.repo);
@@ -138,7 +138,7 @@ export function StatusLine({
   const reviewRead = useRef(0);
   const projectSlug = useRef(daemon.activeSlug);
   projectSlug.current = daemon.activeSlug;
-  const loadSubmission = () => {
+  const loadSubmission = (freshBase = true) => {
     const version = ++reviewRead.current;
     const slug = daemon.activeSlug;
     setReviewLoading(true);
@@ -146,7 +146,7 @@ export function StatusLine({
     setSendError(null);
     setSnapshot(null);
     void daemon.api
-      .submitPreview()
+      .submitPreview(freshBase)
       .then((next) => {
         if (version === reviewRead.current && slug === projectSlug.current) setSnapshot(next);
       })
@@ -372,9 +372,7 @@ export function StatusLine({
               aria-haspopup="dialog"
               aria-expanded={workOpen}
               aria-label={
-                basePull && baseRow.kind === "ready"
-                  ? `${workName} · ${L.work.basePullCount(baseRow.behind)}`
-                  : workName
+                basePull && baseRow.kind === "ready" ? `${workName} · ${L.work.baseNew}` : workName
               }
               onClick={() => {
                 if (!workOpen) ledger.refresh();
@@ -387,8 +385,15 @@ export function StatusLine({
                 aria-hidden="true"
               />
               <span className="nx-pill-label">{journey.points[journey.current]?.label}</span>
-              {/* 받아오기는 알 안의 숫자 배지로(S1) — 누르면 `이번 작업` 의 개발자 쪽 새 내용이 열린다. */}
-              {basePull && baseRow.kind === "ready" && <Count n={baseRow.behind} />}
+              <span className="nx-journey-caret" aria-hidden="true">
+                <ChevronDownIcon />
+              </span>
+              {/* 최신 내용은 알 안의 표식으로(S1) — 수는 말하지 않는다. 누르면 `이번 작업` 의 개발자 쪽 새 내용이 열린다. */}
+              {basePull && baseRow.kind === "ready" && (
+                <span className="nx-pill nx-pill--amber" aria-hidden="true">
+                  {L.work.baseNew}
+                </span>
+              )}
               {basePull && baseRow.kind !== "ready" && (
                 <span className="nx-base-spin" aria-hidden="true">
                   <Spin />
@@ -502,6 +507,8 @@ export function StatusLine({
               <SubmitPopover
                 anchor={submitRef}
                 journey={journey}
+                repo={daemon.repo}
+                onApplyLatest={refreshBase}
                 snapshot={snapshot}
                 projectName={project?.name ?? L.sidebar.brand}
                 loading={reviewLoading}

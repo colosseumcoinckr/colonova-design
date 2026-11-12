@@ -133,15 +133,19 @@ export function Switch({
   on,
   label,
   onChange,
+  disabled = false,
 }: {
   on: boolean;
   label: string;
+  disabled?: boolean;
   onChange: (next: boolean) => void;
 }) {
   return (
     <button
       type="button"
       role="switch"
+      disabled={disabled}
+      aria-busy={disabled || undefined}
       aria-checked={on}
       aria-label={label}
       className={`nx-sw${on ? " nx-sw--on" : ""}`}

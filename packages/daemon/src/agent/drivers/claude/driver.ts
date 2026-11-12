@@ -14,6 +14,7 @@ import type {
   AgentSession,
   Diagnostic,
   DriverHooks,
+  OneShotOptions,
   ProviderDescriptor,
   TranscriptStore,
 } from "../../driver.js";
@@ -123,12 +124,13 @@ export class ClaudeDriver implements AgentDriver {
    * 담당으로 골라 부른다). 프롬프트가 읽을 수 있는 전부이고 대화록은 요약
    * 폴더에 남는다. null 이면 폴백 — 시간 초과든 CLI 부재든 같은 길이다.
    */
-  oneShot(prompt: string, opts: { cwd: string; timeoutMs: number }): Promise<string | null> {
+  oneShot(prompt: string, opts: OneShotOptions): Promise<string | null> {
     return claudeOneShot(prompt, {
       cwd: opts.cwd,
       executable: this.executable(),
       model: MACHINE_MODEL,
       timeoutMs: opts.timeoutMs,
+      onUsage: opts.onUsage,
     });
   }
 

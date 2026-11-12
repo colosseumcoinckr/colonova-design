@@ -97,7 +97,7 @@ export function settleRoots(
 
 /** 기준 페이지 하나를 정하러 나선다 — 그 줄의 단추가 `정하는 중…` 이 되고 다른 줄은 잠긴다. */
 export function startPick(state: ConfluenceFormState, pageId: string): ConfluenceFormState {
-  return { ...state, picking: pageId, failure: null };
+  return { ...state, picking: pageId, finding: false, failure: null };
 }
 
 /**

@@ -1,11 +1,18 @@
-import type { RepoHandoffDraft, SubmitPreview, SubmitSent } from "@colonova-design/protocol";
+import type {
+  RepoHandoffDraft,
+  RepoStatus,
+  SubmitPreview,
+  SubmitSent,
+} from "@colonova-design/protocol";
 import { type CSSProperties, type RefObject, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { composing } from "../../lib/ime";
 import { L } from "../labels";
+import { baseSyncRow } from "../lib/base-sync";
 import { firstSubjectOf, handoffPreviewOf, previewTitle } from "../lib/handoff-preview";
 import type { Journey } from "../lib/journey";
 import { sentOf } from "../lib/receipt";
+import { scrollToTarget } from "../lib/scroll-to-target";
 import { type SubmitNotice, submitView } from "../lib/submit-view";
 import { useHandoffDraft } from "../lib/use-handoff-draft";
 import type { CycleScreen } from "../lib/work-ledger";
@@ -18,6 +25,10 @@ import { FailIcon, FileIcon, LockIcon, ScreenRow, SentIcon, SubmitIcon, whenText
 interface SubmitPopoverProps {
   anchor: RefObject<HTMLElement | null>;
   journey: Journey;
+  /** 최신 내용의 지금 상태 — 판은 live 값으로 읽는다(스냅샷의 baseSync 는 읽은 그때의 값이다). */
+  repo: RepoStatus | null;
+  /** `최신 내용 적용` — 상태 줄 · `이번 작업` 칸과 같은 손(`repo.refresh`). */
+  onApplyLatest: () => void;
   snapshot: SubmitPreview | null;
   projectName: string;
   reviewers: string[];
@@ -92,6 +103,8 @@ export function SubmitPopover(props: SubmitPopoverProps) {
 
 function SubmitBody({
   journey,
+  repo,
+  onApplyLatest,
   snapshot,
   projectName,
   reviewers,
@@ -134,6 +147,44 @@ function SubmitBody({
   const lead = outgoingScreens(screens, since);
   const leadRoutes = new Set(lead.map((screen) => screen.route));
   const rest = screens.filter((screen) => !leadRoutes.has(screen.route));
+  // 오래된 기준의 검출(2026-11-12 사용자 요청) — 받아올 내용이 있거나 적용 · 정리가 진행 중이면
+  // 제출을 잠그고 `최신 내용 적용` 으로 잇는다. 판은 상태가 방송될 때마다 지금 값으로 다시 그린다.
+  const baseRow = baseSyncRow(repo, journey.making);
+  const baseBlocked = baseRow.kind !== "hidden";
+  /** 이 창에서 누른 적용 — 결과(`last.at` 가 바뀜)가 오면 성공 때 목록을 다시 읽는다. */
+  const applyMarker = useRef<string | null>(null);
+  const [applyFailed, setApplyFailed] = useState(false);
+  const sync = repo?.baseSync;
+  const syncLastAt = sync?.last?.at ?? null;
+  const syncOutcome = sync?.last?.outcome ?? null;
+  const applyNow = () => {
+    // 같은 판정을 지금의 시각으로 새긴다 — 적용이 끝나 이 시각과 다른 결과가 오면 그것이 이번 누름의 답이다.
+    applyMarker.current = syncLastAt ?? "";
+    setApplyFailed(false);
+    onApplyLatest();
+  };
+  const wasBaseBlocked = useRef(baseBlocked);
+  useEffect(() => {
+    // 이 창에서 누른 적용의 답이 왔는가 — 요청이 지고 결과의 시각이 새로워질 때.
+    let answered: string | null = null;
+    if (
+      applyMarker.current !== null &&
+      !sync?.requested &&
+      syncLastAt !== applyMarker.current &&
+      syncOutcome !== null
+    ) {
+      applyMarker.current = null;
+      answered = syncOutcome;
+      if (answered === "failed") setApplyFailed(true);
+    }
+    // 잠금이 풀리는 순간 — 적용이 끝났거나(이 창 · 이번 작업 팝 어디서든) 겹침 정리가 끝나서.
+    // 기준이 최신이 됐으니 목록을 다시 읽어 사람이 바뀐 것을 확인하고 제출한다.
+    const unblocked = wasBaseBlocked.current && !baseBlocked;
+    wasBaseBlocked.current = baseBlocked;
+    // 받을 것이 없던 읽기(none)는 목록이 그대로라 새로 읽지 않는다(같은 확인을 늘리지 않는다).
+    if (unblocked && answered !== "none") onRefresh();
+  }, [baseBlocked, sync?.requested, syncLastAt, syncOutcome, onRefresh]);
+
   const view = submitView({
     hasSnapshot: snapshot !== null,
     files: snapshot?.finalFiles.length ?? 0,
@@ -143,6 +194,7 @@ function SubmitBody({
     changed,
     busy,
     lockReason,
+    baseBlocked,
   });
   // `제출한 뒤` 라고 말하려면 마지막 제출의 시각을 알아야 한다 — 열린 요청이 있어도 모르면 처음처럼 말한다.
   const summary = !view.showList
@@ -179,7 +231,7 @@ function SubmitBody({
       return;
     }
     if (busy) return;
-    notices.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    scrollToTarget(notices.current, { block: "nearest" });
     notices.current?.focus();
   };
   // 보내는 동안 단추가 잠기면 초점이 허공으로 떨어진다 — 끝난 뒤 다음에 누를 것으로 되돌린다: 실패했으면
@@ -325,8 +377,56 @@ function SubmitBody({
           <p>{L.submitConfirm.follows}</p>
         </details>
 
-        {(view.notices.length > 0 || view.skeleton) && (
+        {(view.notices.length > 0 || view.skeleton || baseBlocked) && (
           <div ref={notices} id={noticesId} tabIndex={-1} className="nx-sub-notices">
+            {/* 오래된 기준 — 제출은 멈춰 서고 `최신 내용 적용` 이 길이다. baseSync 의 지금 값이
+                그린다(스냅샷의 읽은 시각 값에 머물지 않는다). */}
+            {baseRow.kind === "ready" && !applyFailed && (
+              <div role="status" className="nx-banner nx-banner--amber nx-st-bn">
+                <FailIcon />
+                <div className="nx-banner-body">{L.submitConfirm.basePending}</div>
+                <div className="nx-banner-act">
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm"
+                    onClick={applyNow}
+                    disabled={busy}
+                  >
+                    {L.work.baseApply}
+                  </button>
+                </div>
+              </div>
+            )}
+            {baseRow.kind === "ready" && applyFailed && (
+              <div role="alert" className="nx-banner nx-banner--red nx-st-bn">
+                <FailIcon />
+                <div className="nx-banner-body">{L.submitConfirm.baseFailed}</div>
+                <div className="nx-banner-act">
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm"
+                    onClick={applyNow}
+                    disabled={busy}
+                  >
+                    {L.work.baseApply}
+                  </button>
+                </div>
+              </div>
+            )}
+            {(baseRow.kind === "pulling" ||
+              baseRow.kind === "waiting" ||
+              baseRow.kind === "overlap") && (
+              <div role="status" className="nx-banner nx-banner--amber nx-st-bn">
+                <Spin />
+                <div className="nx-banner-body">
+                  {baseRow.kind === "waiting"
+                    ? L.submitConfirm.baseApplyingWait
+                    : baseRow.kind === "overlap"
+                      ? L.submitConfirm.baseOverlap
+                      : L.submitConfirm.baseApplying}
+                </div>
+              </div>
+            )}
             {view.skeleton && (
               <div role="status" aria-busy="true" className="nx-st-load">
                 <p className="nx-st-loadtext">
@@ -460,7 +560,9 @@ function SubmitBody({
             className="nx-btn nx-btn--pri nx-sub-go"
             // 막힌 단추도 눌린다 — 눌러서 막힌 이유 줄로 데려간다. 보내는 중에만 정말로 잠근다.
             aria-disabled={!view.enabled}
-            aria-describedby={!view.enabled && view.notices.length > 0 ? noticesId : undefined}
+            aria-describedby={
+              !view.enabled && (view.notices.length > 0 || baseBlocked) ? noticesId : undefined
+            }
             disabled={busy}
             onClick={confirm}
           >

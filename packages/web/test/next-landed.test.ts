@@ -171,7 +171,7 @@ test("문장: 성취의 말은 한 곳(L.landed)이고 사용자의 어휘만 �
     L.landed.fold,
     L.landed.untitled,
   ].join("\n");
-  assert.equal(L.landed.head("회원 목록"), "‘회원 목록’ 일이 반영됐어요");
+  assert.equal(L.landed.head("회원 목록"), "‘회원 목록’ 일을 개발자가 반영했어요");
   assert.equal(L.landed.took(2), "2일 만에");
   assert.equal(L.landed.took(0), "제출한 날 안에");
   assert.equal(L.landed.screens(4), "화면 4곳");

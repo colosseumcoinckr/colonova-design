@@ -410,7 +410,7 @@ export function syncLine(
   if (end?.kind === "done") return { tone: "plain", text: importLine(end) };
   if (summary?.lastImportAt != null) {
     const when = timeAgo(Date.parse(summary.lastImportAt));
-    return { tone: "plain", text: L.plans.statusImported(when, summary.pages) };
+    return { tone: "plain", text: L.plans.statusImportedWhen(when) };
   }
   return { tone: "plain", text: L.plans.syncNever };
 }

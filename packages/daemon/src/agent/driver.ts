@@ -288,13 +288,10 @@ export interface AgentDriver {
    */
   probeUsage?(options: { cwd: string; signal: AbortSignal }): Promise<PlanUsage | null>;
   /**
-   * 기계 잔일의 단답 턴 (저장 메모 · 넘기기 초안) — machine-provider.ts 가
-   * 담당을 골라 여기로 온다. 계약의 전부는 세 보장이다: ① 도구는 절대
-   * 돌리지 않는다 ② 프롬프트 하나에 답 하나 ③ 시간 안에 못 내면 null —
-   * 호출자의 폴백이 그 빈칸을 쓴다. 이 보장을 자기 CLI 로 내리지 못하는
-   * 드라이버는 이 메서드를 생략한다 — 담당 후보에서 자동으로 빠진다.
+   * 한 단발의 숫자 계측 — 토큰 · 시간 · API 재시도만(사용자 말 · 경로
+   * 금지와 같은 잣대). 모두 선택값이다: 읽지 못한 수는 없는 값으로 둔다.
    */
-  oneShot?(prompt: string, opts: { cwd: string; timeoutMs: number }): Promise<string | null>;
+  oneShot?(prompt: string, opts: OneShotOptions): Promise<string | null>;
   /**
    * 이 드라이버의 로그인 명령 (P1-1) — 데몬이 stdio 파이프로 띄워 대신
    * 몬다: 주소는 stdout·stderr 어느 쪽에서 와도 첫 https URL 로 잡히고,
@@ -303,4 +300,23 @@ export interface AgentDriver {
    * 로그인이다 — 고침 안내가 터미널을 말한다.
    */
   loginCommand?(): { command: string; args: string[] } | null;
+}
+
+/** 한 단발의 숫자 계측 — 토큰 · 시간 · API 재시도만(사용자 말 · 경로 금지의 같은 잣대). */
+export interface OneShotUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  durationMs?: number;
+  /** CLI 가 안쪽에서 한 API 재시도의 수 — 읽지 못하면 없는 값. */
+  apiRetries?: number;
+}
+
+/** oneShot 의 옵션 — cwd · 목줄에 선택적 계측 콜백이 더해진 모습. */
+export interface OneShotOptions {
+  cwd: string;
+  timeoutMs: number;
+  /** 단발이 끝날 때 한 번 부르는 숫자 계측 — 안 싣는 호출은 그대로 돈다. */
+  onUsage?: (usage: OneShotUsage) => void;
 }

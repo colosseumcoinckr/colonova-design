@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Daemon } from "../../lib/daemon-client";
 import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
@@ -23,10 +23,48 @@ export function PlansHeader({
   narrow?: boolean;
   onOpenSidebar?: () => void;
 }) {
+  const bar = useRef<HTMLElement>(null);
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const root = bar.current?.closest(".nx-plans");
+    if (!root) return;
+    const update = (event: Event) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.classList.contains("nx-pl-docpane"))
+        setScrolled(target.scrollTop > 0);
+    };
+    root.addEventListener("scroll", update, true);
+    return () => root.removeEventListener("scroll", update, true);
+  }, []);
   const plans = usePlansContext();
   const { state, rows, summary, openRow, editingDraft, crumbTitle, editDoc } = plans;
   const [sendOpen, setSendOpen] = useState(false);
   const pageId = state.openId;
+  const [docHidden, setDocHidden] = useState(false);
+  // 2026-11-12 UI 조사 U-084 — 좁은 대화 탭에서는 숨은 문서의 동작을 머리에 남긴다.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 문서 전환과 읽기 완료 뒤 새 판의 가시성을 다시 잰다.
+  useLayoutEffect(() => {
+    const root = bar.current?.closest(".nx-work") ?? bar.current?.closest(".nx-plans");
+    if (!root) return;
+    const update = () => {
+      const pane = root.querySelector<HTMLElement>(".nx-pl-docpane");
+      setDocHidden(pane !== null && pane.getClientRects().length === 0);
+    };
+    update();
+    const changes = new MutationObserver(update);
+    changes.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-tab", "data-chat"],
+    });
+    const resize = new ResizeObserver(update);
+    resize.observe(root);
+    return () => {
+      changes.disconnect();
+      resize.disconnect();
+    };
+  }, [pageId, state.docPhase, editingDraft]);
   const link = pageId !== null && summary?.site ? docUrl(summary.site, pageId) : null;
   const draft = state.drafts.find((one) => one.pageId === pageId);
   const folder = editingDraft
@@ -38,7 +76,7 @@ export function PlansHeader({
     ? docPath.split("/").join(" › ")
     : [L.plans.listHeading, folder, crumbTitle].filter(Boolean).join(" › ");
   return (
-    <header className="nx-topbar nx-pl-bar">
+    <header ref={bar} className={`nx-topbar nx-pl-bar${scrolled ? " nx-pl-bar--scrolled" : ""}`}>
       {sidebarHidden && (
         <button
           type="button"
@@ -80,30 +118,33 @@ export function PlansHeader({
         )}
         {editingDraft && <span className="nx-pill nx-pill--accent">{L.drafts.chip}</span>}
       </nav>
-      {!editingDraft && pageId !== null && !summary?.expired && (
-        <div className="nx-pl-actions">
-          {link !== null && (
-            <a
-              className="nx-ibtn"
-              href={link}
-              target="_blank"
-              rel="noreferrer"
-              onClick={linkClick}
-              title={L.plans.openInConfluence}
-              aria-label={L.plans.openInConfluence}
-            >
-              <ExternalIcon />
-            </a>
-          )}
-          <button type="button" className="nx-btn" onClick={() => setSendOpen(true)}>
-            {L.drafts.sendToScreen}
-          </button>
-          <button type="button" className="nx-btn nx-btn--pri" onClick={() => editDoc(pageId)}>
-            <PencilIcon />
-            {draft ? L.drafts.resume : L.drafts.edit}
-          </button>
-        </div>
-      )}
+      {!editingDraft &&
+        pageId !== null &&
+        !summary?.expired &&
+        (state.docPhase !== "ready" || docHidden) && (
+          <div className="nx-pl-actions">
+            {link !== null && (
+              <a
+                className="nx-ibtn"
+                href={link}
+                target="_blank"
+                rel="noreferrer"
+                onClick={linkClick}
+                title={L.plans.openInConfluence}
+                aria-label={L.plans.openInConfluence}
+              >
+                <ExternalIcon />
+              </a>
+            )}
+            <button type="button" className="nx-btn" onClick={() => setSendOpen(true)}>
+              {L.drafts.sendToScreen}
+            </button>
+            <button type="button" className="nx-btn nx-btn--pri" onClick={() => editDoc(pageId)}>
+              <PencilIcon />
+              {draft ? L.drafts.resume : L.drafts.edit}
+            </button>
+          </div>
+        )}
       {sendOpen && pageId !== null && (
         <SendToScreen
           daemon={daemon}

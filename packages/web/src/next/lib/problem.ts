@@ -33,6 +33,12 @@ export interface Problem {
    * 뗀 뒤에도 검사가 다시 돌아 통과해야 끝나므로 거기서 「다 고쳤다」 고 말하지 않는다(2026-10-07).
    */
   settles?: false;
+  /**
+   * 문장 아래에 개발팀 창구(`물어볼 곳`) 줄이 서는가(2026-11-12 결정 ㉱ · 검토 WF-6) —
+   * 제출이 연결 코드 · 권한으로 막혔을 때와 GitHub 연결 코드 재연결만. 인터넷이
+   * 끊긴 경우 · AI 로그인이 풀린 경우에는 서지 않는다(개발자를 기다릴 일이 아니다).
+   */
+  support?: true;
 }
 
 /** 문제 문장 줄의 몸통 — ProblemLine 의 감싸개가 기억한다(문제 한 줄 또는 초대 파일 줄). */
@@ -124,6 +130,8 @@ export function problemFor(
               : W.problem.reconnectInvite,
           action: "invite",
           dismissId: null,
+          // 연결 코드 문제는 개발팀의 몫 — 창구 줄이 선다.
+          support: true,
         }
       : {
           kind: "reconnect",
@@ -164,6 +172,8 @@ export function problemFor(
           : W.problem.blockedBody,
       action: "copy",
       dismissId: `submit:${repo.submit.since ?? "?"}`,
+      // 연결 코드 만료 · 권한 부족으로 막힌 제출은 개발팀의 몫 — 창구 줄이 선다.
+      support: true,
     };
   }
   if (attention?.kind === "developer-notified") {

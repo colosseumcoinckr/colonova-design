@@ -372,7 +372,92 @@ const CASES: Case[] = [
       }),
     },
   },
+  // ── 2026-11-12 결정 ㉱(작업 WE) — 초대 파일의 창구 칸이 세우는 자리.
+  {
+    id: "sup1",
+    label:
+      "sup1 · 창구 칸이 있는 초대 파일을 가져왔다 — 셋째 줄에 이름과 대화방, `막혔나요?` 곁에도",
+    daemon: {
+      onboarding: gates(CLAUDE_OK),
+      status: {
+        ...STATUS,
+        support: {
+          name: "김개발",
+          room: "#design-tool-help",
+          url: "https://chat.example.com/r/design-tool-help",
+        },
+      },
+    },
+    invite: {
+      phase: "confirm",
+      firstRun: true,
+      invite: {
+        token: "ghp_견본",
+        authorName: "정인권",
+        support: {
+          name: "김개발",
+          room: "#design-tool-help",
+          url: "https://chat.example.com/r/design-tool-help",
+        },
+        projects: [
+          {
+            repoUrl: "https://github.com/org/app.git",
+            name: "앱",
+            baseBranch: "main",
+            approveCommands: true,
+          },
+        ],
+      },
+      rows: [],
+    },
+  },
+  {
+    id: "sup2",
+    label: "sup2 · 창구 칸에 이름만 — 셋째 줄이 «막히면 김개발님에게 물어요.»",
+    daemon: {
+      onboarding: gates(CLAUDE_OK),
+      status: { ...STATUS, support: { name: "김개발" } },
+    },
+  },
+  {
+    id: "sup3",
+    label: "sup3 · 창구 칸에 주소만 — 셋째 줄이 «막히면 개발팀 대화방에서 물어요.» + 대화방 열기",
+    daemon: {
+      onboarding: gates(CLAUDE_OK),
+      status: {
+        ...STATUS,
+        support: { url: "https://chat.example.com/r/design-tool-help" },
+      },
+    },
+  },
 ];
+// 2026-11-12 UI 조사 U-142 — 시작 요청 자체가 거절되는 경우.
+CASES.push({
+  id: "request-failure",
+  label: "요청 시작 실패",
+  daemon: {
+    onboarding: gates(CLAUDE_INSTALL),
+    api: {
+      onboardingFix: () => Promise.reject(new Error("fixture failure")),
+      onboardingCheck: () => Promise.reject(new Error("fixture failure")),
+    },
+  },
+});
+
+// 2026-11-12 검토 U-141 — 숨긴 설치 오류를 진단 복사로 건넨다.
+CASES.push({
+  id: "tool-diagnostic",
+  label: "도구 설치 실패 진단",
+  daemon: {
+    onboarding: [
+      GIT_OK,
+      { id: "runtime", status: "fail", detail: "pnpm", fix: { kind: "install-pnpm" } },
+      CLAUDE_OK,
+      GITHUB_OK,
+    ],
+  },
+  fixReply: { ok: false, detail: "corepack enable pnpm — EACCES fixture-original-cause" },
+});
 
 /** 한 화면이 걸어가는 길 — 같은 FirstRun 이 상태만 바뀐다(통과의 순간 · 접힘이 보인다). */
 const JOURNEY: Array<{

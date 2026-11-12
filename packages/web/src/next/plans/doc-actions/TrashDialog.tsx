@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../../lib/daemon-client";
 import { timeAgo } from "../../../lib/format";
 import { L } from "../../labels";
+import { createLatestRequest } from "../../lib/latest-request";
 import { RefreshIcon, Spin, TrashIcon } from "../../ui/icons";
 import { ModalBody, ModalFrame, ModalHead } from "../../ui/ModalFrame";
 import { DocOpDialog } from "./DocOpDialog";
@@ -29,19 +30,37 @@ export function TrashDialog({
   const [entries, setEntries] = useState<DocTrashEntry[]>([]);
   const [restoring, setRestoring] = useState<string | null>(null);
 
+  const requests = useRef(createLatestRequest<Daemon["api"]>()).current;
+  const loading = useRef(false);
   const load = useCallback(() => {
+    if (loading.current) return;
+    loading.current = true;
+    setPhase("loading");
+    const api = apiRef.current;
+    const ticket = requests.begin(api);
     apiRef.current
       .docTrashed()
       .then((reply) => {
+        if (!requests.isCurrent(ticket, apiRef.current)) return;
         setEntries(reply.entries);
         setPhase("ready");
       })
-      .catch(() => setPhase("failed"));
-  }, []);
+      .catch(() => {
+        if (requests.isCurrent(ticket, apiRef.current)) setPhase("failed");
+      })
+      .finally(() => {
+        if (requests.isCurrent(ticket, apiRef.current)) loading.current = false;
+      });
+  }, [requests]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: API가 바뀌면 옛 답을 버리고 다시 읽는다.
   useEffect(() => {
     load();
-  }, [load]);
+    return () => {
+      requests.invalidate();
+      loading.current = false;
+    };
+  }, [load, requests, daemon.api]);
 
   const applied = (result: DocOpResult) => {
     setRestoring(null);

@@ -153,6 +153,12 @@ export interface ConfluenceSyncDeps {
   now?: () => Date;
   /** 기다림의 주입 — 429 사다리가 시험에서 자지 않는다(CI 는 프로세스를 띄우지 않는다). */
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * 바퀴가 원장을 새로 쓰고 끝났다(lastSyncAt 가 바뀐 바퀴) — 프로젝트 요약을 한 번 방송한다
+   * (2026-11-12 보완 1). 웹은 요약의 lastImportAt 가 바뀌어야 기획서 목록을 다시 읽는다. 서버는
+   * 기존 project.changed 방송 길로 잇는다 — 새 선로 메시지는 없다.
+   */
+  onImported?(slug: string): void;
 }
 
 export interface ConfluenceImportResult {
@@ -350,6 +356,8 @@ export class ConfluenceSync {
       for (const page of Object.values(ledger.pages)) staleSeeds.add(page.path);
       ledger = emptyConfluenceLedger();
     }
+    // 바퀴가 끝날 때 원장의 시각이 이 값에서 바뀌었는지 본다 — 요약 방송(아래)의 판정 재료.
+    const syncedBefore = ledger.lastSyncAt;
     const first = ledger.roots.length === 0 || ledger.lastSyncAt === null;
     // 화면 AI 가 사본 폴더를 함께 열어 한 문서의 파일이 셸의 rm 으로 사라질 수 있다 — 하나라도
     // 없으면 이번 바퀴는 걷기로 돈다. 증분은 바뀐 문서만 겨누므로 사라진 파일을 스스로 고치지
@@ -480,6 +488,19 @@ export class ConfluenceSync {
       if (ledger.roots.length === 0) ledger.roots = [link.rootId];
     }
     writeConfluenceLedger(confluenceMirrorLedger(projectRoot), ledger);
+    // 원장의 시각이 바뀐 바퀴 — 요약을 한 번 방송한다(2026-11-12 보완 1). 타이머 · 누른 가져오기 ·
+    // 연결 뒤 · 발행 뒤의 바퀴가 모두 이 한 곳에서 탄다. 만료 · 실패 · 건너뛴 바퀴는 원장을 쓰지 않아
+    // 여기 오지 않고, 상한에 걸린 바퀴는 시각이 그대로라 방송하지 않는다(다음 바퀴가 잇는다).
+    // 방송이 실패해도 바퀴의 결과는 바뀌지 않는다.
+    if (!capped && ledger.lastSyncAt !== syncedBefore) {
+      try {
+        this.deps.onImported?.(slug);
+      } catch (error) {
+        this.deps.logger.warn("기획서 요약 방송 실패", {
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
     if (targets.walked) {
       // 한 갈래라도 못 읽은 걷기는 다음 바퀴가 다시 걷는다 — 빠진 문서가 증분에 영영 안 걸리지 않게. 다만
       // 잇달아 MAX_INCOMPLETE_REWALKS 번을 넘으면 멈춘다(다음 데몬 시작이 다시 걷는다).

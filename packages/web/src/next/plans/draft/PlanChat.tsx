@@ -22,6 +22,7 @@ import { L } from "../../labels";
 import { hasLeadSentence } from "../../lib/answer-lead";
 import { offerMismatchToComposer, sendMismatchNow } from "../../lib/mismatch-model";
 import type { ShellNav } from "../../slots";
+import { InlineConfirm } from "../../ui/InlineConfirm";
 import { CloseIcon, PlusIcon, SendIcon, SparkIcon, Spin } from "../../ui/icons";
 import { MismatchCard } from "../../ui/MismatchCard";
 import { Popover } from "../../ui/Popover";
@@ -29,7 +30,7 @@ import { escapeOwnedByLayer } from "../escape-layer";
 import { type PlanListRow, planRows } from "../plans-list";
 import { DRAFT_LIMITS } from "./limits";
 import { takeAsk } from "./pending-ask";
-import { parseRefSections, refChoices } from "./thread-model";
+import { refChoices, refSectionOptions, toggleRefSection } from "./thread-model";
 import type { DraftHand } from "./use-draft";
 import { draftRefreshUsage, useDraftPick } from "./use-draft-pick";
 import type { DraftThreadHand } from "./use-draft-thread";
@@ -57,20 +58,29 @@ function RefPicker({
 }) {
   const [rows, setRows] = useState<PlanListRow[] | null>(null);
   const [failed, setFailed] = useState(false);
+  const [listAttempt, setListAttempt] = useState(0);
   const [query, setQuery] = useState("");
   const [picked, setPicked] = useState<{ pageId: string; title: string; version: number } | null>(
     null,
   );
-  const [sectionsText, setSectionsText] = useState("");
-  // 절 이름의 한계 이유 — 절 수나 이름 길이가 선로의 상한을 넘으면 한 줄로 말하고 판은 그대로 선다.
+  // 절 체크목록(2026-11-12 근거 절 체크목록) — 고른 문서의 실제 절 머리에서 고른다. 빈 배열이 아니라
+  // null 이 「아직 못 읽음」이다.
+  const [headings, setHeadings] = useState<string[] | null>(null);
+  const [headingsFailed, setHeadingsFailed] = useState(false);
+  const [headingsAttempt, setHeadingsAttempt] = useState(0);
+  const [pickedSections, setPickedSections] = useState<string[]>([]);
+  // 절 수의 한계 이유 — 선로의 상한(절 20개)에 닿으면 한 줄로 말하고 판은 그대로 선다.
   const [sectionNotice, setSectionNotice] = useState<string | null>(null);
 
-  // `daemon` 은 렌더마다 새 겉모습이다 — 판을 여는 때 한 번만 읽는다(use-plans.ts 와 같은 이유).
-  const apiRef = useRef(daemon.api);
-  apiRef.current = daemon.api;
+  // `daemon` 은 렌더마다 새 겉모습이다 — 판을 여는 때와 다시 시도에만 읽는다(use-plans.ts 와 같은 이유).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: listAttempt 는 다시 시도의 방아쇠 — 몸은 읽기의 처치를 바꾸지 않는다.
   useEffect(() => {
     let alive = true;
-    apiRef.current
+    setFailed(false);
+    setRows(null);
+    setPicked(null);
+    setPickedSections([]);
+    daemon.api
       .docList()
       .then((reply) => {
         if (!alive) return;
@@ -82,25 +92,40 @@ function RefPicker({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [listAttempt, daemon.api]);
 
   const choices = useMemo(() => refChoices(rows ?? [], query), [rows, query]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: headingsAttempt 는 다시 시도의 방아쇠 — 문서를 바꿔 고르는 효과와 같은 몸을 함께 돌린다.
+  useEffect(() => {
+    if (picked === null || moveTo !== undefined) return;
+    let alive = true;
+    setHeadings(null);
+    setHeadingsFailed(false);
+    daemon.api
+      .docRead(picked.pageId)
+      .then((doc) => {
+        if (!alive) return;
+        setHeadings(refSectionOptions(doc.sections));
+      })
+      .catch(() => {
+        if (alive) setHeadingsFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [picked, moveTo, headingsAttempt, daemon.api]);
+
   const add = () => {
     if (picked === null) return;
-    const parsed = parseRefSections(sectionsText);
-    if ("error" in parsed) {
-      setSectionNotice(parsed.error);
-      return;
-    }
     onAdd({
       pageId: picked.pageId,
       title: picked.title,
       version: picked.version,
-      ...(parsed.sections.length > 0 ? { sections: parsed.sections } : {}),
+      ...(pickedSections.length > 0 ? { sections: pickedSections } : {}),
     });
     setPicked(null);
-    setSectionsText("");
+    setPickedSections([]);
     setSectionNotice(null);
   };
 
@@ -120,9 +145,18 @@ function RefPicker({
         </button>
       </div>
       {failed ? (
-        <p className="nx-dr-refnone" role="alert">
-          {L.drafts.refLoadFailed}
-        </p>
+        <div className="nx-dr-refsec-fail">
+          <p className="nx-dr-refnone" role="alert">
+            {L.drafts.refLoadFailed}
+          </p>
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm"
+            onClick={() => setListAttempt((n) => n + 1)}
+          >
+            {L.plans.retry}
+          </button>
+        </div>
       ) : rows === null ? (
         <p className="nx-dr-refnone">
           <Spin /> {L.plans.reading}
@@ -136,9 +170,12 @@ function RefPicker({
                 className="nx-dr-refrow"
                 aria-pressed={picked?.pageId === choice.pageId}
                 aria-label={`${choice.title} · ${L.drafts.refMeta(choice.version, "")}`}
-                onClick={() =>
-                  setPicked((before) => (before?.pageId === choice.pageId ? null : choice))
-                }
+                onClick={() => {
+                  setPicked((before) => (before?.pageId === choice.pageId ? null : choice));
+                  // 문서를 바꿔 고르면 절 고름도 함께 비운다 — 이전 문서의 절이 묻지 않게.
+                  setPickedSections([]);
+                  setSectionNotice(null);
+                }}
               >
                 <span className="nx-dr-refrow-t">{choice.title}</span>
                 <span className="nx-dr-refrow-m">{L.drafts.refMeta(choice.version, "")}</span>
@@ -152,20 +189,71 @@ function RefPicker({
         <div className="nx-dr-refsec">
           {moveTo === undefined ? (
             <>
-              <input
-                className="nx-input nx-dr-line"
-                value={sectionsText}
-                placeholder={L.drafts.refSectionsHint}
-                aria-label={L.drafts.refSectionsLabel}
-                onChange={(event) => {
-                  setSectionsText(event.target.value);
-                  setSectionNotice(null);
-                }}
-              />
-              <button type="button" className="nx-btn nx-btn--sm" onClick={add}>
-                {L.drafts.refAdd}
-              </button>
+              <p className="nx-dr-refsec-t">{L.drafts.refSectionsPick}</p>
+              {headingsFailed ? (
+                <div className="nx-dr-refsec-fail">
+                  <p className="nx-dr-refnone" role="alert">
+                    {L.drafts.refSectionsFailed}
+                  </p>
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm"
+                    onClick={() => setHeadingsAttempt((n) => n + 1)}
+                  >
+                    {L.plans.retry}
+                  </button>
+                </div>
+              ) : headings === null ? (
+                <p className="nx-dr-refnone">
+                  <Spin /> {L.drafts.refSectionsLoading}
+                </p>
+              ) : headings.length === 0 ? (
+                <p className="nx-dr-refnone">{L.drafts.refSectionsNone}</p>
+              ) : (
+                <>
+                  {/* 절을 하나도 고르지 않으면 문서 전체다 — 절을 고르는 순간 풀린다. */}
+                  <label className="nx-dr-refcheck nx-dr-refcheck--any">
+                    <input
+                      type="checkbox"
+                      checked={pickedSections.length === 0}
+                      disabled={pickedSections.length === 0}
+                      onChange={() => {
+                        setPickedSections([]);
+                        setSectionNotice(null);
+                      }}
+                    />
+                    <span>{L.drafts.refSectionsAny}</span>
+                  </label>
+                  <ul className="nx-dr-refchecks">
+                    {headings.map((heading) => (
+                      <li key={heading}>
+                        <label className="nx-dr-refcheck">
+                          <input
+                            type="checkbox"
+                            checked={pickedSections.includes(heading)}
+                            onChange={() => {
+                              const next = toggleRefSection(headings, pickedSections, heading);
+                              if ("error" in next) {
+                                setSectionNotice(next.error);
+                                return;
+                              }
+                              setSectionNotice(null);
+                              setPickedSections(next.sections);
+                            }}
+                          />
+                          <span>{heading}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
               {sectionNotice !== null && <p className="nx-dr-limit">{sectionNotice}</p>}
+              <div className="nx-dr-refsec-act">
+                <button type="button" className="nx-btn nx-btn--sm" onClick={add}>
+                  {L.drafts.refAdd}
+                </button>
+              </div>
             </>
           ) : (
             <button
@@ -389,6 +477,7 @@ function MessageRow({
                   mismatchDoc.nav.toast(
                     result === "sent" ? L.compare.sentNowToast : L.compare.sentToast,
                   );
+                  return result;
                 }),
               sendEdit: (row) =>
                 offerMismatchToComposer({
@@ -558,6 +647,11 @@ export function PlanChat({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  // 대화 지우기의 확인(2026-11-12) — 사이드바 줄의 `···` 와 같은 확인 판을 머리 ⋯ 메뉴 안에도 세운다.
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // 지우기의 비동기 진행(같은 날) — 도는 동안 확인판이 닫히지 않고, 실패는 이유와 함께 그대로 선다.
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const menuAnchor = useRef<HTMLButtonElement>(null);
   // 근거 고르기 팝의 닻(2026-11-02 D8) — `+ 근거 더하기` 단추에 붙어 뜬다.
   const addAnchor = useRef<HTMLButtonElement>(null);
@@ -573,6 +667,7 @@ export function PlanChat({
   useEffect(() => {
     if (!offstage) return;
     setMenuOpen(false);
+    setConfirmDelete(false);
     setPickerOpen(false);
     setMoveOpen(false);
   }, [offstage]);
@@ -840,7 +935,6 @@ export function PlanChat({
   const hintId = useId();
 
   return (
-    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 대화 칸의 Esc 는 제 자리에서 멈추는 길이다
     <aside
       className="nx-dr-thread nx-pl-chat"
       aria-label={labelledBy === undefined ? L.drafts.threadTitle : undefined}
@@ -862,6 +956,7 @@ export function PlanChat({
             aria-label={L.drafts.convMenu}
             title={L.drafts.convMenu}
             aria-haspopup="menu"
+            disabled={deleting}
             onClick={() => setMenuOpen((before) => !before)}
           >
             <Ellipsis className="nx-i" size={16} strokeWidth={1.8} aria-hidden="true" />
@@ -876,47 +971,86 @@ export function PlanChat({
         {menuOpen && (
           <Popover
             anchor={menuAnchor}
-            role="menu"
-            label={L.drafts.convMenu}
+            role={confirmDelete ? "dialog" : "menu"}
+            label={confirmDelete ? L.drafts.convRemoveTitle : L.drafts.convMenu}
             align="end"
             float
-            onClose={() => setMenuOpen(false)}
+            onClose={() => {
+              if (deleting) return;
+              setMenuOpen(false);
+              setConfirmDelete(false);
+            }}
           >
-            <button
-              type="button"
-              role="menuitem"
-              className="nx-mi"
-              disabled={conversation === null}
-              title={L.drafts.convMoveHint}
-              onClick={() => {
-                setMenuOpen(false);
-                if (conversation === null) return;
-                // 문서 고르기 — 목록의 문서를 고르는 작은 판은 근거 고르기 판을 다시 쓴다.
-                setMoveOpen(true);
-              }}
-            >
-              {L.drafts.convOtherDoc}
-            </button>
-            {conversation !== null && (
-              <button
-                type="button"
-                role="menuitem"
-                className="nx-mi nx-mi--dng"
-                onClick={() => {
-                  setMenuOpen(false);
+            {confirmDelete && conversation !== null ? (
+              <InlineConfirm
+                title={L.drafts.convRemoveTitle}
+                body={L.drafts.convRemoveBody}
+                confirmLabel={L.drafts.convDelete}
+                cancelLabel={L.convMenu.removeCancel}
+                busy={deleting}
+                busyWhy={deleting ? L.drafts.convDeleting : undefined}
+                onConfirm={() => {
+                  if (deleting) return;
+                  // 지우는 동안 확인판은 닫히지 않는다(2026-11-12) — 성공이 닫고, 실패는 이유와 함께 남는다.
+                  setDeleting(true);
+                  setDeleteError(null);
                   void daemon.api
                     .draftThreadDelete(conversation.threadId)
                     .then(() => {
+                      setDeleting(false);
+                      setConfirmDelete(false);
+                      setMenuOpen(false);
                       onConversationsChanged();
                       thread.reload();
+                      nav.toast(L.convMenu.removeDone);
                     })
                     .catch((err: unknown) => {
-                      nav.toast(err instanceof Error ? err.message : String(err));
+                      setDeleting(false);
+                      setDeleteError(err instanceof Error ? err.message : String(err));
                     });
                 }}
+                onCancel={() => {
+                  if (!deleting) setConfirmDelete(false);
+                }}
+                returnRef={menuAnchor}
               >
-                {L.drafts.convDelete}
-              </button>
+                {conversation.running && (
+                  <p className="nx-iconf-why">{L.drafts.convRemoveRunning}</p>
+                )}
+                {deleteError !== null && (
+                  <p className="nx-iconf-why" role="alert">
+                    {deleteError}
+                  </p>
+                )}
+              </InlineConfirm>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="nx-mi"
+                  disabled={conversation === null}
+                  title={L.drafts.convMoveHint}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (conversation === null) return;
+                    // 문서 고르기 — 목록의 문서를 고르는 작은 판은 근거 고르기 판을 다시 쓴다.
+                    setMoveOpen(true);
+                  }}
+                >
+                  {L.drafts.convOtherDoc}
+                </button>
+                {conversation !== null && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="nx-mi nx-mi--dng"
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    {L.drafts.convDelete}
+                  </button>
+                )}
+              </>
             )}
           </Popover>
         )}

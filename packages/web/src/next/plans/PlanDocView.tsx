@@ -15,6 +15,7 @@ import type { ShellNav } from "../slots";
 import { CloseIcon, InfoIcon, SparkIcon, Spin } from "../ui/icons";
 import { MismatchCard, type MismatchHand } from "../ui/MismatchCard";
 import { DocComments } from "./comments/DocComments";
+import { DocDrawer } from "./comments/DocDrawer";
 import { DocMenu } from "./doc-actions/DocMenu";
 import { PlansEmpty } from "./PlansEmpty";
 import { macroHeadings, type PlanListRow, planBodyBlocks, splitFrontmatter } from "./plans-list";
@@ -45,6 +46,7 @@ export function PlanDocView({
   writable,
   onSelectionAsk,
   focusTitle = true,
+  searchTarget,
 }: {
   pageId: string;
   /** 목록이 아는 이 문서의 줄 — 목록이 아직 없으면 null. */
@@ -76,7 +78,9 @@ export function PlanDocView({
   /** 고른 글로 묻기(2026-10-31 4단계) — 고른 글이 기획 대화 입력창 위 칩으로 붙는다. */
   onSelectionAsk?: (text: string) => void;
   focusTitle?: boolean;
+  searchTarget?: { query: string; request: number } | null;
 }) {
+  const article = useRef<HTMLElement>(null);
   const title = useRef<HTMLHeadingElement>(null);
   // 본문 덩어리 — 인라인 코멘트의 닻 단추가 듣는 자리다(2026-10-23 · 최종 구현 계획 F4).
   const body = useRef<HTMLDivElement>(null);
@@ -89,6 +93,15 @@ export function PlanDocView({
   const [history, setHistory] = useState(false);
   // 서랍(2026-10-31 D) — 코멘트 · 이어진 화면이 문서 판 안에서 열린다(대화 칸 쪽 가장자리에서 나온다).
   const [drawer, setDrawer] = useState<"comments" | "screens" | null>(null);
+  const drawerTrigger = useRef<HTMLButtonElement | null>(null);
+  const drawerClose = useRef<HTMLButtonElement | null>(null);
+  const closeDrawer = () => {
+    setDrawer(null);
+    drawerTrigger.current?.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    if (drawer !== null) drawerClose.current?.focus({ preventScroll: true });
+  }, [drawer]);
   // 이어진 화면(연결 자리를 걷은 뒤 연결을 보는 곳 · 2026-10-30 사용자 결정) — 서랍이 열릴 때 읽는다.
   const [links, setLinks] = useState<MapReadResult["links"] | null>(null);
   const [screenTitles, setScreenTitles] = useState<ReadonlyMap<string, string>>(new Map());
@@ -99,8 +112,18 @@ export function PlanDocView({
     at: string;
   }> | null>(null);
   const [unlinkNote, setUnlinkNote] = useState<string | null>(null);
+  const [linksFailed, setLinksFailed] = useState(false);
+  const [syncedFailed, setSyncedFailed] = useState(false);
+  const [screenRetry, setScreenRetry] = useState(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 재시도 번호가 같은 범위를 다시 읽는다
   useEffect(() => {
     if (drawer !== "screens") return;
+    setLinks(null);
+    setSyncedScreens(null);
+    setScreenTitles(new Map());
+    setLinksFailed(false);
+    setSyncedFailed(false);
+    setUnlinkNote(null);
     let live = true;
     daemon.api
       .mapRead()
@@ -116,7 +139,7 @@ export function PlanDocView({
         );
       })
       .catch(() => {
-        if (live) setLinks([]);
+        if (live) setLinksFailed(true);
       });
     daemon.api
       .draftSyncScreens(pageId)
@@ -124,26 +147,40 @@ export function PlanDocView({
         if (live) setSyncedScreens(result.screens);
       })
       .catch(() => {
-        if (live) setSyncedScreens([]);
+        if (live) setSyncedFailed(true);
       });
     return () => {
       live = false;
     };
-  }, [daemon.api, drawer, pageId]);
+  }, [daemon.api, drawer, pageId, screenRetry]);
   // 화면과 맞춰 보기(2026-11-02 · 같이 고치기 UX 계획 C7) — 판정만 돌고 어디에도 쓰지 않는다.
   const [comparing, setComparing] = useState(false);
   const [compareFailed, setCompareFailed] = useState(false);
   const [compareResult, setCompareResult] = useState<DraftCompareResult | null>(null);
+  const compareScope = useRef({ api: daemon.api, pageId, live: true });
+  compareScope.current.api = daemon.api;
+  compareScope.current.pageId = pageId;
+  useEffect(() => {
+    compareScope.current.live = true;
+    return () => {
+      compareScope.current.live = false;
+    };
+  }, []);
   const runCompare = async () => {
+    const current = () =>
+      compareScope.current.live &&
+      compareScope.current.api === daemon.api &&
+      compareScope.current.pageId === pageId;
     if (comparing) return;
     setComparing(true);
     setCompareFailed(false);
     try {
-      setCompareResult(await daemon.api.draftCompare(pageId));
+      const result = await daemon.api.draftCompare(pageId);
+      if (current()) setCompareResult(result);
     } catch {
-      setCompareFailed(true);
+      if (current()) setCompareFailed(true);
     } finally {
-      setComparing(false);
+      if (current()) setComparing(false);
     }
   };
   const compareHand: MismatchHand = {
@@ -166,6 +203,7 @@ export function PlanDocView({
         if (result === false) throw new Error("composer away");
         nav.showTab("chat");
         nav.toast(result === "sent" ? L.compare.sentNowToast : L.compare.sentToast);
+        return result;
       }),
     sendEdit: (row) =>
       offerMismatchToComposer({
@@ -181,22 +219,64 @@ export function PlanDocView({
   };
   // 고른 글의 작은 판(2026-10-31 4단계) — 문장을 고르면 `AI 에게 묻기` 가 선다.
   const [selection, setSelection] = useState<{ text: string; x: number; y: number } | null>(null);
-  const onBodyMouseUp = () => {
-    const pick = window.getSelection()?.toString() ?? "";
-    const box = body.current?.getBoundingClientRect();
-    if (pick.trim() === "" || box === undefined) {
+  const captureSelection = () => {
+    const selected = window.getSelection();
+    if (!selected || selected.rangeCount === 0) return;
+    const range = selected.getRangeAt(0);
+    if (!body.current?.contains(range.commonAncestorContainer)) return;
+    const text = selected.toString().trim();
+    const anchor = article.current?.offsetParent;
+    const box = anchor?.getBoundingClientRect();
+    if (!text || !box) {
       setSelection(null);
       return;
     }
-    const rect = window.getSelection()?.getRangeAt(0).getBoundingClientRect();
+    const rect = range.getBoundingClientRect();
     setSelection({
-      text: pick.trim(),
-      x: rect === undefined ? box.width / 2 : rect.left - box.left + rect.width / 2,
-      y: rect === undefined ? 0 : rect.bottom - box.top + 8,
+      text,
+      x: Math.max(8, Math.min(rect.left - box.left, box.width - 200)),
+      y: rect.bottom - box.top + (anchor?.scrollTop ?? 0) + 8,
     });
   };
+  const scrolledSearch = useRef<object | null>(null);
+  useEffect(() => {
+    if (
+      phase !== "ready" ||
+      !doc ||
+      !searchTarget ||
+      !body.current ||
+      scrolledSearch.current === searchTarget
+    )
+      return;
+    const query = searchTarget.query.trim().toLocaleLowerCase();
+    if (!query) return;
+    const walker = document.createTreeWalker(body.current, NodeFilter.SHOW_TEXT);
+    let target: HTMLElement | null = null;
+    while (walker.nextNode()) {
+      if (walker.currentNode.textContent?.toLocaleLowerCase().includes(query)) {
+        target = walker.currentNode.parentElement;
+        break;
+      }
+    }
+    if (!target) return;
+    let ancestor = target.parentElement;
+    while (ancestor && ancestor !== body.current) {
+      if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+      ancestor = ancestor.parentElement;
+    }
+    scrolledSearch.current = searchTarget;
+    target.setAttribute("data-search-hit", "true");
+    target.scrollIntoView({ block: "center" });
+    return () => target?.removeAttribute("data-search-hit");
+  }, [phase, doc, searchTarget]);
   const commentCount = doc?.comments?.filter((one) => one.resolved !== true).length ?? 0;
-  const screenCount = links?.length ?? 0;
+  const screenCount =
+    links === null || syncedScreens === null || linksFailed || syncedFailed
+      ? null
+      : new Set([
+          ...links.map((link) => link.route),
+          ...syncedScreens.map((screen) => screen.route),
+        ]).size;
   // 본문의 문서 링크 — 목록에서 같은 제목의 문서를 찾는다(같은 제목이 여럿이면 첫 줄).
   const openPage = (target: string): boolean => {
     const found = rows.find((one) => one.kind === "doc" && one.title === target);
@@ -239,7 +319,7 @@ export function PlanDocView({
     );
   }
   return (
-    <article className="nx-pl-doc" aria-busy={phase === "loading"}>
+    <article ref={article} className="nx-pl-doc" aria-busy={phase === "loading"}>
       <header className="nx-pl-doc-hd">
         <div className="nx-pl-doc-titleline">
           <h3 className="nx-pl-doc-title" ref={title} tabIndex={-1}>
@@ -289,6 +369,33 @@ export function PlanDocView({
               {L.compare.run}
             </button>
           )}
+          {phase === "ready" && doc !== null && (
+            <div className="nx-pl-doc-drawers">
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                aria-expanded={drawer === "comments"}
+                onClick={(event) => {
+                  drawerTrigger.current = event.currentTarget;
+                  setDrawer((before) => (before === "comments" ? null : "comments"));
+                }}
+              >
+                {L.plans.drawerComments(commentCount)}
+              </button>
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                aria-expanded={drawer === "screens"}
+                onClick={(event) => {
+                  drawerTrigger.current = event.currentTarget;
+                  setDrawer((before) => (before === "screens" ? null : "screens"));
+                }}
+              >
+                {L.plans.drawerScreens(screenCount)}
+              </button>
+            </div>
+          )}
+
           <DocMenu
             daemon={daemon}
             site={site}
@@ -378,7 +485,12 @@ export function PlanDocView({
           )}
           {/* biome-ignore lint/a11y/noStaticElementInteractions: 본문의 글 고르기(2026-10-31 4단계)가 본문 전체의 손이다 */}
           {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: 본문의 글 고르기(2026-10-31 4단계)가 본문 전체의 손이다 */}
-          <div className="nx-pl-body" ref={body} onMouseUp={onBodyMouseUp}>
+          <div
+            className="nx-pl-body"
+            ref={body}
+            onMouseUp={captureSelection}
+            onKeyUp={captureSelection}
+          >
             {view !== undefined ? (
               <DocView
                 blocks={view}
@@ -404,64 +516,45 @@ export function PlanDocView({
         </>
       )}
 
-      {/* 판 바닥의 두 줄 단추(2026-10-31 C) — 서랍은 문서 판 안에서 대화 칸 쪽 가장자리에서 나온다. */}
-      {phase === "ready" && doc !== null && (
-        <div className="nx-pl-foot">
-          <button
-            type="button"
-            className={`nx-pl-footbtn${drawer === "comments" ? " nx-pl-footbtn--on" : ""}`}
-            aria-expanded={drawer === "comments"}
-            onClick={() => setDrawer((before) => (before === "comments" ? null : "comments"))}
-          >
-            {L.plans.drawerComments(commentCount)}
-          </button>
-          <button
-            type="button"
-            className={`nx-pl-footbtn${drawer === "screens" ? " nx-pl-footbtn--on" : ""}`}
-            aria-expanded={drawer === "screens"}
-            onClick={() => setDrawer((before) => (before === "screens" ? null : "screens"))}
-          >
-            {L.plans.drawerScreens(screenCount)}
-          </button>
-        </div>
-      )}
-
-      {/* 코멘트 서랍(2026-10-31 D) — 지금 본문 아래에 있던 코멘트 절이 옮겨 왔다. */}
+      {/* 코멘트 서랍(2026-10-31 D) — 지금 본문 아래에 있던 코멘트 절이 옮겨 왔다. 초안 머리도 같은
+          서랍을 쓴다(2026-11-12 B8 — 발행 창이 `안 풀린 코멘트` 를 점검해도 읽을 곳이 없었다). */}
       {phase === "ready" && doc !== null && drawer === "comments" && (
-        <aside className="nx-pl-drawer" aria-label={L.plans.drawerComments(commentCount)}>
-          <header className="nx-pl-drawer-hd">
-            <h3>{L.plans.drawerComments(commentCount)}</h3>
-            <button
-              type="button"
-              className="nx-ibtn nx-ibtn--sm"
-              aria-label={L.plans.drawerClose}
-              onClick={() => setDrawer(null)}
-            >
-              <CloseIcon />
-            </button>
-          </header>
+        <DocDrawer
+          label={L.plans.drawerComments(commentCount)}
+          closeRef={drawerClose}
+          onClose={closeDrawer}
+        >
           {writable === false && (
             <p className="nx-banner nx-banner--amber nx-pl-drawer-note" role="status">
               <InfoIcon />
               {L.drafts.writeOffHint}
             </p>
           )}
-          <div className="nx-pl-drawer-body">
-            <DocComments
-              daemon={daemon}
-              pageId={pageId}
-              comments={doc.comments}
-              body={body}
-              onRefresh={onRefresh}
-              writable={writable}
-            />
-          </div>
-        </aside>
+          <DocComments
+            daemon={daemon}
+            pageId={pageId}
+            comments={doc.comments}
+            body={body}
+            onRefresh={onRefresh}
+            writable={writable}
+          />
+        </DocDrawer>
       )}
 
       {/* 이어진 화면 서랍(2026-10-31 D) — 연결 자리를 걷은 뒤 연결을 보는 곳이 옮겨 왔다. */}
       {phase === "ready" && drawer === "screens" && (
-        <aside className="nx-pl-drawer" aria-label={L.plans.drawerScreens(screenCount)}>
+        // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 안의 단추에서 올라온 Esc로 서랍을 접는다
+        <aside
+          className="nx-pl-drawer"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !event.defaultPrevented) {
+              event.preventDefault();
+              event.stopPropagation();
+              closeDrawer();
+            }
+          }}
+          aria-label={L.plans.drawerScreens(screenCount)}
+        >
           <header className="nx-pl-drawer-hd">
             <h3>
               <Monitor className="nx-i" size={14} aria-hidden="true" />
@@ -471,104 +564,113 @@ export function PlanDocView({
               type="button"
               className="nx-ibtn nx-ibtn--sm"
               aria-label={L.plans.drawerClose}
-              onClick={() => setDrawer(null)}
+              ref={drawerClose}
+              onClick={closeDrawer}
             >
               <CloseIcon />
             </button>
           </header>
           <div className="nx-pl-drawer-body">
-            {links === null ? (
-              <p className="nx-pl-note">
+            {((links === null && !linksFailed) || (syncedScreens === null && !syncedFailed)) && (
+              <p className="nx-pl-note" role="status">
                 <Spin /> {L.plans.reading}
               </p>
-            ) : links.length === 0 && (syncedScreens ?? []).length === 0 ? (
-              <p className="nx-pl-note">{L.plans.docScreensNone}</p>
-            ) : (
-              <>
-                <ul className="nx-pl-scrlist">
-                  {links.map((link) => (
-                    <li
-                      key={`${link.route}
+            )}
+            {(linksFailed || syncedFailed) && (
+              <div className="nx-pl-note" role="alert">
+                {linksFailed && <p>{L.plans.screensLoadFailed}</p>}
+                {syncedFailed && <p>{L.plans.syncedLoadFailed}</p>}
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm"
+                  onClick={() => setScreenRetry((n) => n + 1)}
+                >
+                  {L.plans.retry}
+                </button>
+              </div>
+            )}
+            {links?.length === 0 &&
+              syncedScreens?.length === 0 &&
+              !linksFailed &&
+              !syncedFailed && <p className="nx-pl-note">{L.plans.docScreensNone}</p>}
+            <ul className="nx-pl-scrlist">
+              {(links ?? []).map((link) => (
+                <li
+                  key={`${link.route}
 ${link.section ?? ""}`}
-                      className="nx-pl-scrrow"
-                    >
-                      <Link2 className="nx-i" size={14} aria-hidden="true" />
+                  className="nx-pl-scrrow"
+                >
+                  <Link2 className="nx-i" size={14} aria-hidden="true" />
+                  <span className="nx-pl-scrname">
+                    {screenTitles.get(link.route) || L.transcript.unknownScreen}
+                    {link.section !== null && <span className="nx-pl-scrsub">{link.section}</span>}
+                  </span>
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm nx-btn--ghost"
+                    onClick={() => {
+                      nav.showScreen();
+                      if (!openScreenPath(link.route)) {
+                        void window.colonovaDesignDesktop?.preview?.navigate?.(link.route);
+                      }
+                    }}
+                  >
+                    {L.plans.docScreenOpen}
+                  </button>
+                  <button
+                    type="button"
+                    className="nx-btn nx-btn--sm nx-btn--ghost"
+                    onClick={() => {
+                      setUnlinkNote(null);
+                      void daemon.api
+                        .mapWrite([
+                          {
+                            op: "remove",
+                            pageId: link.pageId,
+                            route: link.route,
+                            ...(link.section ? { section: link.section } : {}),
+                          },
+                        ])
+                        .then((after) => setLinks(after.filter((one) => one.pageId === pageId)))
+                        .catch(() => setUnlinkNote(L.planSync.unlinkFailed));
+                    }}
+                  >
+                    {L.planSync.unlink}
+                  </button>
+                </li>
+              ))}
+            </ul>
+            {/* 같이 고침으로 닿은 화면(C4) — 기록 도출 줄. 연결 파일에는 같이 고치기가 아무것도 쓰지 않는다. */}
+            {(syncedScreens ?? []).length > 0 && (
+              <>
+                <p className="nx-pl-scrhead">{L.plans.docScreensSynced}</p>
+                <ul className="nx-pl-scrlist">
+                  {(syncedScreens ?? []).map((screen) => (
+                    <li key={screen.route} className="nx-pl-scrrow">
+                      <Monitor className="nx-i" size={14} aria-hidden="true" />
                       <span className="nx-pl-scrname">
-                        {screenTitles.get(link.route) || L.transcript.unknownScreen}
-                        {link.section !== null && (
-                          <span className="nx-pl-scrsub">{link.section}</span>
-                        )}
+                        {screen.title ?? screen.route}
+                        <span className="nx-pl-scrsub">{timeAgo(Date.parse(screen.at))}</span>
                       </span>
                       <button
                         type="button"
                         className="nx-btn nx-btn--sm nx-btn--ghost"
                         onClick={() => {
                           nav.showScreen();
-                          if (!openScreenPath(link.route)) {
-                            void window.colonovaDesignDesktop?.preview?.navigate?.(link.route);
+                          if (!openScreenPath(screen.route)) {
+                            void window.colonovaDesignDesktop?.preview?.navigate?.(screen.route);
                           }
                         }}
                       >
                         {L.plans.docScreenOpen}
                       </button>
-                      <button
-                        type="button"
-                        className="nx-btn nx-btn--sm nx-btn--ghost"
-                        onClick={() => {
-                          setUnlinkNote(null);
-                          void daemon.api
-                            .mapWrite([
-                              {
-                                op: "remove",
-                                pageId: link.pageId,
-                                route: link.route,
-                                ...(link.section ? { section: link.section } : {}),
-                              },
-                            ])
-                            .then((after) => setLinks(after.filter((one) => one.pageId === pageId)))
-                            .catch(() => setUnlinkNote(L.planSync.unlinkFailed));
-                        }}
-                      >
-                        {L.planSync.unlink}
-                      </button>
                     </li>
                   ))}
                 </ul>
-                {/* 같이 고침으로 닿은 화면(C4) — 기록 도출 줄. 연결 파일에는 같이 고치기가 아무것도 쓰지 않는다. */}
-                {(syncedScreens ?? []).length > 0 && (
-                  <>
-                    <p className="nx-pl-scrhead">{L.plans.docScreensSynced}</p>
-                    <ul className="nx-pl-scrlist">
-                      {(syncedScreens ?? []).map((screen) => (
-                        <li key={screen.route} className="nx-pl-scrrow">
-                          <Monitor className="nx-i" size={14} aria-hidden="true" />
-                          <span className="nx-pl-scrname">
-                            {screen.title ?? screen.route}
-                            <span className="nx-pl-scrsub">{timeAgo(Date.parse(screen.at))}</span>
-                          </span>
-                          <button
-                            type="button"
-                            className="nx-btn nx-btn--sm nx-btn--ghost"
-                            onClick={() => {
-                              nav.showScreen();
-                              if (!openScreenPath(screen.route)) {
-                                void window.colonovaDesignDesktop?.preview?.navigate?.(
-                                  screen.route,
-                                );
-                              }
-                            }}
-                          >
-                            {L.plans.docScreenOpen}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
               </>
             )}
             {unlinkNote !== null && (
-              <p className="nx-pl-note" role="status">
+              <p className="nx-pl-note" role="alert">
                 {unlinkNote}
               </p>
             )}

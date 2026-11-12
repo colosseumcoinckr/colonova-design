@@ -87,8 +87,14 @@ export interface RawErrorLine {
  * 문장으로 덮은 뒤 원문을 접힌 자리에 내려 준다.
  */
 export function rawErrorLine(raw: string, words: Pick<typeof L, "vocab">): RawErrorLine {
-  if (koreanNoticeWords(raw)) return { title: raw, raw: null };
-  if (LIMIT_RESULT.test(raw)) return { title: LIMIT_WORDS, raw };
+  // 데몬은 사람의 한 줄을 먼저 세우고 원문을 빈 줄 뒤에 붙인다(FA-2 — 보관
+  // 게이트의 한 줄·원문 꼴) — 앞만 보이고 뒤는 접힌 자리로 간다.
+  const cut = raw.search(/\n[ \t]*\n/);
+  const lead = (cut === -1 ? raw : raw.slice(0, cut)).trim();
+  if (koreanNoticeWords(lead)) {
+    return { title: lead, raw: cut === -1 ? null : raw.slice(cut).trim() };
+  }
+  if (LIMIT_RESULT.test(lead)) return { title: LIMIT_WORDS, raw };
   return { title: words.vocab.aiFailed, raw };
 }
 

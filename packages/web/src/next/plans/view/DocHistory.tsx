@@ -70,7 +70,10 @@ export function DocHistory({
   return (
     <ModalFrame onClose={onClose} label={L.confluence.history} className="nx-da">
       <ModalHead title={`${L.confluence.history} · ${title}`} sub={L.confluence.historySub} />
+      {/* 2026-11-12 비개발자 사용성 — 잘못 발행한 뒤의 돌아가는 길. 앱 안에서 확인된 길(초안 판 되돌리기 →
+          다시 발행)만 말하고, 이 창은 읽기 전용 그대로다. */}
       <ModalBody>
+        <p className="nx-dm-line">{L.confluence.historyRevertNote}</p>
         {open === null ? (
           <div className="nx-dm-hist">
             {phase === "loading" && (

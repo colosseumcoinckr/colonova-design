@@ -1,5 +1,14 @@
 import type { ColoNovaDesignPinEnvelope, SessionState } from "@colonova-design/protocol";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import { ShortcutsSheet } from "../../components/dialogs/ShortcutsSheet";
 import type { PreviewOverlaySkin } from "../../components/preview/PreviewFrame";
@@ -19,7 +28,12 @@ import {
   titleOfPath,
 } from "../../lib/turn-screens";
 import { L } from "../labels";
-import { setComposerSheetHost } from "../lib/composer-sheet";
+import {
+  getComposerSheet,
+  setComposerSheetHost,
+  subscribeComposerSheet,
+  toggleComposerSheet,
+} from "../lib/composer-sheet";
 import { routePath } from "../lib/follow-edit";
 import { arriveOnTurnEnd, refreshOnTurnEnd } from "../lib/preview-geometry";
 import { requestResults } from "../lib/request-results";
@@ -147,6 +161,14 @@ export function PreviewColumn({
     setComposerSheetHost(sheetHostRef.current);
     return () => setComposerSheetHost(null);
   }, [narrow]);
+  // 접힌 한 줄이 시트의 열림을 읽는다(`aria-expanded`) — 시트 자리가 서 있는
+  // 동안의 실제 상태이며, 이 칸의 단축키 시트(sheetOpen)와는 무관하다.
+  const composerSheet = useSyncExternalStore(
+    subscribeComposerSheet,
+    getComposerSheet,
+    getComposerSheet,
+  );
+  const sheetHostId = useId();
   /** 서랍을 연 단추 — 닫히면 초점이 그곳으로 돌아간다(막대의 `···` — S6). */
   const historyBtn = useRef<HTMLButtonElement | null>(null);
   /** 시계 단추가 `aria-controls` 로 가리키는 서랍. */
@@ -1054,13 +1076,17 @@ export function PreviewColumn({
 
       {/* 좁은 창의 입력창 시트 자리(S12) — 대화 칸이 같은 입력창을 여기로 옮겨 그린다.
           펼쳐져 있을 때만 자리가 살아 보인다(접힌 한 줄은 아래의 접힌 입력창이 대신한다). */}
-      {narrow && <div className="nx-sheet-host" ref={sheetHostRef} aria-hidden={!sheetOpen} />}
+      {narrow && <div className="nx-sheet-host" ref={sheetHostRef} id={sheetHostId} />}
       {narrow && (
-        // 접힌 입력창(S12) — 화면 탭 바닥의 한 줄. 누르면 대화 칸이 같은 입력창을 위의 자리로 펼친다.
+        // 접힌 입력창(S12) — 화면 탭 바닥의 한 줄. 누르면 대화 칸이 같은 입력창을
+        // 위의 자리로 옮겨 그리고(토글) 다시 누르면 접는다. 펼쳐진 동안은 이 줄이
+        // 시트 뒤에 숨고 입력창의 접기 손 · Esc 가 거둔다.
         <button
           type="button"
           className="nx-fold-cmp"
-          onClick={() => window.dispatchEvent(new CustomEvent("nx:composer:sheet"))}
+          aria-expanded={composerSheet.open}
+          aria-controls={sheetHostId}
+          onClick={toggleComposerSheet}
         >
           {pinCount > 0 ? L.narrow.composeFoldPins(pinCount) : L.narrow.composeFold}
           <ArrowIcon />

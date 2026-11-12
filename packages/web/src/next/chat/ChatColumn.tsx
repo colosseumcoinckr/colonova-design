@@ -5,7 +5,15 @@ import {
   type SessionPinHint,
   type TurnMarker,
 } from "@colonova-design/protocol";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import type { PinAttachment } from "../../hooks/usePins";
 import type { Attachment } from "../../lib/attachment";
@@ -17,7 +25,11 @@ import { openScreenPath, screenPath } from "../../lib/screen-link";
 import { tailMoving } from "../../lib/tape-visibility";
 import type { TurnScreen } from "../../lib/turn-screens";
 import { L } from "../labels";
-import { getComposerSheetHost, subscribeComposerSheet } from "../lib/composer-sheet";
+import {
+  getComposerSheet,
+  setComposerSheetOpen,
+  subscribeComposerSheet,
+} from "../lib/composer-sheet";
 import { connectionLock } from "../lib/connection-copy";
 import { dockOf } from "../lib/dock";
 import { makingPhase, makingWordOf } from "../lib/making";
@@ -26,7 +38,7 @@ import { isPreparing } from "../lib/project-note";
 import { latestResult } from "../lib/request-results";
 import { planRetry } from "../lib/retry-send";
 import { runPlan } from "../lib/run-plan";
-import { firstScreenName, recentScreenName, startersOf } from "../lib/starters";
+import { shownScreenName, startersOf } from "../lib/starters";
 import { nextTabIndex } from "../lib/tab-keys";
 import { dedupeScreens } from "../lib/thread";
 import { undoTargetFor } from "../lib/undo-last";
@@ -68,9 +80,9 @@ const RTAB_BODY_IDS: Record<RTab, string> = {
  * 밖으로 나가는 신호: `nx:history:open` 은 이 칸이 받아 넓은 창의 작업 기록 탭으로 바꾸고,
  * 좁은 창은 `nx:history:drawer`(서랍 — 화면 칸이 듣는다)로 돌린다. `nx:addr:hint` 는 결과
  * 띠의 화면 칩에 손이 올 때 주소창을 잠깐 물들인다(S9의 거꾸로). 들어오는 신호:
- * `nx:thread:goto`(지금 화면을 바꾼 말 — 결과 띠로 굴러간다), `nx:composer:sheet`(좁은
- * 창의 접힌 입력창 — 화면 탭에서 펼친다), `nx:pins:send`(말풍선의 지금 보내기),
- * `nx:composer:attach`(미리보기의 AI에게 이 화면 보여 주기). 그리고 되돌리기가 마치면
+ * `nx:thread:goto`(지금 화면을 바꾼 말 — 결과 띠로 굴러간다), `nx:pins:send`(말풍선의 지금 보내기),
+ * `nx:composer:attach`(미리보기의 AI에게 이 화면 보여 주기). 좁은 창의 입력창 시트는
+ * `lib/composer-sheet` 의 열림이 고른다. 그리고 되돌리기가 마치면
  * 보내는 `nx:history:changed` 를 듣고 되돌아갈 곳을 다시 읽는다.
  */
 export function ChatColumn({
@@ -84,6 +96,7 @@ export function ChatColumn({
   offstage = false,
   rightTab = "chat",
   screenRoute = null,
+  screenName = null,
   sheetOn = false,
 }: ChatColumnProps) {
   const { api, pending, resolvePending } = daemon;
@@ -97,7 +110,15 @@ export function ChatColumn({
 
   // 같이 고치기의 곁줄 손(2026-10-30) — 초안 열기 · 되돌리기 · 연결 끊기 · 문서 고르기 · 곁줄 발행(2026-11-02 C3).
   // `보기` 는 기획서 칸으로 옮기지 않고 오른쪽 칸의 기획서 탭을 그 문서의 바뀐 절로 연다(2026-11-02 C4).
-  const [planFocus, setPlanFocus] = useState<PlanFocus | null>(null);
+  const planFocusScope = useMemo(
+    () => ({ api, activeId, project: daemon.activeSlug, screenRoute }),
+    [api, activeId, daemon.activeSlug, screenRoute],
+  );
+  const planFocusScopeRef = useRef(planFocusScope);
+  planFocusScopeRef.current = planFocusScope;
+  const [planFocus, setPlanFocus] = useState<(PlanFocus & { scope: typeof planFocusScope }) | null>(
+    null,
+  );
   const planFocusNonce = useRef(0);
   // 곁줄 발행 팝 — 열려 있는 동안 약속을 쥐고, 창이 닫히면 결과를 돌려준다(곁줄 문구가 바뀐다).
   const [publishTarget, setPublishTarget] = useState<{
@@ -108,36 +129,41 @@ export function ChatColumn({
   const planSync = useMemo<PlanSyncHand>(
     () => ({
       open: (doc) => {
+        const nonce = ++planFocusNonce.current;
+        const isCurrent = () =>
+          planFocusScopeRef.current === planFocusScope && planFocusNonce.current === nonce;
         // 바뀐 절을 찾아 그 문서로 간다(C4) — 절은 같이 고친 기록에서 푼다. 못 찾으면 문서 맨 위로 열린다.
         if (activeId !== null) {
           void api
             .draftSyncDocs(activeId)
             .then(({ docs }) => {
+              if (!isCurrent()) return;
               const hit = docs.find((one) => one.docKey === doc.docKey) ?? null;
-              planFocusNonce.current += 1;
               setPlanFocus({
+                scope: planFocusScope,
                 pageId: doc.pageId,
                 docKey: doc.docKey,
                 section: hit?.sections[0] ?? null,
-                nonce: planFocusNonce.current,
+                nonce,
               });
             })
             .catch(() => {
-              planFocusNonce.current += 1;
+              if (!isCurrent()) return;
               setPlanFocus({
+                scope: planFocusScope,
                 pageId: doc.pageId,
                 docKey: doc.docKey,
                 section: null,
-                nonce: planFocusNonce.current,
+                nonce,
               });
             });
         } else {
-          planFocusNonce.current += 1;
           setPlanFocus({
+            scope: planFocusScope,
             pageId: doc.pageId,
             docKey: doc.docKey,
             section: null,
-            nonce: planFocusNonce.current,
+            nonce,
           });
         }
         nav.showRightTab("plans");
@@ -175,7 +201,7 @@ export function ChatColumn({
           }
         : {}),
     }),
-    [api, nav, activeId, project],
+    [api, nav, activeId, project, planFocusScope],
   );
 
   // 이 대화의 사람 말 수 — 근거 줄이 다시 읽는 셈(보내기 중인 말도 센다 — 보낸 직후에 늘고,
@@ -303,6 +329,11 @@ export function ChatColumn({
     shown: Array<{ screen: string }>,
     onTarget?: (id: string) => void,
   ) => {
+    // 보내면 좁은 창의 펼친 입력창은 접힌다(화면 칸의 한 줄이 다시 선다) — 초점
+    // 복귀 의지는 액션 시점에 적는다: 커밋에서 상자가 먼저 걷히면 layout effect
+    // 에서는 초점이 이미 body 로 떨어져 읽을 수 없다(2026-11-12 실앱 확인).
+    if (sheetLive) foldIntent.current = true;
+    setComposerSheetOpen(false);
     // 핀의 크롭은 그림으로 함께 간다 — 맨 앞에 세운다(데몬이 앞 여섯 장을 카드 썸네일로 쓴다).
     const pinImages: Attachment[] = sent.slice(0, PIN_SHOT_MAX).flatMap((pin) =>
       pin.shot
@@ -614,12 +645,8 @@ export function ChatColumn({
   }, [empty]);
   // 입력창에 보낼 것이 있는가 — 시작점 칩이 쓰던 말을 덮지 않게 물러난다(Composer 가 알린다).
   const [filled, setFilled] = useState(false);
-  // 시작점 칩(2026-10-31 홈 걷기 · S5) — 지금 화면의 이름으로 빈 대화를 연다. 이번 작업이 만진
-  // 화면이 먼저이고, 없으면(처음 켠 서비스) 데몬이 읽어 온 첫 화면의 이름으로 선다.
-  const emptyScreenName = useMemo(
-    () => recentScreenName(daemon.repo?.cycleScreens) ?? firstScreenName(daemon.repo?.firstScreen),
-    [daemon.repo?.cycleScreens, daemon.repo?.firstScreen],
-  );
+  // 빈 대화와 칩은 지금 미리보기의 이름만 쓴다.
+  const emptyScreenName = shownScreenName(screenName);
   const starters = useMemo(
     () => startersOf(emptyScreenName, L.composer.starters),
     [emptyScreenName],
@@ -723,30 +750,46 @@ export function ChatColumn({
   }, [daemon.sessions, handoff]);
 
   // --- 좁은 창의 입력창 시트(S12) ------------------------------------------
-  // 화면 탭에서도 쓸 수 있게 같은 입력창을 화면 칸의 자리로 옮겨 그린다 — 포털이라
-  // 인스턴스가 하나다(셸 규칙). 접힌 한 줄은 화면 칸이 세우고(`nx:composer:sheet`),
-  // 보내면 접는다. 쓰던 글 · 핀 · 첨부는 대화 탭과 하나다.
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const sheetHost = useSyncExternalStore(subscribeComposerSheet, getComposerSheetHost, () => null);
+  // 화면 탭에서도 쓸 수 있게 같은 입력창을 화면 칸의 자리로 옮겨 그린다 — 포털의
+  // 대상은 늘 `cmpBox` 하나이고 그 상자만 시트 자리와 제 자리 사이를 옮긴다. 포털의
+  // 대상을 원소끼리 바꾸면 React 가 새 포털로 만들어 입력창이 재마운트되므로
+  // (2026-11-12 — 붙인 첨부 · 보내는 중 · 거절 문구가 날아간다) 대상은 고정한다.
+  // 열림은 `lib/composer-sheet` 가 쥐고, 접힌 한 줄(화면 칸)이 토글한다. 보내면
+  // 접히고(send), 입력창의 접기 손과 Esc 도 같은 길로 거둔다.
+  const sheet = useSyncExternalStore(subscribeComposerSheet, getComposerSheet, getComposerSheet);
   useEffect(() => {
-    if (!sheetOn) setSheetOpen(false);
+    if (!sheetOn) setComposerSheetOpen(false);
   }, [sheetOn]);
-  useEffect(() => {
-    const onSheet = () => {
-      setSheetOpen(true);
-      window.dispatchEvent(new Event("nx:composer:focus"));
-    };
-    const onSent = () => setSheetOpen(false);
-    window.addEventListener("nx:composer:sheet", onSheet);
-    window.addEventListener("nx:pins:send", onSent);
-    return () => {
-      window.removeEventListener("nx:composer:sheet", onSheet);
-      window.removeEventListener("nx:pins:send", onSent);
-    };
-  }, []);
-  // 포털의 빠진 자리 — 화면 탭이 아니면 입력창이 이곳(제 자리)에 선다.
+  // 포털이 그리는 상자 — 대상이 이 상자로 고정되어 자리를 옮겨도 입력창이 재마운트되지 않는다.
+  const [cmpBox] = useState<HTMLDivElement | null>(() =>
+    typeof document === "undefined" ? null : document.createElement("div"),
+  );
+  // 포털의 빠진 자리 — 화면 탭이 아니면 상자가 이곳(제 자리)에 선다.
   const [cmpFallback, setCmpFallback] = useState<HTMLDivElement | null>(null);
-  const sheetLive = sheetOn && sheetOpen && sheetHost !== null;
+  const sheetLive = sheetOn && sheet.open && sheet.host !== null;
+  // 접기 의도 — 액션 시점에 적는다(커밋 후에는 초점 상태를 읽을 수 없다).
+  const foldIntent = useRef(false);
+  const wasSheetLive = useRef(false);
+  useLayoutEffect(() => {
+    if (cmpBox === null) return;
+    const parent = sheetLive && sheet.host !== null ? sheet.host : cmpFallback;
+    if (parent !== null && cmpBox.parentNode !== parent) parent.appendChild(cmpBox);
+    if (!wasSheetLive.current && sheetLive) {
+      // 펼치면 바로 칠 수 있게 — 상자가 자리에 들어선 뒤에 초점을 부른다.
+      window.dispatchEvent(new Event("nx:composer:focus"));
+    } else if (wasSheetLive.current && !sheetLive && sheetOn && foldIntent.current) {
+      // 화면 탭에 머문 채 접기 · 보내기 · Esc 로 접힐 때(sheetOn 은 그대로 true)
+      // 초점은 접힌 한 줄로 돌아간다. 대화 탭으로 옮겨 상자가 제 자리로 간
+      // 때(sheetOn 이 false)는 상자째 초점이 살아 있으니 건드리지 않는다 —
+      // 원소를 DOM 사이에서 옮겨도 초점은 따라간다.
+      foldIntent.current = false;
+      document.querySelector<HTMLElement>(".nx-fold-cmp")?.focus();
+    }
+    if (!sheetLive) foldIntent.current = false;
+    wasSheetLive.current = sheetLive;
+  }, [cmpBox, cmpFallback, sheetLive, sheet.host, sheetOn]);
+  // 칸이 걷히면 문서 밖 상자도 거둔다 — 포털의 대상은 늘 살아 있는 하나다.
+  useLayoutEffect(() => () => cmpBox?.remove(), [cmpBox]);
 
   // --- 끌어다 놓기: 칸 어디에 놓아도 입력창의 첨부로 ---------------------------
   const composer = useRef<ComposerHandle | null>(null);
@@ -838,6 +881,14 @@ export function ChatColumn({
         onContentChange={setFilled}
         onToast={nav.toast}
         onSend={send}
+        onSheetFold={
+          sheetLive
+            ? () => {
+                foldIntent.current = true;
+                setComposerSheetOpen(false);
+              }
+            : undefined
+        }
       />
     </div>
   );
@@ -1107,7 +1158,12 @@ export function ChatColumn({
           sessionId={activeId}
           sentCount={sentCount}
           onCount={setPlanCount}
-          focus={planFocus}
+          focus={planFocus?.scope === planFocusScope ? planFocus : null}
+          onFocusConsumed={(nonce) =>
+            setPlanFocus((current) =>
+              current?.scope === planFocusScope && current.nonce === nonce ? null : current,
+            )
+          }
           tabpanelId={RTAB_BODY_IDS.plans}
           tabpanelLabel={L.tabs.plans}
         />
@@ -1151,13 +1207,11 @@ export function ChatColumn({
         </div>
       )}
 
-      {/* 입력창 — 좁은 창의 화면 탭에서는 화면 칸의 시트 자리로 옮겨 그린다(S12).
-          포털은 인스턴스를 옮길 뿐이라 쓰던 글 · 핀 · 첨부가 살아 있다. */}
+      {/* 입력창 — 포털의 대상 `cmpBox` 를 고정해 두고 그 상자만 시트 자리와 이곳
+          사이로 옮긴다(위의 layout effect). 상자째 옮기므로 재마운트 없이 쓰던
+          글 · 핀 · 첨부가 살아 있다. */}
       <div className="nx-cmp-anchor" ref={setCmpFallback} />
-      {createPortal(
-        composerBlock,
-        sheetLive && sheetHost !== null ? sheetHost : (cmpFallback ?? document.body),
-      )}
+      {cmpBox !== null && createPortal(composerBlock, cmpBox)}
     </section>
   );
 }

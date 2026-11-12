@@ -13,7 +13,17 @@ import { keyHint } from "../lib/key-hint";
 import { ghostText, isAcceptKey } from "../lib/next-say";
 import { fastChip, fastCost, fastTipWords, fastToast, sizeText } from "../lib/thread";
 import { SuggestList, useComposerSuggest } from "./ComposerSuggest";
-import { BoltIcon, ClipIcon, FileIcon, ImageIcon, PinIcon, StopIcon, UpIcon, XIcon } from "./icons";
+import {
+  BoltIcon,
+  ChevIcon,
+  ClipIcon,
+  FileIcon,
+  ImageIcon,
+  PinIcon,
+  StopIcon,
+  UpIcon,
+  XIcon,
+} from "./icons";
 import { ModelChip } from "./ModelChip";
 
 /** 첨부 한 건의 상한 — 대기열 저장소의 항목 예산(8MB)과 같다(옛 입력창과 같은 값). */
@@ -177,6 +187,7 @@ export function Composer({
   registerHandle,
   onToast,
   onSend,
+  onSheetFold,
 }: {
   daemon: Daemon;
   sessions: Sessions;
@@ -237,6 +248,12 @@ export function Composer({
     screens: Array<{ screen: string }>,
     onTarget?: (id: string) => void,
   ) => Promise<void>;
+  /**
+   * 좁은 창의 펼친 시트(화면 탭의 입력창)를 접는 손(2026-11-12) — 있을 때만
+   * 도구 줄의 접기 단추가 서고, 입력창 안의 Esc 도 이 길로 접는다(목록 · 옅은
+   * 제안이 먼저 Esc 를 먹은 뒤에만).
+   */
+  onSheetFold?: () => void;
 }) {
   const [editor, setEditor] = useState<Editor>(() => ({
     text: storedDraft(draftKey),
@@ -713,7 +730,16 @@ export function Composer({
 
   return (
     // 끌어다 놓기는 칸 전체의 몫이다 — 대화 칸(ChatColumn)이 받아 `registerHandle` 로 넘긴다.
-    <div className={`nx-composer${ghost !== null ? " nx-composer--ghost" : ""}`}>
+    // biome-ignore lint/a11y/noStaticElementInteractions: 클릭이 아니라 Esc 만 받는다 — 펼친 시트를 접는 키다.
+    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 위와 같다 — 안의 어떤 손에서 온 Esc 도 같은 일을 한다.
+    <div
+      className={`nx-composer${ghost !== null ? " nx-composer--ghost" : ""}`}
+      onKeyDown={(event) => {
+        // 펼친 시트의 Esc — 입력칸의 손(목록 닫기 · 옅은 제안 숨기기 · 핀 메모)이
+        // 먼저 먹은 뒤에만 접는다. 입력칸 밖의 도구 단추에 초점이 있어도 같은 길이다.
+        if (event.key === "Escape" && !event.defaultPrevented) onSheetFold?.();
+      }}
+    >
       {pins.length > 0 && (
         <div className="nx-pinrows">
           {pins.map((pin, index) => (
@@ -917,6 +943,19 @@ export function Composer({
               <BoltIcon />
             </button>
           </Tip>
+        )}
+        {onSheetFold !== undefined && (
+          // 펼친 시트의 접기 손(2026-11-12) — 보내지 않고 접힌 한 줄로 거둔다.
+          // Esc(위 입력창의 키 손)과 같은 길이다.
+          <button
+            type="button"
+            className="nx-tbtn"
+            title={L.composer.foldClose}
+            aria-label={L.composer.foldClose}
+            onClick={onSheetFold}
+          >
+            <ChevIcon />
+          </button>
         )}
         {showStop && (
           <button

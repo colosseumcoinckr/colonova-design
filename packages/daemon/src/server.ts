@@ -799,6 +799,9 @@ export class DaemonServer {
       projectRoot: (slug) => (this.registry?.get(slug) ? this.registry.paths(slug).root : null),
       slugs: () => this.registry?.list().map((project) => project.slug) ?? [],
       logger: this.logger,
+      // 바퀴가 원장을 새로 쓰고 끝나면 요약을 한 번 방송한다(2026-11-12 보완 1) — 웹은 요약의
+      // lastImportAt 가 바뀌어야 기획서 목록을 다시 읽는다. 기존 project.changed 방송 길이다.
+      onImported: () => this.announceProjects(),
     });
     this.confluence.start();
     // 기획 초안 — ConfluenceSync 바로 뒤에서 만든다(2026-10-23 작업 B2). 저장소는 슬러그마다
@@ -814,6 +817,8 @@ export class DaemonServer {
       onScreenProposal: (input) => this.screenSync?.onProposalSettled(input),
       ai: createDraftAiRunner(),
       publisher: new DraftPublisher(),
+      // 발행이 적용으로 확인되면 사본이 새 판을 따라오게 한다(2026-11-12 비개발자 사용성 토론).
+      importNow: (slug) => this.confluence.importNow(slug),
       cloneRoot: (slug) => {
         const workspaces = this.fleet?.workspaces.get(slug);
         return workspaces?.repo.isCloned() ? workspaces.repo.root : null;

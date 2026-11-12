@@ -49,6 +49,11 @@ export function usePlansWorkspace({
   );
   const [focusDoc, setFocusDoc] = useState(false);
   const [query, setQuery] = useState("");
+  const [searchTarget, setSearchTarget] = useState<{
+    pageId: string;
+    query: string;
+    request: number;
+  } | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   // 마지막 문서를 다시 열고 Esc 로 트리의 같은 줄에 초점을 돌린다.
   const [lastViewed, setLastViewed] = useState<string | null>(null);
@@ -80,12 +85,32 @@ export function usePlansWorkspace({
   const connected = summary !== undefined;
   // 기획 대화 목록(2026-10-31 3단계) — 사이드바 위 묶음이 읽는다. 칸이 앞에 설 때만 읽는다.
   const [conversations, setConversations] = useState<DraftConversationSummary[] | null>(null);
+  const [conversationsFailed, setConversationsFailed] = useState(false);
+  const conversationSeq = useRef(0);
+  const conversationScope = useRef({ api: daemon.api, slug });
+  conversationScope.current = { api: daemon.api, slug };
   const refreshConversations = useCallback(() => {
+    const mine = ++conversationSeq.current;
+    const current = () =>
+      mine === conversationSeq.current &&
+      conversationScope.current.api === daemon.api &&
+      conversationScope.current.slug === slug;
+    setConversationsFailed(false);
     daemon.api
       .draftThreads()
-      .then((rows) => setConversations(rows))
-      .catch(() => setConversations(null));
-  }, [daemon.api]);
+      .then((rows) => {
+        if (current()) setConversations(rows);
+      })
+      .catch(() => {
+        if (current()) setConversationsFailed(true);
+      });
+  }, [daemon.api, slug]);
+  useEffect(
+    () => () => {
+      conversationSeq.current += 1;
+    },
+    [],
+  );
   useEffect(() => {
     if (enabled && connected) refreshConversations();
   }, [enabled, connected, refreshConversations]);
@@ -124,7 +149,11 @@ export function usePlansWorkspace({
     resetFor.current = slug;
     reset();
     setVisited(null);
+    conversationSeq.current += 1;
+    setConversations(null);
+    setConversationsFailed(false);
     setQuery("");
+    setSearchTarget(null);
     setFocusDoc(false);
     setCollapsed(new Set());
     setLastViewed(null);
@@ -146,7 +175,10 @@ export function usePlansWorkspace({
     if (enabled && lastImportAt !== null) refreshList();
   }, [lastImportAt, enabled, refreshList]);
 
-  const open = (pageId: string) => {
+  const open = (pageId: string, searchQuery?: string) => {
+    setSearchTarget((before) =>
+      searchQuery ? { pageId, query: searchQuery, request: (before?.request ?? 0) + 1 } : null,
+    );
     setFocusDoc(true);
     openDraftKey(null);
     setLastViewed(pageId);
@@ -329,6 +361,7 @@ export function usePlansWorkspace({
     query,
     setQuery,
     bodySearch,
+    searchTarget,
     collapsed,
     toggle,
     lastViewed,
@@ -358,6 +391,7 @@ export function usePlansWorkspace({
     trashOpen,
     setTrashOpen,
     conversations,
+    conversationsFailed,
     refreshConversations,
     activeThreadId,
     setActiveThreadId,

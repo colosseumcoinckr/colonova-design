@@ -147,9 +147,14 @@ test("누름=보내기: 근거 읽기가 실패하면 이벤트도 안 뜨고 fa
 
 test("어긋남 카드: 화면을 기획서대로는 으뜸 손 · 고쳐서 보내기는 곁의 ghost 손", () => {
   // 으뜸 단추는 카드 안에 하나다 — 지금 카드의 단추 결(nx-btn--sm 의 으뜸 · nx-btn--ghost 의 곁손)을 지킨다.
-  assert.match(card, /className="nx-btn nx-btn--sm"[\s\S]{0,500}?\{L\.compare\.send\}/);
+  // 보낸 줄의 흔적(2026-11-12)이 누름 뒤의 일을 늘려 단추 머리와 글 사이가 멀어졌다 — 결은 그대로다.
+  assert.match(card, /className="nx-btn nx-btn--sm"[\s\S]{0,900}?\{L\.compare\.send\}/);
   assert.match(card, /nx-btn--ghost[\s\S]{0,500}?\{L\.compare\.sendEdit\}/);
   assert.match(card, /sendEdit: \(row: DraftMismatchRow\) => Promise<void>;/);
+  // 바로 나간 줄만 보낸 줄로 그린다 — 입력창을 채우는 데 그친 것은 세지 않는다(2026-11-12 기획자 체험).
+  assert.match(card, /send: \(row: DraftMismatchRow\) => Promise<"sent" \| "prefilled">;/);
+  assert.match(card, /result === "sent"[\s\S]{0,120}?setSent\(/);
+  assert.match(card, /sent\.has\(key\)[\s\S]{0,300}?\{L\.compare\.sentRow\}/);
 });
 
 test("어긋남 카드의 세 자리: send 는 바로 보내기 · sendEdit 은 미리 채우기 — 결과값으로 토스트가 갈린다", () => {

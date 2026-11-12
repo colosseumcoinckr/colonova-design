@@ -114,6 +114,23 @@ export class RequestRouter {
   }
 
   /**
+   * 세션 가드가 함께 알아야 하는 경로들 — 함께 여는 사본 폴더(`additionalDirectories`)와
+   * 절대 건드리면 안 되는 기획 작업 저장소(`planRoots`, `<프로젝트>/plans`). 프로젝트를
+   * 모르면(연결 안 된 클론) 둘 다 없다(2026-11-11 감독자 채택 — 실사용 재현에서 화면 AI 가
+   * 셸로 초안을 직접 썼다).
+   */
+  private sessionGuardPathsOf(cwd: string): {
+    additionalDirectories: string[];
+    planRoots: string[];
+  } {
+    const projectRoot = this.projectRootOfCwd(cwd);
+    return {
+      additionalDirectories: screenSessionDirs(projectRoot),
+      planRoots: projectRoot === null ? [] : [join(projectRoot, "plans")],
+    };
+  }
+
+  /**
    * 기획 근거의 기록(2026-10-23 작업 C3) — 글 첨부 가운데 첫 줄에 근거 표식이 선
    * 것을 활성 프로젝트 데이터의 `plans/refs.jsonl` 에 덧붙인다. 남기는 것은 언제 ·
    * 어느 대화 · 어느 문서(제목 · 판 · 절)뿐이다 — 첨부 본문과 사용자의 말은 기록에
@@ -243,7 +260,7 @@ export class RequestRouter {
       const model = message.model ?? (defaultsFit ? defaults.model : undefined);
       const effort = message.effort ?? (defaultsFit ? defaults.effort : undefined);
       const fastMode = message.fastMode === true;
-      const additionalDirectories = screenSessionDirs(this.projectRootOfCwd(sessionCwd));
+      const { additionalDirectories, planRoots } = this.sessionGuardPathsOf(sessionCwd);
       const session = this.deps.manager.create({
         cwd: sessionCwd,
         provider,
@@ -258,6 +275,7 @@ export class RequestRouter {
           ...(effort ? { effort } : {}),
           ...(fastMode ? { fastMode: true } : {}),
           ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+          ...(planRoots.length > 0 ? { planRoots } : {}),
         },
       });
       // 태어날 때의 빠르게 — 새 대화 자리에서 미리 켠 ⚡ 선택. 첫 selectors
@@ -510,7 +528,7 @@ export class RequestRouter {
         : null;
       // 새 대화 · 재개와 같이 분기도 사본 폴더를 함께 연다 — 폴더가 있을 때만
       // (2026-10-23 · 기획서 사본 이동 계획 §6 · 검토 R1).
-      const additionalDirectories = screenSessionDirs(this.projectRootOfCwd(target.cwd));
+      const { additionalDirectories, planRoots } = this.sessionGuardPathsOf(target.cwd);
       const result = await this.deps.manager.branch({
         sessionId: message.sessionId,
         cwd: this.workspaceCwd(),
@@ -523,6 +541,7 @@ export class RequestRouter {
           launch: {
             ...(targetExecutable ? { executable: targetExecutable } : {}),
             ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+            ...(planRoots.length > 0 ? { planRoots } : {}),
           },
         },
       });
@@ -583,7 +602,7 @@ export class RequestRouter {
       );
     }
     const instructions = this.projectInstructions(spec.cwd);
-    const additionalDirectories = screenSessionDirs(this.projectRootOfCwd(spec.cwd));
+    const { additionalDirectories, planRoots } = this.sessionGuardPathsOf(spec.cwd);
     const session = this.deps.manager.create({
       cwd: spec.cwd,
       provider: spec.provider,
@@ -597,6 +616,7 @@ export class RequestRouter {
         ...(spec.chosen.model ? { model: spec.chosen.model } : {}),
         ...(spec.chosen.effort ? { effort: spec.chosen.effort } : {}),
         ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+        ...(planRoots.length > 0 ? { planRoots } : {}),
       },
     });
     // The tree's child row points at the same id; a rescan picks the new life up.

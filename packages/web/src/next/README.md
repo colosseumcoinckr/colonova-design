@@ -128,8 +128,14 @@ localStorage, 없으면 화면 자리). 기획서 자리에는 화면 대화 · 
 화면 자리 개선안 S15 · S10 — 옛 좌우 배치의 「대화와 화면이 나란히」는 그대로, 좌우만 바꿨다). 오른쪽 칸의 경계를
 끌어 폭을 바꾸고 두 번 누르면(⌘\) 기본 → 화면 넓게(320) → 칸 넓게(640) 로 돈다(S11). 좁은 창은 `화면 · <이름> |
 대화 | 기획서` 세 탭이고 화면 탭에도 접힌 입력창 한 줄이 바닥에 선다 — 펼치면 같은 `Composer` 를 화면 칸의 시트
-자리(`lib/composer-sheet.ts` 의 포털)로 옮겨 그린다. 기획서의 트리는 좁은 창의 사이드바 서랍 안에 있다.
+자리로 옮겨 그린다. `lib/composer-sheet.ts`가 자리와 열림을 공유하고, 포털 대상 DOM 상자를 고정해 그 상자만 옮기므로 첨부와 입력 상태가 유지된다. `입력창 접기` · Esc는 같은 상태를 닫는다. 기획서의 트리는 좁은 창의 사이드바 서랍 안에 있다.
 (2026-10-23 화면 전면 재설계 · 2026-10-31 화면 자리 개선안)
+
+**화면 옆 기획서(2026-11-11 채택 계약)** — `PlanTab` 은 연결 · 이 대화의 근거 · 같이 고친 초안을 출처별로 묶는다. 목록이 있어도 `기획서 고르기`로 추가 연결한다. `docKey`가 있는 줄은 최신 초안을 읽어 최신임을 밝히며, 근거를 담은 당시의 판으로 오인하게 하지 않는다. 연결된 공식 본문은 가져온 본문을 읽는다. 읽기 실패 · 부분 실패 안내와 다시 읽기, 근거 담기 실패 안내와 입력창 수신 확인을 제공한다. 프로젝트 · 화면 · 대화가 바뀐 뒤 늦게 온 답은 현재 범위에 반영하지 않는다. 런타임 눈 검증 범위와 결과는 같은 검토 문서에 남겼다.
+
+**결과의 화면 이름(2026-11-11 여정 검토)** — `requestResults`는 저장된 화면 이름이 비었을 때만
+같은 대화의 미리보기 링크에서 같은 경로의 제목을 보완한다. 저장된 제목과 외부 링크 판정은 유지한다.
+이 표시 보완은 데몬의 화면 지도나 제출 분류를 수정하지 않는다.
 
 **숨는 칸은 마운트를 지킨다.** 미리보기의 입력 · 스크롤 · 핀, 화면 대화의 쓰던 글, 기획서의 열린 문서 · 초안을 유지한다.
 기획서 본문과 트리는 처음 기획서 자리를 열 때 마운트하고 그 뒤에는 숨긴다. `PlansWorkspace.tsx`의 `usePlansWorkspace`와
@@ -160,7 +166,7 @@ Home/End 는 양끝(300 · 560px), Enter · 두 번 누름은 기본(380px)으�
 말마다 `lib/format` 의 `timeAgo` 시각이 붙는다. 마지막 말의 손은 늘 보이고, 바닥에서 떠나면 `nx-jump`(`맨 아래로` ·
 `새 내용`)가 `.nx-dr-formwrap` 위에 뜬다. 입력창은 글이 바뀔 때마다 높이를 다시 잡아(`chat/Composer` 와 같은 규칙)
 두 줄부터 180px 까지 자라고, 근거 고르기(`RefPicker`)는 `+ 근거 더하기` 단추에 붙은 `ui/Popover` 팝으로 뜨며 후보 · 절
-나누기는 순수 모듈 `draft/thread-model.ts`(`refChoices` · `parseRefSections`)가 잰다. 문서 카드의 남은 고침 알약은
+고르기는 실제 `docRead`의 절 목록으로 만들고 순수 모듈 `draft/thread-model.ts`가 중복과 개수 제한을 잰다. 목록/절 읽기는 따로 재시도하고 늦게 온 답은 버린다. 문서 카드의 남은 고침 알약은
 단추여서 누르면 남은 걸음 블록으로 문서 판을 연다. 채택 걸음의 옛 규칙(`.nx-dr-prop*` · `.nx-dr-cmp*` · `adopt` 손 ·
 `ReadAsk`)은 2026-11-02 D11 에서 걷혔다.
 직접 고치기의 마크다운 길(2026-11-02 사용자 지시)은 순수 모듈 `draft/markdown-blocks.ts` 가 맡는다 — 치던 글의 표식 변환
@@ -171,7 +177,7 @@ Home/End 는 양끝(300 · 560px), Enter · 두 번 누름은 기본(380px)으�
 기존 `planDraft` · `setPlanDraft` · `StatusLine.docFocus` 계약은 남지만 `Workspace`의 자리 배치 조건으로 쓰지 않는다.
 
 **미리보기 막대** — `PreviewBar`는 이동(`nx-pvg`) · 화면 고르기(`nx-addrwrap`) · 보기 도구(`nx-pvg--tools`)
-세 묶음이다. 조절 높이는 32px다(기기 마디는 2026-11-11 걷었다). `수정할 곳 선택`은 보통 단추이며 켜졌을 때만
+세 묶음이다. 조절 높이는 32px다(기기 마디는 2026-11-11 걷었다). `찍기`는 보통 단추이며 켜졌을 때만
 `nx-btn--accent`를 쓰고 담긴 수를 배지로 표시한다. 좁은 칸에서는 기록 글자 · 배율 · 찍기 글자 · 앞으로 순으로 숨는다.
 
 **문제 줄** — `ProblemLine`은 공통 `nx-banner`에 아이콘 · 글 · 단추를 놓는다. 고치는 중은 호박색, 알렸다는 소식은 파랑,
@@ -216,7 +222,7 @@ Home/End 는 양끝(300 · 560px), Enter · 두 번 누름은 기본(380px)으�
 두 칸이 같은 목록) · `project`(활성, 없으면 null) · `activeSessionId` · `nav` ·
 `narrow` · `onChatChange` · `onRenameSession`. `PreviewColumnProps` 는 여기에
 `onScreenName(name | null)` — 지금 화면의 제목을 셸에 알려 좁은 창의 `화면 · <이름>`
-탭이 읽는다. 찍은 핀 수(탭 배지)는 셸이 `pins.list` 에서 센다.
+탭이 읽는다. 셸은 이 이름을 `ChatColumnProps.screenName` 으로도 전달한다. 빈 대화는 현재 프로젝트의 미리보기 이름만 쓰고 쓸 수 없으면 중립 문구로 선다. 찍은 핀 수(탭 배지)는 셸이 `pins.list` 에서 센다.
 
 **`StatusLineProps`**(단계 4) — `title` · `journey`(셸이 `deriveJourney(…, L)` 로 한 번
 판정) · `turnStartedAt`(데몬 시계, `만드는 중 · 12초`) · `narrow` · `nav` ·
@@ -241,8 +247,7 @@ Home/End 는 양끝(300 · 560px), Enter · 두 번 누름은 기본(380px)으�
   `landedFacts(days, screens, words)` 가 `3일 만에 · 화면 2곳`(아는 것만), `hasLandedFacts(event)` 가 사건이 카드로 설지(필드 없는 옛 사건은 얇은 한 줄),
   `landedIsFresh(at, now)` 가 체크를 그릴 만큼 막 도착했는지를 가른다. 카드 그림은 `chat/LandedCard.tsx`.
   (옛 홈의 `home-feed.ts` · `home-resume.ts` 와 소식 판정 `activeNewsOf` 는 2026-10-31 홈 걷기로 걷혔다.)
-- `starters.ts` — `startersOf(screen, L.composer.starters)` · `recentScreenName(cycleScreens)` ·
-  `usableScreen`: 새 대화의 빈 자리 시작점 칩의 이름 · 초안 · 선택해 둘 화면 이름 자리.
+- `starters.ts` — `shownScreenName` · `startersOf(screen, L.composer.starters)` · `usableScreen`: 현재 미리보기 이름을 제목 첫 조각 · 따옴표 · 24자 · 개발 흔적 · 이름 없는 화면으로 거르고 빈 대화의 안내 · 칩 초안 · 선택 자리를 만든다. 최근 작업 화면과 `firstScreen` 폴백은 쓰지 않는다.
 - `submit-view.ts` — 제출 확인의 상태(`submitView`): 목록 · 알림 줄 · 주 단추가 서로 어긋나지 않게 읽기
   실패와 보내기 실패를 가른다(보내기가 실패해도 목록은 남고 `다시 제출` 이 선다).
 - `use-copied.ts` — 복사 뒤 1.5초만 `복사했어요` 로 바뀌는 단추의 손(`useCopied`). 낭독은 부르는 쪽이 실린다.

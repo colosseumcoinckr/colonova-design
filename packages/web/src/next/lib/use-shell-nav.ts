@@ -3,7 +3,7 @@ import type { Sessions } from "../../hooks/useSessions";
 import type { Daemon } from "../../lib/daemon-client";
 import type { LayoutSettings } from "../../lib/settings";
 import { L } from "../labels";
-import type { ShellNav } from "../slots";
+import type { SettingsPage, ShellNav } from "../slots";
 import { initialNav, type NavState, navReducer, type ToastAction } from "./nav";
 import { entryPane, readPaneMemory, writePaneMemory } from "./pane-memory";
 import { isPreparing } from "./project-note";
@@ -60,7 +60,7 @@ export function useShellNav({
   /** 좁은 창인가 — 서비스가 떴다는 소식은 화면 탭이 앞에 있어야 `보고 있는 것` 이다(`ready-watch.ts`). */
   narrow?: boolean;
   onLayoutChange: (patch: Partial<LayoutSettings>) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (page?: SettingsPage) => void;
 }): {
   state: NavState;
   nav: ShellNav;
@@ -248,7 +248,7 @@ export function useShellNav({
     },
     showTab: (tab) => dispatch({ type: "tab", tab }),
     showRightTab: (tab) => dispatch({ type: "right-tab", tab }),
-    openSettings: () => onOpenSettings(),
+    openSettings: (page) => onOpenSettings(page),
     toast: showToast,
     setDiscardableInvitePath: (path) => dispatch({ type: "invite-path", path }),
   };

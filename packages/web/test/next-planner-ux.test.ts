@@ -34,6 +34,15 @@ const draft = (
   updatedAt: at(min),
 });
 
+test("작성 중인 초안 — 제목만 바꾼 초안도 센다(2026-11-12 기획자 체험 — 목록 줄의 점과 같은 잣대)", () => {
+  const renamed = { ...draft("p-8", "8", 0, "editing", 3), titleChanged: true };
+  const untouched = { ...draft("p-9", "9", 0, "editing", 4), titleChanged: false };
+  assert.deepEqual(
+    draftsInProgress([renamed, untouched]).map((row) => row.docKey),
+    ["p-8"],
+  );
+});
+
 test("작성 중인 초안 — 손이 더 갈 초안만, 새것부터(발행을 마친 · 열기만 한 초안은 뺀다)", () => {
   const rows = draftsInProgress([
     draft("p-1", "1", 0, "editing", 1), // 열기만 했다 — 뺀다

@@ -5,7 +5,6 @@ import { L } from "../labels";
 import { keyHint } from "../lib/key-hint";
 import type { ShellNav } from "../slots";
 import { ChevronRightIcon, ExternalIcon, MenuIcon, PanelIcon, PencilIcon } from "../ui/icons";
-import { DocActions } from "./doc-actions/DocActions";
 import { SendToScreen } from "./doc-actions/SendToScreen";
 import { usePlansContext } from "./PlansWorkspace";
 import { docUrl } from "./plans-list";
@@ -25,7 +24,7 @@ export function PlansHeader({
   onOpenSidebar?: () => void;
 }) {
   const plans = usePlansContext();
-  const { state, rows, summary, openRow, editingDraft, crumbTitle, editDoc, onDocApplied } = plans;
+  const { state, rows, summary, openRow, editingDraft, crumbTitle, editDoc } = plans;
   const [sendOpen, setSendOpen] = useState(false);
   const pageId = state.openId;
   const link = pageId !== null && summary?.site ? docUrl(summary.site, pageId) : null;
@@ -103,7 +102,6 @@ export function PlansHeader({
             <PencilIcon />
             {draft ? L.drafts.resume : L.drafts.edit}
           </button>
-          <DocActions daemon={daemon} pageId={pageId} rows={rows} onApplied={onDocApplied} />
         </div>
       )}
       {sendOpen && pageId !== null && (

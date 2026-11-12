@@ -201,6 +201,10 @@ export class ClaudeAgentSession implements AgentSession {
           // 함께 연 기획서 사본 — 쓰기는 클론 밖이라 어차피 거절이고 이유만 기획서 말로 바뀐다
           // (2026-10-23 · 기획서 사본 이동 계획 §6). 함께 여는 폴더는 지금 사본 하나뿐이다.
           mirrorRoots: launch.additionalDirectories ?? [],
+          // 앱의 기획 작업 저장소(`<프로젝트>/plans`) — dispatch 가 프로젝트 폴더에서 구해
+          // 실어 보낸다. AI 가 어떤 도구로도 직접 건드리지 못하게 쓰기 · 셸 경로 짚기를 함께
+          // 거절한다(2026-11-11 감독자 채택 — 실사용 재현에서 화면 AI 가 셸로 초안을 썼다).
+          planRoots: launch.planRoots ?? [],
         },
       );
     this.run = query({

@@ -19,7 +19,7 @@ import {
   useState,
 } from "react";
 import { Markdown } from "../../../components/Markdown";
-import type { Daemon } from "../../../lib/daemon-client";
+import type { Daemon, PlanDocComment } from "../../../lib/daemon-client";
 import { linkClick } from "../../../lib/open-link";
 import { L } from "../../labels";
 import type { ShellNav } from "../../slots";
@@ -36,6 +36,8 @@ import {
   TrashIcon,
 } from "../../ui/icons";
 import { Popover } from "../../ui/Popover";
+import { DocComments } from "../comments/DocComments";
+import { DocDrawer } from "../comments/DocDrawer";
 import { DocMenu } from "../doc-actions/DocMenu";
 import { headingSections } from "../doc-actions/doc-actions-model";
 import { SendToScreen } from "../doc-actions/SendToScreen";
@@ -335,7 +337,6 @@ function InlineEdit({
         rows={Math.max(2, value.split("\n").length)}
         onChange={(event) => onValue(event.target.value)}
         onPaste={onPaste}
-        onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === "Escape" && !escapeOwnedByLayer()) {
             event.preventDefault();
@@ -349,9 +350,16 @@ function InlineEdit({
           }
         }}
       />
-      <p className="nx-dr-inline-hint" aria-hidden="true">
-        {L.drafts.inlineApplyHint}
-      </p>
+      <div className="nx-dr-pane-act">
+        <button type="button" className="nx-btn nx-btn--sm" disabled={busy} onClick={commit}>
+          {L.drafts.apply}
+        </button>
+        <button type="button" className="nx-btn nx-btn--sm nx-btn--ghost" onClick={onCancel}>
+          {L.drafts.editCancel}
+        </button>
+      </div>
+      {/* 단축키 안내는 낭독에도 열려 있다(2026-11-12) — 마우스에는 단추, 키보드에는 ⌘/Ctrl+Enter · Esc. */}
+      <p className="nx-dr-inline-hint">{L.drafts.inlineApplyHint}</p>
     </div>
   );
 }
@@ -996,6 +1004,22 @@ export function DraftEditorSurface({
   const [closeConfirm, setCloseConfirm] = useState(false);
   // 근거 보내기 판(2026-10-23 · 최종 구현 계획 F3) — 머리의 단추가 연다.
   const [sendOpen, setSendOpen] = useState(false);
+  // 코멘트 서랍(2026-11-12 B8) — 읽는 문서와 같은 서랍을 초안 머리에서도 연다. 코멘트는 지금도
+  // 초안을 거치지 않는 직접 원격 쓰기다(AGENTS.md) — 발행 창의 `안 풀린 코멘트 N개` 점검을 읽을
+  // 곳이 필요했다. 읽는 것은 발행본의 코멘트다 — 초안이 아닌 원문의 doc.read.
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [comments, setComments] = useState<PlanDocComment[] | null | "failed">(null);
+  const commentsCloseRef = useRef<HTMLButtonElement | null>(null);
+  const commentsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  // 인라인 닻 단추가 듣는 자리 — 초안의 블록 목록을 감싼다(읽는 문서의 `.nx-pl-body` 에 해당).
+  const draftBodyRef = useRef<HTMLDivElement | null>(null);
+  const closeComments = useCallback(() => {
+    setCommentsOpen(false);
+    commentsTriggerRef.current?.focus({ preventScroll: true });
+  }, []);
+  useEffect(() => {
+    if (commentsOpen) commentsCloseRef.current?.focus({ preventScroll: true });
+  }, [commentsOpen]);
   // 판 고르기(2026-10-31 2단계) — 머리의 `초안 판 N ▾` 가 목록을 열고, 옛 판을 읽기로 보인다.
   const [revOpen, setRevOpen] = useState(false);
   const [revisions, setRevisions] = useState<DraftRevisionSummary[] | null>(null);
@@ -1046,6 +1070,8 @@ export function DraftEditorSurface({
   // 옛 판의 읽기(2026-10-31 2단계) — 판 고르기에서 고른 판을 읽기로 내려 놓는다.
   const openRevision = async (revision: number) => {
     setRevOpen(false);
+    // 옛 판의 읽기가 견주기를 대신 보인다 — 단추의 켜짐과 같은 그림으로 맞춘다(2026-11-12 B5).
+    setCompareOpen(false);
     if (viewDocKey === null) return;
     try {
       const old = await daemon.api.draftRevision(viewDocKey, revision);
@@ -1054,6 +1080,30 @@ export function DraftEditorSurface({
       nav.toast(err instanceof Error ? err.message : String(err));
     }
   };
+
+  // 코멘트 읽기(B8) — 발행본의 코멘트다. `failed` 는 읽기 실패 — 서랍 안에서 다시 시도한다.
+  const commentsPageId = draft.view?.pageId ?? null;
+  const commentsSeq = useRef(0);
+  const loadComments = useCallback(() => {
+    if (commentsPageId === null) return;
+    commentsSeq.current += 1;
+    const seq = commentsSeq.current;
+    daemon.api
+      .docRead(commentsPageId)
+      .then((doc) => {
+        if (seq === commentsSeq.current) setComments(doc.comments);
+      })
+      .catch(() => {
+        if (seq === commentsSeq.current) setComments("failed");
+      });
+  }, [daemon.api, commentsPageId]);
+  useEffect(() => {
+    setComments(null);
+    setCommentsOpen(false);
+    if (commentsPageId !== null) loadComments();
+  }, [commentsPageId, loadComments]);
+  // DocComments 의 다시 읽기는 문서 단위다 — 같은 읽기로 갈음한다.
+  const refreshComments = useCallback(() => loadComments(), [loadComments]);
 
   // Confluence 판과 견주기(2026-10-31 2단계) — 출발점(판 0)을 읽어 낱말 견주기의 앞쪽으로 쓴다.
   const [compareBase, setCompareBase] = useState<DraftRevisionView | null>(null);
@@ -1066,6 +1116,9 @@ export function DraftEditorSurface({
   useEffect(() => {
     if (publishedVersion === null || publishedVersion === publishedSeen.current) return;
     publishedSeen.current = publishedVersion;
+    // 발행이 반영되면 견주기를 끈다(2026-11-12 B5) — 발행본과 같은 초안을 두고 `바뀐 곳이 없어요` 만
+    // 남는 막힘 대신 문서를 보인다.
+    setCompareOpen(false);
     window.dispatchEvent(
       new CustomEvent("nx:plan-published", {
         detail: { docKey: draft.view?.docKey ?? null, version: publishedVersion },
@@ -1337,6 +1390,19 @@ export function DraftEditorSurface({
   const unpublished =
     (view.state === "editing" || view.state === "conflict") &&
     (pending > 0 || view.baseVersion === null);
+  // 코멘트 수(B8) — 안 풀린 것만 센다(읽는 문서 머리와 같은 잣대). 아직 읽는 중이거나 실패면
+  // 단추가 서지 않는다 — 수를 모르면 세지 않는다.
+  const commentCount =
+    comments !== null && comments !== "failed"
+      ? comments.filter((one) => one.resolved !== true).length
+      : null;
+  // 발행할 고침이 없는 보통 초안의 `발행` 은 으뜸이 아니다(2026-11-12 B4) — 누르면 창이 이유를 말한다.
+  // 발행이 끝난 판(published)은 아직 남은 고침이 없다는 뜻이다 — 고침을 새로 쓰면 상태가 editing 으로 돌아간다.
+  // 제목만 바꾼 초안과 아직 Confluence 에 없는 새 문서 초안은 블록이 그대로여도 발행할 것이 있다 — 내리지 않는다.
+  const titleChanged = view.baseTitle !== null && view.title !== view.baseTitle;
+  const publishDemoted =
+    view.state === "published" ||
+    (pending === 0 && view.state === "editing" && !titleChanged && view.baseVersion !== null);
   return (
     // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 편집기의 Esc 는 읽는 화면으로 돌아오는 길이다
     <article className="nx-dr" aria-busy={applying} onKeyDown={onEscape}>
@@ -1439,18 +1505,33 @@ export function DraftEditorSurface({
             {view.baseVersion !== null && (
               <button
                 type="button"
-                className="nx-btn"
-                aria-expanded={compareOpen}
-                onClick={() => setCompareOpen((before) => !before)}
+                className={`nx-btn${compareOpen ? " nx-btn--accent" : ""}`}
+                aria-pressed={compareOpen}
+                onClick={() => {
+                  setViewing(null);
+                  setCompareOpen((before) => !before);
+                }}
               >
                 {L.drafts.compareConfluence}
+              </button>
+            )}
+            {view.pageId !== null && commentCount !== null && (
+              <button
+                type="button"
+                className="nx-btn"
+                ref={commentsTriggerRef}
+                aria-expanded={commentsOpen}
+                onClick={() => setCommentsOpen((before) => !before)}
+              >
+                {L.plans.drawerComments(commentCount)}
               </button>
             )}
             <button type="button" className="nx-btn" onClick={() => setSendOpen(true)}>
               {L.drafts.sendToScreen}
             </button>
             {/* 으뜸 단추는 `발행` 하나다 — 쓰기가 꺼져 있으면(게이트) 이 자리만 보통 단추가 되고
-                옆의 칩 하나가 잠긴 것을 한 번에 말한다(2026-10-31 E · 쓰기 꺼짐은 한 곳). */}
+                옆의 칩 하나가 잠긴 것을 한 번에 말한다(2026-10-31 E · 쓰기 꺼짐은 한 곳). 발행할
+                고침이 없으면(publishDemoted) 보통 단추다 — 누르면 창이 이유를 말한다(2026-11-12 B4). */}
             {writable === false && (
               <span className="nx-pill nx-dr-writeoff" title={L.drafts.writeOffHint} role="note">
                 {L.drafts.writeOff}
@@ -1458,7 +1539,7 @@ export function DraftEditorSurface({
             )}
             <button
               type="button"
-              className={`nx-btn${writable === false ? "" : " nx-btn--pri"}`}
+              className={`nx-btn${writable === false || publishDemoted ? "" : " nx-btn--pri"}`}
               disabled={locked || applying}
               onClick={() => setPublishOpen(true)}
             >
@@ -1608,115 +1689,149 @@ export function DraftEditorSurface({
       )}
       {/* Confluence 판과 견주기(2026-10-31 2단계) — 발행본 기준 대비 바뀐 곳을 모두 보인다.
         열려 있는 동안 문서 판은 견주기로 바뀐다 — 같은 문서 두 벌을 겹쳐 보이지 않게(2026-11-03 실앱 감사). */}
-      {viewing !== null ? (
-        // 옛 판의 읽기(2026-10-31 2단계) — 판 고르기에서 고른 판을 읽기로만 보인다.
-        <ol className="nx-dr-blocks" aria-label={L.drafts.revOldTitle(viewing.revision)}>
-          {viewing.blocks.map((block) => (
-            <li key={block.id} className="nx-dr-block" data-status={block.status}>
-              <div className="nx-dr-read">
-                <Markdown
-                  text={viewToMarkdown(block.view, block.tokens)}
-                  tokens={tokenLabelsOf(block.tokens)}
-                  machineTokens={block.tokens}
-                />
-              </div>
-            </li>
-          ))}
-        </ol>
-      ) : compareOpen ? (
-        compareFailed ? (
-          <div className="nx-dr-compare">
-            <p role="alert">{L.drafts.compareFailed}</p>
-            <button
-              type="button"
-              className="nx-btn"
-              onClick={() => setCompareAttempt((n) => n + 1)}
-            >
-              {L.vocab.retry}
-            </button>
-          </div>
-        ) : compareBase === null ? (
-          <p className="nx-dr-compare-load" role="status">
-            <Spin /> {L.plans.reading}
-          </p>
-        ) : (
-          <DraftChanges
-            base={compareBase}
-            title={view.title}
-            blocks={blocks}
-            api={daemon.api}
-            pageId={view.pageId}
-          />
-        )
-      ) : blocks.length === 0 ? (
-        <div className="nx-dr-empty">
-          <p>{L.drafts.emptyGuide}</p>
-          <div className="nx-dr-empty-acts">
-            {startWithAi !== undefined && (
+      {/* 인라인 코멘트의 닻 단추가 듣는 자리(B8) — 읽는 문서의 `.nx-pl-body` 에 해당하는
+          초안의 본문 감싸개다. */}
+      <div ref={draftBodyRef}>
+        {viewing !== null ? (
+          // 옛 판의 읽기(2026-10-31 2단계) — 판 고르기에서 고른 판을 읽기로만 보인다.
+          <ol className="nx-dr-blocks" aria-label={L.drafts.revOldTitle(viewing.revision)}>
+            {viewing.blocks.map((block) => (
+              <li key={block.id} className="nx-dr-block" data-status={block.status}>
+                <div className="nx-dr-read">
+                  <Markdown
+                    text={viewToMarkdown(block.view, block.tokens)}
+                    tokens={tokenLabelsOf(block.tokens)}
+                    machineTokens={block.tokens}
+                  />
+                </div>
+              </li>
+            ))}
+          </ol>
+        ) : compareOpen ? (
+          compareFailed ? (
+            <div className="nx-dr-compare">
+              <p role="alert">{L.drafts.compareFailed}</p>
+              <button
+                type="button"
+                className="nx-btn"
+                onClick={() => setCompareAttempt((n) => n + 1)}
+              >
+                {L.vocab.retry}
+              </button>
+            </div>
+          ) : compareBase === null ? (
+            <p className="nx-dr-compare-load" role="status">
+              <Spin /> {L.plans.reading}
+            </p>
+          ) : (
+            <DraftChanges
+              base={compareBase}
+              title={view.title}
+              blocks={blocks}
+              api={daemon.api}
+              pageId={view.pageId}
+            />
+          )
+        ) : blocks.length === 0 ? (
+          <div className="nx-dr-empty">
+            <p>{L.drafts.emptyGuide}</p>
+            <div className="nx-dr-empty-acts">
+              {startWithAi !== undefined && (
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm"
+                  disabled={locked || applying}
+                  onClick={startWithAi}
+                >
+                  <SparkIcon />
+                  {L.drafts.startWithAi}
+                </button>
+              )}
               <button
                 type="button"
                 className="nx-btn nx-btn--sm"
                 disabled={locked || applying}
-                onClick={startWithAi}
+                onClick={() => void insertBelow(null, "paragraph")}
               >
-                <SparkIcon />
-                {L.drafts.startWithAi}
+                <PlusIcon />
+                {L.drafts.writeDirectly}
               </button>
-            )}
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm"
-              disabled={locked || applying}
-              onClick={() => void insertBelow(null, "paragraph")}
-            >
-              <PlusIcon />
-              {L.drafts.writeDirectly}
-            </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <ol className="nx-dr-blocks">
-          {blocks.map((block, at) => (
-            <BlockCard
-              key={block.id}
-              block={block}
-              at={at}
-              count={blocks.length}
-              locked={locked}
-              busy={applying}
-              editing={editingId === block.id}
-              adding={addingFor === block.id}
-              flash={flashIds?.includes(block.id) === true}
-              onEdit={() => setEditingId(block.id)}
-              onAddToggle={() => setAddingFor((before) => (before === block.id ? null : block.id))}
-              onInsert={(kind) => void insertBelow(block.id, kind)}
-              onMoveUp={() =>
-                void applyEdits([
-                  { type: "move", blockId: block.id, afterBlockId: blocks[at - 2]?.id ?? null },
-                ])
-              }
-              onMoveDown={() => {
-                const next = blocks[at + 1];
-                if (next === undefined) return;
-                void applyEdits([{ type: "move", blockId: block.id, afterBlockId: next.id }]);
-              }}
-              onDelete={() => void applyEdits([{ type: "delete", blockId: block.id }])}
-              onRevert={() => void applyEdits([{ type: "revert", blockId: block.id }])}
-              onResolve={draft.resolve}
-              onApplySet={(next) => void setBlock(block.id, next)}
-              onTokenRemove={(name) => void removeToken(block.id, block.view, name)}
-              onInlineApply={(next) => void setBlock(block.id, next)}
-              onApplyEdits={pasteEdits}
-              onCancelEdit={() => setEditingId(null)}
-              keptStep={keptStepOf(block.id)}
-              onKeptApply={() => void applyKeptStep(block.id)}
-              onKeptDrop={() => void dropKeptStep(block.id)}
-              preview={previews[block.id]}
+        ) : (
+          <ol className="nx-dr-blocks">
+            {blocks.map((block, at) => (
+              <BlockCard
+                key={block.id}
+                block={block}
+                at={at}
+                count={blocks.length}
+                locked={locked}
+                busy={applying}
+                editing={editingId === block.id}
+                adding={addingFor === block.id}
+                flash={flashIds?.includes(block.id) === true}
+                onEdit={() => setEditingId(block.id)}
+                onAddToggle={() =>
+                  setAddingFor((before) => (before === block.id ? null : block.id))
+                }
+                onInsert={(kind) => void insertBelow(block.id, kind)}
+                onMoveUp={() =>
+                  void applyEdits([
+                    { type: "move", blockId: block.id, afterBlockId: blocks[at - 2]?.id ?? null },
+                  ])
+                }
+                onMoveDown={() => {
+                  const next = blocks[at + 1];
+                  if (next === undefined) return;
+                  void applyEdits([{ type: "move", blockId: block.id, afterBlockId: next.id }]);
+                }}
+                onDelete={() => void applyEdits([{ type: "delete", blockId: block.id }])}
+                onRevert={() => void applyEdits([{ type: "revert", blockId: block.id }])}
+                onResolve={draft.resolve}
+                onApplySet={(next) => void setBlock(block.id, next)}
+                onTokenRemove={(name) => void removeToken(block.id, block.view, name)}
+                onInlineApply={(next) => void setBlock(block.id, next)}
+                onApplyEdits={pasteEdits}
+                onCancelEdit={() => setEditingId(null)}
+                keptStep={keptStepOf(block.id)}
+                onKeptApply={() => void applyKeptStep(block.id)}
+                onKeptDrop={() => void dropKeptStep(block.id)}
+                preview={previews[block.id]}
+                daemon={daemon}
+                pageId={view.pageId}
+              />
+            ))}
+          </ol>
+        )}
+      </div>
+      {/* 코멘트 서랍(2026-11-12 B8) — 읽는 문서와 같은 서랍이다. 코멘트는 초안을 거치지 않는 직접
+          원격 쓰기 — 새로 남긴 말도 초안에 들어가지 않는다. */}
+      {commentsOpen && view.pageId !== null && (
+        <DocDrawer
+          label={L.plans.drawerComments(commentCount ?? 0)}
+          closeRef={commentsCloseRef}
+          onClose={closeComments}
+        >
+          {comments === "failed" ? (
+            <p className="nx-pl-note" role="alert">
+              {L.plans.commentsUnavailable}
+            </p>
+          ) : comments === null ? (
+            <p className="nx-pl-note" role="status">
+              <Spin /> {L.plans.reading}
+            </p>
+          ) : (
+            <DocComments
               daemon={daemon}
               pageId={view.pageId}
+              comments={comments}
+              body={draftBodyRef}
+              onRefresh={refreshComments}
+              writable={writable}
             />
-          ))}
-        </ol>
+          )}
+        </DocDrawer>
       )}
       {publishOpen && (
         <PublishDialog

@@ -13,8 +13,10 @@ import { Spin } from "./icons";
 export interface MismatchHand {
   /** 기획서를 화면대로 — 그 절을 초안에 바로 고친다(되돌리기 가능). 이 손이 없는 자리는 undefined 다. */
   apply?: (row: DraftMismatchRow) => Promise<void>;
-  /** 화면을 기획서대로 — 브리프를 화면 대화로 바로 보낸다(누름=보내기 · 2026-11-03 A안 1A-1(b)). */
-  send: (row: DraftMismatchRow) => Promise<void>;
+  /** 화면을 기획서대로 — 브리프를 화면 대화로 바로 보낸다(누름=보내기 · 2026-11-03 A안 1A-1(b)).
+   * 곧바로 나갔으면 "sent", 입력창을 채우는 데 그쳤으면 "prefilled" 를 돌려준다 — 카드는 "sent" 만
+   * 보낸 줄로 그린다(2026-11-12 B6). 실패는 약속이 거절된다. */
+  send: (row: DraftMismatchRow) => Promise<"sent" | "prefilled">;
   /** 고쳐서 보내기 — 화면 자리로 옮겨 브리프를 미리 채운다. 보내기는 사람이다. */
   sendEdit: (row: DraftMismatchRow) => Promise<void>;
   /** 안 받기 — 이 화면 · 문서 짝의 카드를 다시 띄우지 않는다. */
@@ -39,6 +41,9 @@ export function MismatchCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+  // 곧바로 나간 줄은 카드가 살아 있는 동안 한 줄 흔적이 남는다(2026-11-12 B6) — 알림이 사라져도
+  // 보낸 것이 보이고 다시 눌러 같은 요청이 또 가지 않는다. 입력창 채우기("prefilled")는 세지 않는다.
+  const [sent, setSent] = useState<ReadonlySet<string>>(new Set());
   const shown = rows.filter((row) => !hidden.has(mismatchRowKey(row)));
   if (shown.length === 0) return null;
 
@@ -75,58 +80,80 @@ export function MismatchCard({
                 </span>
               </p>
               <div className="nx-mismatch-acts">
-                {hand.apply !== undefined && (
-                  <button
-                    type="button"
-                    className="nx-btn nx-btn--sm"
-                    disabled={busy !== null}
-                    onClick={() =>
-                      run(
-                        `${key}:apply`,
-                        () => hand.apply?.(row) ?? Promise.resolve(),
-                        L.compare.applyFailed,
-                      )
-                    }
-                  >
-                    {busy === `${key}:apply` ? <Spin /> : null}
-                    {L.compare.apply}
-                  </button>
+                {sent.has(key) ? (
+                  // 곧바로 나간 줄의 흔적(2026-11-12 B6) — 단추 대신 한 줄이 서고 다시 누를 길은 없다.
+                  <p className="nx-mismatch-note" role="status">
+                    {L.compare.sentRow}
+                  </p>
+                ) : (
+                  <>
+                    {hand.apply !== undefined && (
+                      <button
+                        type="button"
+                        className="nx-btn nx-btn--sm"
+                        disabled={busy !== null}
+                        onClick={() =>
+                          run(
+                            `${key}:apply`,
+                            () => hand.apply?.(row) ?? Promise.resolve(),
+                            L.compare.applyFailed,
+                          )
+                        }
+                      >
+                        {busy === `${key}:apply` ? <Spin /> : null}
+                        {L.compare.apply}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="nx-btn nx-btn--sm"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        run(
+                          `${key}:send`,
+                          () =>
+                            hand.send(row).then((result) => {
+                              if (result === "sent") {
+                                setSent((before) => new Set([...before, key]));
+                              }
+                            }),
+                          L.compare.sendFailed,
+                        )
+                      }
+                    >
+                      {busy === `${key}:send` ? <Spin /> : null}
+                      {L.compare.send}
+                    </button>
+                    <button
+                      type="button"
+                      className="nx-btn nx-btn--sm nx-btn--ghost"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        run(`${key}:sendEdit`, () => hand.sendEdit(row), L.compare.sendFailed)
+                      }
+                    >
+                      {busy === `${key}:sendEdit` ? <Spin /> : null}
+                      {L.compare.sendEdit}
+                    </button>
+                    <button
+                      type="button"
+                      className="nx-btn nx-btn--sm nx-btn--ghost"
+                      disabled={busy !== null}
+                      onClick={() =>
+                        run(
+                          `${key}:decline`,
+                          () =>
+                            hand
+                              .decline(row)
+                              .then(() => setHidden((before) => new Set([...before, key]))),
+                          L.compare.declineFailed,
+                        )
+                      }
+                    >
+                      {L.compare.decline}
+                    </button>
+                  </>
                 )}
-                <button
-                  type="button"
-                  className="nx-btn nx-btn--sm"
-                  disabled={busy !== null}
-                  onClick={() => run(`${key}:send`, () => hand.send(row), L.compare.sendFailed)}
-                >
-                  {busy === `${key}:send` ? <Spin /> : null}
-                  {L.compare.send}
-                </button>
-                <button
-                  type="button"
-                  className="nx-btn nx-btn--sm nx-btn--ghost"
-                  disabled={busy !== null}
-                  onClick={() => run(`${key}:send`, () => hand.sendEdit(row), L.compare.sendFailed)}
-                >
-                  {busy === `${key}:send` ? <Spin /> : null}
-                  {L.compare.sendEdit}
-                </button>
-                <button
-                  type="button"
-                  className="nx-btn nx-btn--sm nx-btn--ghost"
-                  disabled={busy !== null}
-                  onClick={() =>
-                    run(
-                      `${key}:decline`,
-                      () =>
-                        hand
-                          .decline(row)
-                          .then(() => setHidden((before) => new Set([...before, key]))),
-                      L.compare.declineFailed,
-                    )
-                  }
-                >
-                  {L.compare.decline}
-                </button>
               </div>
             </li>
           );

@@ -477,18 +477,28 @@
    키보드는 줄 안에 초점이 서면(:has(:focus-visible)) 곧바로 보인다 — 마우스로 누른 줄에 남은 초점은
    키보드의 것이 아니니 `···` 를 붙들어 두지 않는다. */
 .nx .nx-conv-row--menu .nx-conv-menu,
-.nx .nx-conv-row:hover .nx-conv-menu,
 .nx .nx-conv-row:has(:focus-visible) .nx-conv-menu {
   opacity: 1;
   pointer-events: auto;
 }
 
-/* `···` 가 선 동안 제목의 오른쪽 끝은 사라지듯 옅어진다 — 줄바꿈 없이 자리를 내준다(제목이 다시
-   잘리며 출렁이지 않는다). 마스크의 색은 보임의 정도일 뿐이다(고정 — 검정은 보임, 투명은 사라짐). */
 .nx .nx-conv-row--menu .nx-conv-body,
-.nx .nx-conv-row:hover .nx-conv-body,
 .nx .nx-conv-row:has(:focus-visible) .nx-conv-body {
   mask-image: linear-gradient(to right, black calc(100% - 50px), transparent calc(100% - 24px));
+}
+
+/* 손이 닿아도 남는 호버만 따로 — 터치의 :hover 는 누른 줄에 붙어 `···` 가 늘 서고 제목 끝의
+   마스크가 계속 남는다(2026-11-12 소스 검토의 위험 분석 — 실측 아님). 호버로만 서는 보임은
+   hover-capable 포인터에서만 산다. */
+@media (hover: hover) and (pointer: fine) {
+  .nx .nx-conv-row:hover .nx-conv-menu {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .nx .nx-conv-row:hover .nx-conv-body {
+    mask-image: linear-gradient(to right, black calc(100% - 50px), transparent calc(100% - 24px));
+  }
 }
 
 /* 호버가 없는 입력(터치)에서는 `···` 가 늘 서 있다 — 손이 닿기를 기다리면 메뉴에 닿을 길이 없다. 이때는

@@ -30,7 +30,9 @@ test("공통 지침은 레포의 개발 규칙을 우선하고 앱의 역할만 
     COMMON_INSTRUCTIONS,
     /notify_developer|screen_check|describe_changes|repo_diagnostics|목 데이터|락파일|package\.json|3:1|aria-label/,
   );
-  assert.ok(COMMON_INSTRUCTIONS.length <= 1_000);
+  // 상한은 새 규칙(초안·판·변경안 저장 파일 직접 접근 금지, 2026-11-11 감독자 승인)을 반영해
+  // 1_000 → 1_100 으로 소폭 올렸다 — 기존 계약 불릿은 건드리지 않는다.
+  assert.ok(COMMON_INSTRUCTIONS.length <= 1_100);
 });
 
 test("지침 블록은 제목·설명·한 줄 불릿으로만 쓰고 사용자의 말과 분리한다", () => {

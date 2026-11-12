@@ -12,6 +12,7 @@ import { MoreIcon } from "../chat/icons";
 import { L } from "../labels";
 import { exportFileName } from "../lib/export-name";
 import { groupThreadsByDay } from "../lib/thread-groups";
+import { UnseenDone } from "../lib/unseen-done";
 import { useFreshKeys } from "../lib/use-fresh-keys";
 import { useToday } from "../lib/use-today";
 import { InlineConfirm } from "../ui/InlineConfirm";
@@ -39,6 +40,7 @@ export function ConversationList({
   titleFor,
   onOpen,
   onRenameSession,
+  chatShown = true,
   onToast,
 }: {
   daemon: Daemon;
@@ -46,6 +48,8 @@ export function ConversationList({
   /** `useSessions` 의 결과 — 지운 대화가 열려 있으면 새 대화의 빈 자리로 돌린다. */
   sessions: Sessions;
   activeSessionId: string | null;
+  /** 대화 칸이 눈앞에 있는가 — 기획서 자리나 좁은 창의 화면 탭에서는 false(끝난 답은 «보지 못한» 것이다). */
+  chatShown?: boolean;
   titleFor: (thread: ThreadSummary) => string;
   onOpen: (thread: ThreadSummary) => void;
   /** 이름 바꾸기 — 셸의 `onRenameSession`(설정의 대화 제목에 남는다). */
@@ -74,6 +78,15 @@ export function ConversationList({
     threads.map((thread) => thread.id),
     project?.slug ?? "",
   );
+  // «답이 끝났어요» — 도는 중 → 끝남 전이를 이 실행 안에서 관찰한 대화만 단다(순수 판정은
+  // lib/unseen-done). 보고 있는 대화 · 다시 도는 대화 · 목록에서 사라진 대화는 거둔다.
+  const unseenDone = useRef(new UnseenDone()).current;
+  const [doneTick, setDoneTick] = useState(0);
+  const viewingId = chatShown ? activeSessionId : null;
+  useEffect(() => {
+    if (unseenDone.observe(threads, viewingId)) setDoneTick((tick) => tick + 1);
+  }, [unseenDone, threads, viewingId]);
+  void doneTick;
 
   // 둘째 줄의 화면 — 이 창이 기록을 읽은 대화만 안다. 읽지 않은 대화 · 화면이 아직 없는
   // 대화는 둘째 줄이 없다.
@@ -293,6 +306,10 @@ export function ConversationList({
     const system = Boolean(SYSTEM_THREAD_TITLES[thread.title]);
     const menuOpen = menuFor === thread.id;
     const screens = screensById.get(thread.id) ?? "";
+    // «답이 끝났어요» — 이 실행에서 도는 중 → 끝남 을 관찰했고 지금 보지 않는 대화만
+    // (2026-11-12 비개발자 사용성 토론 · 끝남 표시). 묻는 중 · 실패는 기존 표시가 이긴다.
+    const done =
+      thread.state === "finished" && unseenDone.marked.has(thread.id) && thread.id !== viewingId;
     const status =
       thread.state === "running"
         ? L.journey.making
@@ -300,14 +317,18 @@ export function ConversationList({
           ? L.sidebar.waitingAnswer
           : failed
             ? L.sidebar.aiFailedRetry
-            : "";
+            : done
+              ? L.sidebar.doneUnseen
+              : "";
     // 진행은 점으로, 응답이 필요한 상태와 화면 이름은 둘째 줄로 읽힌다(2026-10-24 결함 반영 FXS · QA 5).
     const sub =
       thread.state === "awaiting"
         ? L.sidebar.waitingAnswer
         : failed && thread.state !== "running"
           ? L.vocab.aiFailed
-          : screens;
+          : done
+            ? L.sidebar.doneUnseen
+            : screens;
     const label = [titleFor(thread), status, screens].filter(Boolean).join(" · ");
 
     if (renaming?.id === thread.id) {
@@ -367,6 +388,10 @@ export function ConversationList({
                 <i className="nx-dot nx-dot--amber" aria-hidden="true" />
               ) : failed ? (
                 <i className="nx-dot nx-dot--red" aria-hidden="true" />
+              ) : done ? (
+                // 초록은 «개발자 반영»의 색이라 쓰지 않는다. 강조색은 기본 팔레트에서 실패의 빨강과 닮아
+                // 견본에서 헷갈렸다 — 파란 점(같은 결정 · 감독자 눈 확인).
+                <i className="nx-dot nx-dot--blue" aria-hidden="true" />
               ) : null}
             </span>
             {sub && <span className="nx-conv-s">{sub}</span>}

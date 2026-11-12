@@ -52,6 +52,23 @@ test("ghostText: 숨기거나 보낸 제안은 다시 뜨지 않고, 새 제안�
   );
 });
 
+test("ghostText: 개발 어휘가 든 AI 제안은 띄우지 않는다 — 사용자 면의 어휘 규칙(2026-11-11 실재현)", () => {
+  // 데몬이 전한 제안 본문은 AI 가 지은 말 — labels 의 금칙어가 그대로 통과해 뜨던 구멍.
+  assert.equal(ghostText({ ...FREE, suggestion: "커밋해 줘" }), null);
+  assert.equal(ghostText({ ...FREE, suggestion: "변경을 브랜치로 나눠 볼까요" }), null);
+  assert.equal(ghostText({ ...FREE, suggestion: "git 상태를 확인해 줘" }), null);
+  assert.equal(ghostText({ ...FREE, suggestion: "PR 설명을 붙여 줘" }), null);
+  // 개발자의 턴이 아닌 말과 github 은 걸리지 않는다 — vocab-sweep 패턴과 같은 경계.
+  assert.equal(
+    ghostText({ ...FREE, suggestion: "패턴을 한 번 더 확인해 줘" }),
+    "패턴을 한 번 더 확인해 줘",
+  );
+  assert.equal(
+    ghostText({ ...FREE, suggestion: "github 페이지를 열어 줘" }),
+    "github 페이지를 열어 줘",
+  );
+});
+
 test("isAcceptKey: 수정키 없는 Tab 만 받는다 — ⇧Tab · ⌥Tab · ⌃Tab · ⌘Tab · 다른 키는 지나간다", () => {
   const none = { shiftKey: false, altKey: false, ctrlKey: false, metaKey: false };
   assert.equal(isAcceptKey({ key: "Tab", ...none }), true);

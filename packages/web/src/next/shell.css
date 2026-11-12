@@ -282,8 +282,10 @@
   z-index: 30;
 }
 
-/* 접힌 입력창 — 화면 탭 바닥의 한 줄(S12). 펼쳐져 있으면(시트 자리에 입력창이 서면) 물러난다. */
-.nx-fold-cmp {
+/* 접힌 입력창 — 화면 탭 바닥의 한 줄(S12). 펼쳐져 있으면(시트 자리에 입력창이 서면) 물러난다.
+   `.nx` 아래 단추 초기화(`.nx button` — 0-1-1)에 지지 않게 한 단계 더 단다
+   (2026-11-12 — 바탕 · 윗선 · 덧칠이 초기화에 져 배경 없이 가장자리에 붙어 보였다). */
+.nx .nx-fold-cmp {
   position: absolute;
   left: 0;
   right: 0;
@@ -302,12 +304,12 @@
   text-align: left;
 }
 
-.nx-fold-cmp:hover {
+.nx .nx-fold-cmp:hover {
   background: var(--bg-2);
   color: var(--ink);
 }
 
-.nx-fold-cmp .nx-i {
+.nx .nx-fold-cmp .nx-i {
   margin-left: auto;
   color: var(--ink3);
 }

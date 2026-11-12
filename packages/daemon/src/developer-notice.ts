@@ -165,6 +165,19 @@ const PROBLEM_TEXT: Record<string, Omit<Problem, "key" | "slug" | "detail">> = {
       "같은 요청을 다시 시도했지만 같은 거절이 돌아왔습니다. 연결 코드는 유효해서 새 초대 파일을 받아도 풀리지 않습니다",
     ask: "연결 코드(토큰)의 Repository permissions 를 확인해 주세요 — 가장 흔한 원인은 Pull requests: Read and write 입니다(Contents · Issues: Read and write, Metadata: Read 도 필요). 권한표: 소개 페이지 `초대장 만들기` 위의 `연결 코드 권한표`. 같은 토큰의 권한을 고치면 도구가 저절로 다시 제출합니다",
   },
+  "save:commit": {
+    title: "보관이 멈췄습니다",
+    what: "작업을 보관하는 단계가 이 컴퓨터의 문제로 계속 멈춰 있습니다",
+    tried:
+      "이 기계 · 계정의 문제라 AI 의 몫으로 보내지 않았습니다 — 같은 실패가 다시 오면 이 알림만 갱신됩니다",
+    ask: "아래 자세히의 까닭을 확인해 주세요 — 연결 코드 · 권한 · 이 컴퓨터의 연결 상태를 먼저 봐 주세요",
+  },
+  "save:push": {
+    title: "보관한 작업을 올리지 못했습니다",
+    what: "올리기 단계가 같은 거절로 계속 멈춰 있습니다",
+    tried: "같은 실패를 두 번 고치라고 AI 에게 넘겼지만 끝나지 않아 더는 넘기지 않습니다",
+    ask: "아래 자세히의 까닭을 확인해 주세요",
+  },
   "push:behind": {
     title: "보관한 작업을 1시간 넘게 올리지 못하고 있습니다",
     what: "커밋은 쌓였는데 원격에 올라가지 않고 있습니다",

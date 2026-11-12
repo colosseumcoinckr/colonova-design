@@ -325,6 +325,7 @@ function rig(runner: DraftAiRunner): Rig {
     logger,
     ai: runner,
     publisher: new DraftPublisher(),
+    importNow: async () => ({ imported: 0, skipped: 0, capped: false }),
     now: () => clock,
     transport: () => transport,
   });

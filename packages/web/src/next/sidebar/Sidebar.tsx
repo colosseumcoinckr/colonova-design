@@ -28,6 +28,7 @@ export function Sidebar({
   sessions,
   activeSessionId,
   plansOn = false,
+  chatShown = true,
   planDrafts = 0,
   running = false,
   plansContent,
@@ -47,6 +48,8 @@ export function Sidebar({
   activeSessionId: string | null;
   /** 기획서 자리인가. 자리 표시와 목록 선택에 쓴다. */
   plansOn?: boolean;
+  /** 대화 칸이 눈앞에 있는가 — 기획서 자리 · 좁은 창 화면 탭에서 끝난 답은 «보지 못한» 것으로 단다(2026-11-12 끝남 표시). */
+  chatShown?: boolean;
   /** 지금 프로젝트의 작성 중인 초안 수 — `기획서` 줄 끝에 흐리게 선다(2026-10-23 기획자 화면 손질 D5). */
   planDrafts?: number;
   running?: boolean;
@@ -188,6 +191,7 @@ export function Sidebar({
           sessions={sessions}
           activeSessionId={activeSessionId}
           titleFor={titleFor}
+          chatShown={chatShown}
           onOpen={(thread) => active && nav.openThread(active.slug, thread.id)}
           onRenameSession={onRenameSession}
           onToast={nav.toast}

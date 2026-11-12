@@ -50,6 +50,8 @@ interface Rig {
   /** 등록부가 아는 프로젝트 폴더 — 원장은 `<프로젝트 폴더>/confluence/confluence.json` 에 산다. */
   projectRoot: string;
   cloneRoot: string;
+  /** connect 가 건 가져오기 — 슬러그만 기록한다(호출 수를 보는 시험의 재료). */
+  imports: string[];
   cleanup(): void;
 }
 
@@ -70,6 +72,7 @@ function rig(fixturePairs: Array<Record<string, unknown>>, slug = "demo", regist
     // 연결은 워크스페이스와 상관없이 돈다 — 사본은 클론 밖 프로젝트 폴더에 산다(2026-10-23 · 사본 이동 계획).
     workspaces: new Map(),
   };
+  const imports: string[] = [];
   const router = new RequestRouter({
     registry: {
       activeSlug: () => slug,
@@ -81,7 +84,10 @@ function rig(fixturePairs: Array<Record<string, unknown>>, slug = "demo", regist
     fleet,
     confluence: {
       clearExpired() {},
-      importNow: async () => ({ imported: 0, skipped: 0, capped: false }),
+      importNow: (slug: string) => {
+        imports.push(slug);
+        return Promise.resolve({ imported: 0, skipped: 0, capped: false });
+      },
     },
   } as unknown as RouterDeps);
   const previous = process.env.COLONOVA_DESIGN_CONFLUENCE_FIXTURE;
@@ -93,6 +99,7 @@ function rig(fixturePairs: Array<Record<string, unknown>>, slug = "demo", regist
     machineFile,
     projectRoot: home,
     cloneRoot,
+    imports,
     cleanup() {
       if (previous === undefined) delete process.env.COLONOVA_DESIGN_CONFLUENCE_FIXTURE;
       else process.env.COLONOVA_DESIGN_CONFLUENCE_FIXTURE = previous;
@@ -303,6 +310,49 @@ test("연결 — 기준 페이지를 고르면 뿌리의 id 와 제목이 미러
     assert.equal(rig4.machine.get("confluenceRootTitle:demo"), "8.8 ColoNova");
   } finally {
     rig4.cleanup();
+  }
+});
+
+test("연결 — 실제로 쓰는 뿌리가 정해져 있으면 곧바로 가져오기를 한 번 건다, 뿌리가 없으면 걸지 않는다(2026-11-12 · 보완 1)", async () => {
+  const root = {
+    id: "986",
+    title: "8.7 ColoNova",
+    body: { storage: { value: "<p/>" } },
+    version: { number: 2 },
+  };
+  const rootPair = () =>
+    fixture("뿌리 문서", "/wiki/api/v2/pages/986?body-format=storage", 200, root);
+  // 뿌리 없이 자격만 저장한 연결 — 가져올 범위가 없으니 걸지 않는다.
+  const rigB = rig([
+    fixture("연결 확인", WHO_URL, 200, AUTH_USER),
+    fixture("연결 확인", WHO_URL, 200, AUTH_USER),
+  ]);
+  try {
+    await rigB.router.dispatch(connect());
+    await rigB.router.dispatch(connect({ email: undefined, token: undefined }));
+    assert.deepEqual(rigB.imports, []);
+  } finally {
+    rigB.cleanup();
+  }
+  const rigA = rig([
+    fixture("연결 확인", WHO_URL, 200, AUTH_USER),
+    rootPair(),
+    fixture("연결 확인", WHO_URL, 200, AUTH_USER),
+    rootPair(),
+    fixture("연결 확인", WHO_URL, 200, AUTH_USER),
+  ]);
+  try {
+    // 뿌리와 함께 이긴 연결 — 빈 목록을 안고 다음 주기를 기다리지 않게 곧바로 가져오기를 건다.
+    await rigA.router.dispatch(connect({ rootPageId: "986" }));
+    assert.deepEqual(rigA.imports, ["demo"]);
+    // 토큰 만료 뒤 자격만 다시 넣는 재연결 — 뿌리는 이미 저장돼 있으니 이번에도 건다.
+    await rigA.router.dispatch(connect({ email: undefined, token: undefined }));
+    assert.deepEqual(rigA.imports, ["demo", "demo"]);
+    // 저장된 자격으로 뿌리만 바꾼 연결도 건다 — 뿌리가 정해진 순간이 가져오기의 첫 순간이다.
+    await rigA.router.dispatch(connect({ email: undefined, token: undefined, rootPageId: "986" }));
+    assert.deepEqual(rigA.imports, ["demo", "demo", "demo"]);
+  } finally {
+    rigA.cleanup();
   }
 });
 

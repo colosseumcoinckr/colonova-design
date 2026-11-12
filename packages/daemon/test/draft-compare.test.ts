@@ -153,6 +153,7 @@ function rig(impl: AiImpl) {
       },
       enabled: false,
     },
+    importNow: async () => ({ imported: 0, skipped: 0, capped: false }),
     now: () => NOW,
     transport: () => transport,
   });

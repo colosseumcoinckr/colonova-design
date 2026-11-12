@@ -16,6 +16,7 @@ import {
   fileWriteVerdict,
   OUTSIDE_COMMAND_REFUSAL,
   OUTSIDE_WRITE_REFUSAL,
+  PLANS_STATE_REFUSAL,
   PLANS_WRITE_REFUSAL,
   pathWritable,
   SHELL_MATCHER,
@@ -35,12 +36,14 @@ function scene() {
   const clone = join(home, ".colonova-design", "projects", "p", "repo");
   const mirror = join(home, ".colonova-design", "projects", "p", "confluence");
   const elsewhere = join(root, "elsewhere");
+  const plans = join(home, ".colonova-design", "projects", "p", "plans");
   const tmp = join(root, "scratch-tmp");
   for (const dir of [
     join(clone, "src"),
     join(mirror, "COLO"),
     elsewhere,
     tmp,
+    join(plans, "drafts"),
     join(home, ".claude"),
   ]) {
     mkdirSync(dir, { recursive: true });
@@ -58,6 +61,7 @@ function scene() {
     home,
     clone,
     mirror,
+    plans,
     elsewhere,
     tmp,
     scope,
@@ -183,6 +187,105 @@ test("기획서 사본 뿌리는 클론 밖 거절이지만 이유만 기획서 
       allow: false,
       reason: OUTSIDE_COMMAND_REFUSAL,
     });
+  } finally {
+    s.dispose();
+  }
+});
+
+test("기획 작업 저장소는 어떤 길로도 직접 건드리지 못한다 — 쓰기 도구 · 셸 인자 · cd · heredoc 본문(2026-11-11 감독자 채택 · 실사용 재현)", () => {
+  const s = scene();
+  const scope: WriteScope = { ...s.scope, mirrorRoots: [s.mirror], planRoots: [s.plans] };
+  try {
+    const draft = join(s.plans, "drafts", "n-1.json");
+    // 파일 쓰기 도구 — planRoots 가 허용 뿌리(임시 폴더 · extraRoots) 아래여도 먼저 거절한다.
+    const nestedTmp = join(s.tmp, "plans");
+    mkdirSync(nestedTmp, { recursive: true });
+    assert.deepEqual(
+      fileWriteVerdict(
+        "Write",
+        { file_path: join(nestedTmp, "x.json") },
+        { ...s.scope, tempRoots: [s.tmp], planRoots: [nestedTmp] },
+      ),
+      { allow: false, reason: PLANS_STATE_REFUSAL },
+      "임시 폴더 아래의 planRoots 도 허용보다 먼저 거절한다",
+    );
+    assert.deepEqual(fileWriteVerdict("Write", { file_path: draft }, scope), {
+      allow: false,
+      reason: PLANS_STATE_REFUSAL,
+    });
+    // 상대 경로로 빠져나가는 길 — 클론에서 `..` 로 프로젝트 폴더 아래를 겨눈다.
+    assert.deepEqual(
+      fileWriteVerdict(
+        "Write",
+        { file_path: join("..", "plans", "drafts", "n-1.json") },
+        { ...scope, base: s.clone },
+      ),
+      { allow: false, reason: PLANS_STATE_REFUSAL },
+      "클론에서 .. 로 빠져나가는 상대 경로도 거절한다",
+    );
+    // 셸 — 쓰기 리다이렉션 · 인자 짚기 · cd 의 목적지 모두 같은 거절이다.
+    for (const command of [
+      `echo x > ${draft}`,
+      `cat ${draft}`,
+      `cd ${s.plans}`,
+      `cd ${s.plans} && python3 - <<'EOF'\nopen("drafts/n-1.json","w")\nEOF`,
+    ]) {
+      assert.deepEqual(
+        bashCommandVerdict(command, scope),
+        { allow: false, reason: PLANS_STATE_REFUSAL },
+        `${command} 는 plans 를 짚는다`,
+      );
+    }
+    // heredoc 본문 안의 절대 경로 — scanShell 의 인자 밖이라 문자열 스캔이 잡는다.
+    const heredoc = `python3 - <<'PY'\nfrom pathlib import Path\np = Path("${draft}")\np.write_text("{}")\nPY`;
+    assert.deepEqual(bashCommandVerdict(heredoc, scope), {
+      allow: false,
+      reason: PLANS_STATE_REFUSAL,
+    });
+    // 앱 데이터 폴더 표식 + plans 마디의 만남 — Path.home() 조각 경로.
+    assert.deepEqual(
+      bashCommandVerdict(
+        `python3 -c "from pathlib import Path; (Path.home()/'.colonova-design'/'projects'/'p'/'plans'/'x.json').write_text('{}')"`,
+        scope,
+      ),
+      { allow: false, reason: PLANS_STATE_REFUSAL },
+      "홈에서 조각 내린 plans 경로도 거절한다",
+    );
+    assert.deepEqual(
+      bashCommandVerdict(
+        `python3 -c 'import os; open(os.path.join(os.path.expanduser("~"), ".colonova-design", "projects", "p", "plans", "drafts", "n-1.json"), "w").write("{}")'`,
+        scope,
+      ),
+      { allow: false, reason: PLANS_STATE_REFUSAL },
+      "os.path.join으로 조합한 앱의 초안 저장 경로도 거절한다",
+    );
+    // planRoots 가 없으면 기존과 같다 — 같은 문자도 통과다(뿌리를 모르는 세션).
+    assert.equal(
+      bashCommandVerdict(heredoc, s.scope).allow,
+      true,
+      "planRoots 가 비면 문자열 스캔은 작동하지 않는다",
+    );
+    // 정상 작업의 오탐 없음 — 레포의 plans-map.json · 클론 안 docs/plans.
+    assert.equal(bashCommandVerdict("cat plans-map.json", scope).allow, true);
+    assert.equal(bashCommandVerdict("cat docs/plans/spec.md", scope).allow, true);
+    // plans 뿌리의 접두 오탐 없음 — `…/plans` 로 시작하는 이름(`plans-map.json`)은 다른 파일이다.
+    assert.equal(
+      bashCommandVerdict(`cat ${s.plans}-map.json`, scope).allow,
+      true,
+      "뿌리 접두가 같은 이름은 걸리지 않는다",
+    );
+    // 연결 클론이 앱 데이터 폴더 아래 있어도 정상 경로는 지난다 — repo 아래의 plans 는 저장소가 아니다.
+    assert.equal(
+      bashCommandVerdict(`cat $HOME/.colonova-design/projects/p/repo/docs/plans/spec.md`, scope)
+        .allow,
+      true,
+      "repo 아래의 plans 마디는 저장소가 아니다",
+    );
+    assert.equal(
+      fileWriteVerdict("Write", { file_path: "docs/plans/spec.md" }, scope).allow,
+      true,
+      "클론 안의 docs/plans 는 보통 레포 폴더다",
+    );
   } finally {
     s.dispose();
   }

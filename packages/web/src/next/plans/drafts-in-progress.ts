@@ -13,7 +13,11 @@ export function draftsInProgress(drafts: readonly DraftSummary[]): DraftSummary[
     .filter(
       (draft) =>
         draft.state !== "published" &&
-        (draft.pageId === null || draft.changedBlocks > 0 || draft.state !== "editing"),
+        // 제목만 바꾼 초안도 발행할 것이 있다 — 목록 줄의 점(draftMarkOf)과 같은 잣대(2026-11-12 기획자 체험).
+        (draft.pageId === null ||
+          draft.changedBlocks > 0 ||
+          draft.titleChanged === true ||
+          draft.state !== "editing"),
     )
     .sort((a, b) => (Date.parse(b.updatedAt) || 0) - (Date.parse(a.updatedAt) || 0));
 }

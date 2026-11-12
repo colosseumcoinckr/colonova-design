@@ -18,6 +18,7 @@ import { closeGuard, pageDirection } from "../lib/settings-shell";
 import { nextTabIndex } from "../lib/tab-keys";
 import { useClosing } from "../lib/use-closing";
 import { hasNewerVersion } from "../lib/version";
+import type { SettingsPage } from "../slots";
 import { CloseIcon, Spin } from "../ui/icons";
 import { AiPage } from "./AiPage";
 import { ConnectionPage } from "./ConnectionPage";
@@ -38,8 +39,8 @@ import { useAuthorName } from "./use-author";
 import { useReset } from "./use-reset";
 import { useUpdates } from "./use-updates";
 
-/** 설정의 쪽 — 왼쪽 목록의 차례가 이 순서고, 개발자용은 맨 아래에 따로 선다. */
-type Page = "ai" | "theme" | "notify" | "connection" | "update" | "developer";
+/** 설정의 쪽 — 왼쪽 목록의 차례가 이 순서고, 개발자용은 맨 아래에 따로 선다. `slots.ts` 의 SettingsPage 와 같다. */
+type Page = SettingsPage;
 
 const PAGES: readonly Page[] = ["ai", "theme", "notify", "connection", "update", "developer"];
 
@@ -84,6 +85,7 @@ export function SettingsDialog({
   settings,
   onChatChange,
   onSettingsChange,
+  initialPage,
   onClose,
 }: {
   daemon: Daemon;
@@ -91,6 +93,8 @@ export function SettingsDialog({
   onChatChange: (patch: Partial<ChatSettings>) => void;
   /** 알림 정책의 저장 — App 의 settings 상태가 유일한 원천이다. */
   onSettingsChange: (patch: Partial<Settings>) => void;
+  /** 부르는 곳이 처음 설 쪽을 정할 때(2026-11-12 — 기획서 자리의 연결 단추는 `연결`). 없으면 지금의 첫 쪽. */
+  initialPage?: Page;
   onClose: () => void;
 }) {
   const status = daemon.status;
@@ -107,7 +111,8 @@ export function SettingsDialog({
   const agentUpdateReady = providers.some(
     (provider) => provider.available && hasNewerVersion(provider.version, provider.latestVersion),
   );
-  const [page, setPage] = useState<Page>(() => (agentUpdateReady ? "update" : "ai"));
+  // 부르는 곳이 쪽을 정했으면 그 쪽이 선다(2026-11-12 — 기획서 자리의 연결 단추는 `연결` 쪽).
+  const [page, setPage] = useState<Page>(() => initialPage ?? (agentUpdateReady ? "update" : "ai"));
   // 쪽이 바뀐 뒤부터만 등장 움직임을 준다 — 열릴 때는 창의 pop 하나로 충분하다. 방향은 목록의 차례가 정한다.
   const [switched, setSwitched] = useState(false);
   const [direction, setDirection] = useState<"up" | "down" | "none">("none");

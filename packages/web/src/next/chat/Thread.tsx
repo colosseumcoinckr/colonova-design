@@ -227,7 +227,7 @@ export function Thread(props: ThreadProps) {
       fileReference: L.chat.fileReference,
     }).answer;
   // 턴 끝마다: 그 턴이 말한 화면과 마지막 답 한 조각.
-  const results = requestResults(blocks, props.cycleScreens);
+  const results = requestResults(blocks, props.cycleScreens, toPath);
   const screensByTurn = new Map<string, TurnScreen[]>();
   const lastAnswerByTurn = new Map<string, string>();
   const requestByTurn = new Map<string, string>();

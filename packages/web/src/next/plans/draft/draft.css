@@ -128,15 +128,60 @@
   background: var(--amber-soft);
 }
 
-/* 절 이름의 한계 이유 — 절 칸 아래 제 첫 줄에 선다(2026-10-23 화면 확인). */
+/* 절 체크목록(2026-11-12 근거 절 체크목록) — 고른 문서의 실제 머리말에서 고른다. 옛 자유 입력 칸의 자리다. */
 .nx-dr-refsec {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: var(--sp-1_5);
 }
 
-.nx-dr-refsec .nx-dr-limit {
-  flex: 1 1 100%;
+.nx-dr-refsec-t {
+  margin: 0;
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-sem);
+}
+
+/* 읽기 실패 — 문장과 다시 시도 단추가 세로로 선다. */
+.nx-dr-refsec-fail {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-1);
+}
+
+.nx-dr-refsec-act {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.nx-dr-refchecks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--sp-0_5);
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.nx-dr-refcheck {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-1_5);
+  min-height: var(--h-sm);
+  font-size: var(--fs-sm);
+}
+
+.nx-dr-refcheck > input {
+  flex: none;
+}
+
+.nx-dr-refcheck > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.nx-dr-refcheck--any {
+  color: var(--ink2);
 }
 
 .nx .nx-dr-band-act a.nx-btn {
@@ -614,8 +659,10 @@
 
 /* 머리는 세 줄의 위계다(2026-11-02 D6) — 대화 제목과 ⋯ 메뉴 / 다루는 문서 / 이 AI 의 담당 한 줄. */
 .nx-dr-thread-hd {
-  flex: none;
   display: grid;
+  /* 격자 아이의 기본 min-width:auto 는 긴 제목(첫 말이 제목)을 칸 폭 너머로 밀어 칸을 가로로
+     굴렀다(2026-11-12 기획자 체험 — aside scrollWidth > clientWidth). minmax(0,…) 로 줄어들게 한다. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   padding-bottom: var(--sp-2);
   border-bottom: 1px solid var(--line-soft);
@@ -623,6 +670,8 @@
 
 .nx-dr-thread-top {
   display: flex;
+  /* 격자 아이의 기본 min-width:auto 는 내용(긴 제목)만큼 넓어져 줄을 칸 밖으로 밀었다(2026-11-12). */
+  min-width: 0;
   align-items: center;
   gap: var(--sp-1_5);
 }
@@ -669,6 +718,7 @@
   flex-direction: column;
   gap: var(--sp-3);
   flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -722,6 +772,11 @@
 .nx-dr-msg-body {
   display: grid;
   gap: var(--sp-1_5);
+  min-width: 0;
+}
+/* 격자 아이의 기본 min-width:auto 는 내용(다름 카드의 긴 줄 · 문서 카드의 말줄임 한 줄)의 최소 내용 폭이 되어
+   부모 칸(317)을 넘어 카드 자체(521)를 넓혔다 — 칸이 가로로 굴렀다(2026-11-12 덧붙임 3). 몸의 아이는 모두 줄어들 수 있다. */
+.nx-dr-msg-body > * {
   min-width: 0;
 }
 
@@ -948,12 +1003,6 @@
   font-size: var(--fs-sm);
 }
 
-/* 절 이름 칸 — 벌임과 이유 줄은 위의 .nx-dr-refsec 가 함께 말한다. */
-.nx-dr-refsec .nx-dr-line {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 /* 빈 초안의 두 길 — AI 와 시작하기 · 직접 쓰기가 나란히 선다. */
 .nx-dr-empty-acts {
   display: flex;
@@ -984,6 +1033,10 @@
 .nx-dr-msg-md .md th,
 .nx-dr-msg-md .md td {
   min-width: 4em;
+  /* 좁은 표에서 한글 낱말이 가운데서 꺾이지 않게(2026-11-12 — 발행 창의 `비밀번호` 가
+     `비밀번 / 호` 로 갈라졌다). 낱말 안에서 끊지 않고, 칸보다 긴 연속 글자만 끝에서 꺾는다. */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 .nx-dr-place-row > input,
 .nx-dr-place-row > svg {

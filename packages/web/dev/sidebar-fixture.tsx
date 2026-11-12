@@ -8,12 +8,13 @@
  *
  * 주소 끝의 `?theme=dark` 처럼 테마를, `?case=a,c` 로 보일 상태만을, `?h=720` 으로 틀의 높이를,
  * `?w=320` 으로 사이드바 폭을, `?active=m16` 으로 처음 켜 둘 대화를, `?switch=slow|reject` 로 프로젝트를 옮기는 데
- * 1.2초가 걸리거나 실패하는 경우를 고른다. 상태는 눌러 볼 수 있다 — 대화를 누르면 켜지고, 프로젝트를
+ * 1.2초가 걸리거나 실패하는 경우를, `?done=m1` 으로 도는 대화 하나가 0.6초 뒤 끝나는 경우(`답이 끝났어요` 표시 —
+ * 2026-11-12)를 고른다. 상태는 눌러 볼 수 있다 — 대화를 누르면 켜지고, 프로젝트를
  * 옮기면 그 프로젝트의 줄이 선다. 새 상태는 여기에 더한다(새 페이지를 만들지 않는다).
  */
 
 import type { ProjectSummary, ThreadSummary } from "@colonova-design/protocol";
-import { StrictMode, useMemo, useState } from "react";
+import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Splitter } from "../src/components/shell/Splitter";
 import type { Sessions } from "../src/hooks/useSessions";
@@ -38,6 +39,8 @@ const FRAME_H = Number(query.get("h")) || 760;
 const SIDE_W = Number(query.get("w")) || 0;
 const ONLY = query.get("case")?.split(",") ?? null;
 const ACTIVE = query.get("active");
+/** 도는 대화 하나가 잠시 뒤 끝난다 — 보고 있지 않던 대화의 `답이 끝났어요` 표시를 본다(2026-11-12). */
+const DONE = query.get("done");
 
 const MIN = 60_000;
 const startOfToday = new Date();
@@ -344,6 +347,25 @@ function Frame({ spec }: { spec: Case }) {
   const [plansOn, setPlansOn] = useState(spec.plans ?? false);
   const [slug, setSlug] = useState(spec.activeSlug);
   const [log, setLog] = useState("—");
+  // `?done=<id>` — 그 대화가 0.6초 뒤 끝난다. 표시는 관찰한 전이만 달기 때문에 처음부터 끝난 줄로는 서지 않는다.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!DONE) return;
+    const timer = setTimeout(() => setSettled(true), 600);
+    return () => clearTimeout(timer);
+  }, []);
+  const projects = useMemo(
+    () =>
+      settled
+        ? spec.projects.map((one) => ({
+            ...one,
+            threads: one.threads?.map((thread) =>
+              thread.id === DONE ? { ...thread, state: "finished" as const } : thread,
+            ),
+          }))
+        : spec.projects,
+    [settled, spec.projects],
+  );
   // 너비 조절(h) — 저장은 이 견본의 상태가 맡는다(앱에서는 설정의 layout.sidebarWidth).
   const [saved, setSaved] = useState<number | null>(SIDE_W || null);
   const side = useSidebarWidth(saved, (width) => {
@@ -380,7 +402,7 @@ function Frame({ spec }: { spec: Case }) {
       };
     }
     return {
-      projects: spec.projects,
+      projects,
       activeSlug: slug,
       status: {
         authorName: spec.author === undefined ? "정인권" : spec.author,
@@ -446,7 +468,7 @@ function Frame({ spec }: { spec: Case }) {
       hideThread: (_slug: string, id: string) => setLog(`hide ${id}`),
       unhideThread: () => {},
     } as unknown as Daemon;
-  }, [spec, slug]);
+  }, [spec, slug, projects]);
 
   const nav = {
     newThread: () => {

@@ -20,10 +20,20 @@ export interface GhostInput {
   dismissed: string | null;
 }
 
+/**
+ * 사용자 면에 못 쓰는 개발 어휘 — vocab-sweep.test.ts 의 금칙 패턴과 같은 모양이다. 제안의 본문은
+ * AI 가 지어 데몬이 그대로 전하므로(사람이 쓴 labels 문장이 아니다) 표시 자리에서 한 번 거른다.
+ * `커밋해 줘` 같은 AI 제안이 비개발자의 입력창에 서지 않게 한다(2026-11-11 실제 여정 재현).
+ * 한글 낱말은 labels 시험의 토크나이저가 문장으로 세지 않게 이스케이프로 쓴다(starters.ts 와 같다).
+ */
+const DEV_WORD =
+  /(?<![\ud328\ub9ac])\ud134|\uacbd\ub85c|git(?!hub)|\ub370\ubaac|\ucee4\ubc0b|\ube0c\ub79c\uce58|(?<![A-Za-z])PR(?![A-Za-z])/i;
+
 /** 지금 입력창에 옅게 띄울 제안 — 띄울 수 없으면 null. */
 export function ghostText(input: GhostInput): string | null {
   const text = input.suggestion?.trim();
   if (!text) return null;
+  if (DEV_WORD.test(text)) return null;
   if (input.text !== "" || input.attachments > 0 || input.pins > 0) return null;
   if (input.running || input.locked) return null;
   if (input.dismissed === text) return null;

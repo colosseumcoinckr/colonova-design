@@ -173,12 +173,16 @@ export function CommentComposer({
       <div className="nx-dc-bar">
         {count.note !== null && <span className="nx-dc-count">{count.note}</span>}
         {phase.state === "failed" && (
-          <span className="nx-dc-fail">
+          <span className="nx-dc-fail" role="alert">
             {phase.line}
             {phase.sub !== null && <small>{phase.sub}</small>}
           </span>
         )}
-        {phase.state === "unknown" && <span className="nx-dc-fail">{L.comments.unknown}</span>}
+        {phase.state === "unknown" && (
+          <span className="nx-dc-fail" role="alert">
+            {L.comments.unknown}
+          </span>
+        )}
         {mode.kind !== "footer" && (
           <button
             type="button"

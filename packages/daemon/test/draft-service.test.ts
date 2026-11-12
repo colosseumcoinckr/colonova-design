@@ -264,6 +264,39 @@ class HoldingPublisher extends DraftPublisher {
   }
 }
 
+/** 결과를 정해 돌려주는 발행기 가짜 — 적용 · 결과 불명 · 실패를 갈아 끼운다(저장은 하지 않는다). */
+class ResultPublisher extends DraftPublisher {
+  state: "applied" | "unknown" | "failed" = "applied";
+
+  override async publish(
+    _ctx: DraftPublishContext,
+    input: { commandId: string; docKey: string },
+  ): Promise<DraftPublishResult> {
+    return {
+      commandId: input.commandId,
+      docKey: input.docKey,
+      state: this.state,
+      pageId: PAGE_ID,
+      version: 5,
+      detail: "",
+    };
+  }
+
+  override async recheck(
+    _ctx: DraftPublishContext,
+    commandId: string,
+  ): Promise<DraftPublishResult> {
+    return {
+      commandId,
+      docKey: KEY,
+      state: this.state,
+      pageId: PAGE_ID,
+      version: 5,
+      detail: "",
+    };
+  }
+}
+
 interface Rig<P extends DraftPublisher = FakePublisher> {
   service: DraftService;
   store: DraftStore;
@@ -272,6 +305,8 @@ interface Rig<P extends DraftPublisher = FakePublisher> {
   requests: string[];
   messages: ServerMessage[];
   infos: Array<{ message: string; fields: unknown }>;
+  /** 발행 뒤 사본 가져오기를 건 슬러그 — 호출 수를 보는 시험의 재료. */
+  imports: string[];
   publisher: P;
   cleanup(): void;
 }
@@ -399,6 +434,7 @@ function rig<P extends DraftPublisher = FakePublisher>(
     warn() {},
     error() {},
   };
+  const imports: string[] = [];
   const service = new DraftService({
     registry: { activeSlug: () => "demo", paths: (slug) => ({ root: join(home, slug) }) },
     machineSetting: { get: (key) => setting[key] ?? null },
@@ -408,6 +444,11 @@ function rig<P extends DraftPublisher = FakePublisher>(
     logger,
     ai: runner,
     publisher,
+    // 발행 뒤 사본 가져오기 — 슬러그만 기록한다(호출 수를 보는 시험의 재료).
+    importNow: (slug) => {
+      imports.push(slug);
+      return Promise.resolve({ imported: 0, skipped: 0, capped: false });
+    },
     now: () => NOW,
     transport: () => transport,
     ...(options?.cloneRoot !== undefined ? { cloneRoot: options.cloneRoot } : {}),
@@ -420,6 +461,7 @@ function rig<P extends DraftPublisher = FakePublisher>(
     requests,
     messages,
     infos,
+    imports,
     publisher,
     cleanup() {
       rmSync(home, { recursive: true, force: true });
@@ -1262,6 +1304,59 @@ test("발행 묶음 — 자리를 만들어 발행기로 넘기고 바뀜만 방
   }
 });
 
+test("발행 뒤 사본 — 적용으로 확인되면 가져오기를 한 번 건다, 결과 불명 · 실패는 걸지 않는다(2026-11-12 비개발자 사용성 토론)", async () => {
+  const publisher = new ResultPublisher();
+  const rig1 = rig(
+    fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null })).runner,
+    publisher,
+  );
+  const previous = process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH;
+  process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH = "1";
+  try {
+    await rig1.service.open(PAGE_ID);
+    // 적용 — 사본이 새 판을 따라오게 가져오기를 한 번 건다.
+    publisher.state = "applied";
+    const applied = await rig1.service.publish({
+      docKey: KEY,
+      commandId: CMD_A,
+      expectedRevision: 0,
+    });
+    assert.equal(applied.state, "applied");
+    assert.deepEqual(rig1.imports, ["demo"]);
+    // 결과 불명 · 실패(게이트가 꺼진 발행도 실패로 돌아온다) — 새 판이 원격에 있다는 보장이 없으니 걸지 않는다.
+    publisher.state = "unknown";
+    const unknown = await rig1.service.publish({
+      docKey: KEY,
+      commandId: CMD_B,
+      expectedRevision: 0,
+    });
+    assert.equal(unknown.state, "unknown");
+    publisher.state = "failed";
+    const failed = await rig1.service.publish({
+      docKey: KEY,
+      commandId: CMD_A,
+      expectedRevision: 0,
+    });
+    assert.equal(failed.state, "failed");
+    assert.deepEqual(rig1.imports, ["demo"]);
+    // 결과를 모르던 발행을 다시 확인해 적용으로 정해지면 그때 건다.
+    publisher.state = "applied";
+    rig1.store.saveIntent(makeIntent({ commandId: CMD_B, state: "unknown" }));
+    const confirmed = await rig1.service.publishRecheck(CMD_B);
+    assert.equal(confirmed.state, "applied");
+    assert.deepEqual(rig1.imports, ["demo", "demo"]);
+    // 이미 적용으로 정해진 명령의 다시 확인 · 종료는 다시 걸지 않는다.
+    rig1.store.saveIntent(makeIntent({ commandId: CMD_B, state: "applied" }));
+    await rig1.service.publishRecheck(CMD_B);
+    await rig1.service.publishClose(CMD_B);
+    assert.deepEqual(rig1.imports, ["demo", "demo"]);
+  } finally {
+    if (previous === undefined) delete process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH;
+    else process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH = previous;
+    rig1.cleanup();
+  }
+});
+
 test("발행 묶음 — 스위치가 꺼진 자리와 끊긴 재정렬도 발행기로 간다", async () => {
   const rig1 = rig(
     fakeAi(async () => ({ reply: "", summary: "", ops: [], sdkSessionId: null })).runner,
@@ -1661,6 +1756,8 @@ function rebuildRig(runner: DraftAiRunner): RebuildRig {
     logger: { info() {}, warn() {}, error() {} },
     ai: runner,
     publisher: new DraftPublisher(),
+    // 발행 뒤 사본 가져오기 — 이 시험은 돌지 않는다(호출 없음을 기대한다).
+    importNow: async () => ({ imported: 0, skipped: 0, capped: false }),
     now: () => NOW,
     transport: () => transport,
   });

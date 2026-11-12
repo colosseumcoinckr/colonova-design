@@ -78,6 +78,7 @@ function Standalone(props: Parameters<typeof PlansColumn>[0]) {
 }
 
 function PlansBody({
+  project,
   daemon,
   nav,
   offstage = false,
@@ -252,7 +253,8 @@ function PlansBody({
     chatPageId = pageId;
     body = (
       <PlanDocView
-        key={pageId}
+        key={`${project?.slug ?? ""}:${pageId}`}
+        searchTarget={plans.searchTarget?.pageId === pageId ? plans.searchTarget : null}
         focusTitle={plans.focusDoc}
         pageId={pageId}
         row={openRow}
@@ -283,7 +285,7 @@ function PlansBody({
           rooted={summary?.rootTitle != null}
           phase={state.listPhase}
           importing={state.importing}
-          onSettings={nav.openSettings}
+          onSettings={() => nav.openSettings("connection")}
           onImport={plans.importNow}
           onRetry={plans.refreshList}
         />

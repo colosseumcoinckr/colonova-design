@@ -169,6 +169,7 @@ function gateRig(ai: (call: number) => DraftAiAnswer, options?: { loopOn?: () =>
     logger: silent,
     ai: runner,
     publisher: new DraftPublisher(),
+    importNow: async () => ({ imported: 0, skipped: 0, capped: false }),
     onScreenProposal: (input) => {
       settledCalls.push(input);
       sync.onProposalSettled(input);

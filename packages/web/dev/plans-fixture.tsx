@@ -781,6 +781,12 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
   const goneConvs = new Set<string>();
   // 고른 이름 바꾸기(2026-11-03) — 줄의 `···` 이름 바꾸기가 목록의 제목을 갈아 낀다.
   const convTitles = new Map<string, string>();
+  // 초안 방송(2026-11-12) — 발행 · 고치기가 초안을 바꾸면 진짜 데몬처럼 `draft.changed` 를 흘린다.
+  // 이것이 없으면 목록의 `초안` 점이 발행 뒤에도 예전 요약을 보고 서 있었다.
+  const draftWatchers = new Set<(message: { type: string }) => void>();
+  const emitDraft = () => {
+    for (const watcher of draftWatchers) watcher({ type: "draft.changed" });
+  };
 
   /** 열쇠의 초안 — 문서 초안은 처음 열리면 견본을 만들고, 만들어진 적 없는 새 문서 초안은 없다. */
   const openDraft = (key: string): DraftView | null => {
@@ -828,18 +834,33 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
     return { commandId, op, state: "applied", pageId: null, detail: "" };
   };
 
+  let screenReadAttempt = 0;
+  let conversationReadAttempt = 0;
   const draftApi = {
     // 초안 목록 — 고치는 중 하나와 결과를 못 받은 하나(2026-10-23 · 최종 구현 계획 F2).
     draftList: () =>
       later(120, [
+        ...(id === "many-drafts"
+          ? Array.from({ length: 8 }, (_, index) => ({
+              docKey: `n-fixture-${index}`,
+              pageId: null,
+              title: `새 초안 ${index + 1}`,
+              revision: 1,
+              state: "editing" as const,
+              changedBlocks: 0,
+              baseVersion: null,
+              observedVersion: null,
+              updatedAt: ago(index),
+            }))
+          : []),
         {
           docKey: "p-2001",
           pageId: "2001",
           title: "[정책서] 주문 접수 v0.8",
           revision: 3,
-          state: "editing",
-          changedBlocks: 2,
-          baseVersion: 7,
+          // 발행이 끝나면 데몬처럼 바뀐 곳이 0 이 된다(2026-11-12 — B3/B4 확인을 위해 견본이 실제와 같은 결로).
+          changedBlocks: draft?.docKey === "p-2001" && draft.state === "published" ? 0 : 2,
+          state: (draft?.docKey === "p-2001" ? draft.state : "editing") as DraftSummary["state"],
           observedVersion: null,
           updatedAt: ago(2),
         },
@@ -1086,39 +1107,41 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
     // 기획 대화 목록 · 판 고르기 · 되돌리기(2026-10-31 2·3단계) — 견본의 가짜 데몬이 같은 모양으로 답한다.
     // 지운 대화는 목록에서 거둔다(2026-11-03) — 줄의 `···` 지우기가 실제로 사라지는 것을 눈으로 본다.
     draftThreads: () =>
-      later(
-        150,
-        [
-          {
-            threadId: "t-1",
-            title: convTitles.get("t-1") ?? "배정 실패 때의 예외를 정책에 더해 줘...",
-            docKey: draftKey ?? "p-2001",
-            docTitle: "[정책서] 주문 접수 v0.8",
-            at: ago(5),
-            messageCount: 2,
-            running: false,
-          },
-          {
-            threadId: "t-2",
-            title: convTitles.get("t-2") ?? "노쇼 규칙을 정리해 줘",
-            docKey: "p-3001",
-            docTitle: "[기능설계서] 주문 목록 · 검색 v0.8",
-            at: ago(30),
-            messageCount: 4,
-            running: false,
-          },
-          {
-            // 같은 문서의 옛 대화(2026-11-03) — 줄을 누르면 그 대화가 판에 다시 서는 것을 눈으로 본다.
-            threadId: "t-3",
-            title: convTitles.get("t-3") ?? "반품 창고 규칙을 6절에 정리해 줘.",
-            docKey: "p-2001",
-            docTitle: "[정책서] 주문 접수 v0.8",
-            at: ago(40),
-            messageCount: 2,
-            running: false,
-          },
-        ].filter((one) => !goneConvs.has(one.threadId)),
-      ),
+      id === "conversations-failed" && conversationReadAttempt++ < 2
+        ? failLater(150)
+        : later(
+            150,
+            [
+              {
+                threadId: "t-1",
+                title: convTitles.get("t-1") ?? "배정 실패 때의 예외를 정책에 더해 줘...",
+                docKey: draftKey ?? "p-2001",
+                docTitle: "[정책서] 주문 접수 v0.8",
+                at: ago(5),
+                messageCount: 2,
+                running: false,
+              },
+              {
+                threadId: "t-2",
+                title: convTitles.get("t-2") ?? "노쇼 규칙을 정리해 줘",
+                docKey: "p-3001",
+                docTitle: "[기능설계서] 주문 목록 · 검색 v0.8",
+                at: ago(30),
+                messageCount: 4,
+                running: false,
+              },
+              {
+                // 같은 문서의 옛 대화(2026-11-03) — 줄을 누르면 그 대화가 판에 다시 서는 것을 눈으로 본다.
+                threadId: "t-3",
+                title: convTitles.get("t-3") ?? "반품 창고 규칙을 6절에 정리해 줘.",
+                docKey: "p-2001",
+                docTitle: "[정책서] 주문 접수 v0.8",
+                at: ago(40),
+                messageCount: 2,
+                running: false,
+              },
+            ].filter((one) => !goneConvs.has(one.threadId)),
+          ),
     draftThreadMove: () => {
       log("대화 옮기기");
       return later(150, {
@@ -1260,7 +1283,15 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
           ? { ...view, state: "editing", pendingCommandId: null }
           : unknown
             ? { ...view, state: "result-unknown", pendingCommandId: commandId }
-            : { ...view, state: "published", pendingCommandId: null };
+            : {
+                ...view,
+                // 데몬은 발행이 끝나면 블록의 지문을 새 본문으로 갈아 모두 `same` 이 된다(2026-11-12 — 견본이 같은 결로).
+                blocks: view.blocks.map((block) => ({ ...block, status: "same" as const })),
+                state: "published",
+                pendingCommandId: null,
+              };
+      // 발행이 끝나면 데몬처럼 초안이 바뀌었다고 알린다 — 목록의 `초안` 점과 사이드바 수가 새 요약을 읽는다(2026-11-12 B3).
+      emitDraft();
       return later(900, {
         commandId,
         docKey,
@@ -1281,6 +1312,7 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
       log("발행 결과 다시 확인");
       const view = draft;
       if (view !== null) draft = { ...view, state: "published", pendingCommandId: null };
+      emitDraft();
       return later(600, {
         commandId,
         docKey: view?.docKey ?? "p-2001",
@@ -1365,10 +1397,17 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
   const api = {
     ...draftApi,
     // 읽는 문서 곁의 `이 문서의 화면`(2026-10-30)이 읽는다 — 견본은 이어진 화면 하나를 보인다.
-    mapRead: () =>
-      later(120, {
-        links: [{ pageId: "1006", route: "/signup", section: null }],
+    mapRead: () => {
+      if (id === "screens-partial" && screenReadAttempt++ === 0) return failLater(120);
+      return later(120, {
+        links: [{ pageId: "1000", route: "/signup", section: null }],
         screens: [{ route: "/signup", title: "회원가입" }],
+      });
+    },
+    draftSyncScreens: () =>
+      later(180, {
+        screens:
+          id === "screens-partial" ? [{ route: "/orders", title: "주문 목록", at: ago(3) }] : [],
       }),
     mapWrite: () => later(120, []),
     docList: () => {
@@ -1626,7 +1665,14 @@ export function daemonFor(id: string, log: (line: string) => void): Daemon {
       });
     },
   };
-  return { api, connection: "open", onDraftEvent: () => () => {} } as unknown as Daemon;
+  return {
+    api,
+    connection: "open",
+    onDraftEvent: (watcher: (message: { type: string }) => void) => {
+      draftWatchers.add(watcher);
+      return () => draftWatchers.delete(watcher);
+    },
+  } as unknown as Daemon;
 }
 
 /** 라벨 견본 — 더하기 · 빼기가 바꾼다(2026-10-30). */
@@ -1858,6 +1904,19 @@ function MismatchChatFrame({ id }: { id: string }) {
   } as unknown as ShellNav;
   const thread = useDraftThread(daemon, "p-2001", null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // 입력창의 자리를 대신 선다(2026-11-12 B6 확인) — 진짜 셸은 작업 독의 입력창(Composer)이
+  // `nx:composer:attach` 를 받아 비었으면 보내고(detail.sent = true) 채운다. 견본은 비었다고 치고
+  // 받았다고만 알려 카드의 `보낸` 줄을 눈으로 본다.
+  useEffect(() => {
+    const onAttach = (event: Event) => {
+      const detail = (event as CustomEvent<{ send?: boolean; sent?: boolean }>).detail;
+      event.preventDefault();
+      if (detail) detail.sent = detail.send === true;
+      setLine("입력창이 받음(보냄으로 침)");
+    };
+    window.addEventListener("nx:composer:attach", onAttach);
+    return () => window.removeEventListener("nx:composer:attach", onAttach);
+  }, []);
   return (
     <div id={`fixture-${id}`} style={{ width: FRAME_W }}>
       <div style={{ font: "12px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}>

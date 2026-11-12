@@ -321,7 +321,7 @@ export function DocComments({
         </p>
       )}
       {anchorFail !== null && (
-        <p className="nx-dc-anchor-fail" role="note">
+        <p className="nx-dc-anchor-fail" role="alert">
           {anchorFail}
         </p>
       )}

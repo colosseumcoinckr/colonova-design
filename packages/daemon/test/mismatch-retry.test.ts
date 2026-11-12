@@ -166,6 +166,7 @@ function rig(impl: AiImpl, settings: Record<string, string> = {}): Rig {
     broadcast: (message) => messages.push(message),
     logger,
     ai: runner,
+    importNow: async () => ({ imported: 0, skipped: 0, capped: false }),
     publisher: {
       async publish() {
         throw new Error("발행은 이 시험에서 안 돈다");

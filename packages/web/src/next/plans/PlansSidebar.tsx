@@ -219,7 +219,10 @@ export function PlansSidebar({
             aria-current={on ? "true" : undefined}
             data-thread={conv.threadId}
             onClick={() => {
-              if (conv.docKey === null) return;
+              if (conv.docKey === null) {
+                nav.toast(L.drafts.convMissingDoc);
+                return;
+              }
               // 골른 대화로 다시 열기(2026-11-03) — 문서를 열고 그 대화를 골라 판이 문서의
               // 최신 대화 대신 이 대화를 읽게 한다. 옛 대화를 다시 볼 · 이어 말할 길이다.
               plans.openDraftKey(conv.docKey);
@@ -413,7 +416,25 @@ export function PlansSidebar({
               {L.drafts.convNew}
             </button>
           </div>
-          {conversations === null ? null : conversations.length === 0 ? (
+          {plans.conversationsFailed && (
+            <div className="nx-pl-conv-none" role="alert">
+              <p>{L.drafts.convLoadFailed}</p>
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                onClick={plans.refreshConversations}
+              >
+                {L.plans.retry}
+              </button>
+            </div>
+          )}
+          {conversations === null ? (
+            !plans.conversationsFailed && (
+              <p className="nx-pl-conv-none" role="status">
+                {L.plans.reading}
+              </p>
+            )
+          ) : conversations.length === 0 ? (
             <p className="nx-pl-conv-none">{L.drafts.convNone}</p>
           ) : (
             <div className="nx-pl-conv-list" ref={convListRef}>
@@ -445,8 +466,8 @@ export function PlansSidebar({
         collapsed={plans.collapsed}
         onToggle={plans.toggle}
         lastViewed={plans.selectedPageId}
-        onOpen={(id) => {
-          plans.open(id);
+        onOpen={(id, query) => {
+          plans.open(id, query);
           onOpen?.();
         }}
         onOpenDraft={(key) => {
@@ -455,7 +476,7 @@ export function PlansSidebar({
         }}
         onRetry={plans.refreshList}
         onImport={plans.importNow}
-        onSettings={nav.openSettings}
+        onSettings={() => nav.openSettings("connection")}
         hidden={hidden}
         activeDraftKey={plans.draftKey}
         focusId={plans.focusId}
@@ -475,7 +496,7 @@ export function PlansSidebar({
             <button
               type="button"
               className="nx-btn nx-btn--sm nx-banner-act"
-              onClick={nav.openSettings}
+              onClick={() => nav.openSettings("connection")}
             >
               {L.plans.openSettings}
             </button>

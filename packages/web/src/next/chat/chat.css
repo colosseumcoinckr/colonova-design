@@ -3286,32 +3286,47 @@ html[data-theme="claude-dark"] .nx .nx-model-pop .nx-mseg {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  padding: 10px 14px 8px;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
   border-bottom: 1px solid var(--line);
   font-size: var(--fs-ui);
 }
 
 .nx-plantab-readonly {
+  margin: 0;
   font-size: var(--fs-cap);
   color: var(--ink3);
 }
 
-.nx-plantab-list {
+/* 세 출처는 높이를 나눠 갖지 않고 하나의 읽는 영역에서 이어진다. */
+.nx-plantab-scroll {
   flex: 1;
+  min-height: 0;
   overflow: auto;
+  padding: var(--sp-3) var(--sp-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.nx-plantab-scroll > * {
+  flex-shrink: 0;
+}
+
+.nx-plantab-list {
   margin: 0;
-  padding: 8px 10px;
+  padding: var(--sp-2) var(--sp-0_5);
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0_5);
 }
 
 .nx-plantab-row {
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--sp-0_5);
   min-width: 0;
 }
 
@@ -3319,10 +3334,10 @@ html[data-theme="claude-dark"] .nx .nx-model-pop .nx-mseg {
   flex: 1 1 auto;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--sp-2);
   min-width: 0;
-  min-height: 32px;
-  padding: 0 8px;
+  min-height: var(--h-row);
+  padding: 0 var(--sp-2);
   border: 0;
   border-radius: var(--r);
   background: none;
@@ -3335,7 +3350,7 @@ html[data-theme="claude-dark"] .nx .nx-model-pop .nx-mseg {
   background: var(--nx-hover);
 }
 
-/* biome-ignore lint/style/noDescendingSpecificity: 기획서 탭 줄의 그림 — 띠 칩 · 독의 그림 규칙과 같은 두께다(S10). */
+/* biome-ignore lint/style/noDescendingSpecificity: 기획서 탭 줄의 그림은 다른 칸과 같은 두께다. */
 .nx-plantab-open .nx-i {
   color: var(--ink3);
   flex: none;
@@ -3348,38 +3363,51 @@ html[data-theme="claude-dark"] .nx .nx-model-pop .nx-mseg {
 }
 
 .nx-plantab-sec {
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--fs-cap);
   color: var(--ink3);
 }
 
 .nx-plantab-meta {
   flex: none;
-  padding: 8px 14px 6px;
+  padding: var(--sp-2) var(--sp-4) var(--sp-1_5);
   font-size: var(--fs-cap);
   color: var(--ink3);
+  overflow-wrap: anywhere;
+}
+
+.nx-plantab-meta h3 {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-ui);
+  color: var(--ink);
+}
+
+.nx-plantab-meta p {
+  margin: var(--sp-1) 0;
 }
 
 .nx-plantab-body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 4px 16px 24px;
+  padding: var(--sp-1) var(--sp-4) var(--sp-6);
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
 }
 
 .nx-plantab-empty {
-  flex: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 10px;
-  margin: 24px 16px;
+  margin: var(--sp-6) var(--sp-4);
   color: var(--ink2);
 }
 
 .nx-plantab-loading {
   flex: 1;
-  margin: 12px;
+  min-height: var(--h-lg);
+  margin: var(--sp-3);
   border-radius: var(--r-lg);
   background: linear-gradient(90deg, var(--panel-3) 25%, var(--panel-2) 45%, var(--panel-3) 65%);
   background-size: 200% 100%;
@@ -3557,7 +3585,7 @@ html[data-theme="claude-dark"] .nx .nx-model-pop .nx-mseg {
   margin: 0;
   padding: var(--sp-1) var(--sp-1_5) 0;
   font-size: var(--fs-cap);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
   color: var(--ink3);
 }
 

@@ -672,6 +672,9 @@ export class ProjectFleet {
         defaults: this.deps.registry.get(workspaces.slug)?.defaults,
         // 사본 폴더를 화면 세션과 함께 연다 — 없으면 빈 배열이라 auto-thread 가 뺀다(2026-10-23 · 기획서 사본 이동 계획 §6).
         additionalDirectories: screenSessionDirs(workspaces.paths.root),
+        // 기획 작업 저장소는 가드의 거절 뿌리로 실린다 — 자동 대화도 같은 보호를 받는다
+        // (2026-11-11 감독자 채택 — GLM 교차검토의 누락 지적).
+        planRoots: [join(workspaces.paths.root, "plans")],
       })
       .catch((error: unknown) => {
         this.deps.logger.warn("[cycle] 자동 대화를 열지 못했습니다", {

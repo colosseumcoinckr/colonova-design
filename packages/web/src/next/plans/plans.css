@@ -795,8 +795,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nx-pl-conv-t .nx-i,
-.nx-pl-conv-t svg {
+.nx-pl-conv-t :where(.nx-i, svg) {
   flex: none;
 }
 .nx-pl-conv-m {
@@ -815,14 +814,12 @@
   opacity: 0;
   pointer-events: none;
 }
-.nx-pl-conv-row:hover .nx-pl-conv-menu,
 .nx-pl-conv-row--menu .nx-pl-conv-menu,
 .nx-pl-conv-row:has(:focus-visible) .nx-pl-conv-menu {
   opacity: 1;
   pointer-events: auto;
 }
 /* `···` 가 선 동안 제목 · 문서 줄의 오른쪽 끝은 옅어져 자리를 내준다 — 줄바꿈 없이 잘리며 출렁이지 않게. */
-.nx-pl-conv-row:hover .nx-pl-conv-btn,
 .nx-pl-conv-row--menu .nx-pl-conv-btn,
 .nx-pl-conv-row:has(:focus-visible) .nx-pl-conv-btn {
   mask-image: linear-gradient(to right, black calc(100% - 40px), transparent calc(100% - 20px));
@@ -846,6 +843,7 @@
 }
 .nx-pl-doc-acts {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--sp-2);
   margin-top: var(--sp-2);
@@ -856,27 +854,6 @@
 }
 
 /* 판 바닥의 두 줄 단추(§C)와 서랍(§D). */
-.nx-pl-foot {
-  display: flex;
-  flex: none;
-  gap: var(--sp-2);
-  padding: var(--sp-3) var(--sp-8);
-  border-top: 1px solid var(--line);
-}
-.nx-pl-footbtn {
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--ink2);
-  font-size: var(--fs-ui);
-  cursor: pointer;
-}
-.nx-pl-footbtn--on,
-.nx-pl-footbtn:hover {
-  color: var(--ink);
-  border-color: var(--ink3);
-}
 .nx-pl-drawer {
   position: absolute;
   inset: 0 0 0 40%;
@@ -987,4 +964,32 @@
   font-size: var(--fs-cap);
   font-weight: 600;
   color: var(--ink3);
+}
+
+/* 문서의 부가 기능은 긴 본문을 읽기 전에도 보인다(2026-11-12 UX 검토). */
+.nx-pl-doc-drawers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.nx-pl-body [data-search-hit] {
+  background: var(--accent-soft);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nx .nx-pl-doc-drawers .nx-btn[aria-expanded="true"] {
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--ink3);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nx-pl-conv-row:hover .nx-pl-conv-menu {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .nx-pl-conv-row:hover .nx-pl-conv-btn {
+    mask-image: linear-gradient(to right, black calc(100% - 40px), transparent calc(100% - 20px));
+  }
 }

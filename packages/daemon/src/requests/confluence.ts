@@ -120,6 +120,15 @@ async function confluenceConnect(
   );
   // 다시 연결이 서면 만료는 내려앉는다 — 루프가 다시 달린다.
   deps.confluence.clearExpired(slug);
+  // 실제로 쓰이는 뿌리가 정해져 있으면 곧바로 가져오기를 건다(2026-11-12 비개발자 사용성 토론 ·
+  // 보완 1) — 빈 목록을 안고 10분을 기다리지 않게. 뿌리와 함께 처음 연결한 경우와 토큰 만료 뒤
+  // 자격만 다시 넣는 재연결(뿌리는 이미 저장돼 있다), 저장된 자격으로 뿌리만 바꾼 연결 모두 여기
+  // 든다. 기다리지 않는다(연결 응답은 바로 돌아간다) — 도는 바퀴에 합류하는 importNow 의 길이고,
+  // 만료 · 실패의 기록은 바퀴 안의 갈림길이 그대로 남긴다. 뿌리가 정말 없으면 걸지 않는다 —
+  // 가져올 범위가 아직 없다.
+  if ((message.rootPageId ?? previousRootId ?? "") !== "") {
+    void deps.confluence.importNow(slug).catch(() => undefined);
+  }
   return { site, rootTitle };
 }
 

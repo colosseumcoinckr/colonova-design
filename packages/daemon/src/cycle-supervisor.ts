@@ -153,6 +153,8 @@ const NOTICE_TEXT: Record<string, string> = {
   "push:permission": "연결 코드의 권한이 모자라 보관한 작업을 올리지 못하고 있습니다",
   "submit:permission": "연결 코드의 권한이 모자라 제출이 막혀 있습니다",
   "conflict:stuck": "충돌 정리가 두 번 안내해도 끝나지 않았습니다",
+  "save:commit": "보관이 이 컴퓨터 · 계정의 문제로 멈춰 있습니다",
+  "save:push": "보관한 작업이 같은 거절로 올라가지 못하고 있습니다",
   "submit:commit": "제출이 보관 단계에서 멈춰 있습니다",
   "submit:pr": "제출이 요청 열기 단계에서 멈춰 있습니다",
   "base-missing":

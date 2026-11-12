@@ -28,7 +28,7 @@ import { useDraftSummaries } from "./plans/use-draft-summaries";
 import { PreviewColumn } from "./preview/PreviewColumn";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { Sidebar } from "./sidebar/Sidebar";
-import type { SlotProps } from "./slots";
+import type { SettingsPage, SlotProps } from "./slots";
 import { ProblemLine } from "./status/ProblemLine";
 import { StatusLine } from "./status/StatusLine";
 import { useWorkLedger } from "./status/use-work-ledger";
@@ -88,12 +88,13 @@ export function Workspace({
   const pins = usePins(daemon.activeSlug, daemon.api);
   const narrow = useNarrow();
   // 설정 대화상자(단계 6) — 사이드바 바퀴 · ⌘, · 팔레트가 같은 문으로 연다.
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<SettingsPage | "default" | null>(null);
   // 설정도 기능 제안처럼 좁은 창의 서랍 위에 겹치지 않게 서랍을 먼저 닫는다(⌘, · 팔레트 · 바퀴 모두 —
-  // 2026-10-06 겹판 조사: 서랍이 설정 뒤에 열려 있었다).
-  const openSettings = () => {
+  // 2026-10-06 겹판 조사: 서랍이 설정 뒤에 열려 있었다). `page` 가 오면 그 쪽이 먼저 선다(2026-11-12 —
+  // 기획서 자리의 연결 단추는 `연결` 쪽으로).
+  const openSettings = (page?: SettingsPage) => {
     if (narrow) setDrawer(false);
-    setSettingsOpen(true);
+    setSettingsPage(page ?? "default");
   };
   // 기능 제안(PLAN-FEEDBACK) — 좁은 창의 서랍 위에 겹치지 않게 서랍을 먼저 닫는다.
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -121,7 +122,7 @@ export function Workspace({
     focusMenuButton();
   }, [focusMenuButton]);
   const closeSettings = useCallback(() => {
-    setSettingsOpen(false);
+    setSettingsPage(null);
     focusMenuButton();
   }, [focusMenuButton]);
   const { state, nav, toast, dismissToast, setCollapsed, setDrawer } = useShellNav({
@@ -365,6 +366,17 @@ export function Workspace({
 
   /** 지금 화면의 제목 — 미리보기 칸이 알린다(단계 3). 좁은 창의 탭이 읽는다. */
   const [screenName, setScreenName] = useState<string | null>(null);
+  const [chatScreen, setChatScreen] = useState<{ slug: string | null; name: string | null }>({
+    slug: null,
+    name: null,
+  });
+  const reportScreenName = useCallback(
+    (name: string | null) => {
+      setScreenName(name);
+      setChatScreen({ slug: project?.slug ?? null, name });
+    },
+    [project?.slug],
+  );
   /** 지금 화면의 주소 — 오른쪽 칸의 기획서 탭이 이 화면에 이어진 문서를 가른다(S10). */
   const [screenRoute, setScreenRoute] = useState<string | null>(null);
 
@@ -454,6 +466,7 @@ export function Workspace({
           sessions={sessions}
           activeSessionId={activeId}
           plansOn={plansOn}
+          chatShown={!chatHidden}
           running={running}
           plansContent={
             plansMounted ? (
@@ -600,7 +613,7 @@ export function Workspace({
             >
               <PreviewColumn
                 {...slot}
-                onScreenName={setScreenName}
+                onScreenName={reportScreenName}
                 onScreenRoute={setScreenRoute}
                 offstage={(narrow && state.tab === "chat") || state.pane !== "preview"}
               />
@@ -654,6 +667,9 @@ export function Workspace({
                   pane="preview"
                   rightTab={state.rightTab}
                   screenRoute={screenRoute}
+                  screenName={
+                    project !== null && chatScreen.slug === project.slug ? chatScreen.name : null
+                  }
                   sheetOn={narrow && !paneOn && state.tab === "preview"}
                 />
               </div>
@@ -672,12 +688,13 @@ export function Workspace({
           </div>
         </main>
         <Toast toast={toast} onDone={dismissToast} />
-        {settingsOpen && (
+        {settingsPage !== null && (
           <SettingsDialog
             daemon={daemon}
             settings={settings}
             onChatChange={onChatChange}
             onSettingsChange={onSettingsChange}
+            initialPage={settingsPage === "default" ? undefined : settingsPage}
             onClose={closeSettings}
           />
         )}

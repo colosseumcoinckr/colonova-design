@@ -285,7 +285,10 @@ export function PublishDialog({
                   preview.changes.changed,
                   preview.changes.inserted,
                   preview.changes.deleted,
-                ) || L.drafts.blocker["nothing-to-publish"]}
+                ) ||
+                  (preview.kind === "update" && preview.titleChanged
+                    ? L.drafts.changeTitleOnly
+                    : L.drafts.blocker["nothing-to-publish"])}
               </p>
             </section>
             {review !== null && (

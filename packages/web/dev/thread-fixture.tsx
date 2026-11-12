@@ -1193,7 +1193,6 @@ const nav = {
   openPlans: () => calls.push("openPlans"),
   toast: (text: string) => calls.push(`toast:${text}`),
 } as unknown as ShellNav;
-/** 칩이 읽는 이번 작업의 화면 — 가짜 데몬의 `repo.cycleScreens` 가 대신 선다. */
 const emptyPins = {
   list: [],
   ghosts: [],
@@ -1206,7 +1205,7 @@ const emptyPins = {
 } as unknown as Pins;
 const emptyDaemon = mockDaemon();
 
-/** `?scene=empty` — 새 대화의 빈 자리를 진짜 ChatColumn 으로 그린다. 탭 누름은 state 로 옮긴다. */
+/** `?scene=empty&name=로그인` — 새 대화의 빈 자리를 진짜 ChatColumn 으로 그린다. 탭 누름은 state 로 옮긴다. */
 function EmptyFixture() {
   const [rightTab, setRightTab] = useState(INITIAL_RTAB);
   const rtabNav = {
@@ -1255,6 +1254,7 @@ function EmptyFixture() {
           nav={rtabNav}
           narrow={false}
           rightTab={rightTab}
+          screenName={query.get("name")}
           onChatChange={() => undefined}
           onRenameSession={() => undefined}
         />

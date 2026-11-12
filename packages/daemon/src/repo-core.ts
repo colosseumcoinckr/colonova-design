@@ -106,6 +106,20 @@ export const GATE_BRIEF: Record<"commit" | "push" | "pr", string> = {
 };
 
 /**
+ * 저장 · 넘기기 게이트가 개발자 알림으로 올리는 문제 키 — `save:` 는 보관 단계
+ * (`save:commit` 은 AI 가 고칠 수 없는 원인 · 같은 실패의 반복, `save:push` 는 같은 올리기
+ * 실패의 반복), `push:` · `submit:` 은 올리기 · 제출 단계다(2026-11-12 기획자 체험).
+ */
+export type GateNoticeKey =
+  | "save:commit"
+  | "save:push"
+  | "push:behind"
+  | "push:auth"
+  | "push:permission"
+  | "submit:permission"
+  | "submit:pr";
+
+/**
  * The same five failures, named for the button the planner pressed rather than
  * for the step that ran. This is what the transcript CARD says (PLAN D9); the
  * brief above is what the agent reads, command output and all.
@@ -330,15 +344,12 @@ export interface RepoWorkspaceOptions {
    * 개발자 알림 (PLAN L11) — 저장·넘기기의 인증·권한 게이트가 문제 키와
    * 함께 여기를 부른다. fleet 의 DeveloperNotice 로 이어진다.
    */
-  notice?: (
-    key: "push:auth" | "push:permission" | "submit:permission" | "submit:pr",
-    detail: string,
-  ) => void;
+  notice?: (key: GateNoticeKey, detail: string) => void;
   /**
-   * 서 있던 개발자 알림을 거둔다 (PLAN L11) — 넘기기 성공이 `submit:pr` 을
-   * 푸는 한 길이다. fleet 의 DeveloperNotice.resolve 로 이어진다.
+   * 서 있던 개발자 알림을 거둔다 (PLAN L11) — 넘기기 성공이 `submit:pr` 을,
+   * 보관 성공이 `save:commit` 을 푸는 길이다. fleet 의 DeveloperNotice.resolve 로 이어진다.
    */
-  resolveNotice?: (key: "submit:pr") => void;
+  resolveNotice?: (key: "submit:pr" | "save:commit") => void;
   /**
    * 한마디 더(U20 · PLAN-UI §10) — 영수증의 상자가 보낸 말의 흔적을 제출
    * 기록에 남기는 손잡이. fleet 이 감독자의 원장(cycle.json 의 submitTrail)으로

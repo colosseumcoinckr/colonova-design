@@ -6,8 +6,9 @@ import { L } from "../src/next/labels.ts";
 import {
   blockHead,
   opSummary,
-  parseRefSections,
   refChoices,
+  refSectionOptions,
+  toggleRefSection,
 } from "../src/next/plans/draft/thread-model.ts";
 import { planRows } from "../src/next/plans/plans-list.ts";
 
@@ -142,22 +143,40 @@ test("근거 후보 — 문서 줄만 후보가 되고 폴더 · Confluence 전�
   assert.deepEqual(refChoices(rows, "없는 말"), []);
 });
 
-test("절 이름 나누기 — 쉼표로 나누고 빈 조각은 빼며, 빈 글은 문서 전체다", () => {
-  assert.deepEqual(parseRefSections("배경, 목표"), { sections: ["배경", "목표"] });
-  assert.deepEqual(parseRefSections(" 배경 ,,목표 "), { sections: ["배경", "목표"] });
-  assert.deepEqual(parseRefSections(""), { sections: [] });
-  assert.deepEqual(parseRefSections(" , ,"), { sections: [] });
+test("절 체크목록의 머리말 — 빈 머리 · 200자보다 긴 머리는 빼고 같은 머리는 한 번만 남는다", () => {
+  const long = "가".repeat(201);
+  assert.deepEqual(
+    refSectionOptions([
+      { heading: "배경" },
+      { heading: " " },
+      { heading: long },
+      { heading: "배경" },
+      { heading: "목표" },
+    ]),
+    ["배경", "목표"],
+  );
 });
 
-test("절 이름의 한계 — 절 20개 · 이름 200자를 넘으면 목록 대신 이유를 돌려준다", () => {
-  const twenty = Array.from({ length: 21 }, (_, at) => `절${at + 1}`);
-  assert.deepEqual(parseRefSections(twenty.join(",")), { error: L.drafts.limitSectionCount });
-  // 스무 개까지는 목록이다.
-  assert.deepEqual(parseRefSections(twenty.slice(0, 20).join(",")).sections.length, 20);
-  const long = "가".repeat(201);
-  assert.deepEqual(parseRefSections(`배경, ${long}`), { error: L.drafts.limitSectionLength });
-  // 이백 자까지는 목록이다.
-  assert.deepEqual(parseRefSections("가".repeat(200)).sections, ["가".repeat(200)]);
+test("절 체크목록 한 걸음 — 문서의 머리말 순서를 지키고 다시 누르면 뺀다", () => {
+  const headings = ["배경", "목표", "규칙"];
+  assert.deepEqual(toggleRefSection(headings, [], "목표"), { sections: ["목표"] });
+  assert.deepEqual(toggleRefSection(headings, ["목표"], "배경"), {
+    sections: ["배경", "목표"],
+  });
+  assert.deepEqual(toggleRefSection(headings, ["배경", "목표"], "목표"), {
+    sections: ["배경"],
+  });
+});
+
+test("절 체크목록의 한계 — 절 20개를 넘으면 목록 대신 이유를 돌려준다", () => {
+  const headings = Array.from({ length: 21 }, (_, at) => `절${at + 1}`);
+  assert.deepEqual(toggleRefSection(headings, headings.slice(0, 20), "절21"), {
+    error: L.drafts.limitSectionCount,
+  });
+  // 스무 개까지는 문서 순서 그대로 늘어난다.
+  assert.deepEqual(toggleRefSection(headings, headings.slice(0, 19), "절20"), {
+    sections: headings.slice(0, 20),
+  });
 });
 
 test("새 기획 대화 문장이 모두 살아 있다", () => {
@@ -177,7 +196,10 @@ test("새 기획 대화 문장이 모두 살아 있다", () => {
   assert.equal(L.drafts.undoDone(1, 1), "1곳을 되돌렸어요 — 1곳은 직접 고친 채 남았어요");
   assert.equal(L.drafts.reask, "다시 요청");
   assert.equal(L.drafts.reaskPrompt, "앞 변경안을 다시 써 줘");
-  assert.equal(L.drafts.opStale, "초안이 바뀌어 오래된 걸음이에요");
+  assert.equal(
+    L.drafts.opStale,
+    "초안이 바뀌어 이 고침은 더 이상 맞지 않아요 — 다시 부탁하면 바뀐 초안에 맞게 다시 써 줘요",
+  );
   assert.equal(L.drafts.readBy(2), "AI 가 문서 2개를 읽었어요");
   assert.equal(L.drafts.addRef, "근거 더하기");
   assert.equal(L.drafts.startWithAi, "AI 와 시작하기");

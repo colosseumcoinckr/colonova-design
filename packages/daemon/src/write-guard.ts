@@ -10,7 +10,14 @@
  * 1. 파일 쓰기 도구(Write · Edit · MultiEdit · NotebookEdit)는 세션의 클론과 임시 폴더 안만 고친다.
  *    기획서 사본 뿌리(`mirrorRoots` — 화면 세션에 함께 열린 Confluence 사본)도 밖이지만, 안을 가리킨
  *    때는 거절 이유만 기획서 말로 바꾼다 — AI 가 사본 파일을 보고 고치려 들기 때문이다(2026-10-23 ·
- *    기획서 사본 이동 계획 §6). 셸 도구의 쓰기는 사본 뿌리를 이유로 보지 않는다 — 공통 규칙의 한 구절이 그 몫이다.
+ *    기획 작업 저장소(`planRoots` — 프로젝트 데이터의 plans/: 초안 · 판 스냅숏 · 변경안 · 대화 · 기록)는
+ *    화면 세션에 붙지 않는 앱의 내부 상태다 — AI 가 셸이든 파일 도구든 직접 고치면 같이 고치기의
+ *    판정 → 카드 → 사람이 누른다 는 흐름이 우회된다(2026-11-11 실사용 재현 — 화면 AI 가 python heredoc
+ *    으로 초안과 판 파일을 직접 썼다). 쓰기는 어느 모양이든 거절이고, 셸에서는 경로를 짚는 실행
+ *    (명령어 · cd 이동 · 리다이렉션 · 스크립트 호출)도 같은 이유로 거절한다 — 읽기라도 그 폴더는 화면
+ *    AI 의 몫이 아니다(2026-11-11 감독자 채택 · 실사용 재현). 판정은 완벽한 샌드박스가 아니다 — 명시적으로 그 뿌리를
+ *    겨누는 흔한 형태(절대 경로 · 상대 경로 · `cd` 뒤 상대 경로 · 스크립트 안의 뿌리 글자 · Path.home
+ *    · $HOME 전개 후)를 좁게 본다.
  *    경로는 풀어서 본다 — 상대 경로는 클론 기준, `..` · `~` · 심볼릭 링크(끊어진 링크 — 아직 없는 파일을
  *    가리키는 링크 — 는 대상을 따라간다, paths.ts) · 아직 없는 파일 ·
  *    Windows 의 드라이브 문자와 대소문자 · 유니코드 정규화(한글 폴더 이름)까지.
@@ -60,6 +67,14 @@ export const OUTSIDE_WRITE_REFUSAL =
 export const PLANS_WRITE_REFUSAL =
   "가져온 기획서는 읽기만 해요 — 기획서는 기획서 칸의 초안이나 Confluence 에서 고쳐 주세요.";
 
+/**
+ * 파일 쓰기 도구 · 셸 도구가 기획 작업 저장소(plans/)를 겨눌 때 AI 가 읽는 한 문장(2026-11-11) —
+ * 앱이 쓰는 초안 · 판 스냅숏 · 변경안 저장 영역이라 화면 AI 가 직접 고치면 반영 게이트(판정 → 카드 →
+ * 사람의 `고치기`)를 우회한다. 기획서는 대화에서 다루거나 같이 고치기 카드로 보낸다. 사용자 어휘만 쓴다.
+ */
+export const PLANS_STATE_REFUSAL =
+  "앱이 관리하는 기획 초안 저장 영역은 어떤 도구로도 직접 바꾸지 않아요 — 기획서는 이 대화에서 같이 고치기 판정으로 다루고, 반영은 사람의 `고치기` 가 정합니다.";
+
 /** Bash 의 뻔한 파괴(sudo · 클론 밖 삭제/권한/덮어쓰기)에 읽는 한 문장. */
 export const OUTSIDE_COMMAND_REFUSAL =
   "관리자 권한이나 이 프로젝트 폴더 밖을 건드리는 명령은 실행하지 않아요 — 프로젝트 안의 파일만 고쳐 주세요.";
@@ -103,6 +118,12 @@ export interface WriteScope {
    * 사본 자리도 보통 클론 밖이다.
    */
   mirrorRoots?: readonly string[];
+  /**
+   * 앱의 기획 작업 저장소 뿌리(절대 경로, `<프로젝트>/plans`) — 쓰기와 셸의 경로 짚기를
+   * `PLANS_STATE_REFUSAL` 로 거절한다(2026-11-11 — 화면 AI 가 python heredoc 으로 초안을
+   * 직접 쓴 실사용 재현). 생략하면 보통 클론 밖 규칙(파일 쓰기 도구만 거절)이 적용된다.
+   */
+  planRoots?: readonly string[];
   /** 경로의 모양과 대소문자 규칙 — 생략하면 이 컴퓨터. */
   platform?: Platform;
   /** `~` 의 자리 — 생략하면 홈 폴더. */
@@ -131,6 +152,8 @@ interface Ctx {
   roots: string[];
   /** 거절 이유만 바꾸는 기획서 사본 뿌리 — 각 뿌리와 그 realpath. 모두 절대 경로. */
   mirrors: string[];
+  /** 어떤 도구로도 건드리면 안 되는 앱의 기획 작업 저장소 뿌리 — 각 뿌리와 그 realpath. 모두 절대 경로. */
+  plans: string[];
 }
 
 function pathApi(platform: Platform): path.PlatformPath {
@@ -190,6 +213,13 @@ function context(scope: WriteScope): Ctx {
       if (!mirrors.includes(candidate)) mirrors.push(candidate);
     }
   }
+  const plans: string[] = [];
+  for (const root of scope.planRoots ?? []) {
+    const absolute = api.resolve(root);
+    for (const candidate of [absolute, realpath(absolute)]) {
+      if (!plans.includes(candidate)) plans.push(candidate);
+    }
+  }
   return {
     api,
     platform,
@@ -198,6 +228,7 @@ function context(scope: WriteScope): Ctx {
     realpath,
     roots: [...new Set(roots)],
     mirrors,
+    plans,
   };
 }
 
@@ -270,6 +301,11 @@ export function fileWriteVerdict(
   const ctx = context(scope);
   for (const target of targets) {
     const absolute = resolveTarget(target, ctx);
+    // 앱의 기획 작업 저장소는 허용 뿌리보다 먼저 거절한다 — 뿌리가 임시 폴더 · 추가 뿌리 아래여도
+    // 우회가 없다(2026-11-11 감독자 채택 — 실사용 재현에서 화면 AI 가 python heredoc 으로 초안 ·
+    // 판 스냅숏을 직접 썼다).
+    if (ctx.plans.some((root) => isInside(root, absolute, ctx)))
+      return { allow: false, reason: PLANS_STATE_REFUSAL };
     if (insideRoots(absolute, ctx)) continue;
     // 사본 뿌리도 밖이다 — 판정은 같고 이유만 기획서 말이다(2026-10-23 · 기획서 사본 이동 계획 §6).
     if (ctx.mirrors.some((root) => isInside(root, absolute, ctx)))
@@ -572,6 +608,57 @@ function outside(
   return !insideRoots(real, ctx);
 }
 
+/**
+ * 명시적으로 앱의 기획 작업 저장소 뿌리 안을 가리키는가 — 셸 인자 · `cd` 목적지 · 리다이렉션
+ * 대상에 같은 판정을 쓴다(2026-11-11 감독자 채택). 풀 수 없으면 아니다(애매하면 통과 — 좁은 가드).
+ */
+function inPlans(
+  raw: string,
+  ctx: Ctx,
+  scope: WriteScope,
+  base: Base,
+  followFinalLink: boolean,
+): boolean {
+  const absolute = absoluteOf(raw, ctx, scope, base);
+  if (absolute === null) return false;
+  const real = followFinalLink
+    ? ctx.realpath(absolute)
+    : ctx.api.join(ctx.realpath(ctx.api.dirname(absolute)), ctx.api.basename(absolute));
+  return ctx.plans.some((root) => isInside(root, real, ctx));
+}
+
+/**
+ * 셸 명령 문자열 자체가 기획 저장소를 짚는가 — 인자가 아니라 코드 안(heredoc 본문 · `open(…)` ·
+ * `Path(…)`)에 경로가 숨는 형태를 본다. 2026-11-11 감독자 채택 · 실사용 재현(python heredoc 으로
+ * 초안 · 판 스냅숏 직접 쓰기)과 같은 좁은 신호 둘: ① plans 뿌리의 절대 경로가 이름 경계를 지켜
+ * 나타남(뒤에 `/` · 따옴표 · 공백 · 끝이 온다 — `plans-map.json` · `plansx` 접두 오탐을 뺀다),
+ * ② 앱 데이터 폴더 표식(`.colonova-design`)과 `plans` 마디가 함께 나타남 — `Path.home() /
+ * ".colonova-design" / "projects" / … / "plans"` 같이 한 마디씩 조각 낸 경로와 `os.path.join`
+ * 형태까지 덮는다. `plans` 는 글자 경계로 본다 — 레포의 `plans-map.json` 같은 정상 파일은
+ * 걸리지 않는다. planRoots 가 비어 있으면(연결 안 된 세션) 이 검사는 무조건 아니다 — 뿌리
+ * 없이 문자만 보고 거절하지 않는다.
+ */
+function touchesPlansState(command: string, ctx: Ctx): boolean {
+  if (ctx.plans.length === 0) return false;
+  const text = comparable(command.replaceAll("\\", "/"), ctx.platform);
+  for (const root of ctx.plans) {
+    const cmp = comparable(root, ctx.platform);
+    // 뿌리 뒤가 이름 글자(`plans-map` · `plansx`)면 다른 파일이다 — 마디 경계를 요구한다.
+    for (let at = text.indexOf(cmp); at !== -1; at = text.indexOf(cmp, at + 1)) {
+      const next = text[at + cmp.length];
+      if (next === undefined || !/[A-Za-z0-9_.-]/.test(next)) return true;
+    }
+  }
+  // 앱 데이터 폴더 안의 기획 저장소 마디 조각 — `.colonova-design` → `projects` → `<슬러그>` →
+  // `plans` 의 직접 자식 구조만 본다(따옴표 · / · 공백 · 쉼표가 마디를 가르는
+  // `os.path.join(home, ".colonova-design", "projects", …, "plans")` · `Path.home()` 조각
+  // 경로까지 덮는다). 연결 클론 자체가 `…/projects/<슬러그>/repo` 아래라
+  // `repo/docs/plans/…` 같은 정상 경로는 이 구조를 지나지 않아 걸리지 않는다(감독자 오탐 지적).
+  return /\.colonova-design[/"'\s,]+projects[/"'\s,]+[^/"'\s\\/,]+[/"'\s,]+plans(?:[^A-Za-z0-9_-]|$)/i.test(
+    text,
+  );
+}
+
 /** `cd` 가 옮겨 간 폴더 — 인자가 없으면 홈, 풀 수 없으면(`cd -` · 변수) null. */
 function movedTo(operand: string | undefined, ctx: Ctx, scope: WriteScope, base: Base): Base {
   if (operand === undefined) return ctx.home;
@@ -597,19 +684,26 @@ function commandDenied(
   start: Base,
   depth: number,
   literalBackslash: boolean,
-): boolean {
+): string | null {
   let base = start;
   for (const segment of scanShell(command, literalBackslash)) {
     for (const target of segment.targets) {
-      if (!isDevice(target, ctx.platform) && outside(target, ctx, scope, base, true)) return true;
+      if (isDevice(target, ctx.platform)) continue;
+      if (inPlans(target, ctx, scope, base, true)) return PLANS_STATE_REFUSAL;
+      if (outside(target, ctx, scope, base, true)) return OUTSIDE_COMMAND_REFUSAL;
     }
     const call = commandOf(segment.words);
     if (call === null) continue;
     const { flags, operands } = splitArgs(call.args);
+    // 기획 저장소를 짚는 호출은 무엇이든 거절한다 — 읽기도 그 폴더의 몫이 아니다(2026-11-11 감독자
+    // 채택). `cd` 도 예외가 아니다: 재현된 형태(cd plans && python3 - <<EOF)의 앞발이 그대로 걸린다.
+    if (operands.some((operand) => inPlans(operand, ctx, scope, base, true))) {
+      return PLANS_STATE_REFUSAL;
+    }
     switch (call.name) {
       case "sudo":
       case "doas":
-        return true;
+        return OUTSIDE_COMMAND_REFUSAL;
       case "cd":
       case "pushd":
         base = movedTo(operands[0], ctx, scope, base);
@@ -623,7 +717,7 @@ function commandDenied(
           flags.some((flag) => flag === "--recursive" || /^-[A-Za-z]*[rR][A-Za-z]*$/.test(flag)) &&
           operands.some((operand) => outside(operand, ctx, scope, base, false))
         ) {
-          return true;
+          return OUTSIDE_COMMAND_REFUSAL;
         }
         break;
       case "chmod":
@@ -634,15 +728,20 @@ function commandDenied(
           flags.some((flag) => flag === "--recursive" || /^-[A-Za-z]*R[A-Za-z]*$/.test(flag)) &&
           operands.some((operand) => outside(operand, ctx, scope, base, true))
         ) {
-          return true;
+          return OUTSIDE_COMMAND_REFUSAL;
         }
         break;
       case "eval":
-        if (
-          depth < NESTED_DEPTH &&
-          commandDenied(call.args.join(" "), ctx, scope, base, depth + 1, literalBackslash)
-        ) {
-          return true;
+        if (depth < NESTED_DEPTH) {
+          const reason = commandDenied(
+            call.args.join(" "),
+            ctx,
+            scope,
+            base,
+            depth + 1,
+            literalBackslash,
+          );
+          if (reason !== null) return reason;
         }
         break;
       default:
@@ -650,33 +749,36 @@ function commandDenied(
           // `bash -c '…'` · `sh -lc '…'` — -c 뒤의 글이 명령이다.
           const at = call.args.findIndex((arg) => /^-[A-Za-z]*c[A-Za-z]*$/.test(arg));
           const payload = at === -1 ? undefined : call.args[at + 1];
-          if (
-            payload !== undefined &&
-            commandDenied(payload, ctx, scope, base, depth + 1, literalBackslash)
-          ) {
-            return true;
+          if (payload !== undefined) {
+            const reason = commandDenied(payload, ctx, scope, base, depth + 1, literalBackslash);
+            if (reason !== null) return reason;
           }
         }
     }
   }
-  return false;
+  return null;
 }
 
 /**
  * Bash 명령의 판정 — sudo, 클론 밖을 지우는 `rm -r`, 클론 밖의 `chmod/chown/chgrp -R`, 클론 밖 파일로
- * 가는 리다이렉션만 거절한다. 그 밖의 모든 것(풀리지 않는 변수 · tee · cp · 스크립트)은 통과.
+ * 가는 리다이렉션을 거절하고, 기획 작업 저장소(`planRoots`)를 겨누는 경로 짚기와 명령 문자열의 저장소
+ * 신호도 `PLANS_STATE_REFUSAL` 로 거절한다(2026-11-11 감독자 채택 — python heredoc 의 초안 직접 쓰기 재현).
+ * 그 밖의 모든 것(풀리지 않는 변수 · tee · cp · 스크립트)은 통과.
  * 상대 경로는 작업 폴더(`scope.base`, 명령 안의 `cd` 가 옮긴 곳 포함) 기준으로 푼다.
  */
 export function bashCommandVerdict(command: string, scope: WriteScope): WriteVerdict {
   const ctx = context(scope);
+  if (touchesPlansState(command, ctx)) {
+    return { allow: false, reason: PLANS_STATE_REFUSAL };
+  }
   // Windows 는 `\` 를 두 번 읽고 하나라도 밖이면 거절한다(2026-10-19 Windows 시험). Bash 의 이스케이프로만 읽으면
   // PowerShell 의 `rm -r C:\Users\…` · Git Bash 의 `rm -rf "C:\Users\…"` 가 `C:Users…`(클론 안의 상대
   // 경로)로 읽혀 지났다. 두 셸 모두 실제로는 클론 밖을 쓴다(이 PC 의 Git Bash · PowerShell 로 확인).
   // macOS · Linux 는 그대로다.
   const denied =
-    commandDenied(command, ctx, scope, ctx.base, 0, false) ||
-    (ctx.platform === "win32" && commandDenied(command, ctx, scope, ctx.base, 0, true));
-  return denied ? { allow: false, reason: OUTSIDE_COMMAND_REFUSAL } : { allow: true };
+    commandDenied(command, ctx, scope, ctx.base, 0, false) ??
+    (ctx.platform === "win32" ? commandDenied(command, ctx, scope, ctx.base, 0, true) : null);
+  return denied === null ? { allow: true } : { allow: false, reason: denied };
 }
 
 // ---------------------------------------------------------------------------

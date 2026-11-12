@@ -6,6 +6,9 @@ import type { ChatSettings, Settings } from "../lib/settings";
 import type { Journey } from "./lib/journey";
 import type { ToastAction } from "./lib/nav";
 
+/** 설정 대화상자의 쪽 — `settings/SettingsDialog` 의 목록 차례와 같다. */
+export type SettingsPage = "ai" | "theme" | "notify" | "connection" | "update" | "developer";
+
 /**
  * 셸이 칸들에 건네는 이동의 손 — 모든 칸이 같은 길로 움직인다. 다른 프로젝트의
  * 대화를 여는 손은 전환을 먼저 하고, 등록부가 옮겨 앉으면 그 대화를 연다(한
@@ -50,8 +53,8 @@ export interface ShellNav {
   showTab: (tab: "chat" | "preview") => void;
   /** 넓은 창의 오른쪽 칸 탭(2026-10-31 화면 자리 개선안 S10) — 대화 · 기획서 · 작업 기록. */
   showRightTab: (tab: "chat" | "plans" | "history") => void;
-  /** 설정 대화상자. */
-  openSettings: () => void;
+  /** 설정 대화상자. `page` 를 주면 그 쪽이 먼저 선다(없으면 지금처럼 — 바퀴 · ⌘, · 팔레트). */
+  openSettings: (page?: SettingsPage) => void;
   /** 셸 위에 잠깐 뜨는 한 줄 — `action` 이 있으면 단추가 달리고 더 오래 머문다. */
   toast: (text: string, action?: ToastAction) => void;
   /**
@@ -97,6 +100,8 @@ export type ChatColumnProps = SlotProps & {
    * 셸이 쥐고, 이 칸은 탭 머리와 몸을 바꿔 그린다. 작업 독과 입력창은 어느 탭에서도 바닥에 남는다.
    */
   rightTab?: "chat" | "plans" | "history";
+  /** 빈 대화가 읽는 지금 미리보기의 화면 이름. */
+  screenName?: string | null;
   /** 지금 미리보기가 보는 화면의 주소 — 기획서 탭이 이 화면에 이어진 문서를 가른다. */
   screenRoute?: string | null;
   /**

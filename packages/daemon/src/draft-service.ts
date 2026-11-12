@@ -96,6 +96,11 @@ export interface DraftServiceDeps {
   ai: DraftAiRunner;
   publisher: DraftPublisher;
   /**
+   * 발행이 적용으로 확인된 뒤 사본이 새 판을 따라오게 한다(2026-11-12 비개발자 사용성 토론) —
+   * 서버는 ConfluenceSync.importNow 를 넘긴다. 결과를 모르는 길 · 실패에서는 부르지 않는다.
+   */
+  importNow(slug: string): Promise<unknown>;
+  /**
    * 화면 요청이 낸 변경안(`origin: "screen"`)이 같이 고치기 밖의 길(기획서 탭의 채택 · 거절)로 넣어지거나 걷혔다
    * (2026-11-03 A안 1A-1). 같이 고치기가 되돌리기 기록과 곁줄 카드를 맞춘다. 넣은 때는 들어간 걸음과 되돌릴 재료를 싣는다.
    */
@@ -2143,10 +2148,13 @@ export class DraftService {
     expectedRevision: number;
     stage?: { notation: string; reason: string };
   }): Promise<DraftPublishResult> {
-    const ctx = await this.#context(this.#slug());
+    const slug = this.#slug();
+    const ctx = await this.#context(slug);
     const before = ctx.store.read(input.docKey);
     // 도는 발행 표식을 먼저 선다 — 읽는 길의 회복이 이 잠금을 건드리지 않게(2026-10-23 작업 B7).
     this.#sending.add(input.commandId);
+    // 이미 적용으로 정해진 명령의 다시 부르기는 사본 가져오기를 다시 일으키지 않는다.
+    const prior = ctx.store.intent(input.commandId)?.state ?? null;
     let result: DraftPublishResult;
     try {
       result = await this.#deps.publisher.publish(ctx, input);
@@ -2154,17 +2162,24 @@ export class DraftService {
       this.#sending.delete(input.commandId);
     }
     this.#broadcastIfChanged(ctx.store, input.docKey, before);
+    if (result.state === "applied" && prior !== "applied") this.#followAppliedPublish(slug);
     return result;
   }
 
   async publishRecheck(commandId: string): Promise<DraftPublishResult> {
-    const ctx = await this.#context(this.#slug());
-    return await this.#settle(ctx, commandId, () => this.#deps.publisher.recheck(ctx, commandId));
+    const slug = this.#slug();
+    const ctx = await this.#context(slug);
+    return await this.#settle(slug, ctx, commandId, () =>
+      this.#deps.publisher.recheck(ctx, commandId),
+    );
   }
 
   async publishClose(commandId: string): Promise<DraftPublishResult> {
-    const ctx = await this.#context(this.#slug());
-    return await this.#settle(ctx, commandId, () => this.#deps.publisher.close(ctx, commandId));
+    const slug = this.#slug();
+    const ctx = await this.#context(slug);
+    return await this.#settle(slug, ctx, commandId, () =>
+      this.#deps.publisher.close(ctx, commandId),
+    );
   }
 
   async rebase(docKey: string): Promise<DraftView> {
@@ -2183,15 +2198,30 @@ export class DraftService {
 
   /** 확인 뒤의 정산(recheck · close) — 명령의 초안을 찾아 바뀜만 방송한다. */
   async #settle(
+    slug: string,
     ctx: DraftPublishContext,
     commandId: string,
     run: () => Promise<DraftPublishResult>,
   ): Promise<DraftPublishResult> {
     const intent = ctx.store.intent(commandId);
     const before = intent === null ? null : ctx.store.read(intent.docKey);
+    const prior = intent?.state ?? null;
     const result = await run();
     if (intent !== null) this.#broadcastIfChanged(ctx.store, intent.docKey, before);
+    // 결과를 모르던 발행을 다시 확인해 적용으로 정해진 길도 사본 가져오기를 건다 — 이 확인이
+    // 새 판이 원격에 있음을 증명한다. 이미 적용이던 명령(종료의 미동의 길)은 다시 걸지 않는다.
+    if (result.state === "applied" && prior !== "applied") this.#followAppliedPublish(slug);
     return result;
+  }
+
+  /**
+   * 발행이 적용으로 확인된 뒤 — 사본(원장 · 파생 마크다운)이 새 판을 곧바로 따라오게 가져오기를
+   * 건다(2026-11-12 비개발자 사용성 토론). 기다리지 않는다 — 발행 응답을 늦추지 않게. 증분은
+   * 판이 오른 문서를 다시 읽고, 처음 보는 문서(새 문서의 첫 발행)는 바퀴 안에서 걷기로 돌아간다.
+   * 결과를 모르는 길 · 실패 · 게이트 꺼짐에서는 부르지 않는다 — 새 판이 원격에 있다는 보장이 없다.
+   */
+  #followAppliedPublish(slug: string): void {
+    void this.#deps.importNow(slug).catch(() => undefined);
   }
 
   /**
@@ -2559,6 +2589,8 @@ export class DraftService {
       revision: record.revision,
       state: record.state,
       changedBlocks: changed + missingBase,
+      // 발행 미리보기의 titleChanged 와 같은 잣대(draft-publish.ts) — 새 문서(baseTitle 없음)는 세지 않는다.
+      titleChanged: record.baseTitle !== null && record.title !== record.baseTitle,
       baseVersion: record.baseVersion,
       observedVersion: record.observedVersion,
       updatedAt: record.updatedAt,

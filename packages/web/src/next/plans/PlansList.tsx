@@ -61,7 +61,7 @@ export function PlansList({
   collapsed: ReadonlySet<string>;
   onToggle: (pageId: string) => void;
   lastViewed: string | null;
-  onOpen: (pageId: string) => void;
+  onOpen: (pageId: string, searchQuery?: string) => void;
   /** 새 문서 초안 줄 — 그 초안의 편집기를 연다. */
   onOpenDraft: (docKey: string) => void;
   onRetry: () => void;
@@ -91,7 +91,7 @@ export function PlansList({
   // 초안 요약 — 문서 줄의 끝 표시는 pageId 로 걷고, 아직 Confluence 에 없는 새 문서 초안은 그 자리에
   // 흐린 줄로 선다(2026-10-31 E — `작성 중인 초안` 묶음은 걸었다).
   const draftByPage = new Map<string, DraftSummary>();
-  const freshDrafts = drafts.filter((draft) => draft.pageId === null).slice(0, 5);
+  const freshDrafts = drafts.filter((draft) => draft.pageId === null);
   for (const draft of drafts) {
     if (draft.pageId !== null) draftByPage.set(draft.pageId, draft);
   }
@@ -256,7 +256,7 @@ export function PlansList({
         <p className="nx-pl-count" role="status">
           {filtering ? L.plans.filterResult(shown.length) : L.plans.docCount(docTotal)}
         </p>
-        {shown.length === 0 ? (
+        {shown.length === 0 && (filtering || freshDrafts.length === 0) ? (
           bodyHits.length === 0 && !bodyBusy && <p className="nx-pl-note">{L.plans.filterNone}</p>
         ) : (
           // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 줄 단추들 사이의 화살표 걸음을 한 곳에서 받는다(위임) — 누르는 것은 안의 단추의 몫이다
@@ -325,14 +325,18 @@ export function PlansList({
                       {filtering && row.folder !== "" && (
                         <span className="nx-pl-folder">{row.folder}</span>
                       )}
-                      {draft !== null && (
-                        <span
-                          className={`nx-pl-dot nx-pl-dot--${draftMarkOf(draft).tone}`}
-                          title={draftMarkOf(draft).label}
-                          aria-label={draftMarkOf(draft).label}
-                          role="img"
-                        />
-                      )}
+                      {draft !== null &&
+                        (() => {
+                          const mark = draftMarkOf(draft);
+                          return mark === null ? null : (
+                            <span
+                              className={`nx-pl-dot nx-pl-dot--${mark.tone}`}
+                              title={mark.label}
+                              aria-label={mark.label}
+                              role="img"
+                            />
+                          );
+                        })()}
                     </button>
                   )}
                 </li>
@@ -381,7 +385,7 @@ export function PlansList({
                         className={`nx-pl-row nx-pl-row--hit${lastViewed === hit.pageId ? " nx-pl-row--on" : ""}`}
                         data-page-id={hit.pageId}
                         title={hit.title}
-                        onClick={() => onOpen(hit.pageId)}
+                        onClick={() => onOpen(hit.pageId, query)}
                       >
                         <span className="nx-pl-title">{hit.title}</span>
                         <span className="nx-pl-snippet">

@@ -92,19 +92,34 @@ export function refChoices(rows: readonly PlanListRow[], query: string): DraftRe
 }
 
 /** 근거 절 고르기의 결과 — 절 목록 또는 선로의 한계를 말하는 이유 한 줄. */
-export type RefSectionsParse = { sections: string[] } | { error: string };
+export type RefSectionsPick = { sections: string[] } | { error: string };
 
 /**
- * 절 이름 칸의 글을 절 목록으로 — 쉼표로 나누고 빈 조각은 뺀다. 선로의 한계(절 20개 · 이름 200자)를
- * 넘으면 목록 대신 이유를 돌려준다(2026-10-23 화면 확인 · R2 검토 3).
+ * 절 체크목록에 올릴 머리말(2026-11-12 근거 절 체크목록) — 고른 문서의 실제 절 머리에서 빈 머리와
+ * 선로 이름 한계(200자)보다 긴 머리를 빼고 같은 머리는 한 번만 남긴다.
  */
-export function parseRefSections(text: string): RefSectionsParse {
-  const sections = text
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part !== "");
-  if (sections.length > DRAFT_LIMITS.sectionCount) return { error: L.drafts.limitSectionCount };
-  if (sections.some((section) => section.length > DRAFT_LIMITS.sectionLength))
-    return { error: L.drafts.limitSectionLength };
-  return { sections };
+export function refSectionOptions(sections: ReadonlyArray<{ heading: string }>): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const { heading } of sections) {
+    const name = heading.trim();
+    if (name === "" || name.length > DRAFT_LIMITS.sectionLength || seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
+/**
+ * 절 체크목록의 한 걸음(같은 날) — 절이 문서에서 서 있는 순서를 지키고, 절 20개 한계를 넘으면
+ * 목록 대신 이유를 돌려준다(옛 자유 입력의 눈금을 그대로 잇는다).
+ */
+export function toggleRefSection(
+  headings: readonly string[],
+  picked: readonly string[],
+  heading: string,
+): RefSectionsPick {
+  if (picked.includes(heading)) return { sections: picked.filter((one) => one !== heading) };
+  if (picked.length >= DRAFT_LIMITS.sectionCount) return { error: L.drafts.limitSectionCount };
+  return { sections: headings.filter((one) => one === heading || picked.includes(one)) };
 }

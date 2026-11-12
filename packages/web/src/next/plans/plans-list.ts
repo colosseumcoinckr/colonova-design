@@ -431,15 +431,28 @@ export function docUrl(site: string, pageId: string): string | null {
 /**
  * 줄 끝 표시의 종류(2026-10-31 E) — 하나만 선다. 우선순위는 결과 확인 필요(호박 삼각) > 충돌(빨강 점)
  * > 초안(포인트 색 점)이다. 색만으로 말하지 않게 이름표 글도 함께 건넨다.
+ * 바뀐 곳이 0인 보통 초안(편집 중 · 발행됨)은 점이 없다 — 발행을 마친 문서가 발행할 고침이 남은 문서와
+ * 구별되지 않았다(2026-11-12 기획자 체험). 수를 모르는 요약(changedBlocks 없음)은 알리는 쪽으로 점을 준다.
+ * null 은 표시 없음이다.
  */
 export function draftMarkOf(draft: DraftSummary): {
   tone: "unknown" | "conflict" | "draft";
   label: string;
-} {
+} | null {
   if (draft.state === "result-unknown") {
     return { tone: "unknown", label: L.drafts.resultUnknownTitle };
   }
   if (draft.state === "conflict") return { tone: "conflict", label: L.drafts.statusConflict };
+  // 발행할 것이 없는 초안에는 점이 없다(2026-11-12 기획자 체험) — 발행의 잣대와 같다(draft-publish.ts):
+  // 바뀐 블록 0 · 제목 그대로 · 이미 Confluence 에 있는 문서. 새 문서 초안(baseVersion 없음)은 언제나 발행할 것이 있다.
+  if (
+    draft.changedBlocks === 0 &&
+    draft.titleChanged !== true &&
+    draft.baseVersion !== null &&
+    (draft.state === "editing" || draft.state === "published")
+  ) {
+    return null;
+  }
   return {
     tone: "draft",
     label: draft.changedBlocks > 0 ? L.drafts.chipCount(draft.changedBlocks) : L.drafts.chip,

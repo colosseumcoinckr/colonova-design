@@ -183,6 +183,13 @@ export interface LaunchConfig {
    * (2026-10-23 · 기획서 사본 이동 계획 §6).
    */
   additionalDirectories?: string[];
+  /**
+   * 화면 AI 가 어떤 도구로도 건드리면 안 되는 기획 작업 저장소 뿌리 · 절대 경로
+   * (2026-11-11 감독자 채택 — 실사용 재현에서 화면 AI 가 셸로 초안을 직접 썼다).
+   * dispatch 가 프로젝트 폴더의 `plans/` 를 실어 보낸다. 기획 AI 자신의 세션에는
+   * 싣지 않는다 — 초안을 직접 고치는 것이 그 세션의 일이다.
+   */
+  planRoots?: string[];
   /** Provider-specific extras (Claude: executable/…). */
   [key: string]: unknown;
 }

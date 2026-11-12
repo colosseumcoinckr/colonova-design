@@ -39,12 +39,18 @@ import {
   detailOf,
   GATE_BRIEF,
   GATE_STEP,
+  type GateNoticeKey,
   SAVE_CONFLICT_OPEN_DETAIL,
   SHOTS_COMMIT_MESSAGE,
   SHOTS_DIR,
 } from "./repo-core.js";
 import { saveablePaths } from "./saveable-paths.js";
-import { classifyGitHubFailure, SUBMIT_LOG_TEXT } from "./submit-state.js";
+import {
+  classifyGitHubFailure,
+  classifySaveCause,
+  type SaveGateCause,
+  SUBMIT_LOG_TEXT,
+} from "./submit-state.js";
 import type { SubmitVersion } from "./submit-version.js";
 
 /** The `<img>` needs a media type; the committed file's extension is the
@@ -285,6 +291,7 @@ export class PublishCycle {
           const savedMessage = (
             await this.core.git(["log", "-1", "--pretty=%s", this.core.branch]).catch(() => "")
           ).trim();
+          this.markSaveOk();
           return this.core.setDiff({ stage: "published", commit: tip, message: savedMessage });
         }
       }
@@ -324,7 +331,7 @@ export class PublishCycle {
       await this.ensureCycleBranch();
       if (memo !== null) await this.commitApproved(memo, approved);
     } catch (error) {
-      return this.failGate("commit", error, options.onSessionTurn);
+      return this.failGate("commit", error, options.onSessionTurn, options.sessionId);
     }
     // 2026-10-20 MVP: 원격 전송은 확인한 제출만 담당한다. 보관은 로컬에서 끝난다.
     const commit = (await this.core.git(["rev-parse", "HEAD"])).trim();
@@ -339,6 +346,7 @@ export class PublishCycle {
       // 이번 저장이 담은 경로 전부 — 라우트↔파일 지도의 재료다(2026-10-11).
       turnFiles: approved.length > 0 ? approved : retryFiles,
     });
+    this.markSaveOk();
     // hero-synthesis D1: the save lands on the session tape — a reloaded
     // window replays the quiet marker instead of losing it with `diffStatus`.
     this.core.lane.outside(() =>
@@ -505,7 +513,7 @@ export class PublishCycle {
       } catch (error) {
         // pr 이 아니라 push 다 — 인증 거절은 설정 안내로, 나머지는 AI 의
         // 과제로 갈라지는 failGate 의 판정을 그대로 받는다.
-        return this.failGate("push", error, options.onSessionTurn);
+        return this.failGate("push", error, options.onSessionTurn, options.sessionId);
       }
       // 열린 요청의 head 가 지금 브랜치일 때만 덮어쓴다 — 새 사이클 브랜치에서
       // reopened 요청의 옛 head 를 고쳐 쓰면 보이지 않는 곳의 커밋을 고른다.
@@ -543,6 +551,8 @@ export class PublishCycle {
       const status = this.core.setDiff({ stage: "handed-off", handoff });
       // 넘기기가 성공했다 — 서 있던 submit:pr 알림을 거둔다(PLAN L11).
       this.deps.resolveNotice?.("submit:pr");
+      this.gateHandoffs = null;
+      this.gateNoted = null;
       // hero-synthesis D1: the milestone line — 넘겼어요 — joins the tape.
       this.core.lane.outside(() =>
         this.deps.onCycleEvent?.(
@@ -557,7 +567,7 @@ export class PublishCycle {
       );
       return status;
     } catch (error) {
-      return this.failGate("pr", error, options.onSessionTurn);
+      return this.failGate("pr", error, options.onSessionTurn, options.sessionId);
     }
   }
 
@@ -958,6 +968,8 @@ export class PublishCycle {
     gate: "commit" | "push" | "pr",
     error: unknown,
     onSessionTurn: ((brief: string) => void) | undefined,
+    /** 자동 보관 · 제출을 부른 대화 — 테이프의 한 줄이 서는 자리. */
+    sessionId?: string,
   ): DiffStatus {
     const detail = detailOf(error, this.core.pat);
     // D90 ⓑ: `pr` 은 AI 에게 가지 않는다 — PR 열기 실패의 원인은 토큰
@@ -970,9 +982,23 @@ export class PublishCycle {
     // 인증도 같은 분류기 한 곳이다(2026-10-08 검토 · F12) — 한도의 403 이 `다시 연결` 로 말해지던 옛 정규식을 걷었다.
     const kind = classifyGitHubFailure(detail);
     const permission = (gate === "push" || gate === "pr") && kind === "permission";
-    const pushAuth = gate === "push" && kind === "auth";
-    const skipClaude = gate === "pr" || pushAuth || permission;
-    if (!skipClaude) {
+    const authRefused = gate === "push" && kind === "auth";
+    // 2026-11-12 기획자 체험 — 보관 단계의 실패 가운데 이 기계 · 계정 원인인
+    // 것(연결 코드 · 권한 · 한도 · 네트워크 · GitHub 응답 없음 · 5xx)은 AI 가
+    // 고칠 것이 없다. 옛 길은 그대로 AI 에게 넘겨 «고칠 것이 없다» 는 답 뒤
+    // 자동 보관이 다시 돌아 같은 카드가 멈출 때까지 섰다.
+    const saveCause = gate === "commit" ? classifySaveCause(detail) : null;
+    // 안전 한도 — 분류를 빠져나간 실패라도 같은 단계가 같은 내용으로 잇달아
+    // 실패하면 AI 에게는 두 번까지만 넘긴다. 세 번째부터는 사람 안내다
+    // (save:commit · save:push). 보관이 성공하거나 실패 내용이 바뀌면
+    // gateHandoffs 가 지워져 다시 센다 — 세는 자리와 지우는 자리는 여기와
+    // markSaveOk 단 둘이다.
+    const capped =
+      gate !== "pr" && this.gateHandoffs?.gate === gate && this.gateHandoffs.detail === detail
+        ? this.gateHandoffs.count >= 2
+        : false;
+    const toAI = gate !== "pr" && !authRefused && !permission && saveCause === null && !capped;
+    if (toAI) {
       // The failure is actionable by the agent, not by the planner: hand it over
       // the same wire a typed message uses, output tail included. The step is
       // named the way the planner's button is, not the way git is.
@@ -987,27 +1013,100 @@ export class PublishCycle {
           ),
         ),
       );
+      const previous = this.gateHandoffs;
+      this.gateHandoffs = {
+        gate,
+        detail,
+        count: previous?.gate === gate && previous.detail === detail ? previous.count + 1 : 1,
+      };
     } else {
       // 개발자 알림 (PLAN L11): AI 도 기획자도 고칠 수 없는 실패다 — 문제
       // 키와 함께 DeveloperNotice 로 간다. detail 은 PAT 가 이미 걷힌 한국어
       // 문장이고, 본문의 `자세히` 가 된다.
-      const key = pushAuth
+      const key: GateNoticeKey = authRefused
         ? "push:auth"
         : permission
           ? gate === "push"
             ? "push:permission"
             : "submit:permission"
-          : "submit:pr";
-      this.core.lane.outside(() => this.deps.notice?.(key, detail));
+          : gate === "commit"
+            ? "save:commit"
+            : gate === "push"
+              ? "save:push"
+              : "submit:pr";
+      // 보관의 일시적인 기계 원인(네트워크 · 한도 · 응답 없음 · 5xx)은 개발자에게 알리지 않는다 — 제출 쪽과 같은
+      // 결이다(한도 · 오프라인은 알림 없이 다시 시도). 개발자가 풀 것이 없고, 대화의 한 줄이 기획자에게 말한다.
+      // 연결 코드 · 권한 · 한도를 넘긴 되풀이는 지금처럼 알린다(2026-11-12 기획자 체험).
+      const transient =
+        gate === "commit" && saveCause === "machine" && kind !== "permission" && !capped;
+      if (!transient) this.core.lane.outside(() => this.deps.notice?.(key, detail));
+      // 기획자의 한 줄 (2026-11-12 FA-2 — 감독자 재현): AI 에게 가지 않는 commit · push
+      // 실패는 이전에 게이트 카드가 유일한 신호였다 — 카드를 없애고 신호까지 없앨 수 없어
+      // 테이프에 빨간 한 줄(cycle.saveBlocked)로 남긴다. 같은 단계의 같은 실패가
+      // 이어지는 동안은 한 번만 — 답마다 같은 줄이 서는 되풀이를 만든 자리이므로.
+      // 올리기 · 넘기기(push · pr)는 제출의 한 걸음이라 제출의 띠가 따로 말한다 — 한 줄은 보관(commit)에만 선다.
+      if (gate === "commit" && this.gateNoted?.detail !== detail) {
+        this.gateNoted = { gate, detail };
+        const note = this.gateNoteLead(saveCause, capped);
+        this.core.lane.outside(() =>
+          this.deps.onCycleEvent?.(
+            {
+              kind: "cycle.saveBlocked",
+              at: new Date().toISOString(),
+              detail: `${note}\n\n${detail}`,
+            },
+            sessionId,
+          ),
+        );
+      }
     }
-    // reason 이 없으면 저장 검토는 "멈췄습니다" 로만 끝났다.
+    // reason 이 없으면 저장 검토는 "멈췄습니다" 로만 끝난다. 보관 단계의
+    // 연결 코드 문제도 같은 사유다 — 재연결 안내가 선다(2026-11-12).
     return this.core.setDiff({
       stage: "failed",
       gate,
-      ...(pushAuth ? { reason: "push-auth" as const } : {}),
+      ...(authRefused || saveCause === "auth" ? { reason: "push-auth" as const } : {}),
       detail,
     });
   }
+
+  /**
+   * 사람 안내로 돌린 보관(commit) 실패를 대화 테이프에 남길 문장 (2026-11-12 FA-2).
+   * 첫 줄은 사람의 말 — 무슨 일인지 · 고친 내용은 이 컴퓨터에 남는다는 것 ·
+   * 다음에 무엇이 되는지. 개발 어휘(커밋 · 브랜치 · git · 토큰)는 쓰지 않고,
+   * 원문은 빈 줄 뒤에 붙여 웹의 접힌 `자세히` 로 보낸다(rawErrorLine 이 빈 줄에서 가른다).
+   * 보관 성공이 자동으로 재시도되므로(commitPending · 다음 답 뒤의 자동 보관)
+   * «문제가 풀리면 다시 보관해요» 는 약속이 아니라 동작의 기록이다.
+   */
+  private gateNoteLead(saveCause: SaveGateCause | null, capped: boolean): string {
+    if (capped)
+      return "보관하지 못했어요 — 같은 문제가 이어져 AI 에게 더 맡기지 않았어요. 고친 내용은 이 컴퓨터에 그대로 있고, 문제가 풀리면 다시 보관해요.";
+    if (saveCause === "auth")
+      return "보관하지 못했어요 — 연결이 만료됐어요. 고친 내용은 이 컴퓨터에 그대로 있으니, 다시 연결한 뒤 보내면 함께 보관해요.";
+    return "보관하지 못했어요 — 연결에 문제가 있어요. 고친 내용은 이 컴퓨터에 그대로 있고, 연결이 돌아오면 자동으로 다시 보관해요.";
+  }
+
+  /**
+   * 보관이 성공했다 — 같은 실패로 AI 에게 넘긴 횟수와 테이프에 남긴 한 줄의
+   * 기록을 지우고, 서 있던 `save:commit` 알림을 거둔다(failGate 의 한도 주석과 같은 약속).
+   */
+  private markSaveOk(): void {
+    this.gateHandoffs = null;
+    this.gateNoted = null;
+    this.core.lane.outside(() => this.deps.resolveNotice?.("save:commit"));
+  }
+
+  /**
+   * 같은 단계가 같은 내용으로 잇달아 실패할 때 AI 에게 넘긴 횟수 — failGate 가
+   * 세고 markSaveOk(성공) · 내용 바뀜이 지운다. 넘기기 성공도 지운다.
+   */
+  private gateHandoffs: { gate: "commit" | "push"; detail: string; count: number } | null = null;
+
+  /**
+   * 사람 안내로 돌린 실패를 테이프에 남긴 기록 — 같은 단계의 같은 실패가 이어지는
+   * 동안 같은 줄을 답마다 새로 서지 않게 한다(FA-2). 성공 · 내용 바뀜이 지운다.
+   */
+  private gateNoted: { gate: "commit"; detail: string } | null = null;
 
   /** Stages and commits exactly the approved paths — the reviewed diff. */
   private async commitApproved(message: string, paths: string[]): Promise<void> {
@@ -1027,18 +1126,15 @@ export interface PublishDeps {
    */
   onCycleEvent?(event: ChatEvent, sessionId?: string): void;
   /**
-   * 개발자 알림 (PLAN L11) — 인증·권한 게이트 실패를 문제 키와 함께
-   * DeveloperNotice 로 흘린다. 없으면 조용히 지나간다 — 알림은 언제나 부가물.
+   * 개발자 알림 (PLAN L11) — 게이트 실패 가운데 AI 가 고칠 수 없는 것을 문제 키와
+   * 함께 DeveloperNotice 로 흘린다. 없으면 조용히 지나간다 — 알림은 언제나 부가물.
    */
-  notice?(
-    key: "push:auth" | "push:permission" | "submit:permission" | "submit:pr",
-    detail: string,
-  ): void;
+  notice?(key: GateNoticeKey, detail: string): void;
   /**
-   * 넘기기가 성공하면 서 있던 `submit:pr` 알림을 거둔다 — 알림이 영원히
-   * 남지 않게 하는 풀림의 한 길(PLAN L11).
+   * 성공이 서 있던 알림을 거둔다 — 넘기기는 `submit:pr` 을, 보관은 `save:commit` 을
+   * 푼다. 알림이 영원히 남지 않게 하는 풀림의 한 길(PLAN L11).
    */
-  resolveNotice?(key: "submit:pr"): void;
+  resolveNotice?(key: "submit:pr" | "save:commit"): void;
   /**
    * 한마디 더(U20 · PLAN-UI §10) — 성공이 제출 기록(원장의 submitTrail)에
    * 남기는 줄. fleet 이 감독자의 원장으로 잇는다; 없으면(단독 구성 · 시험)

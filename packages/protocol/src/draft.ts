@@ -130,6 +130,11 @@ export interface DraftSummary {
   state: DraftState;
   /** 기준과 다른 블록 수(고침 · 새 블록 · 지움). */
   changedBlocks: number;
+  /**
+   * 제목이 기준과 다르다(2026-11-12 기획자 체험) — 블록이 그대로여도 발행할 것이 있다. 목록의 초안 점이
+   * 바뀐 블록 수만 보고 사라지지 않게 한다. 옛 데몬은 싣지 않는다(선택 필드).
+   */
+  titleChanged?: boolean;
   baseVersion: number | null;
   observedVersion: number | null;
   updatedAt: string;

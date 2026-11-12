@@ -145,6 +145,8 @@ function rig(
     /** demo 의 프로젝트 폴더를 받아 다른 프로젝트의 폴더를 정한다 — 없으면 demo 만 등록부에 있다. */
     projectRoot?: (slug: string, demo: string, home: string) => string | null;
     machine?: (machine: MachineSetting) => void;
+    /** 바퀴 끝 방송(onImported)을 받아 적는 손 — 없으면 deps 에 싣지 않는다(2026-11-12 보완 1). */
+    imported?: string[];
   },
 ): Rig {
   const home = mkdtempSync(join(tmpdir(), "confluence-sync-"));
@@ -187,6 +189,14 @@ function rig(
     } as never,
     now: opts?.now ?? (() => NOW),
     sleep: opts?.sleep,
+    // 바퀴 끝 방송 — 시험이 잡아 보는 갈래(2026-11-12 보완 1).
+    ...(opts?.imported === undefined
+      ? {}
+      : {
+          onImported: (slug: string) => {
+            opts.imported?.push(slug);
+          },
+        }),
   });
   return {
     sync,
@@ -231,6 +241,49 @@ test("첫 가져오기 — 뿌리 아래 트리가 폴더와 파일과 원장으
     );
   } finally {
     rig1.cleanup();
+  }
+});
+
+test("바퀴 끝 방송 — 원장을 새로 쓴 바퀴만 한 번, 건너뛴 · 만료 · 실패한 바퀴는 없다(2026-11-12 보완 1)", async () => {
+  // 만료(401)로 끝나는 바퀴와 만료 뒤 건너뛴 바퀴 — 원장을 쓰지 않으니 방송도 없다.
+  const expired: string[] = [];
+  const rigE = rig(
+    [fixture("뿌리 401", readPageUrl(ROOT_ID), 401, { message: "Unauthorized" })],
+    undefined,
+    {
+      imported: expired,
+    },
+  );
+  try {
+    assert.deepEqual(await rigE.sync.importNow("demo"), {
+      imported: 0,
+      skipped: 0,
+      capped: false,
+    });
+    assert.equal(rigE.sync.expiredState("demo"), true);
+    assert.deepEqual(await rigE.sync.importNow("demo"), {
+      imported: 0,
+      skipped: 0,
+      capped: false,
+    });
+    assert.deepEqual(expired, [], "만료 · 건너뛴 바퀴는 방송하지 않는다");
+  } finally {
+    rigE.cleanup();
+  }
+  // 원장을 새로 쓴 첫 바퀴는 한 번 방송하고, 이어 증분 검색을 못 읽은 실패 바퀴는 방송하지 않는다.
+  const failed: string[] = [];
+  const rigF = rig(firstImportFixtures(), undefined, { imported: failed });
+  try {
+    assert.equal((await rigF.sync.importNow("demo")).imported, 3);
+    assert.deepEqual(failed, ["demo"], "원장을 새로 쓴 바퀴는 한 번 방송한다");
+    assert.deepEqual(await rigF.sync.importNow("demo"), {
+      imported: 0,
+      skipped: 0,
+      capped: false,
+    });
+    assert.deepEqual(failed, ["demo"], "실패한 바퀴는 방송하지 않는다");
+  } finally {
+    rigF.cleanup();
   }
 });
 

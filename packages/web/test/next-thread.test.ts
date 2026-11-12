@@ -135,6 +135,16 @@ test("rawErrorLine: 원문 → 문장 매핑(W3) — 한국어 고지 · 영문 
     raw: "usage limit reached until 3pm",
   });
 });
+test("rawErrorLine: 한 줄 + 빈 줄 + 원문 꼴 — 한 줄만 보이고 원문은 접힌 자리(2026-11-12 기획자 체험)", () => {
+  // 데몬의 한 줄에는 영어 낱말이 없다 — 서비스 이름은 접힌 원문에만 있다.
+  const lead =
+    "보관하지 못했어요 — 연결에 문제가 있어요. 고친 내용은 이 컴퓨터에 그대로 있고, 연결이 돌아오면 자동으로 다시 보관해요.";
+  const raw = `${lead}\n\nGitHub에 연결하지 못했습니다 — connect ECONNREFUSED`;
+  assert.deepEqual(rawErrorLine(raw, L), {
+    title: lead,
+    raw: "GitHub에 연결하지 못했습니다 — connect ECONNREFUSED",
+  });
+});
 
 test("failureCards: 잃은 말마다 카드 한 장(W8) — 대화록이 말하는 실패와 겹치면 하나", () => {
   const lost = (id: string, text: string, images = 0, files = 0) => ({

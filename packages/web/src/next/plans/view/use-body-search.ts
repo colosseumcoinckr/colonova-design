@@ -17,8 +17,6 @@ const WAIT_MS = 250;
 const MIN_CHARS = 2;
 
 export function useBodySearch(daemon: Daemon, query: string, enabled: boolean): BodySearch {
-  const apiRef = useRef(daemon.api);
-  apiRef.current = daemon.api;
   const seq = useRef(0);
   const [state, setState] = useState<BodySearch>({ phase: "idle" });
   const trimmed = query.trim();
@@ -31,7 +29,7 @@ export function useBodySearch(daemon: Daemon, query: string, enabled: boolean): 
     }
     setState({ phase: "loading" });
     const timer = window.setTimeout(() => {
-      apiRef.current
+      daemon.api
         .docSearch(trimmed)
         .then((reply) => {
           if (mine === seq.current) setState({ phase: "ready", hits: reply.results });
@@ -40,7 +38,10 @@ export function useBodySearch(daemon: Daemon, query: string, enabled: boolean): 
           if (mine === seq.current) setState({ phase: "failed" });
         });
     }, WAIT_MS);
-    return () => window.clearTimeout(timer);
-  }, [trimmed, enabled]);
+    return () => {
+      window.clearTimeout(timer);
+      seq.current += 1;
+    };
+  }, [trimmed, enabled, daemon.api]);
   return state;
 }

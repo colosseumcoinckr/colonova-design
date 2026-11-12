@@ -46,7 +46,7 @@ export const L = {
     /** 준비가 연결 코드에서 멈췄을 때(2026-10-20) — AI 에게 넘기지 않고 사람이 초대 파일을 연다. */
     reconnectPackages:
       "서비스를 준비하려면 연결 코드가 필요해요. 개발자에게 받은 초대 파일을 다시 열어 주세요.",
-    reconnectLogin: "AI 로그인이 끝났어요. 브라우저에서 한 번만 다시 로그인해 주세요.",
+    reconnectLogin: "AI 로그인이 풀렸어요. 브라우저에서 한 번만 다시 로그인해 주세요.",
     /** 로그인 단추를 누른 뒤 — 브라우저가 열렸고, 다 마치면 `다시 확인` 을 누르라는 말(단추만 바뀌던 것). */
     loginWaiting: "브라우저에서 로그인을 마치면 다시 확인해요",
     openInvite: "초대 파일 열기",
@@ -154,6 +154,8 @@ export const L = {
     preparing: "준비 중",
     notOpened: "아직 열지 않음",
     waitingAnswer: "답을 기다려요",
+    /** 보고 있지 않던 대화의 답이 끝났다 — 열면 사라진다(2026-11-12 비개발자 사용성 토론 · 끝남 표시). */
+    doneUnseen: "답이 끝났어요",
     waitingAnswerCount: (n: number) => `답을 기다려요 ${n}`,
     comments: (n: number) => `코멘트 ${n}`,
     aiFailedRetry: "AI가 답을 못 했어요 — 다시 시도할 수 있어요",
@@ -198,23 +200,23 @@ export const L = {
   tabs: {
     chat: "대화",
     plans: "기획서",
-    plansAria: (n: number) => `기획서 · 이 화면에 이어진 문서 ${n}개`,
+    plansAria: (n: number) => `기획서 · 연결·근거·바뀐 곳 ${n}건`,
     history: "작업 기록",
     /** 기획서 · 작업 기록 탭을 보는 동안 온 새 답 · 묻는 카드의 표지. */
     news: "대화에 새 소식이 있어요",
   },
   /** 기획서 탭(2026-10-31 화면 자리 개선안 S10) — 지금 화면에 이어진 기획서를 그 자리에서 읽는다. */
   planTab: {
-    title: "이 화면의 기획서",
+    title: "기획서와 근거",
     /** 이어진 문서가 없을 때 — 곁줄의 고르기 손과 같은 길: 자리를 옮기지 않고 이 탭에서 바로 고른다. */
-    empty: "이 화면에 이어진 기획서가 없어요",
+    empty: "이 화면에 연결한 기획서와 이 대화의 근거·초안 변경 기록이 없어요",
     pick: "기획서 고르기",
     /** 고르기 팝의 머리 — 곁줄의 「같이 고칠 기획서」와 같은 일이지만 이쪽은 읽을 연결을 만든다. */
     pickTitle: "이 화면에 이을 기획서",
     linkedDone: (title: string) => `‘${title}’ 문서와 이 화면을 이었어요`,
     linkedFailed: "연결을 만들지 못했어요 — 잠시 뒤 다시 눌러 주세요",
-    send: "근거로 보내기",
-    sentToComposer: "입력창에 근거를 담았어요 — 말을 붙여 보내 주세요",
+    send: "최신 본문을 근거로 보내기",
+    sentToComposer: "입력창에 최신 본문을 근거로 담았어요 — 말을 붙여 보내 주세요",
     open: "기획서에서 열기",
     unlink: "끊기",
     unlinkDone: (title: string) => `‘${title}’ 문서와 이 화면의 연결을 끊었어요`,
@@ -222,11 +224,20 @@ export const L = {
     /** 읽기 전용의 한 줄 — 고치는 곳은 기획서 자리(초안)임을 말한다(§7 위험). */
     readOnly: "여기서는 읽어요 — 고치는 것은 기획서에서 해요",
     /** 이어진 절이 있을 때의 머리 — 절 단위 연결이 없으면 문서 첫머리부터 보인다. */
-    section: (heading: string | null) => (heading ? `이어진 절 · ${heading}` : "문서 전체"),
-    listLabel: "이어진 기획서 목록",
+    section: (heading: string | null) => (heading ? `참고할 절 · ${heading}` : "문서 전체"),
+    listLabel: "이 화면에 연결한 문서",
     /** 같이 고친 초안 묶음(2026-11-02 · 같이 고치기 UX 계획 C4) — 이 대화에서 실제로 같이 고쳐진 문서가 저절로 보인다. */
     changedGroup: "초안에서 바뀐 곳",
     changedBlocks: (n: number) => `바뀐 블록 ${n}군데`,
+    refsGroup: "이 대화에 보낸 근거",
+    latestDraft: "최신 초안이에요 — 근거로 보냈거나 바뀐 당시의 판과 다를 수 있어요",
+    importedBody: "현재 가져와 둔 본문이에요 — 근거로 보낸 당시의 판과 다를 수 있어요",
+    linkedReadFailed: "화면에 연결한 문서를 읽지 못했어요",
+    refsReadFailed: "이 대화의 근거 목록을 읽지 못했어요",
+    changedReadFailed: "초안 변경 기록을 읽지 못했어요",
+    readFailed: "문서 본문을 읽지 못했어요",
+    retry: "다시 읽기",
+    alreadyLinked: "연결됨",
   },
   toast: {
     switched: (name: string) => `옮겼어요 · ${name} · 미리보기는 보던 자리 그대로예요`,
@@ -323,6 +334,7 @@ export const L = {
 
   // ── 단계 2 대화
   composer: {
+    foldClose: "입력창 접기",
     placeholder: "만들거나 고치고 싶은 것을 말해 주세요",
     placeholderPins: "찍은 곳을 어떻게 고칠지 말해 주세요",
     placeholderMerged: "다음에 만들 것을 말해 주세요 — 새 작업으로 시작해요",
@@ -361,7 +373,8 @@ export const L = {
           `${screen ? `‘${screen}’ 화면의` : "화면의"} 간격과 정렬을 깔끔하게 정리해 줘`,
       },
     },
-    pin: "수정할 곳 선택",
+    /** 찍기의 말은 `찍기` 하나다(2026-10-31 S6) — 좁은 창의 입력창만 옛 말이 남아 있었다(2026-11-12 기획자 체험). */
+    pin: "찍기",
     pinTip: "화면에서 고칠 곳 찍기 · ⌘⇧P",
     send: "보내기 · ↵ (줄바꿈은 ⇧↵)",
     /** AI 가 일하는 동안 보내면 줄을 선다 — 답이 끝나면 나간다. */
@@ -534,7 +547,7 @@ export const L = {
   },
   cards: {
     gateResult: { verified: "다시 확인했어요 · 문제 없음", remaining: "문제가 남아 있어요", unchanged: "확인했어요 · 변경 없음", unverified: "해결 여부를 확인하지 못했어요", failed: "AI가 답을 마치지 못했어요", interrupted: "확인을 멈췄어요" },
-    gateResultDetail: { verified: "고친 뒤 화면 확인을 통과했어요.", remaining: "다시 확인했지만 문제가 남아 있어요.", unchanged: "이번 답에서는 화면을 바꾸지 않았어요.", unverified: "답이 끝났지만 해결 여부는 아직 확인되지 않았어요.", failed: "이번 확인을 마치지 못했어요.", interrupted: "해결 여부를 확인하기 전에 멈췄어요." },
+    gateResultDetail: { verified: "고친 뒤 화면 확인을 통과했어요.", remaining: "다시 확인했지만 문제가 남아 있어요.", unchanged: "이번 답에서는 화면을 바꾸지 않았어요.", unverified: "답이 끝났지만 해결 여부는 아직 확인되지 않았어요 — 미리보기의 화면을 직접 확인해 보세요.", failed: "이번 확인을 마치지 못했어요.", interrupted: "해결 여부를 확인하기 전에 멈췄어요." },
     gateFixed: "AI가 고쳤어요",
     gateFixing: "AI가 고치는 중",
     nothingToDoYet: "하실 일은 없어요 — 끝나면 알려 드려요.",
@@ -977,6 +990,8 @@ export const L = {
      */
     sendEdit: "고쳐서 보내기",
     sentNowToast: "화면 대화로 보냈어요",
+    /** 보낸 줄에 남는 말(2026-11-12 기획자 체험) — 알림은 곧 사라져 같은 줄을 다시 누르게 됐다. */
+    sentRow: "화면 대화로 보냈어요 — 답은 화면 자리의 대화에 와요",
     /** 조용한 실패 알림(2026-11-03 A안 1A-2) — 화면 제안의 판정이 실패했다. */
     judgeFailed: "화면과 견주지 못했어요",
     retry: "다시 시도",
@@ -1873,7 +1888,9 @@ export const L = {
     // (옛 말 askScope · askEmpty · docScreens 는 이 개선에서 걷는다).
     docScreensNone: "아직 이어진 화면이 없어요 — 이 문서를 근거로 화면을 고치면 저절로 이어져요",
     docScreenOpen: "화면 보기",
-    drawerScreens: (count: number) => `이어진 화면 ${count}개`,
+    drawerScreens: (count: number | null) => count === null ? "이어진 화면" : `이어진 화면 ${count}개`,
+    screensLoadFailed: "연결된 화면을 읽지 못했어요",
+    syncedLoadFailed: "같이 고친 화면 기록을 읽지 못했어요",
     /** 같이 고침으로 닿은 화면의 묶음 머리(2026-11-02 · 같이 고치기 UX 계획 C4) — 연결 파일 줄 아래에 선다. */
     docScreensSynced: "같이 고침으로 닿은 화면",
     drawerComments: (count: number) => `코멘트 ${count}개`,
@@ -2048,6 +2065,9 @@ export const L = {
     convList: "기획 대화",
     convNew: "새 기획 대화",
     convNone: "아직 기획 대화가 없어요 — 문서를 열고 AI 에게 말을 걸어 보세요",
+    convDeleting: "대화를 지우는 중…",
+    convLoadFailed: "기획 대화를 읽지 못했어요. 다시 시도해 주세요",
+    convMissingDoc: "이 대화의 문서가 없어요. 다른 문서를 골라 새 대화를 시작해 주세요",
     convNoDoc: "문서 없음",
     convDelete: "대화 지우기",
     /** 목록 줄의 `···` 지우기 확인(2026-11-03) — 화면 대화 목록의 확인 판과 같은 자리의 말이다. */
@@ -2072,7 +2092,8 @@ export const L = {
     selectionChip: "고른 글",
     selectionRemove: "고른 글 빼기",
     // 변경안 카드 — 바로 반영의 문서 카드(2026-10-31 2단계). 채택 걸음은 걷었다.
-    opStale: "초안이 바뀌어 오래된 걸음이에요",
+    // 2026-11-12 비개발자 사용성 — «걸음» 을 사용자의 말로 바꾸고, 같은 답의 `다시 요청` 으로 이어진다.
+    opStale: "초안이 바뀌어 이 고침은 더 이상 맞지 않아요 — 다시 부탁하면 바뀐 초안에 맞게 다시 써 줘요",
     opMissing: "원래 자리의 블록이 없어졌어요",
     opBlank: "빈 블록",
     opReplace: (head: string) => `“${head}” 블록을 고쳐 써요`,
@@ -2102,7 +2123,8 @@ export const L = {
     revPerson: "직접 고침",
     revAi: (label: string | null) => `AI · ${label ?? "기획 대화"}`,
     revScreen: "화면 요청에서",
-    revSystem: "정산",
+    /** 앱이 스스로 남긴 판(발행 앞뒤의 맞춤 등) — `정산` 은 뜻이 읽히지 않았다(2026-11-12 기획자 체험). */
+    revSystem: "자동 정리",
     revChanges: (changed: number, inserted: number, deleted: number) => {
       const parts: string[] = [];
       if (changed > 0) parts.push(`고침 ${changed}`);
@@ -2155,15 +2177,17 @@ export const L = {
       const parts = [`판 ${version}`, typeof folder === "string" && folder !== "" ? folder : null];
       return parts.filter((part) => part !== null && part !== "").join(" · ");
     },
-    refSectionsLabel: "절 이름",
-    refSectionsHint: "예: 배경, 목표 — 쉼표로 나눠 적어요",
+    refSectionsPick: "절 고르기",
+    refSectionsAny: "고르지 않으면 문서 전체를 담아요",
+    refSectionsLoading: "문서의 절을 읽는 중…",
+    refSectionsFailed: "절을 읽지 못했어요",
+    refSectionsNone: "이 문서에는 절이 없어요. 문서 전체로 담아요",
     refAdd: "근거로 담기",
     // 기획 대화의 입력 한계(2026-10-23 화면 확인) — 데몬의 검사에 부딪치기 전에 화면이 먼저 지킨다.
     // 숫자는 선로 스키마(`packages/protocol/src/draft.ts`)와 같다.
     limitQuestionLength: "질문은 8,000자까지 쓸 수 있어요",
     limitRefCount: "근거는 문서 20개까지 함께 보낼 수 있어요",
     limitSectionCount: "절은 20개까지 골라 주세요",
-    limitSectionLength: "절 이름은 200자까지 쓸 수 있어요",
     startWithAi: "AI 와 시작하기",
     // ── 발행(2026-10-23 · 최종 구현 계획 F2) — Confluence 에 반영하기 전에 무엇이 반영되는지 보인다
     publish: "발행",
@@ -2186,6 +2210,8 @@ export const L = {
     previewVersions: (base: number | null, remote: number | null, revision: number) =>
       `초안이 출발한 판 ${base ?? "없음"} · 지금 Confluence 판 ${remote ?? "없음"} · 초안 판 ${revision}`,
     changeHeading: "이번에 반영할 내용",
+    /** 블록은 그대로이고 제목만 바뀐 발행(2026-11-12 기획자 체험) — «발행할 것이 없어요» 가 제목 변경 위에 섰다. */
+    changeTitleOnly: "제목만 바뀌어요",
     changeCounts: (changed: number, inserted: number, deleted: number) => {
       const parts: string[] = [];
       if (changed > 0) parts.push(`고침 ${changed}`);
@@ -2433,7 +2459,7 @@ export const L = {
     imageZoom: "그림 크게 보기",
     // 첨부
     attachmentsHeading: (count: number) => `첨부 ${count}개`,
-    attachmentsUnavailable: "첨부 목록은 지금 읽지 못했어요",
+    attachmentsUnavailable: "첨부 목록은 지금 읽지 못했어요 — 문서를 다시 열면 다시 읽어요",
     download: "내려받기",
     downloadOf: (name: string) => `${name} 내려받기`,
     downloading: "받는 중…",
@@ -2448,7 +2474,7 @@ export const L = {
     // 라벨
     labels: "라벨",
     labelsNone: "라벨이 없어요",
-    labelsUnavailable: "라벨은 지금 읽지 못했어요",
+    labelsUnavailable: "라벨은 지금 읽지 못했어요 — 문서를 다시 열면 다시 읽어요",
     labelAdd: "라벨 더하기",
     labelPlaceholder: "새 라벨",
     labelSave: "더하기",
@@ -2472,6 +2498,9 @@ export const L = {
     // 판 기록
     history: "판 기록",
     historySub: "Confluence 에 올라간 판이에요 — 옛 판은 읽기만 해요",
+    // 2026-11-12 비개발자 사용성 — 코드로 확인된 되돌리기 길만 말한다(초안 판 되돌리기는
+    // draft-service.ts 의 restoreRevision, 발행 뒤에도 초안 판 스냅숏은 draft-store.ts 가 지우지 않는다).
+    historyRevertNote: "잘못 발행했으면 초안에서 발행 전 판으로 되돌린 뒤 다시 발행해요",
     historyLoading: "판 기록을 읽는 중…",
     historyFailed: "판 기록을 읽지 못했어요 — 잠시 뒤 다시 시도해 주세요",
     historyCurrent: "지금 판",

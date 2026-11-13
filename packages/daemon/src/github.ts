@@ -7,7 +7,7 @@
  * same transport when COLONOVA_DESIGN_GITHUB_FIXTURE points at a fixture directory.
  *
  * Endpoints used (cite in every fixture):
- *   POST  /repos/{owner}/{repo}/pulls/{number}/requested_reviewers — ask for reviews (E4)
+ *   POST  /repos/{owner}/{repo}/pulls                              — open the handoff as a draft PR
  *   PATCH /repos/{owner}/{repo}/pulls/{number}                 — retitle/rewrite a standing one · 제출 취소(state: closed)
  *   GET   /repos/{owner}/{repo}/pulls/{number}                 — state + merged flag
  *   GET   /repos/{owner}/{repo}/pulls/{number}/reviews         — latest verdict per reviewer
@@ -398,7 +398,9 @@ export class GitHubClient {
   /**
    * A brand-new pull request cannot carry a review yet, so its state is read
    * off the create response alone — no reviews call on the button press the
-   * planner is waiting on.
+   * planner is waiting on. Opened as a GitHub draft(2026-11-13 사용자 결정):
+   * readiness stays the developer's call on GitHub, and the PATCH of a
+   * re-submit never touches the flag.
    */
   async createPullRequest(input: {
     owner: string;
@@ -416,6 +418,8 @@ export class GitHubClient {
         body: input.body,
         head: input.head,
         base: input.base,
+        // GitHub 초안(draft)으로 연다 — 검토 준비 표시는 개발자의 손에 남는다.
+        draft: true,
       },
       "제출",
     );

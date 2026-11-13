@@ -29,9 +29,11 @@ export interface Suggest {
     query: string;
     rows: SuggestRow[];
     loading: boolean;
+    failed: boolean;
     /** 밝은 줄 — 줄이 없으면 -1. */
     active: number;
   } | null;
+  retry: () => void;
   listId: string;
   optionId: (index: number) => string;
   /** 입력칸의 글 · 커서가 바뀌었다(onChange · onSelect). 범위를 고르는 중이면 닫는다. */
@@ -74,8 +76,11 @@ export function useComposerSuggest({
   // Esc 로 닫은 조각의 자리 — 그 조각을 지울 때까지 다시 열지 않는다.
   const [dismissed, setDismissed] = useState<number | null>(null);
   const [lit, setLit] = useState<{ key: string; index: number }>({ key: "", index: 0 });
-  const [files, setFiles] = useState<{ query: string; rows: string[] } | null>(null);
+  const [files, setFiles] = useState<{ query: string; rows: string[]; failed?: boolean } | null>(
+    null,
+  );
   const listId = useId();
+  const [retry, setRetry] = useState(0);
 
   const found = at && at.text === text ? triggerAt(text, at.caret) : null;
   const trigger =
@@ -83,11 +88,13 @@ export function useComposerSuggest({
   const triggerKey = trigger ? `${trigger.kind}:${trigger.start}:${trigger.query}` : "";
 
   const fileQuery = trigger?.kind === "file" ? trigger.query : null;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 재시도 횟수는 다시 읽는 방아쇠다.
   useEffect(() => {
     if (fileQuery === null) {
       setFiles(null);
       return;
     }
+    setFiles(null);
     let live = true;
     const wait = fileQuery === "" || isFolder(fileQuery) ? 0 : FILE_WAIT_MS;
     const timer = setTimeout(() => {
@@ -97,16 +104,16 @@ export function useComposerSuggest({
           if (live) setFiles({ query: fileQuery, rows });
         })
         .catch(() => {
-          if (live) setFiles({ query: fileQuery, rows: [] });
+          if (live) setFiles({ query: fileQuery, rows: [], failed: true });
         });
     }, wait);
     return () => {
       live = false;
       clearTimeout(timer);
     };
-  }, [fileQuery, api]);
+  }, [fileQuery, api, retry]);
 
-  // 글자를 더 치는 동안은 앞 답의 줄이 남는다 — 줄마다 깜빡이지 않게. 처음 열 때만 `찾는 중`.
+  // 2026-11-12 UI 조사 U-046 — 현재 검색어의 결과만 고를 수 있다.
   const rows: SuggestRow[] = !trigger
     ? []
     : trigger.kind === "command"
@@ -117,7 +124,11 @@ export function useComposerSuggest({
           hint: command.argumentHint,
           description: command.description,
         }))
-      : (files?.rows ?? []).map((value) => ({ kind: "file", key: value, value }));
+      : (files?.query === trigger.query ? files.rows : []).map((value) => ({
+          kind: "file",
+          key: value,
+          value,
+        }));
   const loading = trigger?.kind === "file" && files?.query !== trigger.query;
   const index =
     rows.length === 0 ? -1 : lit.key === triggerKey ? Math.min(lit.index, rows.length - 1) : 0;
@@ -133,8 +144,16 @@ export function useComposerSuggest({
 
   return {
     open: trigger
-      ? { kind: trigger.kind, query: trigger.query, rows, loading, active: index }
+      ? {
+          kind: trigger.kind,
+          query: trigger.query,
+          rows,
+          loading,
+          failed: files?.query === trigger.query && !!files.failed,
+          active: index,
+        }
       : null,
+    retry: () => setRetry((n) => n + 1),
     listId,
     optionId: (at) => `${listId}-${at}`,
     track: (el) => {
@@ -159,6 +178,10 @@ export function useComposerSuggest({
         setDismissed(trigger.start);
         return true;
       }
+      if (loading && (event.key === "Enter" || event.key === "Tab")) {
+        event.preventDefault();
+        return true;
+      }
       if (event.altKey || event.metaKey || event.ctrlKey || rows.length === 0) return false;
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -181,7 +204,7 @@ export function useComposerSuggest({
 }
 
 /**
- * 목록의 판 — 대화 칸에서는 입력창 위로(`up`), 홈에서는 아래로 선다. 줄을 눌러도 입력칸이 초점을
+ * 목록의 판 — 대화 칸에서는 입력창 위로(`up`) 선다. 줄을 눌러도 입력칸이 초점을
  * 잃지 않게 판의 mousedown 을 막는다.
  */
 export function SuggestList({ suggest, up }: { suggest: Suggest; up: boolean }) {
@@ -261,12 +284,19 @@ export function SuggestList({ suggest, up }: { suggest: Suggest; up: boolean }) 
       </div>
       {empty && (
         <div className="nx-suggest-empty" role="status">
-          {open.loading
-            ? words.filesLoading
-            : open.kind === "command"
-              ? words.commandsNone
-              : words.filesNone}
+          {open.failed
+            ? L.readState.failed
+            : open.loading
+              ? words.filesLoading
+              : open.kind === "command"
+                ? words.commandsNone
+                : words.filesNone}
         </div>
+      )}
+      {open.failed && (
+        <button type="button" className="nx-btn nx-btn--sm" onClick={suggest.retry}>
+          {L.readState.retry}
+        </button>
       )}
       <div className="nx-suggest-keys" aria-hidden="true">
         {keyHint(words.keys)}

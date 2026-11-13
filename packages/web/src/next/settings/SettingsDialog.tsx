@@ -15,8 +15,10 @@ import type { ChatSettings, Settings } from "../../lib/settings";
 import { L } from "../labels";
 import { connectionCopy, connectionLock, reconnectNeeds } from "../lib/connection-copy";
 import { closeGuard, pageDirection } from "../lib/settings-shell";
+import { nextTabIndex } from "../lib/tab-keys";
 import { useClosing } from "../lib/use-closing";
 import { hasNewerVersion } from "../lib/version";
+import type { SettingsPage } from "../slots";
 import { CloseIcon, Spin } from "../ui/icons";
 import { AiPage } from "./AiPage";
 import { ConnectionPage } from "./ConnectionPage";
@@ -37,8 +39,8 @@ import { useAuthorName } from "./use-author";
 import { useReset } from "./use-reset";
 import { useUpdates } from "./use-updates";
 
-/** 설정의 쪽 — 왼쪽 목록의 차례가 이 순서고, 개발자용은 맨 아래에 따로 선다. */
-type Page = "ai" | "theme" | "notify" | "connection" | "update" | "developer";
+/** 설정의 쪽 — 왼쪽 목록의 차례가 이 순서고, 개발자용은 맨 아래에 따로 선다. `slots.ts` 의 SettingsPage 와 같다. */
+type Page = SettingsPage;
 
 const PAGES: readonly Page[] = ["ai", "theme", "notify", "connection", "update", "developer"];
 
@@ -83,6 +85,8 @@ export function SettingsDialog({
   settings,
   onChatChange,
   onSettingsChange,
+  initialPage,
+  onOpenPlansConnect,
   onClose,
 }: {
   daemon: Daemon;
@@ -90,6 +94,12 @@ export function SettingsDialog({
   onChatChange: (patch: Partial<ChatSettings>) => void;
   /** 알림 정책의 저장 — App 의 settings 상태가 유일한 원천이다. */
   onSettingsChange: (patch: Partial<Settings>) => void;
+  /** 부르는 곳이 처음 설 쪽을 정할 때(없으면 지금의 첫 쪽). */
+  initialPage?: Page;
+  /** 연결 쪽의 기획서 줄의 `열기`(2026-11-13 사용자 결정 — 기획서 연결을 프로젝트 쪽으로).
+      누르면 먼저 닫기를 청하고, 닫힘이 확정된 뒤에야 이 손이 부른다 — 저장 실패로
+      창이 남으면 부르지 않는다. */
+  onOpenPlansConnect: () => void;
   onClose: () => void;
 }) {
   const status = daemon.status;
@@ -106,7 +116,8 @@ export function SettingsDialog({
   const agentUpdateReady = providers.some(
     (provider) => provider.available && hasNewerVersion(provider.version, provider.latestVersion),
   );
-  const [page, setPage] = useState<Page>(() => (agentUpdateReady ? "update" : "ai"));
+  // 부르는 곳이 쪽을 정했으면 그 쪽이 선다(2026-11-12).
+  const [page, setPage] = useState<Page>(() => initialPage ?? (agentUpdateReady ? "update" : "ai"));
   // 쪽이 바뀐 뒤부터만 등장 움직임을 준다 — 열릴 때는 창의 pop 하나로 충분하다. 방향은 목록의 차례가 정한다.
   const [switched, setSwitched] = useState(false);
   const [direction, setDirection] = useState<"up" | "down" | "none">("none");
@@ -198,14 +209,29 @@ export function SettingsDialog({
   );
 
   // ── 닫기 — Esc · 배경 · ✕ 가 모두 이 길로 모인다. 이름이 저장되지 못했으면 열어 둔 채 말한다.
-  const { closing, begin } = useClosing(onClose);
+  // 닫힘이 확정된 뒤(onClose — 열림의 거꾸로가 끝난 다음) 부를 손 — 기획서 줄의 `열기`
+  // 가 세우고, 닫기가 거절되면(저장 실패) 거둔다(2026-11-13 사용자 결정).
+  const plansAfter = useRef(false);
+  const { closing, begin } = useClosing(() => {
+    onClose();
+    if (plansAfter.current) {
+      plansAfter.current = false;
+      onOpenPlansConnect();
+    }
+  });
   const [closeWaiting, setCloseWaiting] = useState(false);
   const [focusAuthor, setFocusAuthor] = useState(0);
   // 저장이 닫기 때문에 실패해 창을 열어 둔 채 말해 준 글 — 같은 글로 다시 닫으면 그대로 닫는다.
   const [warnedDraft, setWarnedDraft] = useState<string | null>(null);
   const requestClose = async () => {
-    // 초기화가 도는 동안은 닫히지 않는다 — 앱이 곧 다시 열린다.
-    if (reset.phase !== "idle" || closing || closeWaiting) return;
+    // 초기화가 도는 동안은 닫히지 않는다 — 앱이 곧 다시 열린다. 기획서 줄의 표식은
+    // 여기서 거둔다 — 이 반환은 닫기로 이어지지 않아 표식만 남아 나중에 뜻밖에
+    // 대화상자가 열리는 걸 막는다(2026-11-13 R1-3).
+    if (reset.phase !== "idle") {
+      plansAfter.current = false;
+      return;
+    }
+    if (closing || closeWaiting) return;
     const verdict = closeGuard({
       dirty: author.dirty,
       saving: author.phase === "saving",
@@ -222,6 +248,8 @@ export function SettingsDialog({
       begin();
       return;
     }
+    // 저장이 지면 창이 남는다 — 기획서 줄의 표식도 여기서 거둬 늦게 겹쳐 열리지 않게 한다.
+    plansAfter.current = false;
     // 닫으며 쏜 저장의 실패는 언마운트 뒤에 써져 사라졌다 — 열어 둔 채 연결 쪽의 칸으로 데려간다.
     setWarnedDraft(author.draft.trim());
     selectPage("connection");
@@ -235,15 +263,10 @@ export function SettingsDialog({
   };
 
   // 왼쪽 목록의 화살표 걸음 — 옮겨 가며 곧바로 그 쪽을 연다(탭 순서에는 고른 쪽 하나만 선다).
+  // 수학은 오른쪽 칸의 탭과 한 판이다(lib/tab-keys — 2026-11-03 탭 알약식과 함께).
   const railKeys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const at = PAGES.indexOf(page);
-    let next: number;
-    if (event.key === "ArrowDown" || event.key === "ArrowRight") next = (at + 1) % PAGES.length;
-    else if (event.key === "ArrowUp" || event.key === "ArrowLeft")
-      next = (at - 1 + PAGES.length) % PAGES.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = PAGES.length - 1;
-    else return;
+    const next = nextTabIndex(event.key, PAGES.length, PAGES.indexOf(page));
+    if (next === null) return;
     event.preventDefault();
     const target = PAGES[next];
     if (target) selectPage(target);
@@ -319,7 +342,7 @@ export function SettingsDialog({
                     <Icon />
                     <span>{PAGE_TITLE[id]}</span>
                     {pill && (
-                      <span className={`nx-set-pill nx-set-pill--${pill.tone}`}>
+                      <span className={`nx-pill nx-set-pill nx-pill--${pill.tone}`}>
                         <i aria-hidden="true" />
                         {pill.text}
                       </span>
@@ -372,6 +395,12 @@ export function SettingsDialog({
               lockReason={connectionLock(daemon.connection, L)}
               focusSignal={focusAuthor}
               onOpenInvite={openInvite}
+              onOpenPlansConnect={() => {
+                // 표식만 남기고 닫기를 청한다 — 대화상자는 설정이 실제로 닫힌 뒤에
+                // 선다(저장 실패로 이 창이 남으면 겹쳐 열리지 않는다 · 2026-11-13 사용자 결정).
+                plansAfter.current = true;
+                void requestClose();
+              }}
               onScroll={scrollOf("connection")}
             />
             <UpdatePage

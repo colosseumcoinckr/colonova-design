@@ -1,4 +1,5 @@
 import type { Attention } from "./attention.js";
+import type { InviteSupport } from "./invite.js";
 import type { HandoffStatus, RepoPhase } from "./repo.js";
 import type { PlanUsage, SessionModelInfo } from "./session.js";
 import type { EffortLevel } from "./shared.js";
@@ -101,6 +102,33 @@ export interface ProjectSummary {
    * 문장을 읽는다. 없으면 키가 없다.
    */
   attention?: Attention | null;
+  /**
+   * 기획서(Confluence) 연결의 프로젝트 스코프 상태 — 설정 · 뷰어는 활성 프로젝트의
+   * 이 칸만 말한다(2026-10-18 기획서 동기화 · 두 프로젝트가 각각 다른 루트를 고른다).
+   * 미연결 프로젝트는 키가 없다. 자격(이메일 · 토큰)은 여기에 절대 실리지 않는다 —
+   * 데몬의 자격 저장소만 안다. `account` 는 그 원칙의 유일한 예외다 — 가려진 이메일
+   * (예: `i***@company.com`)만 실린다(2026-11-03 사용자 승인 · 프로젝트별 자격).
+   */
+  confluence?: {
+    site: string;
+    connected: boolean;
+    /** 가져오기 중 401 로 연결이 끊겼을 때 — 다시 connect 하면 내려앉는다. */
+    expired: boolean;
+    rootTitle: string | null;
+    lastImportAt: string | null;
+    pages: number;
+    /**
+     * 연결된 계정의 가려진 이메일 — 프로젝트마다 다른 계정으로 연결했을 때 누구의 연결인지
+     * 보인다. 선택 필드다 — 없으면 모른다(옛 데몬 · 가릴 수 없는 값).
+     */
+    account?: string;
+    /**
+     * 이 앱이 Confluence 에 쓸 수 있는가 — 발행 게이트(`COLONOVA_DESIGN_CONFLUENCE_PUBLISH=1`). 발행 · 문서 관리 ·
+     * 코멘트 쓰기가 같은 게이트를 지난다. 화면은 누르기 전에 꺼짐을 알린다(2026-10-23 기획자 화면 손질 U2). 선택
+     * 필드다 — 없으면 모른다(옛 데몬). 실제로 막는 것은 데몬의 각 쓰기 경로다.
+     */
+    writable?: boolean;
+  };
 }
 
 export interface ProjectList {
@@ -335,10 +363,21 @@ export interface DaemonStatus {
   /** 넘긴 요청에 적을 작성자 이름 — 온보딩이 묻고 machine.json 이 기억한다. */
   authorName?: string | null;
   /**
+   * 초대 파일의 창구 칸(2026-11-12 설계 결정 ㉱) — 막혔을 때 앱이 세우는
+   * 물어볼 사람 · 대화방. machine.json 이 기억하고, 초대장에 칸이 없으면
+   * 이미 있는 값을 지우지 않는다. null/없음이면 «개발팀»이라고만 말한다.
+   */
+  support?: InviteSupport | null;
+  /**
    * 새 AI 버전이 나오면 스스로 설치할지(PLAN-UI U12) — 기본 켬, `machine.set`
    * 으로 바꾸고 machine.json 이 기억한다.
    */
   agentAutoUpdate: boolean;
+  /**
+   * 기획서와 화면을 서로 맞추는 자동 판정(2026-11-03 A안 1A-1 설정 토글) — 기본 켬, `machine.set` 의 `planLoop` 로
+   * 바꾸고 machine.json 이 끔만 기억한다. 없으면 켬으로 읽는다.
+   */
+  planLoop?: boolean;
   /**
    * 에이전트 업데이트의 지금(PLAN-UI U12, v19 보충) — 새로 고친 창도 `도는
    * 작업이 끝나면 설치해요`(pending) · 진행 중(running) · 끝(done · failed)을

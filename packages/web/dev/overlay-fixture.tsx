@@ -197,6 +197,12 @@ function PaletteCase() {
   const mode = query.get("activate");
   return open ? (
     <Palette
+      documents={[
+        { pageId: "2001", title: "주문 취소 정책", folder: "02.정책서" },
+        { pageId: "3001", title: "주문 목록과 검색", folder: "03.기능설계서" },
+      ]}
+      onOpenDocument={(pageId: string) => calls.push(`document:${pageId}`)}
+      onOpenPlans={() => calls.push("plans")}
       titleForThread={(t: { title: string }) => t.title}
       activeSessionId="t1"
       projects={projects}
@@ -1000,7 +1006,562 @@ function AskCase() {
   );
 }
 
+// 2026-11-12 UI 조사 SHELL-A — 실제 셸의 폭 전환·키보드·실패 견본.
+const ShellWorkspace = named(() => import("../src/next/Workspace"), "Workspace");
+const ShellProblem = named(() => import("../src/next/status/ProblemLine"), "ProblemLine");
+const ShellConfirm = named(() => import("../src/next/ui/InlineConfirm"), "InlineConfirm");
+function ShellAuditCase() {
+  const { settings, update } = useSettings();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 견본 테마는 처음 한 번만 고른다.
+  useEffect(() => {
+    if (theme) update({ theme: theme as ThemeChoice });
+  }, []);
+  const daemon = useMemo(() => {
+    const base = mockDaemon();
+    const handlers: Record<string, () => unknown> = {
+      listSessions: () => [],
+      history: () => [],
+      reviews: () => [],
+      saveHistory: () => ({ entries: [] }),
+      planDrafts: () => [],
+      draftList: () => [],
+      plansList: () => ({ entries: [] }),
+      planDocEntries: () => ({ entries: [] }),
+    };
+    return {
+      ...base,
+      onDraftEvent: () => () => {},
+      repo: { ...REPO, previewUrl: null },
+      api: new Proxy(base.api, {
+        get(target, key: string) {
+          return handlers[key] ? async () => handlers[key]?.() : target[key as keyof typeof target];
+        },
+      }),
+    };
+  }, []);
+  return (
+    <ShellWorkspace
+      daemon={daemon}
+      settings={settings}
+      onChatChange={() => {}}
+      onLayoutChange={() => {}}
+      onSettingsChange={() => {}}
+      onRenameSession={() => {}}
+    />
+  );
+}
+function ShellCleanupCase() {
+  const [, ready] = useState(false);
+  const [path, setPath] = useState<string | null>("fixture.invite");
+  useEffect(() => {
+    Object.assign(window, {
+      colonovaDesignDesktop: {
+        invite: {
+          discard: async () => {
+            calls.push("discard");
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            throw Error("fixture");
+          },
+        },
+      },
+    });
+    ready(true);
+    return () => {
+      delete window.colonovaDesignDesktop;
+    };
+  }, []);
+  return (
+    <div style={{ width: 900 }}>
+      <ShellProblem
+        daemon={mockDaemon()}
+        invitePath={path}
+        onClearInvite={() => setPath(null)}
+        onToast={(text: string) => calls.push(text)}
+      />
+    </div>
+  );
+}
+function ShellBusyCase() {
+  const [open, setOpen] = useState(true);
+  return open ? (
+    <ShellConfirm
+      title="시험 요청"
+      confirmLabel="실행"
+      cancelLabel="그만두기"
+      busy
+      onCancel={() => setOpen(false)}
+      onConfirm={() => {}}
+    />
+  ) : (
+    <span>닫힘</span>
+  );
+}
+function NoteEscapeCase() {
+  const [open, setOpen] = useState(false);
+  const [confirm, setConfirm] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  return (
+    <div style={{ padding: 24 }}>
+      <button ref={anchor} type="button" className="nx-btn" onClick={() => setOpen(true)}>
+        팝 열기
+      </button>
+      {open && (
+        <Popover
+          anchor={anchor}
+          label="시험 팝"
+          role={confirm || CASE === "note-empty" ? "dialog" : "menu"}
+          onClose={() => {
+            setOpen(false);
+            setConfirm(false);
+          }}
+        >
+          {CASE === "note-empty" ? (
+            <p>읽는 내용</p>
+          ) : confirm ? (
+            <ShellConfirm
+              title="지울까요?"
+              confirmLabel="지우기"
+              cancelLabel="그만두기"
+              onConfirm={() => {}}
+              onCancel={() => setConfirm(false)}
+              returnRef={anchor}
+            />
+          ) : (
+            <button
+              type="button"
+              role="menuitem"
+              className="nx-mi"
+              onClick={() => setConfirm(true)}
+            >
+              지우기
+            </button>
+          )}
+        </Popover>
+      )}
+    </div>
+  );
+}
+// 2026-11-12 UI 조사 U-120 — 방송이 저장 응답보다 빠른 경우.
+const AiSavePage = named(() => import("../src/next/settings/AiPage"), "AiPage");
+function AiSaveCase() {
+  const { settings, update } = useSettings();
+  const [loop, setLoop] = useState(true);
+  const daemon = useMemo(() => mockDaemon(), []);
+  const api = useMemo(
+    () => ({
+      ...daemon.api,
+      machineSet: () =>
+        new Promise<void>((resolve) => Object.assign(window, { __settleLoop: resolve })),
+    }),
+    [daemon],
+  );
+  Object.assign(window, { __broadcastLoop: setLoop });
+  return (
+    <div className="nx">
+      <AiSavePage
+        active
+        daemon={{ ...daemon, api, status: { ...daemon.status, planLoop: loop } }}
+        settings={settings}
+        onChatChange={() => {}}
+        onSettingsChange={update}
+        loginExpired={false}
+        onScroll={() => {}}
+      />
+    </div>
+  );
+}
+
+// 2026-11-12 UI 조사 U-117 — 같은 앞뒤를 가진 긴 이메일도 전부 보인다.
+function AiLongAccountCase() {
+  const { settings, update } = useSettings();
+  const daemon = useMemo(() => mockDaemon(), []);
+  return (
+    <div className="nx" style={{ width: 520 }}>
+      <AiSavePage
+        active
+        daemon={{
+          ...daemon,
+          status: {
+            ...daemon.status,
+            providers: [{ id: "claude", label: "Claude", available: true, loggedIn: true }],
+            email: "same-prefix-very-long-middle-that-distinguishes-account@example.company.com",
+          },
+        }}
+        settings={settings}
+        onChatChange={() => {}}
+        onSettingsChange={update}
+        loginExpired={false}
+        onScroll={() => {}}
+      />
+    </div>
+  );
+}
+
+// 2026-11-12 UI 조사 U-118 — 복구 카드가 하나인 경우.
+function AiRecoveryCase() {
+  const { settings, update } = useSettings();
+  const daemon = useMemo(() => mockDaemon(), []);
+  return (
+    <div className="nx" style={{ width: 520 }}>
+      <AiSavePage
+        active
+        daemon={{
+          ...daemon,
+          status: {
+            ...daemon.status,
+            providers: [{ id: "claude", label: "Claude", available: false, loggedIn: false }],
+          },
+        }}
+        settings={settings}
+        onChatChange={() => {}}
+        onSettingsChange={update}
+        loginExpired={false}
+        onScroll={() => {}}
+      />
+    </div>
+  );
+}
+
+// 2026-11-12 UI 조사 U-012 · U-157 — 실제 미리보기 칸의 실패와 초점 견본.
+const RecoveryPreview = named(() => import("../src/next/preview/PreviewColumn"), "PreviewColumn");
+const recoveryFixture: { fail: boolean; calls: unknown[][] } = { fail: true, calls: [] };
+function PreviewRecoveryCase() {
+  const { settings } = useSettings();
+  const [hidden, setHidden] = useState(false);
+  Object.assign(window, { __hidePreview: setHidden });
+  const daemon = useMemo(() => {
+    const base = mockDaemon({
+      repo: {
+        ...REPO,
+        previewUrl: "http://127.0.0.1:29215/",
+        phase: "ready",
+        handoff: { state: "open", number: 42 },
+      },
+    });
+    const api = new Proxy(base.api, {
+      get(target, key) {
+        if (key === "handoffShot")
+          return () => new Promise((resolve) => Object.assign(window, { __resolveShot: resolve }));
+        return Reflect.get(target, key);
+      },
+    });
+    return { ...base, api };
+  }, []);
+  const sessions = useMemo(
+    () => ({
+      activeId: "fixture",
+      active: null,
+      setViewing: () => {},
+      create: async () => "fixture",
+      sendTurn: async (...args: unknown[]) => {
+        const state = recoveryFixture;
+        state.calls.push(args);
+        if (state.fail) throw new Error("fixture");
+      },
+    }),
+    [],
+  );
+  const pins = useMemo(
+    () => ({
+      list: [],
+      ghosts: [],
+      dismissGhosts: () => {},
+      add: () => {},
+      remove: () => {},
+      setNote: () => {},
+    }),
+    [],
+  );
+  const nav = useMemo(() => ({ toast: () => {}, showTab: () => {}, showPane: () => {} }), []);
+  Object.assign(window, { __recovery: recoveryFixture });
+  return (
+    <div className="nx" style={{ width: 700, height: 650 }}>
+      <RecoveryPreview
+        daemon={daemon}
+        settings={settings}
+        sessions={sessions}
+        pins={pins}
+        project={daemon.projects[0]}
+        activeSessionId={null}
+        nav={nav}
+        narrow={true}
+        offstage={hidden}
+        onScreenName={() => {}}
+        onChatChange={() => {}}
+        onRenameSession={() => {}}
+      />
+    </div>
+  );
+}
+
+// 2026-11-12 UI 조사 U-044 — 긴 이름을 모두 읽는다.
+function LongPinCase() {
+  const pin: PinAttachment = {
+    ...PIN,
+    element: {
+      ...PIN.element,
+      a11y: {
+        role: "button",
+        name: "아주 긴 대상 이름이 잘리지 않고 끝까지 보여야 하는 확인 단추",
+      },
+    },
+  };
+  return (
+    <div className="nx-preview" style={{ width: 420, height: 500 }}>
+      <PinBubble
+        pin={pin}
+        n={1}
+        screenName="아주 긴 화면 이름이 줄바꿈되어 끝까지 보여야 하는 화면"
+        frame={{ left: 20, top: 40 }}
+        zoom={1}
+        box={{ width: 420, height: 500 }}
+        narrow={false}
+        onNote={() => {}}
+        onRemove={() => {}}
+        onClose={() => {}}
+        toast={() => {}}
+      />
+    </div>
+  );
+}
+
+// 2026-11-12 UI 조사 U-119 — 검색 답의 순서를 견본에서 바꾼다.
+const SearchConnect = named(
+  () => import("../src/next/settings/ConfluenceConnect"),
+  "ConfluenceConnect",
+);
+const searchPending: Array<{
+  query: string;
+  resolve: (reply: { roots: Array<{ id: string; title: string }> }) => void;
+}> = [];
+const searchDaemon = mockDaemon({
+  projects: [
+    {
+      ...PROJECTS[0],
+      confluence: {
+        connected: true,
+        expired: false,
+        site: "https://example.test",
+        rootTitle: null,
+      },
+    },
+  ],
+  api: {
+    confluenceSuggestRoots: (query: string) =>
+      new Promise((resolve) => searchPending.push({ query, resolve })),
+  },
+});
+Object.assign(window, { __searchPending: searchPending });
+const searchCancelDaemon = mockDaemon({
+  projects: [
+    {
+      ...PROJECTS[0],
+      confluence: {
+        connected: true,
+        expired: false,
+        site: "https://example.test",
+        rootTitle: "기존 기준",
+      },
+    },
+  ],
+  api: {
+    confluenceSuggestRoots: (query: string) =>
+      new Promise((resolve) => searchPending.push({ query, resolve })),
+  },
+});
+function SearchCancelCase() {
+  return (
+    <div className="nx" style={{ padding: 24 }}>
+      <SearchConnect daemon={searchCancelDaemon} locked={false} />
+    </div>
+  );
+}
+function SearchCase() {
+  return (
+    <div className="nx" style={{ padding: 24 }}>
+      <SearchConnect daemon={searchDaemon} locked={false} />
+    </div>
+  );
+}
+
+const Legacy2Fixture = named(() => import("./legacy2-fixture"), "Legacy2Fixture");
+
+const LegacyReviewFixture = named(() => import("./legacy-review-fixture"), "LegacyReviewFixture");
+
+function PreviewScopeCase() {
+  const { settings } = useSettings();
+  const [hidden, setHidden] = useState(false);
+  const [slug, setSlug] = useState("fixture-A");
+  const [root, setRoot] = useState("/fixture-A");
+  const [thread, setThread] = useState<string | null>("fixture");
+  Object.assign(window, { __scope: { setRoot, setThread, setSlug } });
+  Object.assign(window, { __hidePreview: setHidden });
+  const daemon = useMemo(() => {
+    const base = mockDaemon({
+      repo: {
+        ...REPO,
+        root,
+        previewUrl: "http://127.0.0.1:29215/",
+        phase: "ready",
+        handoff: { state: "open", number: 42 },
+      },
+    });
+    const api = new Proxy(base.api, {
+      get(target, key) {
+        if (key === "handoffShot")
+          return () => new Promise((resolve) => Object.assign(window, { __resolveShot: resolve }));
+        return Reflect.get(target, key);
+      },
+    });
+    return { ...base, api };
+  }, [root]);
+  const sessions = useMemo(
+    () => ({
+      activeId: thread,
+      active: null,
+      setViewing: () => {},
+      create: async () => "fixture",
+      sendTurn: async (...args: unknown[]) => {
+        const state = recoveryFixture;
+        state.calls.push(args);
+        if (state.fail) throw new Error("fixture");
+      },
+    }),
+    [thread],
+  );
+  const pins = useMemo(
+    () => ({
+      list: [],
+      ghosts: [],
+      dismissGhosts: () => {},
+      add: () => {},
+      remove: () => {},
+      setNote: () => {},
+    }),
+    [],
+  );
+  const nav = useMemo(() => ({ toast: () => {}, showTab: () => {}, showPane: () => {} }), []);
+  Object.assign(window, { __recovery: recoveryFixture });
+  return (
+    <div className="nx" style={{ width: 700, height: 650 }}>
+      <RecoveryPreview
+        daemon={{ ...daemon, activeSlug: slug }}
+        settings={settings}
+        sessions={sessions}
+        pins={pins}
+        project={daemon.projects[0]}
+        activeSessionId={null}
+        nav={nav}
+        narrow={true}
+        offstage={hidden}
+        onScreenName={() => {}}
+        onChatChange={() => {}}
+        onRenameSession={() => {}}
+      />
+    </div>
+  );
+}
+
+type LoopControl = { reads: number; value: boolean; fail: boolean; hang: boolean };
+const loopControlWindow = window as unknown as { __loopControl: LoopControl };
+function AiReconcileCase() {
+  const { settings, update } = useSettings();
+  const [loop, setLoop] = useState(true);
+  const daemon = useMemo(() => mockDaemon(), []);
+  const api = useMemo(
+    () => ({
+      ...daemon.api,
+      refreshStatus: async () => {
+        const control = loopControlWindow.__loopControl;
+        control.reads++;
+        if (control.fail) throw Error("fixture refresh");
+        if (control.hang) await new Promise(() => {});
+        setLoop(control.value);
+      },
+      machineSet: () =>
+        new Promise<void>((resolve) => Object.assign(window, { __settleLoop: resolve })),
+    }),
+    [daemon],
+  );
+  Object.assign(window, { __broadcastLoop: setLoop });
+  loopControlWindow.__loopControl ??= { reads: 0, value: false, fail: false, hang: false };
+  return (
+    <div className="nx">
+      <AiSavePage
+        active
+        daemon={{ ...daemon, api, status: { ...daemon.status, planLoop: loop } }}
+        settings={settings}
+        onChatChange={() => {}}
+        onSettingsChange={update}
+        loginExpired={false}
+        onScroll={() => {}}
+      />
+    </div>
+  );
+}
+
+// 2026-11-12 U-010 — 상한에 닿은 요청의 표시와 접근 이름.
+function HistoryLongCase() {
+  const daemon = useMemo(
+    () =>
+      mockDaemon({
+        api: {
+          saveHistory: async () => ({
+            entries: [
+              { sha: "current", at: ago(1), message: "현재 요청" },
+              { sha: "long", at: ago(2), message: "가".repeat(80) },
+              { sha: "short", at: ago(3), message: "나".repeat(79) },
+            ],
+          }),
+        },
+      }),
+    [],
+  );
+  return (
+    <section className="nx-preview" style={{ width: 600, height: 700 }}>
+      <HistoryDrawer
+        open
+        onClose={() => {}}
+        daemon={daemon}
+        repo={REPO}
+        submits={[]}
+        onRestored={() => {}}
+        toast={() => {}}
+      />
+    </section>
+  );
+}
+
+function SearchPickCase() {
+  const daemon = useMemo(
+    () => ({
+      ...searchCancelDaemon,
+      api: {
+        ...searchCancelDaemon.api,
+        confluenceConnect: async () => ({ site: "https://example.test", rootTitle: "old-result" }),
+      },
+    }),
+    [],
+  );
+  return (
+    <div className="nx" style={{ padding: 24 }}>
+      <SearchConnect daemon={daemon} locked={false} />
+    </div>
+  );
+}
+
 const CASES: Record<string, () => ReactNode> = {
+  "note-escape": () => <NoteEscapeCase />,
+  "note-empty": () => <NoteEscapeCase />,
+  "shell-a": () => <ShellAuditCase />,
+  "shell-cleanup": () => <ShellCleanupCase />,
+  "shell-busy": () => <ShellBusyCase />,
+  "legacy-review": () => <LegacyReviewFixture />,
+  legacy2: () => <Legacy2Fixture />,
+  searchPick: () => <SearchPickCase />,
+  historyLong: () => <HistoryLongCase />,
+  previewScope: () => <PreviewScopeCase />,
+  aiReconcile: () => <AiReconcileCase />,
   sheet: () => <Sheet />,
   palette: () => <PaletteCase />,
   crash: () => <CrashScreen report={CRASH} />,
@@ -1008,11 +1569,18 @@ const CASES: Record<string, () => ReactNode> = {
   toast: () => <ToastCase />,
   pop: () => <PopCase />,
   settings: () => <SettingsCase />,
+  searchRace: () => <SearchCase />,
+  searchCancel: () => <SearchCancelCase />,
+  aiSave: () => <AiSaveCase />,
+  aiLongAccount: () => <AiLongAccountCase />,
+  aiRecovery: () => <AiRecoveryCase />,
+  previewRecovery: () => <PreviewRecoveryCase />,
   invite: () => <InviteCase />,
   // 진짜 `useInviteImport` 로 파일을 읽고 확인하고 적용한다(`dev/invite-flow-case.tsx`).
   inviteflow: () => <InviteFlow />,
   history: () => <HistoryCase />,
   pin: () => <PinCase />,
+  pinLong: () => <LongPinCase />,
   prepare: () => <PrepareCase />,
   ask: () => <AskCase />,
 };
@@ -1024,7 +1592,7 @@ createRoot(document.getElementById("root") as HTMLElement).render(
   <StrictMode>
     <Suspense fallback={null}>
       {/* 충돌 · 연결 안내판은 실제 앱에서 `.nx` 밖(AppCrashBoundary · App)에 그려진다 — 견본도 같게. */}
-      {CASE === "crash" || CASE === "connecting" ? (
+      {CASE === "crash" || CASE === "connecting" || CASE === "shell-a" ? (
         Case?.()
       ) : (
         <div className="nx" style={{ minHeight: "100vh" }}>

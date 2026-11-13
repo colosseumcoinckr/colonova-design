@@ -540,6 +540,164 @@ test("v4 의 봇 알림은 토큰과 채널이 함께 있을 때만 산다", () 
   assert.equal(half.invite.notify, undefined);
 });
 
+// ---------------------------------------------------------------------------
+// 창구 칸(support · 2026-11-12 설계 결정 ㉱ · 작업 WE)
+// ---------------------------------------------------------------------------
+
+test("support — 정상 칸은 정규화를 거쳐 살아남고, 칸이 없는 초대장은 지금과 같다", () => {
+  const withSupport = normalizeInvite({
+    v: 4,
+    token: "t",
+    authorName: "김기획",
+    support: { name: " 김개발 ", room: "#design-tool-help", url: "https://chat.example/r/1" },
+    projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+  });
+  assert.ok(withSupport.ok);
+  if (!withSupport.ok) return;
+  assert.deepEqual(withSupport.invite.support, {
+    name: "김개발",
+    room: "#design-tool-help",
+    url: "https://chat.example/r/1",
+  });
+  // 옛 판정과의 호환 — 새 칸이 실린 초대장을 받아들이고 다른 값은 바뀌지 않는다.
+  const without = normalizeInvite({
+    v: 4,
+    token: "t",
+    authorName: "김기획",
+    projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+  });
+  assert.ok(without.ok);
+  if (!without.ok) return;
+  assert.equal("support" in without.invite, false);
+  const { support: _drop, ...rest } = withSupport.invite;
+  assert.deepEqual(rest, without.invite);
+});
+
+test("support — 칸마다 거른다: 한도 넘침 · http 주소는 그 칸만 버린다", () => {
+  const normalized = normalizeInvite({
+    v: 4,
+    token: "t",
+    support: {
+      name: "n".repeat(41), // 40자 한도를 넘는다 — 이 칸만 버린다.
+      room: " #design-tool-help ",
+      url: "http://chat.example/r/1", // https 가 아니다 — 이 칸만 버린다.
+    },
+    projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+  });
+  assert.ok(normalized.ok);
+  if (!normalized.ok) return;
+  assert.deepEqual(normalized.invite.support, { room: "#design-tool-help" });
+});
+
+test("support — 형식이 틀려도 초대 전체는 산다 · 셋 다 비면 칸 자체가 없다", () => {
+  for (const bad of ["text", 42, ["a"], {}]) {
+    const normalized = normalizeInvite({
+      v: 4,
+      token: "t",
+      support: bad,
+      projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+    });
+    assert.equal(normalized.ok, true, `support: ${JSON.stringify(bad)}`);
+    if (!normalized.ok) continue;
+    assert.equal("support" in normalized.invite, false);
+  }
+  // 칸은 객체인데 다 비었거나 버려진 값뿐이어도 칸 자체가 없다.
+  const empty = normalizeInvite({
+    v: 4,
+    token: "t",
+    support: { name: "  ", url: "ftp://x", room: "r".repeat(61) },
+    projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+  });
+  assert.ok(empty.ok);
+  if (!empty.ok) return;
+  assert.equal("support" in empty.invite, false);
+});
+
+test("support — 쓰는 쪽(buildInvite)도 같은 칸을 만든다: 비면 싣지 않고 http 는 버린다", () => {
+  const built = buildInvite({
+    token: "t",
+    author: "김기획",
+    support: { name: " 김개발 ", room: "#dev", url: "http://no.example" },
+    projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+  });
+  assert.deepEqual(built.support, { name: "김개발", room: "#dev" });
+  const empty = buildInvite({
+    token: "t",
+    author: "김기획",
+    support: { name: "", room: " ", url: "" },
+    projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+  });
+  assert.equal("support" in empty, false, "비워 둔 폼은 지금과 같은 파일을 만든다");
+});
+
+test("support — 만들기와 읽기의 판정은 같다(경계 · 공백 · 대문자 주소)", () => {
+  const base = {
+    token: "t",
+    author: "김기획",
+    projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+  };
+  const cases: Array<[string, Record<string, unknown>]> = [
+    [
+      "딱 40 · 60 · 300자",
+      { name: "n".repeat(40), room: "r".repeat(60), url: `https://${"u".repeat(292)}` },
+    ],
+    [
+      "41 · 61 · 301자",
+      { name: "n".repeat(41), room: "r".repeat(61), url: `https://${"u".repeat(293)}` },
+    ],
+    ["공백만", { name: "   ", room: "\t", url: "  " }],
+    ["HTTPS:// 대문자", { name: "김개발", url: "HTTPS://chat.example/r/1" }],
+  ];
+  const limits = { name: 40, room: 60, url: 300 } as const;
+  for (const [label, support] of cases) {
+    const built = buildInvite({ ...base, support });
+    const read = normalizeInvite({ ...built });
+    assert.ok(read.ok, label);
+    if (!read.ok) continue;
+    assert.equal("support" in built, "support" in read.invite, `${label} — 칸의 유무가 같다`);
+    if ("support" in built) {
+      assert.deepEqual(read.invite.support, built.support, `${label} — 내용이 같다`);
+    }
+    // 딱 한도는 살고 넘은 것은 그 칸만 버린다 — 자르지 않는다.
+    for (const key of ["name", "room", "url"] as const) {
+      const value = read.invite.support?.[key];
+      if (value !== undefined) {
+        assert.ok(value.length <= limits[key], `${label} — ${key} 한도 안`);
+      }
+    }
+  }
+});
+
+test("support — 모르는 맨 위 칸은 무시한다: zzz 가 있어도 정규화 결과가 같다", () => {
+  const file = {
+    v: 4,
+    token: "t",
+    authorName: "김기획",
+    support: { name: "김개발", room: "#dev" },
+    projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+  };
+  const plain = normalizeInvite({ ...file });
+  const extra = normalizeInvite({ ...file, zzz: { anything: [1, 2] } });
+  assert.ok(plain.ok && extra.ok);
+  if (!plain.ok || !extra.ok) return;
+  assert.deepEqual(extra.invite, plain.invite);
+});
+
+test("support — 빈 창구는 싣지 않는다: 칸 없음 · 빈 문자열 셋 · 공백만의 안쪽 JSON 이 같다", () => {
+  const base = {
+    token: "t",
+    author: "김기획",
+    projects: [{ repoUrl: "https://github.com/org/a.git", name: "a" }],
+  };
+  const none = JSON.stringify(buildInvite(base));
+  const empty = JSON.stringify(buildInvite({ ...base, support: { name: "", room: "", url: "" } }));
+  const blanks = JSON.stringify(
+    buildInvite({ ...base, support: { name: "  ", room: " ", url: "\t" } }),
+  );
+  assert.equal(empty, none, "빈 문자열 셋은 칸을 아예 안 준 것과 같다");
+  assert.equal(blanks, none, "공백만은 칸을 아예 안 준 것과 같다");
+});
+
 test("inviteUpdatePatch — 이름은 보내지 않고, 없는 개발자 값은 지운다", () => {
   const patch = inviteUpdatePatch({
     repoUrl: "https://github.com/org/a.git",

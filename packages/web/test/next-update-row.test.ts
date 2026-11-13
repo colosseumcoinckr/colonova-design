@@ -4,7 +4,6 @@ import { test } from "node:test";
 import { L } from "../src/next/labels.ts";
 import {
   type AppRowInput,
-  agentUpdateEvents,
   appRowCopy,
   appSummaryRow,
   selfUpdateOutcome,
@@ -119,43 +118,6 @@ test("updateRowCopy: 끝나면 깐 버전과 시각, 실패하면 이유와 다�
       note: "내려받은 파일을 확인하지 못했어요",
       action: "retry",
     },
-  );
-});
-
-test("agentUpdateEvents: 끝난 업데이트만 한 줄씩, 이름은 프로바이더의 것, 최신이 위", () => {
-  const providers = [
-    { id: "claude", label: "Claude Code" },
-    { id: "second", label: "Second AI" },
-  ];
-  const rows = agentUpdateEvents(
-    {
-      claude: { phase: "done", at: "2026-09-25T02:27:00Z", version: "2.2.0 (Claude Code)" },
-      second: { phase: "running", at: "2026-09-25T02:30:00Z" },
-    },
-    providers,
-    L.update.doneEvent,
-  );
-  assert.deepEqual(
-    rows.map((row) => row.text),
-    ["Claude Code 를 2.2.0 으로 업데이트했어요"],
-  );
-  // 버전을 모르는 끝 · 없는 표는 줄이 없다.
-  assert.deepEqual(
-    agentUpdateEvents({ second: { phase: "done", at: "x" } }, providers, L.update.doneEvent),
-    [],
-  );
-  assert.deepEqual(agentUpdateEvents(undefined, providers, L.update.doneEvent), []);
-  const two = agentUpdateEvents(
-    {
-      claude: { phase: "done", at: "2026-09-25T01:00:00Z", version: "2.2.0" },
-      second: { phase: "done", at: "2026-09-25T03:00:00Z", version: "0.47.0" },
-    },
-    providers,
-    L.update.doneEvent,
-  );
-  assert.deepEqual(
-    two.map((row) => row.id),
-    ["second", "claude"],
   );
 });
 

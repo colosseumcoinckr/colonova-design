@@ -1,0 +1,134 @@
+/* 코멘트 절은 자기 뿌리에서 읽기 카드와 입력을 맞춘다(2026-10-23 화면 전면 재설계 §4 D). */
+.nx-dc {
+  gap: var(--sp-4);
+  padding-top: var(--sp-6);
+}
+
+.nx-dc .nx-pl-comments-t {
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semi);
+}
+
+.nx-dc > .nx-pl-note {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--ink2);
+}
+
+.nx-dc .nx-pl-comment-list {
+  gap: var(--sp-3);
+}
+
+.nx-dc .nx-pl-comment {
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.nx-dc .nx-pl-comment-body {
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
+}
+
+.nx-dc .nx-pl-comment-hd {
+  font-size: var(--fs-ui);
+}
+
+.nx-dc .nx-pl-comment-hd span {
+  font-size: var(--fs-cap);
+  color: var(--ink2);
+}
+
+.nx-dc .nx-pl-comment-anchor {
+  padding-inline-start: var(--sp-3);
+  border-inline-start: 2px solid var(--line2);
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+}
+
+.nx-dc-row--reply {
+  margin-inline-start: var(--sp-4);
+  border-inline-start: 2px solid var(--line-soft);
+  border-start-start-radius: 0;
+  border-end-start-radius: 0;
+}
+
+.nx-dc-act {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+}
+
+.nx-dc-composer {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.nx-dc .nx-banner {
+  margin: 0;
+}
+
+.nx-dc-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-1_5);
+}
+
+.nx-dc-count {
+  color: var(--ink2);
+  font-size: var(--fs-cap);
+}
+
+.nx-dc-fail {
+  color: var(--red);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+}
+
+.nx-dc-fail small {
+  display: block;
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.nx-dc-bar > .nx-dc-count,
+.nx-dc-bar > .nx-dc-fail {
+  flex: 1 1 160px;
+  min-width: 0;
+  margin: 0;
+  text-align: left;
+}
+
+.nx-dc-notice {
+  margin: 0;
+  color: var(--green);
+  font-size: var(--fs-sm);
+}
+
+.nx-dc-anchor-fail {
+  margin: 0;
+  color: var(--ink2);
+}
+
+.nx-dc-resolve {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-1_5);
+  margin: 0;
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+}
+
+.nx-dc-resolve .nx-dc-fail {
+  flex: 1 1 160px;
+}
+
+.nx .nx-dc-anchor-btn {
+  position: fixed;
+  z-index: var(--nx-z-pop);
+  box-shadow: var(--elev-2);
+}

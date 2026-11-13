@@ -52,7 +52,7 @@ test("확인 카드 문장 — 제목으로 묻고, 일의 크기는 칩 · 시�
   const { count, withComments } = revertSummary(ENTRIES, 3, PREFIX);
   assert.equal(
     L.history.confirmAsk(entryTitle(ENTRIES[3]?.message ?? "")),
-    "「회원 목록에 검색창을 넣어 줘」 직후의 화면으로 되돌릴까요?",
+    "‘회원 목록에 검색창을 넣어 줘’ 직후의 화면으로 되돌릴까요?",
   );
   assert.equal(L.history.chipChanges(count), "변경 3가지");
   assert.equal(withComments, true);
@@ -78,9 +78,9 @@ test("줄 끝의 되돌리기는 짧게, 화면이 여럿인 차례의 비교 �
 
 test("안심 문장 — 기록이 남고 다시 되돌릴 수 있다는 말이 코드의 동작과 같다", () => {
   // 데몬의 restore 는 지우지 않고 새 기록을 쌓는다(되돌리기: …) — 문장이 그 약속을 그대로 한다.
-  assert.match(L.history.reassure, /기록은 남아요/);
-  assert.match(L.history.reassure, /다시 되돌릴 수 있어요/);
-  assert.match(L.history.reassure, /다음 제출 때 전해져요/);
+  assert.match(L.history.reassure, /기록도 남아/);
+  assert.match(L.history.reassure, /다시 그 상태로 복구할 수 있어요/);
+  assert.match(L.history.reassure, /다음에 제출할 때 전달돼요/);
 });
 
 test("affectedScreens — 그 뒤 차례들이 만진 화면을 겹치지 않게 모은다", () => {

@@ -1,0 +1,122 @@
+/* 문서 관리와 근거 보내기의 배치. 부품의 옷은 ui.css 가 맡는다(2026-10-23 화면 전면 재설계 §4 D). */
+.nx-da {
+  width: min(520px, calc(100vw - var(--sp-12)));
+}
+
+.nx-da .nx-mbody {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.nx-da .nx-banner {
+  margin: 0;
+}
+
+.nx-da-note {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+}
+
+.nx-da-facts {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.nx-da-fact {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: var(--sp-3);
+}
+
+.nx-da-fact dt {
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+}
+
+.nx-da-fact dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--fs-ui);
+}
+
+.nx-da-blockers {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.nx-da-menu {
+  display: inline-flex;
+  flex: none;
+}
+
+/* 목록 머리의 기존 손잡이는 바깥에서 쓴다. */
+.nx .nx-pl-trash {
+  flex: none;
+}
+
+.nx-da-trash .nx-mbody {
+  min-height: 180px;
+}
+
+.nx-da-trash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1_5);
+}
+
+.nx-da-trash-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-height: var(--h-row);
+  padding: var(--sp-1_5) var(--sp-2);
+  border-radius: var(--r);
+  font-size: var(--fs-ui);
+}
+
+.nx-da-trash-row:hover {
+  background: var(--nx-hover);
+}
+
+.nx-da-trash-t {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-da-trash-when {
+  color: var(--ink2);
+  font-size: var(--fs-cap);
+}
+
+.nx-da-failed {
+  display: grid;
+  justify-items: start;
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+.nx-da-failed p {
+  margin: 0;
+}
+
+.nx .nx-da .nx-mhd h2 {
+  font-size: var(--fs-h3);
+}
+.nx .nx-da .nx-mhd p {
+  font-size: var(--fs-sm);
+}

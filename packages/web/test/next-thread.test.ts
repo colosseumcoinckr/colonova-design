@@ -131,8 +131,18 @@ test("rawErrorLine: 원문 → 문장 매핑(W3) — 한국어 고지 · 영문 
   });
   // 한도 문장은 그 문장으로 바꾼다.
   assert.deepEqual(rawErrorLine("usage limit reached until 3pm", L), {
-    title: "구독 사용량을 채워 작업이 멈췄습니다",
+    title: "구독 사용량을 채워 작업이 멈췄어요",
     raw: "usage limit reached until 3pm",
+  });
+});
+test("rawErrorLine: 한 줄 + 빈 줄 + 원문 꼴 — 한 줄만 보이고 원문은 접힌 자리(2026-11-12 기획자 체험)", () => {
+  // 데몬의 한 줄에는 영어 낱말이 없다 — 서비스 이름은 접힌 원문에만 있다.
+  const lead =
+    "보관하지 못했어요 — 연결에 문제가 있어요. 고친 내용은 이 컴퓨터에 그대로 있고, 연결이 돌아오면 자동으로 다시 보관해요.";
+  const raw = `${lead}\n\nGitHub에 연결하지 못했습니다 — connect ECONNREFUSED`;
+  assert.deepEqual(rawErrorLine(raw, L), {
+    title: lead,
+    raw: "GitHub에 연결하지 못했습니다 — connect ECONNREFUSED",
   });
 });
 

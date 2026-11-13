@@ -56,7 +56,7 @@ test("accountLine: API 키 방식은 `IT가 연결해 둔 계정이에요` — �
   for (const authMethod of ["api_key", "api_key_helper"]) {
     const line = accountLine(facts({ authMethod, email: null, subscriptionType: null }));
     assert.deepEqual(line, { kind: "api-key" }, authMethod);
-    assert.equal(accountText(line, L), "IT가 연결해 둔 계정이에요");
+    assert.equal(accountText(line, L), "관리자가 설정한 AI 연결을 사용하고 있어요");
   }
 });
 
@@ -78,7 +78,7 @@ test("계정 문장은 사용자 어휘만 쓴다 — 요금제가 필요하다�
   for (const plan of ["Pro", "Max", "Team", "Enterprise"]) {
     assert.ok(L.account.planNeed.includes(plan), plan);
   }
-  assert.ok(L.account.planNeed.includes("무료 요금제"));
+  assert.ok(L.account.planNeed.includes("유료 계정"));
   assert.ok(L.account.planBlocked.includes("유료 요금제 계정으로 다시 로그인"));
 });
 

@@ -258,6 +258,8 @@ export function PreviewFrame({
             // ⌘⇧P: shift 가 살아 있어야 워크스페이스의 토글이
             // 미리보기 포커스 중에도 먹는다.
             shiftKey: payload.shift,
+            altKey: payload.alt,
+            isComposing: payload.composing,
             // Windows/Linux의 ⌘ 자리는 control 이다 — 게스트가 같은 수정자로
             // 골라 보내므로 여기서 살려야 첼드가 워크스페이스에 닿는다.
             ctrlKey: payload.control,

@@ -25,11 +25,22 @@
  * 화면의 `열기` 단추가 부른 길은 `window.__opened`(경로 목록)에 쌓인다. 상태 줄 아래에 문제 문장 줄(`ProblemLine`)이
  * 함께 선다 — `?case=g`(제출이 막힘 — 복사 단추) · `?case=p`(다시 로그인 — 로그인 단추).
  *
- * 받아오기(2026-10-20) — `?case=l`(개발자가 반영한 내용 3건 · 여정 곁의 `받아오기 3`) · `m`(누른 뒤 AI 작업을 기다림).
+ * 최신 내용 적용(2026-11-12) — `?case=l`(개발자가 반영한 새 내용 있음 · 여정 알의 `새 내용` 표식) · `m`(누른 뒤 AI 작업을 기다림).
+ * 제출 확인의 오래된 기준은 `?submit=base` | `basefail` | `basenone` | `baseoverlap` 으로 본다 — 적용이 끝나면 목록이 다시 읽힌다.
+ *   `baseoverlap` 은 적용이 겹침으로 끝난 뒤 AI 정리가 돌다 3초 뒤 끝나는 모양이다.
+ *
+ * 좁은 창의 문제 줄(2026-10-23) — `?case=n`(430px · AI 가 고치는 중 — 단추 없음) · `o`(430px · 다시 로그인이 필요해요 — 로그인 단추): 제목 한 줄 ·
+ * 본문 두 줄까지 · 손은 아래 줄이다.
+ *
+ * 접힘의 가장 넓은 경우(2026-10-23 화면 전면 재설계 §4 G) — `?case=y`(넓은 창) · `z`(좁은 창): 개발자 확인 · 코멘트 두 자리 · AI 가 도는
+ * 중 · 최신 내용이 한꺼번에 선다. 폭은 `?sweep=1`(1500 … 540 · 확인 폭 1100 · 860)이 늘어놓는다.
  *
  * 제출 뒤의 시야(2026-10-07 베타 준비 분석) — `?case=r`(개발자가 승인 → 여정의 둘째 점 `개발자가 확인했어요`) · `s`(자동 검사를
  * AI 가 고치는 중 — 문제 문장 줄) · `t`(몇 번 고쳐도 통과하지 못해 개발자에게 알림) · `u`(통과) · `v`(도는 중). 여정을 누르면 열리는
  * `이번 작업` 팝의 제출 칸에 자동 검사 한 줄이 같이 보인다.
+ *
+ * 반영된 일(2026-10-31 홈 걷기) — `?case=x`: 병합된 요청 셋을 원장에 싣고, 여정을 눌러 팝을 열면 코멘트 칸 아래의
+ * `반영된 일` 묶음(최근 여덟 · 0건이면 없다)이 선다.
  */
 
 import type {
@@ -309,6 +320,34 @@ const BASE_CASES: Case[] = [
     repo: { handoff: handoff("merged"), branch: null, cycleScreens: [] },
   },
   {
+    // 반영된 일(2026-10-08 · A2b — 2026-10-31 홈 걷기로 홈의 묶음이 이 팝의 아래로 옮겨 왔다).
+    // 여정을 눌러 팝을 열면 코멘트 칸 아래의 `반영된 일` 묶음이 선다.
+    id: "x",
+    label: "x · 반영된 일 — `이번 작업` 팝의 아래 묶음(2026-10-31 홈 걷기)",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: {
+      handoff: handoff("merged"),
+      branch: null,
+      cycleScreens: [],
+      landed: [
+        {
+          at: new Date(Date.now() - 3 * 86_400_000).toISOString(),
+          pr: 12,
+          title: "회원 목록에 이름으로 찾는 검색창",
+          days: 3,
+          screens: 2,
+        },
+        {
+          at: new Date(Date.now() - 9 * 86_400_000).toISOString(),
+          pr: 11,
+          title: "결제 내역 표를 월별로 묶기",
+          days: 5,
+        },
+        { at: new Date(Date.now() - 16 * 86_400_000).toISOString(), pr: 10 },
+      ],
+    },
+  },
+  {
     id: "g",
     label: "g · 제출이 막힘",
     title: "회원 목록에 이름으로 찾는 검색창을 넣어 줘",
@@ -351,6 +390,31 @@ const BASE_CASES: Case[] = [
       attention: { kind: "reconnect", since: ago(3), what: "agent-login" },
     },
   },
+  // 좁은 창의 문제 줄(2026-10-23 화면 전면 재설계 §4 G) — 본문은 두 줄까지 감기고 손은 아래 줄로 내려온다.
+  {
+    id: "n",
+    label: "n · 좁은 창 430px · AI 가 고치는 중(문제 줄 — 단추 없음)",
+    title: LONG,
+    repo: {
+      cycleScreens: SCREENS,
+      attention: { kind: "ai-fixing", since: ago(2), key: "ci" },
+    },
+    width: 430,
+    narrow: true,
+    sidebarHidden: true,
+  },
+  {
+    id: "o",
+    label: "o · 좁은 창 430px · 다시 로그인이 필요해요(문제 줄 — 로그인 단추)",
+    title: LONG,
+    repo: {
+      cycleScreens: SCREENS,
+      attention: { kind: "reconnect", since: ago(3), what: "agent-login" },
+    },
+    width: 430,
+    narrow: true,
+    sidebarHidden: true,
+  },
   {
     id: "h",
     label: "h · 1100px (중간 폭)",
@@ -386,16 +450,47 @@ const BASE_CASES: Case[] = [
     narrow: true,
     sidebarHidden: true,
   },
-  // 받아오기(2026-10-20 사용자 요청) — 개발자가 반영한 내용은 누를 때만 받아온다. 여정 곁의 단추와 `이번 작업` 의 칸.
+  // 접힘의 가장 넓은 경우(2026-10-23 화면 전면 재설계) — 개발자 확인 · 코멘트 두 자리 · AI 가 도는 중 · 최신 내용이 한꺼번에 선다.
+  // 폭을 바꿔 가며 어디서도 글이 잘리지 않는지 본다(`?sweep=1` 은 모든 사례를 늘어놓는다 — 이 둘은 `?case=y` · `?case=z`).
+  {
+    id: "y",
+    label: "y · 가장 넓은 상태 줄 — 코멘트 12 · AI 도는 중 · 새 내용 표식",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: {
+      handoff: handoff("open"),
+      cycleScreens: SCREENS,
+      baseSync: { behind: 3, requested: false },
+    },
+    comments: 12,
+    running: true,
+    phase: "file",
+  },
+  {
+    id: "z",
+    label: "z · 좁은 창의 가장 넓은 상태 줄 — y 와 같다",
+    title: "결제 내역 표를 월별로 묶어 줘",
+    repo: {
+      handoff: handoff("open"),
+      cycleScreens: SCREENS,
+      baseSync: { behind: 3, requested: false },
+    },
+    comments: 12,
+    running: true,
+    phase: "file",
+    width: 700,
+    narrow: true,
+    sidebarHidden: true,
+  },
+  // 최신 내용 적용(2026-11-12 사용자 요청) — 개발자가 반영한 내용은 누를 때만 합친다. 여정 알의 표식과 `이번 작업` 의 칸.
   {
     id: "l",
-    label: "l · 개발자가 반영한 내용 3건 · 받아오기 단추",
+    label: "l · 개발자가 반영한 새 내용 · 최신 내용 적용 단추",
     title: "회원 목록에 이름으로 찾는 검색창을 넣어 줘",
     repo: { cycleScreens: SCREENS, baseSync: { behind: 3, requested: false } },
   },
   {
     id: "m",
-    label: "m · 받아오기를 눌렀는데 AI 가 도는 중 — 끝나면 받아와요",
+    label: "m · 적용을 눌렀는데 AI 가 도는 중 — 끝나면 적용해요",
     title: "회원 목록에 이름으로 찾는 검색창을 넣어 줘",
     repo: { cycleScreens: SCREENS, baseSync: { behind: 3, requested: true } },
     running: true,
@@ -403,17 +498,19 @@ const BASE_CASES: Case[] = [
   },
 ];
 
-/** `?sweep=1` — 같은 상태(a · d · e · g · q · r)를 여러 막대 폭으로 늘어놓는다. 접히는 순서와 겹침을 본다. */
-const SWEEP_WIDTHS = [1500, 1300, 1150, 1000, 900, 800, 700, 620, 540];
+/** `?sweep=1` — 같은 상태(a · d · e · g · l · q · r · y)를 여러 막대 폭으로 늘어놓는다. 접히는 순서와 겹침을 본다(1100 · 860 은 2026-10-23 화면 전면 재설계의 확인 폭). */
+const SWEEP_WIDTHS = [1500, 1300, 1150, 1100, 1000, 900, 860, 800, 700, 620, 540];
 const SWEEP: Case[] = SWEEP_WIDTHS.flatMap((width) =>
-  BASE_CASES.filter((spec) => ["a", "d", "e", "g", "q", "r"].includes(spec.id)).map((spec) => ({
-    ...spec,
-    id: `${spec.id}-${width}`,
-    label: `${spec.id} @ ${width}`,
-    width,
-    narrow: width < 900,
-    sidebarHidden: width < 900 || spec.sidebarHidden,
-  })),
+  BASE_CASES.filter((spec) => ["a", "d", "e", "g", "l", "q", "r", "y"].includes(spec.id)).map(
+    (spec) => ({
+      ...spec,
+      id: `${spec.id}-${width}`,
+      label: `${spec.id} @ ${width}`,
+      width,
+      narrow: width < 900,
+      sidebarHidden: width < 900 || spec.sidebarHidden,
+    }),
+  ),
 );
 const ONLY = query.get("case");
 const CASES: Case[] = (query.get("sweep") ? SWEEP : BASE_CASES).filter(
@@ -423,6 +520,14 @@ const CASES: Case[] = (query.get("sweep") ? SWEEP : BASE_CASES).filter(
 function Row({ spec }: { spec: Case }) {
   // 보내기가 성공하면 열린 요청이 서고 마지막 제출의 시각이 생긴다 — 여정 · 단추 · 영수증이 따라온다.
   const [sentAt, setSentAt] = useState<string | null>(null);
+  // 최신 내용 적용의 가짜 진행 — `refreshBase` 가 누른 뒤 적용 중 → 끝남으로 옮긴다(`?submit=base*` 모드).
+  const [syncState, setSyncState] = useState<RepoStatus["baseSync"] | undefined>(
+    SUBMIT.startsWith("base") ? { behind: 2, requested: false } : undefined,
+  );
+  // 겹침 정리 중의 가짜 표식 — `baseoverlap` 은 적용이 겹침으로 끝난 뒤 AI 정리(ai-fixing)를 세운다.
+  const [attentionState, setAttentionState] = useState<RepoStatus["attention"] | undefined>(
+    undefined,
+  );
   const modePatch: Partial<RepoStatus> =
     SUBMIT === "many" && (spec.repo?.cycleScreens?.length ?? 1) > 0
       ? { cycleScreens: MANY }
@@ -442,13 +547,21 @@ function Row({ spec }: { spec: Case }) {
         submit: { phase: "idle", attempts: 0, log: [{ at: sentAt, text: "제출했어요" }] },
       }
     : {};
-  const repo = repoOf({ ...spec.repo, ...modePatch, ...sentPatch });
+  const repo = repoOf({
+    ...spec.repo,
+    ...modePatch,
+    ...sentPatch,
+    ...(attentionState !== undefined ? { attention: attentionState } : {}),
+    baseSync: syncState,
+  });
   const copy = submitCopy(repo.submit, L);
   const journey = deriveJourney(
     {
       repo,
       diffStatus: null,
       running: spec.running ?? false,
+      // 셸(Workspace)과 같게 — 다시 연결이 필요하면 제출이 잠긴다(문제 줄의 단추가 그동안의 유일한 으뜸이다).
+      reconnect: spec.repo?.attention?.kind === "reconnect",
       comments: spec.comments ?? 0,
       ...(spec.waitingDays === undefined ? {} : { waitingDays: spec.waitingDays }),
       ...(spec.approved ? { approved: true } : {}),
@@ -515,7 +628,31 @@ function Row({ spec }: { spec: Case }) {
         return { ok: true as const };
       },
       refreshBase: async () => {
-        await later(300);
+        setSyncState((sync) => (sync ? { ...sync, requested: true } : sync));
+        await later(1200);
+        const outcome: NonNullable<NonNullable<RepoStatus["baseSync"]>["last"]>["outcome"] =
+          SUBMIT === "basefail"
+            ? "failed"
+            : SUBMIT === "basenone"
+              ? "none"
+              : SUBMIT === "baseoverlap"
+                ? "overlap"
+                : "done";
+        setSyncState((sync) => {
+          if (!sync) return sync;
+          return {
+            behind: outcome === "done" || outcome === "none" ? 0 : sync.behind,
+            requested: false,
+            last: { at: new Date().toISOString(), outcome },
+          };
+        });
+        if (outcome === "overlap") {
+          // 겹침을 AI 가 정리하는 모습 — 정리가 끝나면 받아올 수가 0 이 되고 잠금이 풀린다.
+          setAttentionState({ kind: "ai-fixing", since: new Date().toISOString() });
+          await later(3000);
+          setAttentionState(null);
+          setSyncState((sync) => (sync ? { ...sync, behind: 0 } : sync));
+        }
         return { ok: true as const };
       },
       submit: async () => {
@@ -577,9 +714,6 @@ function Row({ spec }: { spec: Case }) {
             title={spec.title}
             onRename={spec.id === "c" ? undefined : (name) => console.log("rename", name)}
             journey={journey}
-            turnStartedAt={spec.running ? Date.now() - 12_000 : null}
-            makingPhase={spec.phase ?? null}
-            firstTurn={false}
             narrow={spec.narrow ?? false}
             nav={nav}
             onSubmit={() => {}}

@@ -91,6 +91,10 @@ export function PinBubble({
   const input = useRef<HTMLTextAreaElement>(null);
   const nameId = useId();
   const [note, setNote] = useState(pin.note);
+  const fullName =
+    pin.element.kind === "region"
+      ? pinName(pin)
+      : pin.element.a11y?.name?.trim() || pin.element.text.trim() || pinName(pin);
   const styleRows = Object.entries(pin.element.styles ?? {}).flatMap(([key, value]) => {
     const name = PIN_STYLE_NAMES[key];
     return name ? [{ name, value }] : [];
@@ -207,7 +211,7 @@ export function PinBubble({
         <span className="nx-pinbub-id" id={nameId}>
           <span className="nx-sr">{L.pin.bubble}</span>
           <span className="nx-pnum">{n}</span>
-          <b className="nx-pinbub-name">{pinName(pin)}</b>
+          <b className="nx-pinbub-name">{fullName}</b>
           <span className="nx-pinbub-screen">· {screenName}</span>
         </span>
         <button

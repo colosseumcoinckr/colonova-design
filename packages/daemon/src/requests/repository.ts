@@ -2,12 +2,13 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { recordComments } from "../comments.js";
 import { browseFiles, listFiles } from "../environment.js";
+import { FRESH_CHECK_FAILED_DETAIL, FRESH_FETCH_TIMEOUT_MS } from "../repo-core.js";
 import { undoLog } from "../undo-log.js";
 import type { RequestHandlers, RouterDeps } from "./types.js";
 
 type RepositoryDeps = Pick<
   RouterDeps,
-  "fleet" | "registry" | "manager" | "handoffPreviews" | "previewDrivers"
+  "fleet" | "registry" | "manager" | "handoffPreviews" | "previewDrivers" | "screenSync"
 >;
 type RepositoryRequest = Extract<
   keyof RequestHandlers,
@@ -79,14 +80,20 @@ export function repositoryHandlers(
           const head = await active.repo.headCommitFiles();
           await active.repo.repoCore().refreshPendingChanges(true);
           refuseWhileTurnRuns();
-          if (
-            (message.expectedHead && head?.sha !== message.expectedHead) ||
-            active.repo.pendingChanges > 0 ||
-            (message.expectedPreview &&
-              (await active.repo.repoCore().submitPreviewToken()) !== message.expectedPreview)
-          ) {
+          // 거부 이유를 문장 뒤에 남긴다(2026-11-04 실앱 감사) — 사용자의 말은 그대로 두고
+          // 괄호 안 짧은 값만 더해, 로그에서 어느 조건이 거부했는지 바로 보이게 한다.
+          const token =
+            message.expectedPreview === undefined
+              ? null
+              : await active.repo.repoCore().submitPreviewToken();
+          const headMismatch =
+            message.expectedHead !== undefined && head?.sha !== message.expectedHead;
+          const tokenMismatch = token !== null && token !== message.expectedPreview;
+          if (headMismatch || active.repo.pendingChanges > 0 || tokenMismatch) {
             throw new Error(
-              "SUBMIT_CHANGED: 확인한 뒤 작업 내용이 바뀌었어요. 변경 목록을 다시 확인해 주세요.",
+              `SUBMIT_CHANGED: 확인한 뒤 작업 내용이 바뀌었어요. 변경 목록을 다시 확인해 주세요. ` +
+                `(head=${head?.sha ?? "없음"} 기대=${message.expectedHead ?? "없음"}, ` +
+                `미커밋=${active.repo.pendingChanges}, 지문=${tokenMismatch ? "다름" : "같음"})`,
             );
           }
           if ((await active.repo.repoCore().finalChangedFiles()).length === 0) {
@@ -97,6 +104,9 @@ export function repositoryHandlers(
             message.sessionId,
             message.note || undefined,
             message.sent,
+            // 확정한 지문을 감독자의 원격 확인(fetch) 뒤 재점검에도 쓴다(2026-11-12) —
+            // 이 앞의 검사는 fetch 전 값이다.
+            message.expectedPreview,
           );
         });
       } else {
@@ -188,7 +198,7 @@ export function repositoryHandlers(
       const route = found.startsWith("/") && !found.startsWith("//") ? found : "/";
       return { route, image: null };
     },
-    "repo.submitPreview": async () => {
+    "repo.submitPreview": async (message) => {
       const active = deps.fleet.requireActive();
       // 웹은 repo.status 를 받을 때마다 다시 묻고, 이 읽기의 git 출력이 다시
       // repo.status 를 방송한다. git 이 느린 Windows 에서는 한 바퀴가 방송 간격보다
@@ -196,10 +206,31 @@ export function repositoryHandlers(
       // 시작하지 않은 읽기에 합류해 줄에는 많아야 하나만 선다 — 합류한 읽기도 요청
       // 뒤에 시작하므로 신선하다. 칸은 "review": "submit" 은 실제 제출 · 넘기기가
       // 쓰는 칸이라 거기에 합류하면 다른 모양의 결과를 받는다.
+      //
+      // 새로 읽기(freshBase, 2026-11-12 채택)는 확인 창을 여는 · 다시 읽는 누름에만 온다.
+      // 칸과 합류 짝을 나눈다("review-fresh") — 진행 중인 배경 읽기에 합류한 fresh 요청이
+      // fetch 전의 옛 읽기를 받는 일이 없게 한다. 배경(freshBase 없음)은 여전히 로컬만 읽어
+      // 방송 → 재조회 → fetch 의 돌이 돌지 않는다.
+      const fresh = message.freshBase === true;
       return active.repo.repoCore().lane.run(
-        "review",
+        fresh ? "review-fresh" : "review",
         async () => {
           const core = active.repo.repoCore();
+          if (fresh) {
+            try {
+              await core.fetchBase(FRESH_FETCH_TIMEOUT_MS);
+            } catch {
+              // 최신인지 확인하지 못했다 — 확인됐다고 속이지 않는다(다시 열면 된다).
+              throw new Error(FRESH_CHECK_FAILED_DETAIL);
+            }
+            const [, behind] = await core.aheadBehindBase().then(
+              (counts) => counts,
+              () => {
+                throw new Error(FRESH_CHECK_FAILED_DETAIL);
+              },
+            );
+            active.supervisor.noteRemoteBehind(behind);
+          }
           const head = await core.headCommitFiles();
           if (!head) throw new Error("제출할 작업을 읽지 못했어요.");
           await core.refreshPendingChanges(true);
@@ -216,8 +247,17 @@ export function repositoryHandlers(
     },
     "repo.restore": async (message) => {
       refuseWhileTurnRuns();
-      const restored = await deps.fleet.requireActive().repo.restore(message.sha);
-      undoLog().record({ kind: "save", slug: deps.fleet.requireActive().slug });
+      const active = deps.fleet.requireActive();
+      // 되돌리기 전의 이력 — 이 지점보다 뒤의 보관이 같이 고친 초안도 함께 돌린다(2026-10-30 같이 고치기 계획 §5).
+      const before = await active.repo
+        .history()
+        .then((history) => history.entries.map((entry) => entry.sha))
+        .catch(() => [] as string[]);
+      const restored = await active.repo.restore(message.sha);
+      undoLog().record({ kind: "save", slug: active.slug });
+      if (restored.stage !== "failed" && before.length > 0) {
+        void deps.screenSync.undoAfterRestore(active.slug, before, message.sha).catch(() => 0);
+      }
       return restored;
     },
     // --- 코멘트 저장소 (PLAN D57) ----------------------------------------

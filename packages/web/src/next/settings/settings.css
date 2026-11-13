@@ -29,7 +29,7 @@
   flex-direction: column;
   gap: 14px;
   min-height: 0;
-  padding: 22px 10px 12px;
+  padding: 22px 10px var(--sp-3);
   background: var(--bg-2);
   border-right: 1px solid var(--line-soft);
   overflow-y: auto;
@@ -39,7 +39,7 @@
   margin: 0;
   padding: 0 10px;
   font-size: 15px;
-  font-weight: 700;
+  font-weight: var(--fw-bold);
   letter-spacing: -0.01em;
 }
 
@@ -48,7 +48,7 @@
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--sp-0_5);
 }
 
 /* 활성 표시 — 알약 하나가 고른 탭 쪽으로 미끄러진다(자리는 껍데기가 재어 변수로 건넨다). 탭 아래에 깔리고,
@@ -86,7 +86,7 @@
   padding: 0 10px;
   border-radius: var(--r);
   color: var(--ink2);
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   text-align: left;
   white-space: nowrap;
 }
@@ -105,7 +105,7 @@
 .nx .nx-set-tab.nx-set-tab--on:hover {
   background: var(--nx-selected);
   color: var(--ink);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 /* 알약이 서 있으면 활성 탭은 제 바탕을 입지 않는다 — 알약이 그 자리를 비춘다. */
@@ -138,22 +138,10 @@
   outline-offset: -2px;
 }
 
-/* 눈여겨볼 일이 있는 쪽의 알약 — 새 버전 · 곧 끝나는 연결 · 끝난 로그인. 점만으로는 무슨 일인지 알 수
-   없어 말이 함께 선다(색은 보조). 새 버전은 알림이지 문제가 아니라 파랑이다 — 액센트(Claude 테마의
-   테라코타)는 빨강(끝남)과 한 색으로 읽혀 두 알약이 색으로 안 갈렸다. */
+/* 눈여겨볼 일이 있는 쪽의 알약 — 모양 · 색은 공통 부품 nx-pill(파랑 = 새 버전 · 호박 = 곧 끝남 ·
+   빨강 = 끝남), 여기는 자리와 점만. 점만으로는 무슨 일인지 알 수 없어 말이 함께 선다. */
 .nx-set-pill {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: 5px;
   margin-left: auto;
-  padding: 1px 8px 1px 6px;
-  border-radius: 999px;
-  background: var(--blue-soft);
-  color: var(--blue);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.5;
 }
 
 .nx-set-pill > i {
@@ -161,16 +149,6 @@
   height: 6px;
   border-radius: 50%;
   background: currentColor;
-}
-
-.nx-set-pill--amber {
-  background: var(--amber-soft);
-  color: var(--amber);
-}
-
-.nx-set-pill--red {
-  background: var(--red-soft);
-  color: var(--red);
 }
 
 /* ── 오른쪽 — 쪽 머리(이름 · 한 줄 · 닫기)와 몸. 몸만 스크롤한다. */
@@ -185,7 +163,7 @@
 .nx-set-hd {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--sp-3);
   flex: none;
   /* 오른쪽은 ✕(DOM 끝에 있다) 자리다. 쪽을 굴리면 머리 아래에 가는 선이 서서 내용이 머리 밑으로 들어감을 말한다. */
   padding: 24px 56px 12px 30px;
@@ -204,14 +182,14 @@
 
 .nx-set-hd h3 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 700;
+  font-size: var(--fs-h2);
+  font-weight: var(--fw-bold);
   letter-spacing: -0.015em;
-  line-height: 1.3;
+  line-height: var(--lh-tight);
 }
 
 .nx-set-hd p {
-  margin: 4px 0 0;
+  margin: var(--sp-1) 0 0;
   font-size: 13px;
   line-height: 1.5;
   color: var(--ink3);
@@ -232,10 +210,10 @@
   bottom: 14px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
+  gap: var(--sp-1_5);
+  padding: var(--sp-1_5) var(--sp-3);
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: var(--card);
   box-shadow: var(--pop);
   color: var(--ink2);
@@ -247,9 +225,9 @@
   display: grid;
   flex: 1;
   align-content: start;
-  gap: 14px;
+  gap: var(--sp-3);
   min-height: 0;
-  padding: 8px 30px 30px;
+  padding: var(--sp-2) 30px 30px;
   overflow-y: auto;
   /* 쪽의 폭을 재는 자 — 테마 카드가 창 크기가 아니라 자리의 폭으로 몇 줄씩 설지 정한다. */
   container: nx-page / inline-size;
@@ -295,7 +273,7 @@
 /* ── 줄과 상자 — 이름 · 한 줄은 왼쪽, 조절 장치는 오른쪽. 줄 사이는 가는 선. */
 .nx-sgroup {
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--card);
 }
 
@@ -318,9 +296,9 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 10px 16px;
+  gap: 10px var(--sp-4);
   min-height: 54px;
-  padding: 12px 16px;
+  padding: var(--sp-3) var(--sp-4);
 }
 
 .nx-sitem-txt {
@@ -331,12 +309,12 @@
 }
 
 .nx-sitem-title {
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-medium);
 }
 
 .nx-sitem-sub {
-  font-size: 12px;
+  font-size: var(--fs-sm);
   line-height: 1.55;
   color: var(--ink3);
 }
@@ -347,7 +325,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 10px;
+  gap: var(--sp-2) 10px;
   min-width: 0;
   max-width: 100%;
 }
@@ -359,7 +337,7 @@
   padding: 0;
   color: var(--accent);
   font-size: 12px;
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   text-align: left;
 }
 
@@ -370,14 +348,14 @@
 
 /* 상자 아래의 덧말 — 위의 상자에 붙어 읽힌다. */
 .nx-sfoot {
-  margin: -6px 2px 0;
+  margin: -6px var(--sp-0_5) 0;
 }
 
 .nx-ai-connection {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 20px;
+  padding: var(--sp-5);
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
   background: var(--cmp);
@@ -397,7 +375,7 @@
 
 .nx-ai-connection-text > b {
   font-size: 16px;
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .nx-ai-connection-text > p {
@@ -412,17 +390,17 @@
 .nx-sgrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+  gap: var(--sp-3);
 }
 
 .nx .nx-ptile {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
   min-height: 72px;
   padding: 14px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--card);
   text-align: left;
 }
@@ -451,7 +429,7 @@
 .nx-ptile-foot {
   display: grid;
   flex: 1 0 100%;
-  gap: 8px;
+  gap: var(--sp-2);
   /* 표식(40px)과 간격(12px)만큼 들여 이름의 글줄에 맞춘다. */
   padding-left: 52px;
 }
@@ -484,7 +462,7 @@
   width: 40px;
   height: 40px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: var(--bg);
 }
 
@@ -497,7 +475,7 @@
 .nx-pmk.nx-pmk--sm {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
+  border-radius: var(--r);
 }
 
 .nx-pmk--sm svg,
@@ -544,13 +522,13 @@
 
 .nx-ptxt > b {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .nx-ptxt > span {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   font-size: 12px;
   color: var(--ink3);
 }
@@ -575,7 +553,7 @@
   flex: none;
   width: 18px;
   height: 18px;
-  border: 1.5px solid var(--line2);
+  border: 1px solid var(--line2);
   border-radius: 50%;
   transition: border-color var(--nx-t-touch) var(--drift);
 }
@@ -597,21 +575,19 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 10px;
+  gap: var(--sp-2) 10px;
 }
 
 .nx-slogin-code {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
-.nx-sinput.nx-sinput--code {
+.nx-slogin-code .nx-input {
   flex: 1 1 140px;
-  width: auto;
   min-width: 0;
-  height: 30px;
 }
 
 /* 실패의 원문 — 데몬이 돌려준 말은 접어 두고, 필요한 사람만 펼친다. */
@@ -634,8 +610,8 @@
   width: 5px;
   height: 5px;
   margin-right: 7px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
   transform: rotate(-45deg);
   transition: transform var(--nx-t-touch) var(--drift);
 }
@@ -645,9 +621,9 @@
 }
 
 .nx-sdet-b {
-  margin: 6px 0 0;
-  padding: 8px 10px;
-  border-radius: 8px;
+  margin: var(--sp-1_5) 0 0;
+  padding: var(--sp-2) 10px;
+  border-radius: var(--r);
   background: var(--bg-2);
   color: var(--ink2);
   font-size: 12px;
@@ -674,7 +650,7 @@
 .nx .nx-tcard {
   display: grid;
   gap: 9px;
-  border-radius: 12px;
+  border-radius: var(--r-lg);
 }
 
 .nx-tpeek {
@@ -682,7 +658,7 @@
   display: block;
   aspect-ratio: 8 / 5;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   /* 고정 — 그림자는 테마를 따르지 않는 검은 빛이다. */
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   overflow: hidden;
@@ -740,20 +716,20 @@
   justify-content: center;
   gap: 5px;
   min-width: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
 .nx-tname > b {
   overflow: hidden;
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .nx-tnow {
   color: var(--ink3);
-  font-weight: 400;
+  font-weight: var(--fw-regular);
   white-space: nowrap;
 }
 
@@ -762,7 +738,7 @@
 }
 
 .nx-tcard--on .nx-tname > b {
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .nx .nx-tname .nx-i {
@@ -791,8 +767,8 @@
   display: grid;
   flex: 0 0 27%;
   align-content: start;
-  gap: 4px;
-  padding: 10px 6px;
+  gap: var(--sp-1);
+  padding: 10px var(--sp-1_5);
   background: var(--bg-2);
   border-right: 1px solid var(--line-soft);
 }
@@ -817,9 +793,9 @@
   flex: 1;
   grid-template-rows: auto auto auto 1fr;
   align-content: start;
-  gap: 4px;
+  gap: var(--sp-1);
   min-width: 0;
-  padding: 10px 8px 7px;
+  padding: 10px var(--sp-2) 7px;
 }
 
 .nx-tw-me {
@@ -863,20 +839,20 @@
 /* ── 분절 단추 — 알림 시점의 세 갈래. 고른 칸은 강조 바탕에 강조 글자. */
 .nx-sseg {
   display: inline-flex;
-  gap: 2px;
+  gap: var(--sp-0_5);
   padding: 3px;
   border: 1px solid var(--line-soft);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: var(--bg-2);
 }
 
 .nx .nx-sseg-opt {
   height: 28px;
-  padding: 0 12px;
+  padding: 0 var(--sp-3);
   border-radius: 7px;
   color: var(--ink3);
-  font-size: 12.5px;
-  font-weight: 500;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
   white-space: nowrap;
 }
 
@@ -887,44 +863,45 @@
 
 .nx .nx-sseg-opt[aria-checked="true"] {
   background: var(--accent-soft);
-  color: var(--accent);
+  /* 고른 칸의 글자 — 어느 팔레트서나 4.5:1 을 지킨다. 밝은 팔레트의 var(--accent) 는 4.09(claude) ·
+     4.10(claude-dark) 로 못 미쳤다(2026-11-12 계산) — pill--blue 의 판대로 잉크를 섞어 올린다. */
+  color: color-mix(in srgb, var(--accent) 86%, var(--ink));
   box-shadow: inset 0 0 0 1px var(--accent-line);
 }
 
-/* ── 칸 — 작업에 적을 이름. */
-.nx-sinput {
+/* ── 칸 — 작업에 적을 이름 · 기획서 연결의 입력. 입력은 공통 부품 nx-input(36px · 초점 고리,
+   2026-10-23 화면 전면 재설계 §4 I)을 그대로 입고 여기는 폭만. */
+.nx-sfield .nx-input {
   width: 232px;
-  max-width: 100%;
-  height: 34px;
-  padding: 0 11px;
-  border: 1px solid var(--line2);
-  border-radius: 8px;
-  background: var(--bg);
-  font-size: 13.5px;
-  outline: 0;
 }
 
-.nx-sinput:focus {
-  border-color: var(--accent);
-  background-color: var(--bg);
+/* 기획서 연결의 입력 세 쪽 — 줄 해부(이름 왼쪽 · 조절 오른쪽)가 아니라 한 줄기로 세운 칸
+   (nx-field)들이 상자의 한 칸에 산다(2026-10-23 화면 전면 재설계 §4 H 「기획서 연결 칸」). */
+.nx-sform {
+  display: grid;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
 }
 
-/* 초점 고리는 키보드로 닿을 때만 — 마우스로 누를 때는 조용히 둔다. */
-.nx-sinput:focus-visible {
-  box-shadow: 0 0 0 3px var(--accent-soft);
+.nx-sform-act {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-2);
 }
 
 /* ── 상태 알약 — 연결 코드 한 줄. 점은 판정의 색, 아픈 문장은 그 색으로 읽힌다. */
 .nx-schip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   padding: 5px 10px;
-  border-radius: 8px;
+  border-radius: var(--r);
   background: var(--green-soft);
   color: var(--ink2);
-  font-size: 12.5px;
-  line-height: 1.45;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
   text-align: left;
 }
 
@@ -938,11 +915,65 @@
   color: var(--red);
 }
 
+/* 연결된 사이트 한 줄 — 글자로만 말한다(고칠 일이 있으면 `다시 연결하기` 가 입력 칸을 연다). */
+.nx-sval {
+  min-width: 0;
+  color: var(--ink2);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+/* 기준 페이지 찾기의 결과 — 상자 속 한 칸. 열 개가 넘어도 긴 줄이 쌓이지 않게 목록만 스스로 굴린다. */
+.nx-sroots {
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+}
+
+.nx-sroots > .nx-snote {
+  margin: 0;
+}
+
+.nx-sroots-hd {
+  margin: 0;
+  color: var(--ink3);
+  font-size: 12px;
+}
+
+.nx-sroots-list {
+  display: grid;
+  gap: var(--sp-1);
+  max-height: 232px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.nx-sroots-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 3px var(--sp-1) 3px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r);
+  background: var(--bg);
+}
+
+.nx-sroots-t {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* 시험 알림의 답 — 보냈으면 초록 표식, 막혔으면 붉은 글. */
 .nx-stest {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .nx-stest--ok {
@@ -959,6 +990,14 @@
   border-radius: 11px;
   background: var(--line2);
   transition: background var(--nx-t-touch) var(--drift);
+}
+
+/* 누르는 자리 — 보이는 크기(38×22)보다 넓게 벌려 최소 과녁(24×24)을 채운다(WCAG 2.5.8).
+   벌어진 3px는 조절 장치 사이 간격(8px 이상) 안이라 이웃 과녁과 겹치지 않는다. */
+.nx-sw::before {
+  content: "";
+  position: absolute;
+  inset: -3px;
 }
 
 .nx-sw::after {
@@ -998,10 +1037,10 @@
   margin: 0;
   padding: 10px 14px;
   border: 1px solid var(--line-soft);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: var(--card);
   font-size: 12px;
-  line-height: 1.7;
+  line-height: var(--lh-read);
   color: var(--ink2);
 }
 
@@ -1013,10 +1052,10 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 12px 14px;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) 14px;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: var(--bg-2);
   overflow: hidden;
   transition:
@@ -1066,13 +1105,13 @@
 .nx-sband-txt {
   display: grid;
   flex: 1 1 200px;
-  gap: 2px;
+  gap: var(--sp-0_5);
   min-width: 0;
 }
 
 .nx-sband-t {
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-semi);
   line-height: 1.4;
 }
 
@@ -1086,7 +1125,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   margin-left: auto;
 }
 
@@ -1100,7 +1139,7 @@
   align-items: center;
   justify-content: flex-start;
   /* 복사 단추 곁의 안내(`공개 게시판이 아니라 비공개 채널에 붙여 주세요`, 2026-10-07)가 단추와 눈높이를 맞춘다. */
-  gap: 4px 12px;
+  gap: var(--sp-1) var(--sp-3);
 }
 
 .nx-sfoot-act > .nx-snote {
@@ -1115,8 +1154,8 @@
   max-width: 100%;
 }
 
-.nx-sfield .nx-sinput {
-  padding-right: 32px;
+.nx-sfield .nx-input {
+  padding-right: var(--sp-8);
 }
 
 .nx-sfield-ok {
@@ -1142,15 +1181,15 @@
 .nx-snote.nx-snote--wait {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   animation: nx-fade 0.15s 0.3s backwards;
 }
 
 /* 여러 줄을 든 덧말 칸(실패의 말 + 자세히) — 상자의 직계 자식이라 안쪽 여백을 스스로 갖는다. */
 .nx-snote-block {
   display: grid;
-  gap: 6px;
-  padding: 12px 16px;
+  gap: var(--sp-1_5);
+  padding: var(--sp-3) var(--sp-4);
 }
 
 .nx-snote-block .nx-snote {
@@ -1172,26 +1211,26 @@
 
 .nx-snote.nx-sdng-scope {
   color: var(--ink2);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.6;
 }
 
 /* ── 글자 크기 — 앱 전체를 키우고 줄이는 단축키. 키캡은 단축키 시트(ui/sheet.css)의 것을 한 치수 줄여 쓴다. */
 .nx-zoomsub {
   display: grid;
-  gap: 6px;
+  gap: var(--sp-1_5);
 }
 
 .nx-zk {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 14px;
+  gap: var(--sp-1_5) 14px;
 }
 
 .nx-zk-i {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   color: var(--ink2);
 }
 
@@ -1203,7 +1242,7 @@
 .nx .nx-zk kbd.nx-kc {
   min-width: 22px;
   height: 22px;
-  padding: 0 6px;
+  padding: 0 var(--sp-1_5);
 }
 
 /* ── 업데이트 줄 — 앱 · Claude Code 가 한 상자. 표식 · 이름과 버전 · 오른쪽 단추, 아래 한 줄은
@@ -1212,8 +1251,8 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px 12px;
-  padding: 12px 16px;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
 }
 
 /* 새 버전이 있는 줄 — 세 줄이 모두 그래도 상자가 한 덩이 색으로 뭉치지 않게 옅게 깐다. */
@@ -1224,34 +1263,36 @@
 .nx-urow-body {
   display: grid;
   flex: 1 1 200px;
-  gap: 2px;
+  gap: var(--sp-0_5);
   min-width: 0;
 }
 
 .nx-urow .nx-un {
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-semi);
 }
 
 .nx-urow .nx-uv {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--sp-1_5);
   color: var(--ink3);
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   font-variant-numeric: tabular-nums;
 }
 
 .nx-urow--new .nx-uv {
-  color: var(--accent);
-  font-weight: 500;
+  /* 새 버전의 글자 — claude-dark 의 var(--accent) 는 4.31 로 4.5:1 에 못 미쳤다(2026-11-12 계산)
+     — 잉크를 섞어 올린다. */
+  color: color-mix(in srgb, var(--accent) 86%, var(--ink));
+  font-weight: var(--fw-medium);
 }
 
 .nx-urow .nx-uv .nx-ok {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
   color: var(--green);
 }
 
@@ -1266,7 +1307,7 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--sp-1_5);
   margin-left: auto;
 }
 
@@ -1278,9 +1319,9 @@
 .nx-urow-foot {
   display: grid;
   flex: 1 0 100%;
-  gap: 6px;
+  gap: var(--sp-1_5);
   /* 표식(32px)과 간격(12px)만큼 들여 이름 · 버전의 글줄에 맞춘다. */
-  padding: 2px 0 0 44px;
+  padding: var(--sp-0_5) 0 0 44px;
   font-size: 12px;
   color: var(--ink3);
 }
@@ -1335,7 +1376,7 @@
 /* 상자 속 한 줄의 덧말 — 상자의 직계 자식이라 안쪽 여백이 없으면 글이 카드 왼쪽 선에 붙는다. */
 .nx-snote.nx-snote--row {
   margin: 0;
-  padding: 12px 16px;
+  padding: var(--sp-3) var(--sp-4);
 }
 
 /* 사이드바 설정 바퀴의 점 — 새 버전을 알리는 한 알(목업의 .gear-dot). */
@@ -1355,11 +1396,8 @@
   border: 2px solid var(--side);
 }
 
-/* 설정의 단추는 한 칸 아래 — 목업의 .btn.sm. 설정 안으로 가둔다(공용 소단추는 ui.css 의 28px). */
-.nx .nx-set .nx-btn--sm {
-  height: 26px;
-  border-radius: var(--r-sm);
-}
+/* 설정의 소단추는 공용 크기(28px · ui.css)를 그대로 쓴다 — 2026-10-23 화면 전면 재설계 §4 I.
+   예전의 26px 덮어쓰기를 걷었다. */
 
 /* 좁은 창 — 왼쪽 목록이 위로 올라가 가로 띠가 되고, 창은 화면 가까이 넓어진다. */
 @media (max-width: 720px) {
@@ -1371,7 +1409,7 @@
   }
 
   .nx-set-rail {
-    padding: 10px 12px;
+    padding: 10px var(--sp-3);
     border-right: 0;
     border-bottom: 1px solid var(--line-soft);
     overflow: auto hidden;
@@ -1387,7 +1425,7 @@
     /* 잘린 탭은 없는 쪽을 고르는 실수로 이어진다 — 넘치면 다음 줄로 감긴다.
        스크롤 · 화살표 키는 그대로 산다(2026-10-04 ux-review). */
     flex-wrap: wrap;
-    gap: 4px;
+    gap: var(--sp-1);
   }
 
   .nx .nx-set-tab {
@@ -1409,7 +1447,7 @@
   }
 
   .nx-set-page {
-    padding: 8px 20px 24px;
+    padding: var(--sp-2) var(--sp-5) var(--sp-6);
   }
 }
 
@@ -1419,4 +1457,20 @@
     animation: none;
     opacity: 0;
   }
+}
+
+.nx-sgrid > .nx-ptile:only-child {
+  grid-column: 1 / -1;
+}
+
+.nx-svalue {
+  font-size: var(--fs-sm);
+  color: var(--ink3);
+  overflow-wrap: anywhere;
+}
+.nx-sroots-status {
+  min-height: var(--sp-5);
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--ink2);
 }

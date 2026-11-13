@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PreviewError, PreviewLocation } from "../../components/preview/types";
 import type { Daemon } from "../../lib/daemon-client";
 import { errorToTurn } from "../../lib/preview-turns";
+import { PREVIEW_RECOVERY_TITLE } from "../../lib/thread-visibility";
 import type { StageError } from "./PreviewHost";
 
 /** 한 오류 키가 사람 손 없이 쓸 수 있는 기계 고침 발사 수. */
@@ -103,7 +104,12 @@ export function usePreviewErrors({
         }
         const spent = fires.current.get(key) ?? 0;
         if (fired || fixOut.current || turnLiveNow.current || spent >= MAX_AUTO_FIXES) continue;
-        const delivered = await machine.current(errorToTurn(error, spent + 1));
+        // 대화를 처음 열 때 도구의 이름을 붙인다(2026-11-03 실앱 감사) — 이름 없이 열면
+        // CLI 가 요약한 영어 문장이 대화 목록에 섞인다.
+        const delivered = await machine.current(
+          errorToTurn(error, spent + 1),
+          PREVIEW_RECOVERY_TITLE,
+        );
         if (delivered) {
           fires.current.set(key, spent + 1);
           fixOut.current = true;

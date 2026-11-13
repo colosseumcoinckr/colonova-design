@@ -1,0 +1,1153 @@
+/* 기획서의 트리와 종이 한 장(2026-10-23 화면 전면 재설계 §3.2 · §3.4). */
+.nx-plans {
+  --nx-pl-pad-top: var(--sp-8);
+  --nx-pl-pad-x: var(--sp-8);
+  --nx-pl-pad-bottom: var(--sp-12);
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  position: relative;
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: nxpl;
+}
+.nx-pl-bar {
+  gap: var(--sp-2);
+  min-width: 0;
+  background: var(--bg);
+}
+.nx-pl-crumbs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-width: 0;
+  font-size: var(--fs-ui);
+  color: var(--ink2);
+}
+.nx-pl-crumbs > .nx-i {
+  flex: none;
+  color: var(--ink3);
+}
+.nx .nx-pl-root {
+  flex: none;
+  padding-inline: var(--sp-1);
+}
+.nx-pl-crumb-folder,
+.nx-pl-crumb-here {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-pl-crumb-folder {
+  min-width: 4ch;
+  flex: 0 2 auto;
+  color: var(--ink3);
+}
+.nx-pl-crumb-here {
+  flex: 0 1 auto;
+  font-weight: var(--fw-semi);
+  color: var(--ink);
+}
+.nx-pl-crumbs .nx-pill {
+  flex: none;
+}
+.nx-pl-actions {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: var(--sp-2);
+}
+.nx-pl-actions .nx-i {
+  width: var(--fs-ui);
+  height: var(--fs-ui);
+}
+.nx-pl-sidebar {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.nx-pl-sidebar[hidden] {
+  display: none;
+}
+.nx-pl-sync {
+  display: flex;
+  flex: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-cap);
+  line-height: var(--lh-ui);
+  color: var(--ink3);
+}
+.nx-pl-sync.nx-banner {
+  margin: var(--sp-2);
+}
+.nx-pl-list,
+.nx-pl-view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.nx-pl-list {
+  padding: var(--sp-2);
+}
+.nx-pl-list[hidden] {
+  display: none;
+}
+.nx-pl-find {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.nx-pl-find > .nx-i {
+  position: absolute;
+  left: var(--sp-3);
+  color: var(--ink3);
+  pointer-events: none;
+}
+.nx .nx-pl-find-in {
+  padding-inline: var(--sp-8);
+  width: 100%;
+}
+.nx-pl-find > button {
+  position: absolute;
+  right: var(--sp-1);
+}
+.nx-pl-find-in::-webkit-search-cancel-button {
+  display: none;
+}
+.nx-pl-count {
+  margin: var(--sp-1) var(--sp-2);
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+.nx-pl-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* 깊이마다 12px. 안내선은 들여쓰기 안에만 그린다. */
+.nx-pl-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  padding-inline-start: calc(var(--nx-pl-depth, 0) * var(--sp-3));
+}
+.nx-pl-item::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  left: var(--sp-3);
+  width: calc(var(--nx-pl-depth, 0) * var(--sp-3));
+  background: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px var(--sp-3));
+  pointer-events: none;
+}
+.nx .nx-pl-fold {
+  flex: none;
+}
+.nx-pl-fold--none {
+  pointer-events: none;
+}
+.nx-pl-fold > svg {
+  transition: transform var(--nx-t-touch) var(--drift);
+}
+.nx-pl-fold--open > svg {
+  transform: rotate(90deg);
+}
+.nx .nx-pl-row {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--sp-1);
+  height: var(--h-row);
+  min-width: 0;
+  padding: 0 var(--sp-1_5);
+  border-radius: var(--r-sm);
+  font-size: var(--fs-ui);
+  text-align: start;
+  color: var(--ink2);
+}
+.nx .nx-pl-row:hover {
+  background: var(--nx-hover);
+}
+.nx .nx-pl-row--on {
+  background: var(--nx-selected);
+  color: var(--ink);
+  font-weight: var(--fw-medium);
+}
+/* 트리에 있는 초안의 묶음 줄은 굵기로만 현재를 알린다(2026-10-24 PL1). */
+.nx .nx-pl-row--current {
+  color: var(--ink);
+  font-weight: var(--fw-semi);
+}
+.nx .nx-pl-row:focus-visible,
+.nx .nx-pl-fold:focus-visible {
+  outline-offset: -2px;
+}
+.nx-pl-title {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-pl-row--folder .nx-pl-title,
+.nx-pl-row[data-fold] .nx-pl-title {
+  font-weight: var(--fw-semi);
+}
+.nx-pl-folder {
+  max-width: 40%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+.nx .nx-pl-row--off {
+  color: var(--ink3);
+  cursor: default;
+}
+.nx .nx-pl-row--off:hover {
+  background: transparent;
+}
+.nx-pl-kind {
+  flex: 0 1 auto;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-cap);
+}
+.nx-pl-row .nx-pill {
+  flex: none;
+}
+.nx-pl-fresh {
+  margin-bottom: var(--sp-3);
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line);
+}
+.nx-pl-fresh-t {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  min-height: var(--h-row);
+  padding-inline: var(--sp-1);
+  color: var(--ink2);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
+  list-style: none;
+  cursor: pointer;
+}
+.nx-pl-fresh-t::-webkit-details-marker {
+  display: none;
+}
+.nx-pl-fresh[open] > summary .nx-i {
+  transform: rotate(90deg);
+}
+.nx-pl-fresh-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.nx-pl-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-3) var(--sp-1);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+}
+.nx-pl-note-sub {
+  flex-basis: 100%;
+}
+.nx-pl-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.nx-pl-state > .nx-empty,
+.nx-pl-doc--failed > .nx-empty {
+  width: 100%;
+  margin: auto;
+  max-width: var(--w-read);
+  padding-inline: 0;
+}
+.nx-plans .nx-empty-title,
+.nx-plans .nx-empty-desc {
+  margin: 0;
+}
+.nx-pl-list--center {
+  display: flex;
+  flex-direction: column;
+}
+.nx-pl-list--center > .nx-empty {
+  margin-block: auto;
+}
+.nx-pl-view,
+.nx-pl-state {
+  padding: var(--nx-pl-pad-top) var(--nx-pl-pad-x) var(--nx-pl-pad-bottom);
+}
+.nx-pl-view--failed {
+  display: flex;
+}
+.nx-pl-doc--failed {
+  width: 100%;
+  max-width: var(--w-read);
+  margin: auto;
+}
+.nx-pl-doc {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  width: 100%;
+  max-width: var(--w-read);
+  margin: 0 auto;
+}
+.nx-pl-doc-hd {
+  display: grid;
+  gap: var(--sp-2);
+}
+.nx-pl-doc-title {
+  margin: 0;
+  font-size: var(--fs-h1);
+  font-weight: var(--fw-semi);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+/* 문서를 열면 프로그램이 제목으로 초점을 옮긴다(낭독기가 제목을 읽게) — 사람이 Tab 으로 닿는 자리가 아니라 고리를 그리지 않는다.
+   ⌘K 로 열면 :focus-visible 이 서서 붉은 사각 고리가 보였다(2026-10-24 눈 확인 Q-14 · FXF). */
+.nx-pl-doc-title[tabindex="-1"]:focus,
+.nx-pl-doc-title[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+.nx-pl-doc-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--ink3);
+}
+.nx-pl-doc-meta > span + span::before {
+  content: "·";
+  margin-right: var(--sp-2);
+}
+.nx-pl-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
+}
+.nx-pl-body .md {
+  font-size: var(--fs-read);
+  line-height: var(--lh-read);
+}
+.nx-pl-note-box {
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px dashed var(--line2);
+  border-radius: var(--r);
+  background: var(--bg-2);
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+}
+.nx-pl-macro p {
+  margin: var(--sp-1) 0 0;
+}
+.nx-pl-macro-ic {
+  flex: none;
+  color: var(--blue);
+}
+.nx-pl-macro-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+.nx-pl-macro-list li + li::before {
+  content: "·";
+  margin-right: var(--sp-2);
+}
+@container nxpl (max-width: 520px) {
+  .nx-pl-view,
+  .nx-pl-state {
+    --nx-pl-pad-top: var(--sp-5);
+    --nx-pl-pad-x: var(--sp-4);
+    --nx-pl-pad-bottom: var(--sp-8);
+  }
+}
+/* ---------- 코멘트 ---------- */
+.nx-pl-comments {
+  display: grid;
+  gap: var(--sp-2);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line-soft);
+}
+
+.nx-pl-comments-t {
+  margin: 0;
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semi);
+}
+
+.nx-pl-comments > .nx-pl-note {
+  margin: 0;
+  font-size: var(--fs-cap);
+}
+
+.nx-pl-comment-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nx-pl-comment {
+  display: grid;
+  gap: var(--sp-1);
+  padding: 10px var(--sp-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  background: var(--bg-2);
+}
+
+.nx-pl-comment p {
+  margin: 0;
+}
+
+.nx-pl-comment-hd {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.nx-pl-comment-hd span {
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+
+.nx-pl-comment-anchor {
+  padding-inline-start: var(--sp-2);
+  border-inline-start: 2px solid var(--line2);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.nx-pl-comment-body {
+  font-size: var(--fs-ui);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.nx-pl-skel {
+  display: grid;
+  gap: 10px;
+  padding: var(--sp-1_5) 0 var(--sp-0_5);
+}
+
+.nx-pl-skel i {
+  display: block;
+  height: 12px;
+  border-radius: var(--r-sm);
+  background: var(--nx-hover);
+  animation: nx-breathe 1.6s ease-in-out infinite;
+}
+
+.nx-pl-skel i:nth-child(1) {
+  width: 92%;
+}
+
+.nx-pl-skel i:nth-child(2) {
+  width: 78%;
+}
+
+.nx-pl-skel i:nth-child(3) {
+  width: 86%;
+}
+
+.nx-pl-skel i:nth-child(4) {
+  width: 64%;
+}
+
+.nx-pl-skel i:nth-child(5) {
+  width: 40%;
+}
+
+/* 새 문서 창 — 제목 · 들어갈 자리 · 밑그림의 세 칸이다. */
+.nx-nd {
+  width: min(480px, calc(100vw - 48px));
+}
+
+.nx-nd-fields {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.nx-nd-field {
+  display: grid;
+  gap: 5px;
+  color: var(--ink2);
+  font-size: var(--fs-sm);
+}
+
+.nx .nx-nd-field input,
+.nx .nx-nd-field select {
+  height: 32px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--ink);
+  font-size: var(--fs-ui);
+}
+
+.nx-nd-fail {
+  margin: 10px 0 0;
+  color: var(--red);
+  font-size: var(--fs-sm);
+}
+
+/* 제목의 한계 이유 — 제목 칸이 선로의 상한에서 멈출 때 왜인지 말한다(2026-10-23 화면 확인). */
+.nx-nd-limit {
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+
+/* 들어갈 자리가 하나도 없을 때의 안내 — 이유와 `새로 가져오기` 길을 먼저 보인다(2026-10-23 화면 확인). */
+.nx-nd-noplace {
+  display: grid;
+  gap: var(--sp-2);
+  justify-items: start;
+  padding: 10px var(--sp-3);
+  border-radius: var(--r-md);
+  background: var(--amber-soft);
+  color: var(--amber);
+  font-size: var(--fs-sm);
+}
+
+.nx-nd-noplace p {
+  margin: 0;
+}
+
+/* 공용 마크다운의 상대 크기를 문서 읽기 눈금에 맞춘다(2026-10-23 화면 전면 재설계 §4 C). */
+.nx-pl-body .md h1 {
+  font-size: var(--fs-h2);
+}
+.nx-pl-body .md h2 {
+  font-size: var(--fs-h3);
+}
+.nx-pl-body .md h3,
+.nx-pl-body .md h4 {
+  font-size: var(--fs-lg);
+}
+.nx-pl-body .md table {
+  font-size: var(--fs-ui);
+}
+.nx-pl-body .md code,
+.nx-pl-body .md pre code {
+  font-size: var(--fs-sm);
+}
+.nx-pl-body .md .md__codelang,
+.nx-pl-body .md .md__codeacts .ghost {
+  font-size: var(--fs-cap);
+}
+
+/* ————— 기획서 칸 개선(2026-10-31) — 문서 판 · 기획 대화의 두 칸 ————— */
+
+/* 두 칸 배치(§4) — 왼쪽 문서 판(약 60%), 오른쪽 기획 대화(약 40%). 대화 칸의 폭은 끌어 기억한다. */
+.nx-pl-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+/* 문서 판은 칸이 구른다(2026-11-02 사용자 지적 — 카드가 구르던 판은 스크롤 막대가 760px 카드의
+   오른 끝에 떠 칸 가장자리와 베이지 사이로 갈라졌다). 칸이 구르면 막대가 칸의 오른가에 딱 붙고
+   가운데 카드는 제 자리를 지킨다 — 두 칸이 따로 구르는 것(2026-10-31 §4)은 그대로다. */
+.nx-pl-docpane {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  /* 스크롤 자리를 늘 남겨 본문이 짧아질 때 카드의 가운데가 흔들리지 않게 한다. */
+  scrollbar-gutter: stable;
+}
+.nx-pl-docpane > * {
+  min-height: 0;
+}
+/* 카드는 제 몸집(본문 길이)만큼 서고 칸 안에서 가운데를 지킨다. */
+.nx-pl-docpane .nx-pl-doc,
+.nx-pl-docpane .nx-dr {
+  flex: none;
+}
+/* 빈 판은 칸을 다 써 가운데 문장을 세운다 — 스크롤은 칸의 몫이다(제 스크롤을 거둔다). */
+.nx-pl-docpane .nx-pl-state {
+  flex: 1;
+  overflow: visible;
+}
+.nx-pl-split {
+  flex: none;
+  width: var(--sp-2);
+  margin-inline: var(--sp-1);
+  border-radius: var(--r-sm);
+  cursor: col-resize;
+  background: transparent;
+}
+.nx-pl-view[data-chat="off"] .nx-pl-split {
+  display: none;
+}
+.nx-pl-split:hover,
+.nx-pl-view:has(.nx-pl-split:active) .nx-pl-split {
+  background: var(--line);
+}
+.nx-pl-chat {
+  flex: none;
+  width: auto;
+  min-width: var(--sp-64, 300px);
+}
+.nx-pl-view[data-chat="on"] .nx-pl-chat {
+  width: clamp(300px, var(--nx-pl-chat-w, 380px), 560px);
+}
+/* 접힌 대화는 마운트가 남는다(2026-11-11) — 쓰던 글과 붙인 근거를 지키되 자리는 숨는다.
+   마운트가 남는 만큼 숨김은 뿌리의 inert 가 초점과 낭독도 함께 거둔다. */
+.nx-pl-view[data-chat="off"] .nx-pl-chat {
+  display: none;
+}
+
+/* 좁은 칸의 두 탭(§H) — 1100px 아래에서 문서 · 대화가 나뉜다. */
+.nx-pl-tabs {
+  display: none;
+  flex: none;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-4) 0;
+}
+.nx .nx-pl-tabs [role="tab"] {
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  border: none;
+  background: transparent;
+  color: var(--ink2);
+  font-size: var(--fs-ui);
+  cursor: pointer;
+}
+.nx .nx-pl-tabs [role="tab"].nx-tab--on {
+  background: var(--bg-2, var(--bg));
+  color: var(--ink);
+  font-weight: var(--fw-semi);
+}
+@container nxpl (max-width: 1100px) {
+  /* 탭을 칸 위쪽의 가로 띠로 눕힌다(2026-11-11 화면 평가) — 가로 줄의 자식이던 탭 묶음은 세로
+     기둥으로 서 대화 칸을 창 밖으로 밀었다. 세로 줄에서 탭은 가로 띠, 고른 쪽이 아래 칸 전체다. */
+  .nx-pl-view[data-chat="on"] {
+    flex-direction: column;
+  }
+  .nx-pl-view[data-chat="on"] .nx-pl-tabs {
+    display: flex;
+  }
+  /* 탭이 서면 한쪽만 보인다 — data-tab 이 고른다. */
+  .nx-pl-view[data-chat="on"] .nx-pl-split {
+    display: none;
+  }
+  .nx-pl-view[data-chat="on"][data-tab="doc"] .nx-pl-chat {
+    display: none;
+  }
+  .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-pl-docpane {
+    display: none;
+  }
+  .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-pl-chat {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    min-height: 0;
+  }
+  /* 좁은 대화 탭에서는 머리를 줄인다(2026-11-02 D6) — 안내문을 숨기고 제목 · 문서 이름만 남는다. */
+  .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-dr-thread-scope {
+    display: none;
+  }
+}
+@container nxpl (min-width: 1101px) {
+  .nx-pl-view[data-chat="on"][data-tab="chat"] .nx-pl-docpane {
+    display: flex;
+  }
+  /* 기획 대화 칸은 위 · 아래 · 오른쪽 끝까지 붙는다(2026-11-12 사용자 요청 «위 아래 패딩 같은 빈공간 없도록») —
+     두 칸을 감싼 판의 바깥 여백(위 32 · 옆 32 · 아래 48px)이 대화 칸도 띄워 칸이 떠 있는 상자처럼 보였다.
+     판의 위 · 아래 · 오른쪽 여백을 걷고, 문서 칸은 같은 여백을 제 스크롤 안에 가져가 지금 자리를 지킨다. */
+  .nx-pl-view[data-chat="on"] {
+    padding-block: 0;
+    padding-inline-end: 0;
+  }
+  .nx-pl-view[data-chat="on"] .nx-pl-docpane {
+    padding-block: var(--nx-pl-pad-top) var(--nx-pl-pad-bottom);
+  }
+  /* 칸 사이 끌기 선의 오른쪽 띄움은 대화 칸의 경계선이 대신한다. */
+  .nx-pl-view[data-chat="on"] .nx-pl-split {
+    margin-inline-end: 0;
+  }
+}
+
+/* 사이드바의 기획 대화 목록(§A) — 위에 대화, 아래 기획서. 날짜 묶음 머리와 줄 끝 `···` 는
+   화면 대화 목록(sidebar.css 의 .nx-cg-h · .nx-conv-menu)과 같은 규칙이다(2026-11-03). */
+.nx-pl-conv {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  max-height: 40%;
+  min-height: 0;
+  border-bottom: 1px solid var(--line);
+}
+/* 낮은 창에서는 문서 트리가 주인공이다(2026-11-11 화면 평가) — 1280×720 에서 대화 목록이
+   40% 를 채우면 트리가 네 줄 남짓으로 눌렸다. 30% 로 줄이고 부가 줄(날짜 머리 · 문서 이름)을
+   걷어 대화 줄 자체는 더 보이게 한다. */
+@media (max-height: 780px) {
+  .nx-pl-conv {
+    max-height: 30%;
+  }
+  .nx-pl-conv-g,
+  .nx-pl-conv-m {
+    display: none;
+  }
+}
+.nx-pl-conv-head :is(h2) {
+  font-size: var(--fs-ui);
+}
+.nx-pl-conv-list {
+  flex: 1;
+  padding: 0 var(--sp-2) var(--sp-2);
+  overflow-y: auto;
+  min-height: 0;
+}
+.nx-pl-conv-cg:not(:first-child) {
+  margin-top: var(--sp-1);
+}
+/* 묶음 머리 — 굴러도 맨 위에 붙어 지금 어느 날을 지나는지 말한다(.nx-cg-h 와 같은 결).
+   붙어 있는 동안 줄이 머리 밑으로 지나가므로 사이드바 바탕(--side)으로 가린다. */
+.nx-pl-conv-g {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--side, inherit);
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
+}
+.nx-pl-conv-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nx-pl-conv-none {
+  margin: 0 var(--sp-2) var(--sp-2);
+  color: var(--ink3);
+  font-size: var(--fs-sm);
+}
+/* 줄은 감싸개가 강조를 든다 — 제목 단추와 `···` 가 한 상자 안에 있어야 눌린 줄이 하나로 읽힌다
+   (.nx-conv-row 와 같은 결). */
+.nx-pl-conv-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  border-radius: var(--r-sm);
+}
+.nx-pl-conv-row:hover {
+  background: var(--nx-hover);
+}
+.nx-pl-conv-row--on {
+  background: var(--nx-selected);
+}
+.nx-pl-conv-row--on:hover {
+  background: var(--nx-selected);
+}
+.nx-pl-conv-btn {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-0_5);
+  min-width: 0;
+  /* 위아래는 4px — 단추 초기화가 풀리며 살아난 8px 이 줄마다 16px 을 더해 문서 나무가 더 아래에서 시작했다(2026-11-12 U-066 · 감독자 확인). */
+  padding: var(--sp-1) var(--sp-2);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.nx-pl-conv-t {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-semi);
+}
+.nx-pl-conv-t > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nx-pl-conv-t :where(.nx-i, svg) {
+  flex: none;
+}
+.nx-pl-conv-m {
+  overflow: hidden;
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 줄 끝 `···` — 손이 닿을 때만 서고, 켜진 줄도 쉬는 동안은 다른 줄과 같은 모양이다.
+   키보드는 줄 안에 초점이 서면(:has(:focus-visible)) 곧바로 보인다(.nx-conv-menu 와 같은 규칙). */
+.nx .nx-pl-conv-menu {
+  flex: none;
+  margin-right: var(--sp-1);
+  color: var(--ink3);
+  opacity: 0;
+  pointer-events: none;
+}
+.nx-pl-conv-row--menu .nx-pl-conv-menu,
+.nx-pl-conv-row:has(:focus-visible) .nx-pl-conv-menu {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* `···` 가 선 동안 제목 · 문서 줄의 오른쪽 끝은 옅어져 자리를 내준다 — 줄바꿈 없이 잘리며 출렁이지 않게. */
+.nx-pl-conv-row--menu .nx-pl-conv-btn,
+.nx-pl-conv-row:has(:focus-visible) .nx-pl-conv-btn {
+  mask-image: linear-gradient(to right, black calc(100% - 40px), transparent calc(100% - 20px));
+}
+/* 호버가 없는 입력(터치)에서는 `···` 가 늘 서 있다 — 손이 닿기를 기다리면 메뉴에 닿을 길이 없다. */
+@media (hover: none) {
+  .nx-pl-conv-row .nx-pl-conv-menu {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* 읽기 문서의 머리 — 동작 줄이 자리를 고정한다(§C). */
+.nx-pl-doc-titleline {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+.nx-pl-doc-titleline .nx-pl-doc-title {
+  flex: 1;
+}
+.nx-pl-doc-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: 0;
+}
+.nx-dr-writeoff {
+  color: var(--ink2);
+  cursor: help;
+}
+
+/* 판 바닥의 두 줄 단추(§C)와 서랍(§D). */
+.nx-pl-drawer {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: min(100%, clamp(calc(var(--sp-12) * 8), 35%, calc(var(--sp-12) * 10)));
+  z-index: var(--z-pop, 30);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--bg);
+  box-shadow: var(--shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.14));
+}
+.nx-pl-drawer-hd {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+.nx-pl-drawer-hd :is(h3) {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
+  font-size: var(--fs-ui);
+}
+.nx-pl-drawer-note {
+  margin: var(--sp-3) var(--sp-4);
+}
+.nx-pl-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  min-height: 0;
+}
+.nx-pl-scrlist {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nx-pl-scrrow {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) 0;
+}
+.nx-pl-scrname {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-ui);
+}
+.nx-pl-scrsub {
+  margin-left: var(--sp-2);
+  color: var(--ink3);
+  font-size: var(--fs-cap);
+}
+
+/* 고른 글의 작은 판(§4단계) — 본문 위에 뜬다. */
+.nx-pl-selpick {
+  position: absolute;
+  z-index: var(--z-pop, 30);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg);
+  box-shadow: var(--shadow-pop, 0 8px 24px rgba(0, 0, 0, 0.14));
+}
+
+/* 줄 끝의 상태 점(2026-10-31 E) — 하나만 선다. 색만으로 말하지 않게 이름표 글을 함께 건넨다. */
+.nx-pl-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--r-pill);
+}
+.nx-pl-dot--draft {
+  background: var(--accent);
+}
+.nx-pl-dot--conflict {
+  background: var(--red, #d0342c);
+}
+.nx-pl-dot--unknown {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid var(--amber);
+  border-radius: 0;
+}
+/* 아직 Confluence 에 없는 새 문서 초안의 흐린 줄(2026-10-31 E). */
+.nx-pl-row--ghost {
+  opacity: 0.55;
+  border: 1px dashed var(--line);
+}
+.nx-pl-view[data-chat="off"] .nx-pl-tabs {
+  display: none;
+}
+
+/* 같이 고침으로 닿은 화면의 묶음 머리(2026-11-02 · 같이 고치기 UX 계획 C4). */
+.nx-pl-scrhead {
+  margin: var(--sp-3) 0 var(--sp-1);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
+  color: var(--ink3);
+}
+
+/* 문서의 부가 기능은 긴 본문을 읽기 전에도 보인다(2026-11-12 UX 검토). */
+.nx-pl-doc-drawers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.nx-pl-body [data-search-hit] {
+  background: var(--accent-soft);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.nx .nx-pl-doc-drawers .nx-btn[aria-expanded="true"] {
+  background: var(--nx-selected);
+  box-shadow: inset 0 0 0 1px var(--ink3);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nx-pl-conv-row:hover .nx-pl-conv-menu {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .nx-pl-conv-row:hover .nx-pl-conv-btn {
+    mask-image: linear-gradient(to right, black calc(100% - 40px), transparent calc(100% - 20px));
+  }
+}
+
+/* 2026-11-12 UI 조사 U-066·068·069 — 순서는 그대로, 탐색 머리와 개수의 여백만 줄인다. */
+.nx-pl-sidebar > .nx-side-list-head,
+.nx-pl-conv-head {
+  padding: var(--sp-1) var(--sp-3);
+  min-height: var(--h-input);
+}
+/* 나눈 자리의 띄어쓰기를 지킨다 — `nowrap` 은 두 조각이 맞닿는 빈칸을 접어 `[정책서] 대행` 이 `[정책서]대행` 으로 붙었다(2026-11-12 감독자 확인).
+   앞 조각은 늘지 않고 줄기만 한다 — `flex-grow: 1` 은 남는 폭을 앞 조각에 주어 꼬리를 오른 끝으로 밀었고,
+   글자 수로 자른 자리가 낱말 가운데라 `Plat … form 고객사 관리` 처럼 벌어져 보였다(2026-11-13 사용자 화면). */
+.nx-pl-title-main {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.nx-pl-title-tail {
+  flex: none;
+  max-width: 75%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+
+/* U-084 — 제목 / 상태와 으뜸 손 / 보조 손의 세 줄. 초안과 같은 눈금이다. */
+.nx-pl-doc-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+.nx-pl-doc-status .nx-pl-doc-meta {
+  flex: 1;
+}
+.nx-pl-doc-acts .nx-dm-labels {
+  gap: var(--sp-1);
+}
+
+/* U-071·085 — 폭을 제한한 서랍에 제목과 구분선을 하나씩 둔다. */
+.nx-pl-drawer .nx-pl-comments {
+  padding-top: 0;
+  border-top: 0;
+}
+.nx-pl-drawer .nx-pl-comments-t {
+  display: none;
+}
+.nx-pl-scrname {
+  display: flex;
+  flex-direction: column;
+}
+.nx-pl-scrsub {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-left: 0;
+}
+
+/* U-086 — 읽기 폭은 지키고 긴 표의 행 리듬만 푼다. */
+.nx-pl-body .md :is(th, td) {
+  padding: var(--sp-2) var(--sp-3);
+  line-height: var(--lh-read);
+  border-inline-color: var(--line-soft);
+}
+
+/* U-089 — 굴린 문서와 머리 사이의 경계를 남긴다. */
+.nx-pl-bar--scrolled {
+  box-shadow: var(--elev-1);
+  border-bottom-color: var(--line2);
+  z-index: 1;
+}
+
+/* U-158 — 최소 높이에서도 검색 뒤에 문서 한 줄이 남는다. */
+.nx-pl-conv {
+  flex-shrink: 1;
+}
+.nx-pl-conv-none {
+  min-height: 0;
+  overflow-y: auto;
+}
+@media (max-height: 600px) {
+  .nx-pl-list {
+    min-height: calc(var(--h-input) + var(--h-row) + var(--sp-12));
+  }
+  .nx-pl-sidebar > .nx-side-list-head,
+  .nx-pl-conv-head {
+    min-height: var(--h-md);
+    padding-block: var(--sp-0_5);
+  }
+  .nx-pl-conv {
+    min-height: calc(var(--h-md) + var(--fs-cap) * var(--lh-ui));
+    max-height: 30%;
+  }
+  .nx-pl-conv-none {
+    margin-bottom: 0;
+    font-size: var(--fs-cap);
+  }
+  .nx-pl-sync {
+    padding-block: var(--sp-2);
+  }
+}
+
+/* U-161·162 — 좁은 칸은 바깥 여백 한 겹과 균등한 알약 탭을 쓴다. */
+@container nxpl (max-width: 1100px) {
+  .nx-pl-view {
+    --nx-pl-pad-top: 0px;
+    --nx-pl-pad-x: var(--sp-4);
+    --nx-pl-pad-bottom: var(--sp-4);
+    gap: var(--sp-3);
+  }
+  .nx-pl-view[data-chat="on"] .nx-pl-tabs {
+    padding: var(--sp-2) var(--sp-3);
+    gap: var(--sp-1);
+    border-radius: var(--r-lg);
+    background: var(--bg-2);
+  }
+  .nx .nx-pl-tabs [role="tab"] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    min-width: 0;
+    height: var(--h-md);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r);
+    font-weight: var(--fw-medium);
+  }
+  .nx .nx-pl-tabs [role="tab"].nx-tab--on {
+    background: var(--card);
+    box-shadow: var(--elev-1);
+    font-weight: var(--fw-semi);
+  }
+}
+
+.nx-pl-scrtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

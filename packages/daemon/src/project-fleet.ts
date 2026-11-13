@@ -29,6 +29,13 @@ import {
   commentReflectionSubject,
   turnSubjectOf,
 } from "./common-instructions.js";
+import { emptyConfluenceLedger, readConfluenceLedger } from "./confluence-ledger.js";
+import { confluenceMirrorLedger } from "./confluence-mirror.js";
+import {
+  confluenceAccountKey,
+  confluenceRootTitleKey,
+  confluenceSiteKey,
+} from "./confluence-sync.js";
 import { mergeNpmrc, npmrcPath } from "./credentials.js";
 import { DEFAULT_KEEP_REJECTED_DAYS } from "./cycle-hygiene.js";
 import { cycleLedgerFile } from "./cycle-ledger.js";
@@ -48,7 +55,8 @@ import type { QueueDisk } from "./queue-store.js";
 import { nextReadyWatch } from "./ready-notice.js";
 import { assertClonableRepoUrl, RepoWorkspace } from "./repo.js";
 import { scopeOf } from "./repo-config.js";
-import { appendScreenMap } from "./screen-map.js";
+import { appendScreenMaps } from "./screen-map.js";
+import { screenSessionDirs } from "./session-dirs.js";
 import type { SessionManager } from "./session-manager.js";
 import { appendTape } from "./session-tape.js";
 
@@ -123,6 +131,15 @@ export interface FleetDeps {
   queueDiskFor(sessionId: string): QueueDisk;
   /** 서비스의 첫 화면 읽기 — 시험이 갈아 끼운다. 비우면 미리보기 서버를 직접 읽는다(first-screen.ts). */
   readFirstScreen?: (previewUrl: string) => Promise<FirstScreen | null>;
+  /** 기계 잔일 — 기획서 연결의 프로젝트별 미러. 없으면 기획서 칸은 아예 실리지 않는다(2026-10-18). */
+  machineSetting?: { get(key: string): string | null };
+  /** 기획서 동기화의 만료 판정 — 401 뒤 다시 connect 하기까지의 상태. */
+  confluenceExpired?: (slug: string) => boolean;
+  /**
+   * 이 앱이 Confluence 에 쓸 수 있는가 — 발행 게이트(2026-10-23 기획자 화면 손질 U2). 요약에 실어 화면이 누르기 전에
+   * 꺼짐을 알린다. 없으면 쓸 수 없다고 말한다(시험의 조립).
+   */
+  confluenceWritable?: () => boolean;
 }
 
 /**
@@ -321,6 +338,7 @@ export class ProjectFleet {
       workspace: workspaces.repo,
       ledgerPath: cycleLedgerFile(paths.root),
       busy: () => this.deps.manager.busyIn(paths.repoRoot),
+      busyWithout: (sessionId) => this.deps.manager.busyIn(paths.repoRoot, sessionId),
       installStale: () => !workspaces.repo.installUpToDate(),
       github: () => this.deps.gitHubClient(),
       githubAuthExpired: () => this.deps.githubAuthExpired(),
@@ -471,6 +489,37 @@ export class ProjectFleet {
    * somebody else's screen. Inactive projects still run to completion; they
    * just do it quietly.
    */
+  /**
+   * 기획서(Confluence) 연결의 한 끳이 — 미러(machine.json 슬러그 키)와 원장
+   * (프로젝트 폴더 사본의 `confluence/confluence.json`)에서 읽는다. 미연결은 undefined — 키가
+   * 없는 것이다. 자격(이메일 · 토큰)은 여기에 절대 실리지 않는다 — `account` 는 가려진
+   * 이메일만(connect 가 machine.json 에 써 둔 값 · 2026-11-03).
+   */
+  private confluenceSummary(slug: string): ProjectSummary["confluence"] {
+    const site = this.deps.machineSetting?.get(confluenceSiteKey(slug)) ?? null;
+    if (site === null) return undefined;
+    // 원장은 프로젝트 폴더의 사본에서 읽는다(2026-10-23 · 기획서 사본 이동 계획 §1 D1) — 클론이
+    // 서 있는지와 상관없이 이미 가져온 기획서를 알려야 한다(이 시험의 몫: project-fleet-confluence.test.ts).
+    let ledger = emptyConfluenceLedger(site);
+    try {
+      ledger = readConfluenceLedger(confluenceMirrorLedger(this.deps.registry.paths(slug).root));
+    } catch {
+      // 등록부가 아직 이 프로젝트의 자리를 모른다 — 빈 원장으로 답한다.
+    }
+    const account = this.deps.machineSetting?.get(confluenceAccountKey(slug));
+    return {
+      site,
+      connected: true,
+      expired: this.deps.confluenceExpired?.(slug) ?? false,
+      rootTitle: this.deps.machineSetting?.get(confluenceRootTitleKey(slug)) ?? null,
+      lastImportAt: ledger.lastSyncAt,
+      pages: Object.keys(ledger.pages).length,
+      ...(account !== null && account !== undefined ? { account } : {}),
+      // 발행 게이트 — 화면이 누르기 전에 꺼짐을 알린다(2026-10-23 기획자 화면 손질 U2). 막는 것은 각 쓰기 경로다.
+      writable: this.deps.confluenceWritable?.() ?? false,
+    };
+  }
+
   private broadcastFor(slug: string, message: ServerMessage): void {
     if (slug === this.deps.registry.activeSlug()) this.deps.broadcast(message);
   }
@@ -492,8 +541,7 @@ export class ProjectFleet {
     const active = this.activeOrNull();
     // Project skills ride the clone's cwd; with no clone yet the user-level
     // set is still worth having, and the home dir is a cwd that exists.
-    const cwd =
-      active && active.repo.isCloned() ? realpathBestEffort(active.paths.repoRoot) : homedir();
+    const cwd = active?.repo.isCloned() ? realpathBestEffort(active.paths.repoRoot) : homedir();
     const cached = this.cliCommandsCache.get(cwd);
     if (cached) return cached;
     // The single-flight is keyed by cwd like the cache: a probe started for
@@ -531,6 +579,8 @@ export class ProjectFleet {
 
   projectSummaries(): ProjectSummary[] {
     return (this.deps.registry?.list() ?? []).map((project) => {
+      // 기획서(Confluence) 연결의 상태 — 미연결은 undefined 로, 키 자체가 없다.
+      const confluenceSummary = this.confluenceSummary(project.slug);
       const workspaces = this.workspaces.get(project.slug);
       const repo = workspaces?.repo;
       // The tree's children come from the per-clone cache (PLAN D59); a clone
@@ -570,6 +620,8 @@ export class ProjectFleet {
         ...(project.lifecycle ? { lifecycle: project.lifecycle } : {}),
         // 다시 받은 초대장의 keep 판정(PLAN-UI U11)이 대 보는 개발자 몫 값.
         ...(project.reviewers?.length ? { reviewers: project.reviewers } : {}),
+        // 기획서(Confluence) 연결의 프로젝트 스코프 상태 — 미연결은 키가 없다(2026-10-18).
+        ...(confluenceSummary !== undefined ? { confluence: confluenceSummary } : {}),
         commandsApproved: project.commandsApproved !== false,
         // 홈 크로스 프로젝트 인박스(PLAN P3-2): 질문+권한 모두 스레드를
         // "awaiting" 으로 세우므로, 비활성 프로젝트라도 이 카운트만으로
@@ -619,6 +671,11 @@ export class ProjectFleet {
         title,
         instructions: this.projectInstructions(cwd),
         defaults: this.deps.registry.get(workspaces.slug)?.defaults,
+        // 사본 폴더를 화면 세션과 함께 연다 — 없으면 빈 배열이라 auto-thread 가 뺀다(2026-10-23 · 기획서 사본 이동 계획 §6).
+        additionalDirectories: screenSessionDirs(workspaces.paths.root),
+        // 기획 작업 저장소는 가드의 거절 뿌리로 실린다 — 자동 대화도 같은 보호를 받는다
+        // (2026-11-11 감독자 채택 — GLM 교차검토의 누락 지적).
+        planRoots: [join(workspaces.paths.root, "plans")],
       })
       .catch((error: unknown) => {
         this.deps.logger.warn("[cycle] 자동 대화를 열지 못했습니다", {
@@ -981,10 +1038,9 @@ export class ProjectFleet {
    * P2-1 자동 저장: 답을 낸 턴이 쌓은 변경을 로컬 커밋으로. 저장 버튼이 사라진
    * 세계에서 이것이 저장이다 — 사람은 제출만 누른다.
    *
-   * 커밋 제목은 그 턴을 연 말의 첫 줄(①): 메모 턴을 돌리면 턴마다 구독이 두
-   * 배로 타므로, 여기서 절대 돌리지 않는다. 말이 없으면(기계가 연 턴)
-   * runSave 의 폴백(② machineMemo → ③ 기본 문구)에 맡긴다.
-   * 2026-10-20 사용자 요청: MCP 보관 계획 없이 한 요청의 변경을 함께 보관한다.
+   * 2026-11-12 사용자 요청: Haiku 분류로 의미 단위 보관을 시도한다.
+   * 사용자 말 첫 줄은 분류의 배경과 단일 보관 폴백 제목이다.
+   * 여러 커밋 모두 같은 requestId에 연결해 요청 전체 되돌리기를 유지한다.
    * 보관은 로컬에서 끝나며 원격 전송은 사용자가 확인한 제출에서만 한다(2026-10-20 MVP).
    * 커밋 게이트가 열리면 세션에 고침 브리프를 보내 화면 확인 게이트와 같은
    * 루프로 스스로 닫는다.
@@ -1016,6 +1072,7 @@ export class ProjectFleet {
     try {
       const saved = await workspaces.repo.save({
         ...subject,
+        atomicRequest: subject.message ?? "화면 변경 보관",
         sessionId,
         onSessionTurn: (brief: string) => {
           this.deps.notice({
@@ -1031,12 +1088,15 @@ export class ProjectFleet {
           }
         },
       });
+      if (saved.stage !== "published") return;
       // 라우트↔파일 지도(2026-09-22): 커밋이 성공했을 때만 한 줄 — sha 와 이
       // 저장이 담은 파일, 그리고 이 턴이 가리킨 화면. 정체 검색이 빈손인
       // 핀의 마지막 길이 이 기록이다. 실패는 조용하다(지도는 판정이 아니다).
       // 저장이 변경 단위로 여러 커밋에 나뉘면(2026-10-11) HEAD 의 파일은
       // 마지막 변경의 것뿐이라, 상태가 싣는 이번 저장의 경로 전부를 쓴다.
-      const head = await workspaces.repo.headCommitFiles().catch(() => null);
+      const head = saved.commit
+        ? { sha: saved.commit, files: saved.turnFiles ?? [] }
+        : await workspaces.repo.headCommitFiles().catch(() => null);
       const files = saved.turnFiles ?? head?.files ?? [];
       if (screenRoutes !== undefined && screenRoutes.length > 0) {
         if (head !== null && files.length > 0) {
@@ -1048,19 +1108,24 @@ export class ProjectFleet {
           } catch {
             origin = null;
           }
-          await appendScreenMap(workspaces.paths.root, {
-            at: new Date().toISOString(),
-            sha: head.sha,
-            sessionId,
-            ...(requestId ? { requestId } : {}),
-            routes: screenRoutes,
-            files,
-            screens: screensOfTurn(screenRoutes, answer, origin),
-            // 이 턴의 자동 확인이 문제 없이 지났다는 기록 — 제출의 `### 확인한 것` 이 센다(2026-10-07).
-            ...(checked ? { checked } : {}),
-            // 이 턴을 쓴 AI 의 종류 — 제출의 「코드는 AI 가 썼어요」 줄이 읽는다(2026-10-07 베타 준비 분석).
-            ...(session.provider ? { provider: session.provider } : {}),
-          }).catch(() => undefined);
+          const commits = saved.turnCommits ?? [{ sha: head.sha, files }];
+          // 2026-11-12: 모든 조각을 같은 요청에 연결해야 요청 전체 되돌리기가 성립한다.
+          await appendScreenMaps(
+            workspaces.paths.root,
+            commits.map((commit) => ({
+              at: new Date().toISOString(),
+              sha: commit.sha,
+              sessionId,
+              ...(requestId ? { requestId } : {}),
+              routes: screenRoutes,
+              files: commit.files,
+              screens: screensOfTurn(screenRoutes, answer, origin),
+              // 이 턴의 자동 확인이 문제 없이 지났다는 기록 — 제출의 `### 확인한 것` 이 센다(2026-10-07).
+              ...(checked ? { checked } : {}),
+              // 이 턴을 쓴 AI 의 종류 — 제출의 「코드는 AI 가 썼어요」 줄이 읽는다(2026-10-07 베타 준비 분석).
+              ...(session.provider ? { provider: session.provider } : {}),
+            })),
+          ).catch(() => undefined);
         }
       }
       return head ? { sha: head.sha, requestId } : undefined;

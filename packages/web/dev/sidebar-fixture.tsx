@@ -8,12 +8,13 @@
  *
  * 주소 끝의 `?theme=dark` 처럼 테마를, `?case=a,c` 로 보일 상태만을, `?h=720` 으로 틀의 높이를,
  * `?w=320` 으로 사이드바 폭을, `?active=m16` 으로 처음 켜 둘 대화를, `?switch=slow|reject` 로 프로젝트를 옮기는 데
- * 1.2초가 걸리거나 실패하는 경우를 고른다. 상태는 눌러 볼 수 있다 — 대화를 누르면 켜지고, 프로젝트를
+ * 1.2초가 걸리거나 실패하는 경우를, `?done=m1` 으로 도는 대화 하나가 0.6초 뒤 끝나는 경우(`AI 답이 끝났어요` 표시 —
+ * 2026-11-12)를 고른다. 상태는 눌러 볼 수 있다 — 대화를 누르면 켜지고, 프로젝트를
  * 옮기면 그 프로젝트의 줄이 선다. 새 상태는 여기에 더한다(새 페이지를 만들지 않는다).
  */
 
 import type { ProjectSummary, ThreadSummary } from "@colonova-design/protocol";
-import { StrictMode, useMemo, useState } from "react";
+import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { Splitter } from "../src/components/shell/Splitter";
 import type { Sessions } from "../src/hooks/useSessions";
@@ -21,8 +22,10 @@ import type { Daemon } from "../src/lib/daemon-client";
 import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
 import { L } from "../src/next/labels";
 import { useSidebarWidth } from "../src/next/lib/use-sidebar-width";
+import { PlansSidebar } from "../src/next/plans/PlansSidebar";
+import { PlansContext, usePlansWorkspace } from "../src/next/plans/PlansWorkspace";
+import { PlansConnectDialog } from "../src/next/project/PlansConnectDialog";
 import { Sidebar } from "../src/next/sidebar/Sidebar";
-import type { ShellNav } from "../src/next/slots";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
 import "../src/next/next.css";
@@ -36,6 +39,8 @@ const FRAME_H = Number(query.get("h")) || 760;
 const SIDE_W = Number(query.get("w")) || 0;
 const ONLY = query.get("case")?.split(",") ?? null;
 const ACTIVE = query.get("active");
+/** 도는 대화 하나가 잠시 뒤 끝난다 — 보고 있지 않던 대화의 `AI 답이 끝났어요` 표시를 본다(2026-11-12). */
+const DONE = query.get("done");
 
 const MIN = 60_000;
 const startOfToday = new Date();
@@ -171,9 +176,54 @@ interface Case {
   pane?: boolean;
   /** 사이드바 옆에 끌 수 있는 경계(Splitter)와 빈 본문을 함께 — 너비 조절을 눌러 본다. */
   shell?: boolean;
+  /** `기획서` 줄 끝의 작성 중인 초안 수(2026-10-23 기획자 화면 손질 D5). */
+  planDrafts?: number;
+  plans?: boolean;
+  /** 켜질 때 기획서 연결 대화상자가 열려 있다 — `기획서 연결` 줄로 다시도 연다(2026-11-13). */
+  connect?: boolean;
 }
 
 const CASES: Case[] = [
+  {
+    id: "plans",
+    label: "기획서 자리 · 트리와 작성 중인 초안",
+    plans: true,
+    projects: [
+      project("plans", "ColoNova", rowsOf(SCREENSHOT), {
+        confluence: {
+          connected: true,
+          site: "https://example.atlassian.net",
+          rootTitle: "8.8 ColoNova",
+          lastImportAt: ago(3),
+          pages: 3,
+          expired: false,
+        } as ProjectSummary["confluence"],
+      }),
+    ],
+    activeSlug: "plans",
+    rows: SCREENSHOT,
+    planDrafts: 1,
+    connect: true,
+  },
+  {
+    id: "expired",
+    label: "expired · 만료된 연결 — 카드 줄은 호박 상태, 대화상자는 자격 입력이 선다",
+    projects: [
+      project("plans", "ColoNova", rowsOf(SCREENSHOT), {
+        confluence: {
+          connected: true,
+          site: "https://example.atlassian.net",
+          rootTitle: "8.8 ColoNova",
+          lastImportAt: ago(3),
+          pages: 3,
+          expired: true,
+        } as ProjectSummary["confluence"],
+      }),
+    ],
+    activeSlug: "plans",
+    rows: SCREENSHOT,
+    connect: true,
+  },
   {
     id: "a",
     label: "a · 스크린샷 그대로 — 프로젝트 하나 · 여섯 대화 · 켜진 줄 하나",
@@ -181,6 +231,15 @@ const CASES: Case[] = [
     activeSlug: "colonova-cdp",
     rows: SCREENSHOT,
     activeId: "t1",
+  },
+  {
+    id: "p",
+    label: "p · 기획서를 연결한 프로젝트 — `기획서` 줄 끝에 작성 중인 초안 수가 흐리게(초안 3)",
+    projects: [project("colonova-cdp", "colonova-cdp", rowsOf(SCREENSHOT))],
+    activeSlug: "colonova-cdp",
+    rows: SCREENSHOT,
+    activeId: "t1",
+    planDrafts: 3,
   },
   {
     id: "b",
@@ -307,8 +366,30 @@ const CASES: Case[] = [
 function Frame({ spec }: { spec: Case }) {
   const [activeId, setActiveId] = useState<string | null>(ACTIVE ?? spec.activeId ?? null);
   const [view, setView] = useState<"home" | "thread">(spec.view ?? "thread");
+  // 기획서 줄(2026-10-18) — 오른쪽 칸이 기획서인가. 누르면 열고 한 번 더 누르면 닫으며, 홈으로 가면 닫힌다.
+  const [plansOn, setPlansOn] = useState(spec.plans ?? false);
   const [slug, setSlug] = useState(spec.activeSlug);
+  const [plansConnectOpen, setPlansConnectOpen] = useState(spec.connect ?? false);
   const [log, setLog] = useState("—");
+  // `?done=<id>` — 그 대화가 0.6초 뒤 끝난다. 표시는 관찰한 전이만 달기 때문에 처음부터 끝난 줄로는 서지 않는다.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!DONE) return;
+    const timer = setTimeout(() => setSettled(true), 600);
+    return () => clearTimeout(timer);
+  }, []);
+  const projects = useMemo(
+    () =>
+      settled
+        ? spec.projects.map((one) => ({
+            ...one,
+            threads: one.threads?.map((thread) =>
+              thread.id === DONE ? { ...thread, state: "finished" as const } : thread,
+            ),
+          }))
+        : spec.projects,
+    [settled, spec.projects],
+  );
   // 너비 조절(h) — 저장은 이 견본의 상태가 맡는다(앱에서는 설정의 layout.sidebarWidth).
   const [saved, setSaved] = useState<number | null>(SIDE_W || null);
   const side = useSidebarWidth(saved, (width) => {
@@ -345,7 +426,7 @@ function Frame({ spec }: { spec: Case }) {
       };
     }
     return {
-      projects: spec.projects,
+      projects,
       activeSlug: slug,
       status: {
         authorName: spec.author === undefined ? "정인권" : spec.author,
@@ -356,31 +437,96 @@ function Frame({ spec }: { spec: Case }) {
       hiddenThreads: {},
       sessions: views,
       repo: { phase: "ready", previewUrl: PREVIEW },
-      connection: "closed",
+      connection: "open",
       api: {
         history: async () => [],
+        docList: async () => ({
+          docs: [
+            { pageId: "1000", title: "8.8 ColoNova", version: 12, path: "COLO/8.8 ColoNova" },
+            {
+              pageId: "1001",
+              title: "주문 취소 정책",
+              version: 3,
+              path: "COLO/8.8 ColoNova/주문 취소 정책",
+            },
+            {
+              pageId: "1002",
+              title: "주문 목록과 검색",
+              version: 7,
+              path: "COLO/8.8 ColoNova/주문 목록과 검색",
+            },
+          ],
+        }),
+        docRead: async () => ({ markdown: "# 기획서", sections: [], comments: [] }),
+        draftThreads: async () => [],
+        draftThreadMove: async () => {
+          throw new Error("견본은 옮기지 않는다");
+        },
+        draftThreadDelete: async () => ({ deleted: true }),
+        draftRevisions: async () => [],
+        draftRevision: async () => {
+          throw new Error("견본은 옛 판을 읽지 않는다");
+        },
+        draftUndo: async () => ({ restored: 0, kept: 0 }),
+        draftRevisionRestore: async () => {
+          throw new Error("견본은 판을 되돌리지 않는다");
+        },
+        draftList: async () => [
+          {
+            docKey: "p-1001",
+            pageId: "1001",
+            title: "주문 취소 정책",
+            state: "editing",
+            changedBlocks: 2,
+            updatedAt: ago(1),
+          },
+        ],
+        confluenceImportNow: async () => ({ imported: 0, capped: false }),
         deleteSession: async () => {},
         projectUpdate: async () => {},
         projectRemove: async () => {},
       },
+      onDraftEvent: () => () => {},
       hydrate: () => {},
       ensureSession: () => {},
       hideThread: (_slug: string, id: string) => setLog(`hide ${id}`),
       unhideThread: () => {},
     } as unknown as Daemon;
-  }, [spec, slug]);
+  }, [spec, slug, projects]);
 
   const nav = {
     newThread: () => {
+      setPlansOn(false);
       setActiveId(null);
       setView("thread");
       setLog("새 대화");
     },
+    openScreen: () => {
+      setView("thread");
+      setPlansOn(false);
+      setLog("화면");
+    },
     goHome: () => {
       setView("home");
+      setPlansOn(false);
       setLog("홈");
     },
+    openPlans: () => {
+      setView("thread");
+      setPlansOn(true);
+      setLog("기획서 열기");
+    },
+    openMap: () => {
+      setView("thread");
+      setPlansOn(false);
+      setLog(L.plans.mapView);
+    },
+    showPane: (pane: string) => {
+      setPlansOn(pane === "plans");
+      setLog(`오른쪽 칸 → ${pane}`);
+    },
     openThread: (_slug: string, id: string) => {
+      setPlansOn(false);
       setActiveId(id);
       setView("thread");
       setLog(`열기 ${id}`);
@@ -405,20 +551,33 @@ function Frame({ spec }: { spec: Case }) {
       );
     },
     openSettings: () => setLog("설정"),
+    openPlansConnect: () => {
+      setPlansConnectOpen(true);
+      setLog("기획서 연결");
+    },
     toast: (text: string) => setLog(`토스트: ${text}`),
     showThread: () => setView("thread"),
     showTab: () => {},
     setDiscardableInvitePath: () => {},
   } as unknown as ShellNav;
 
+  const plans = usePlansWorkspace({
+    daemon,
+    project: spec.projects.find((one) => one.slug === slug) ?? null,
+    active: plansOn,
+  });
   const titles = new Map(spec.rows.map((row) => [row.id, row.title]));
-  const width = spec.drawer ? 284 : spec.shell ? side.width : SIDE_W || 264;
+  const width = spec.shell ? side.width : SIDE_W || (spec.drawer ? 284 : plansOn ? 320 : 264);
   const sidebar = (
     <Sidebar
       daemon={daemon}
       sessions={{ fresh: () => setActiveId(null) } as unknown as Sessions}
       activeSessionId={activeId}
       view={view}
+      plansOn={view === "thread" && plansOn}
+      planDrafts={spec.planDrafts ?? 0}
+      running={spec.rows.some((row) => row.state === "running")}
+      plansContent={<PlansSidebar nav={nav} hidden={!plansOn} />}
       titleFor={(thread) => titles.get(thread.id) ?? thread.title}
       nav={nav}
       onPalette={() => setLog("찾기")}
@@ -428,68 +587,73 @@ function Frame({ spec }: { spec: Case }) {
       onRenameSession={(id, title) => setLog(`이름 바꾸기 ${id} → ${title}`)}
     />
   );
+  // 기획서 연결 대화상자(2026-11-13) — 카드의 `기획서 연결` 줄과 `?case=plans` 의 처음 열림이 같은 판을 그린다.
+  const plansConnect = plansConnectOpen ? (
+    <PlansConnectDialog daemon={daemon} onClose={() => setPlansConnectOpen(false)} />
+  ) : null;
   const frameWidth = spec.shell ? 900 : spec.pane ? 520 : width + 2;
   return (
-    <div id={`fixture-${spec.id}`} style={{ width: frameWidth }}>
-      <div
-        style={{ font: "11.5px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}
-      >
-        {spec.label}
-        <br />→ {log}
+    <PlansContext.Provider value={plans}>
+      <div id={`fixture-${spec.id}`} style={{ width: frameWidth }}>
+        <div
+          style={{ font: "12px/1.45 monospace", color: "#888", margin: "0 0 4px", minHeight: 34 }}
+        >
+          {spec.label}
+          <br />→ {log}
+        </div>
+        <div
+          className={`nx${spec.drawer ? " nx--narrow nx--drawer" : ""}${side.dragging ? " nx--resizing" : ""}`}
+          style={{
+            display: "grid",
+            gridTemplateColumns: spec.shell ? undefined : "minmax(0, 1fr)",
+            height: FRAME_H,
+            width: frameWidth,
+            overflow: "hidden",
+            border: "1px dashed #8884",
+            ...({ "--nx-side-w": `${width}px` } as object),
+          }}
+        >
+          {sidebar}
+          {spec.pane && (
+            <>
+              <button
+                type="button"
+                className="nx-scrim"
+                aria-label={L.shell.closeMenu}
+                onClick={() => setLog("스크림 · 서랍 닫기")}
+              />
+              {/* 서랍이 열려 있는 동안 뒷화면은 눌리지도 초점을 받지도 않는다(셸의 `inert`). */}
+              <main
+                className="nx-main"
+                inert
+                style={{ padding: 24, font: "12px monospace", color: "#888" }}
+              >
+                본문 자리 — 서랍 뒤의 화면
+              </main>
+            </>
+          )}
+          {spec.shell && (
+            <>
+              <Splitter
+                side="left"
+                width={side.width}
+                bounds={side.bounds}
+                label={L.shell.sidebarWidth}
+                active={side.dragging}
+                {...side.split}
+              />
+              <main
+                className="nx-main"
+                style={{ padding: 24, font: "12px monospace", color: "#888" }}
+              >
+                본문 자리 — 사이드바 {side.width}px (한도 {side.bounds.min}~{side.bounds.max})
+              </main>
+            </>
+          )}
+          {plansConnect}
+        </div>
       </div>
-      <div
-        className={`nx${spec.drawer ? " nx--narrow nx--drawer" : ""}${side.dragging ? " nx--resizing" : ""}`}
-        style={{
-          display: "grid",
-          gridTemplateColumns: spec.shell ? undefined : "minmax(0, 1fr)",
-          height: FRAME_H,
-          width: frameWidth,
-          overflow: "hidden",
-          border: "1px dashed #8884",
-          ...(spec.shell || (SIDE_W && !spec.drawer)
-            ? ({ "--nx-side-w": `${spec.shell ? side.width : SIDE_W}px` } as object)
-            : {}),
-        }}
-      >
-        {sidebar}
-        {spec.pane && (
-          <>
-            <button
-              type="button"
-              className="nx-scrim"
-              aria-label={L.shell.closeMenu}
-              onClick={() => setLog("스크림 · 서랍 닫기")}
-            />
-            {/* 서랍이 열려 있는 동안 뒷화면은 눌리지도 초점을 받지도 않는다(셸의 `inert`). */}
-            <main
-              className="nx-main"
-              inert
-              style={{ padding: 24, font: "12px monospace", color: "#888" }}
-            >
-              본문 자리 — 서랍 뒤의 화면
-            </main>
-          </>
-        )}
-        {spec.shell && (
-          <>
-            <Splitter
-              side="left"
-              width={side.width}
-              bounds={side.bounds}
-              label={L.shell.sidebarWidth}
-              active={side.dragging}
-              {...side.split}
-            />
-            <main
-              className="nx-main"
-              style={{ padding: 24, font: "12px monospace", color: "#888" }}
-            >
-              본문 자리 — 사이드바 {side.width}px (한도 {side.bounds.min}~{side.bounds.max})
-            </main>
-          </>
-        )}
-      </div>
-    </div>
+    </PlansContext.Provider>
   );
 }
 

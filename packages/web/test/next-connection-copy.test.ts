@@ -52,7 +52,7 @@ test("connectionCopy: 14일 안이면 노란 점과 개발자 부탁 — 알림 
     L,
   );
   assert.equal(ask.dot, "amber");
-  assert.equal(ask.text, "연결이 3일 뒤 끝나요 · 개발자에게 새 초대 파일을 부탁하세요");
+  assert.equal(ask.text, "연결이 3일 뒤 끝나요 · 개발자에게 새 초대 파일을 요청해 주세요");
 });
 
 test("connectionCopy: 경계 — 꼭 14일은 노란 점, 15일은 날짜까지(초록)", () => {

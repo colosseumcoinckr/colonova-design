@@ -44,3 +44,11 @@ test("SIDEBAR_DEFAULT: 한도 안이고, 끌어 본 적 없는 CSS 의 기본값
   assert.equal(SIDEBAR_DEFAULT, 264);
   assert.equal(clampWidth(SIDEBAR_DEFAULT, LIMITS), SIDEBAR_DEFAULT);
 });
+
+test("기획서의 폭은 대화 자리 없이 본문만 남기고 260–480px 안에서 움직인다", () => {
+  const limits = { min: 260, max: 480 };
+  assert.deepEqual(sidebarBounds(1100, limits, true), limits);
+  assert.deepEqual(sidebarBounds(901, limits, true), limits);
+  assert.equal(sidebarBounds(700, limits, true).max, 340);
+  assert.equal(sidebarBounds(300, limits, true).max, 260);
+});

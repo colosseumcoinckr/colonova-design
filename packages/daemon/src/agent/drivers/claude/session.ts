@@ -1,5 +1,6 @@
 import {
   type HookCallback,
+  type McpServerConfig,
   type ModelInfo,
   type PermissionResult,
   type Query,
@@ -15,7 +16,7 @@ import type {
   SessionCommand,
   SessionModelInfo,
 } from "@colonova-design/protocol";
-import { withoutSelfUpdate } from "../../../agent-env.js";
+import { withoutAppSecrets, withoutSelfUpdate } from "../../../agent-env.js";
 import { sanitizeRepoAgentSettings } from "../../../claude-trust.js";
 import { ensureGitGuardHooks, gitGuardEnv } from "../../../git-guard.js";
 import {
@@ -128,6 +129,24 @@ function classifyTool(toolName: string, input: Record<string, unknown>): ToolCla
   }
   return { kind: "other", name: toolName };
 }
+/**
+ * 화면 세션에 앱이 싣는 내장 MCP — context-mode(2026-10-24 사용자 결정).
+ * 2026-10-20 「내장 MCP 미주입」 결정을 이 서버만 다시 연다. `strictMcpConfig` 를
+ * 켜지 않으므로 사용자 설정의 커넥터 · MCP 와 함께 쓰이고, 이 서버는 자격이 필요
+ * 없다(`npx -y context-mode`). Windows 의 stdio 자식은 `cmd /c` 로 열어야 `npx` 를
+ * 찾는다. 가드 훅은 셸 · 파일 쓰기 도구만 보므로 이 서버의 도구는 가드 · 확인
+ * 카드 없이 돈다 — 문서(DEVELOPERS 「연결 레포가 개발 규칙을 정한다」)의 몫이다.
+ */
+export function screenSessionMcpServers(
+  platform: NodeJS.Platform = process.platform,
+): Record<string, McpServerConfig> {
+  return {
+    "context-mode":
+      platform === "win32"
+        ? { type: "stdio", command: "cmd", args: ["/c", "npx", "-y", "context-mode"] }
+        : { type: "stdio", command: "npx", args: ["-y", "context-mode"] },
+  };
+}
 
 /**
  * What the daemon hands the driver to start a query. `sessionId` is the
@@ -179,12 +198,24 @@ export class ClaudeAgentSession implements AgentSession {
           base: input.cwd,
           // 이 프로젝트의 Claude 자동 메모 폴더 — CLI 의 기본 기능이라 막을 이유가 없다.
           extraRoots: autoMemoryRoots(input.transcript_path),
+          // 함께 연 기획서 사본 — 쓰기는 클론 밖이라 어차피 거절이고 이유만 기획서 말로 바뀐다
+          // (2026-10-23 · 기획서 사본 이동 계획 §6). 함께 여는 폴더는 지금 사본 하나뿐이다.
+          mirrorRoots: launch.additionalDirectories ?? [],
+          // 앱의 기획 작업 저장소(`<프로젝트>/plans`) — dispatch 가 프로젝트 폴더에서 구해
+          // 실어 보낸다. AI 가 어떤 도구로도 직접 건드리지 못하게 쓰기 · 셸 경로 짚기를 함께
+          // 거절한다(2026-11-11 감독자 채택 — 실사용 재현에서 화면 AI 가 셸로 초안을 썼다).
+          planRoots: launch.planRoots ?? [],
         },
       );
     this.run = query({
       prompt: this.queue,
       options: {
         cwd: launch.cwd,
+        // 함께 읽는 폴더(기획서 사본 · 2026-10-23 기획서 사본 이동 계획 §6) — SDK 가
+        // --add-dir 와 같은 추가 뿌리로 받는다. 재개 질의에도 같이 탄다. 비어 있으면 키가 없다.
+        ...(launch.additionalDirectories && launch.additionalDirectories.length > 0
+          ? { additionalDirectories: launch.additionalDirectories }
+          : {}),
         // 앱 공통 지침은 기본 프롬프트를 대체하지 않고 끝에 붙인다 —
         // 도구가 Claude 에게 주는 나머지 규칙은 그대로 살아 있어야 한다.
         ...(launch.appendSystemPrompt
@@ -222,7 +253,10 @@ export class ClaudeAgentSession implements AgentSession {
           ],
         },
         // 자기 업데이트를 끈다(PLAN-UI U12) — 업데이트는 앱의 `업데이트` 줄 하나다.
-        env: withoutSelfUpdate(gitGuardEnv({ ...process.env }, ensureGitGuardHooks())),
+        // 앱의 자격 재정의는 화면 AI 의 셸까지 새지 않게 거른다(2026-10-23 · 최종 구현 계획 F0).
+        env: withoutSelfUpdate(
+          gitGuardEnv(withoutAppSecrets({ ...process.env }), ensureGitGuardHooks()),
+        ),
         includePartialMessages: true,
         // Load the same user/project configuration the terminal would, so
         // CLAUDE.md, skills, and permission rules behave identically. (The
@@ -230,6 +264,10 @@ export class ClaudeAgentSession implements AgentSession {
         // pre-approved tool rules gets those keys cut before this query
         // reads anything; see sanitizeRepoAgentSettings.)
         settingSources: ["user", "project", "local"],
+        // 앱이 싣는 내장 MCP — context-mode(2026-10-24 사용자 결정). 사용자 설정의
+        // 커넥터 · MCP 와 병합되며(strictMcpConfig 를 켜지 않는다), 기획 AI · 단발
+        // 프로브는 싣지 않는다.
+        mcpServers: screenSessionMcpServers(),
         // 질문 카드의 선택지 미리보기를 HTML 로 받는다 (PLAN D96): 이 앱의
         // 카드는 웹이라 monospace 박스가 아니라 그려진 시안을 보여 줄 수 있다.
         // 카드는 스크립트 없는 sandbox iframe 으로만 그린다.
@@ -546,6 +584,9 @@ function probeQuery(cwd: string, executable: string): Query {
       // The same user/project configuration a session loads, so a probe's
       // answer is the one the first session will actually agree with.
       settingSources: ["user", "project", "local"],
+      // 세션과 마찬가지로 프로브도 데몬이 띄우는 Claude 자식이다 — 자기
+      // 업데이트를 끄고(PLAN-UI U12) 앱의 자격을 거른다(2026-10-23 · 최종 구현 계획 F0).
+      env: withoutSelfUpdate(withoutAppSecrets(process.env)),
     },
   });
 }

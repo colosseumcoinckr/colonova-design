@@ -23,6 +23,12 @@ export interface SubmitViewInput {
   busy: boolean;
   /** 여정이 제출을 잠근 이유(`journey.submit`) — 열려 있으면 null. */
   lockReason: string | null;
+  /**
+   * 개발자가 반영한 새 내용이 아직 작업에 없거나 적용·정리가 진행 중이다(2026-11-12 사용자 요청 —
+   * 오래된 기준 위에서는 제출하지 않는다). 알림 줄은 `SubmitPopover` 가 baseSync 의 지금 값으로
+   * 직접 그린다 — 여기서는 주 단추를 잠그는 일만 한다.
+   */
+  baseBlocked?: boolean;
 }
 
 /** 알림 줄의 종류 — 위에서 아래로, 먼저 말할 것이 앞이다. */
@@ -41,7 +47,17 @@ export interface SubmitView {
 }
 
 export function submitView(input: SubmitViewInput): SubmitView {
-  const { hasSnapshot, files, loading, readFailed, sendFailed, changed, busy, lockReason } = input;
+  const {
+    hasSnapshot,
+    files,
+    loading,
+    readFailed,
+    sendFailed,
+    changed,
+    busy,
+    lockReason,
+    baseBlocked,
+  } = input;
   const showList = hasSnapshot && !loading && !readFailed;
   const notices: SubmitNotice[] = [];
   if (sendFailed) notices.push("send");
@@ -53,7 +69,7 @@ export function submitView(input: SubmitViewInput): SubmitView {
     showList,
     skeleton: loading,
     // 보내기 실패는 막지 않는다 — 같은 목록으로 한 번 더 보낼 수 있어야 한다.
-    enabled: showList && files > 0 && !busy && !changed && lockReason === null,
+    enabled: showList && files > 0 && !busy && !changed && !baseBlocked && lockReason === null,
     action: busy ? "running" : sendFailed ? "retry" : "confirm",
     notices,
   };

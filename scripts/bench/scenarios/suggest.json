@@ -1,0 +1,13 @@
+[
+  {
+    "id": "suggest-signup",
+    "kind": "suggest",
+    "pageId": "000000000",
+    "sheet": "회원가입 정책서",
+    "brief": "비밀번호 규칙을 10자 이상에서 8자 이상으로 낮춰 줘",
+    "note": "실측 전에 compare-sheet.json 의 문서 pageId 를 견본 프로젝트의 실제 값으로 채우고 같은 값을 pageId 에 넣는다(2026-11-03 · A안 0-2 C8).",
+    "expect": {
+      "sections": ["비밀번호 규칙"]
+    }
+  }
+]

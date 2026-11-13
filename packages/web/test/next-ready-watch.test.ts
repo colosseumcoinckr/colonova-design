@@ -13,8 +13,9 @@ import {
 } from "../src/next/lib/ready-watch.ts";
 
 /**
- * 첫 5분(2026-10-07 베타 준비 분석) — 첫 프로젝트의 첫 준비는 3~5분이고 사용자는 그동안 홈에 있다. 끝난 순간 앱 안에서
- * 말하는 판정(`ready-watch.ts`)과 홈의 준비 줄이 작업 화면으로 가는 길(`nav.ts` 의 `screen` · `HomeInbox`)을 지킨다.
+ * 첫 5분(2026-10-07 베타 준비 분석) — 첫 프로젝트의 첫 준비는 3~5분이고 사용자는 그동안 작업 화면이 아닌 자리(기획서 · 다른
+ * 프로젝트)에 있다. 끝난 순간 앱 안에서 말하는 판정(`ready-watch.ts`)과 토스트의 단추가 작업 화면으로 가는 길(`nav.ts` 의
+ * `screen`)을 지킨다.
  */
 const P = (
   slug: string,
@@ -84,11 +85,12 @@ test("stepFirstPrep: 프로젝트마다 따로 — 한 프로젝트가 끝나도
   assert.deepEqual(step.finished, []);
 });
 
+// SeenView.view 의 "home" 은 「작업 화면을 보지 않음」의 뜻이다 — 기획서 자리(2026-10-31 홈 걷기)가 그 뜻을 맡는다.
 const home: SeenView = { view: "home", tab: "chat", narrow: false, activeSlug: "a" };
 const work: SeenView = { view: "thread", tab: "chat", narrow: false, activeSlug: "a" };
 
 test("seesScreen: 활성 프로젝트의 작업 화면이 열려 있을 때만 보고 있다 — 좁은 창은 화면 탭이 앞에 있어야 한다", () => {
-  assert.equal(seesScreen(home, "a"), false, "홈은 미리보기 칸이 숨는다");
+  assert.equal(seesScreen(home, "a"), false, "기획서 자리는 미리보기 칸이 숨는다");
   assert.equal(seesScreen(work, "a"), true);
   assert.equal(seesScreen(work, "b"), false, "다른 프로젝트의 화면은 보고 있지 않다");
   assert.equal(
@@ -100,9 +102,9 @@ test("seesScreen: 활성 프로젝트의 작업 화면이 열려 있을 때만 �
   assert.equal(seesScreen({ ...work, activeSlug: null }, "a"), false);
 });
 
-test("nextReady: 홈이거나 다른 프로젝트일 때 끝나면 말하고(토스트 · 줄), 보고 있는 화면이면 조용하다", () => {
+test("nextReady: 작업 화면 밖(기획서 · 다른 프로젝트)일 때 끝나면 말하고(토스트), 보고 있는 화면이면 조용하다", () => {
   const up = ["a", "b"];
-  // 홈에서 a 가 끝났다.
+  // 기획서 자리에서 a 가 끝났다.
   assert.deepEqual(nextReady({ ready: [], finished: ["a"], up, seen: home }), {
     ready: ["a"],
     announce: ["a"],
@@ -119,9 +121,9 @@ test("nextReady: 홈이거나 다른 프로젝트일 때 끝나면 말하고(토
   });
 });
 
-test("nextReady: 줄은 그 프로젝트의 작업 화면을 볼 때 거두고, 사라진 프로젝트도 거둔다", () => {
+test("nextReady: 기다림 표식은 그 프로젝트의 작업 화면을 볼 때 거두고, 사라진 프로젝트도 거둔다", () => {
   const up = ["a", "b"];
-  // 홈에 줄이 둘 서 있다가 a 의 화면을 보게 됐다 — a 만 거둔다.
+  // 기다림이 둘 서 있다가 a 의 화면을 보게 됐다 — a 만 거둔다.
   assert.deepEqual(nextReady({ ready: ["a", "b"], finished: [], up, seen: work }), {
     ready: ["b"],
     announce: [],
@@ -136,9 +138,9 @@ test("nextReady: 줄은 그 프로젝트의 작업 화면을 볼 때 거두고, 
     }).ready,
     [],
   );
-  // 목록에서 사라진 프로젝트의 줄은 서 있지 않는다.
+  // 목록에서 사라진 프로젝트의 표식은 서 있지 않는다.
   assert.deepEqual(nextReady({ ready: ["a", "z"], finished: [], up, seen: home }).ready, ["a"]);
-  // 서버가 다시 준비 중이면(떠 있지 않다) `떴어요` 가 거짓이 된다 — 줄을 거두고, 돌아와도 다시 말하지 않는다(지켜보기는 꺼졌다).
+  // 서버가 다시 준비 중이면(떠 있지 않다) `떴어요` 가 거짓이 된다 — 표식을 거두고, 돌아와도 다시 말하지 않는다(지켜보기는 꺼졌다).
   assert.deepEqual(nextReady({ ready: ["a", "b"], finished: [], up: ["b"], seen: home }).ready, [
     "b",
   ]);
@@ -153,12 +155,11 @@ test("sameList: 순서까지 같을 때만 같다", () => {
   assert.equal(sameList(["a"], ["a", "b"]), false);
 });
 
-test("nav: screen 은 작업 화면의 미리보기 쪽으로 — 홈에서 오든 서랍이 열려 있든", () => {
+test("nav: screen 은 작업 화면의 미리보기 쪽으로 — 어느 자리에서 오든 서랍은 닫는다", () => {
   let state = initialNav(false);
   state = navReducer(state, { type: "drawer", open: true });
-  assert.equal(state.view, "home");
   state = navReducer(state, { type: "screen" });
-  assert.equal(state.view, "thread");
+  assert.equal(state.pane, "preview");
   assert.equal(state.tab, "preview", "좁은 창은 화면 탭이 앞에 선다");
   assert.equal(state.drawer, false);
   // 대화를 여는 손(thread)은 탭을 건드리지 않는다 — 보내고 나면 대화가 보여야 한다.
@@ -166,43 +167,23 @@ test("nav: screen 은 작업 화면의 미리보기 쪽으로 — 홈에서 오�
   assert.equal(state.tab, "chat");
 });
 
-test("홈의 처음 켜는 준비 줄: 활성 프로젝트면 작업 화면으로, 다른 프로젝트면 옮긴다(2026-10-07)", () => {
-  const inbox = read("../src/next/home/HomeInbox.tsx");
-  // `switchProject` 는 이미 활성인 프로젝트로는 아무 데도 가지 않는다 — 첫 프로젝트(늘 활성)의 준비 줄이 죽어 있었다.
-  const guarded =
-    /project\.slug === active\?\.slug \? onShowScreen\(\) : onSwitch\(project\.slug\)/;
-  assert.match(inbox, guarded);
-  // 준비 줄의 묶음 안에 가드 없는 `onSwitch(project.slug)` 가 남지 않는다.
-  const block = inbox.slice(inbox.indexOf("{preparing.map("), inbox.indexOf("{otherWorking.map("));
-  assert.match(block, guarded);
-  assert.doesNotMatch(block.replace(guarded, ""), /onSwitch\(project\.slug\)/);
-  // 같은 규칙을 따르는 줄은 둘뿐이다 — 개발자 확인 대기 줄(작업 보기)과 이 줄. 나머지 줄은 활성이 아닌 프로젝트의 것이다.
-  assert.match(inbox, /row\.slug === active\?\.slug \? onOpenWork\(\) : onSwitch\(row\.slug\)/);
-  assert.match(
-    inbox,
-    /const others = daemon\.projects\.filter\(\(project\) => project\.slug !== daemon\.activeSlug\)/,
-  );
-  const view = read("../src/next/home/HomeView.tsx");
-  assert.match(view, /onShowScreen=\{nav\.showScreen\}/);
-  // 다른 프로젝트로 옮기는 길은 그대로다 — 활성이어도 아무 데도 안 가던 `switchProject` 자체는 건드리지 않는다.
-  const shell = read("../src/next/lib/use-shell-nav.ts");
-  assert.match(
-    shell,
-    /return slug === daemon\.activeSlug\s*\? Promise\.resolve\(true\)\s*: activate\(slug, undefined, options\);/,
-  );
-});
-
 test("셸: 서비스가 떴다는 알림(OS)을 누르면 그 화면으로, 토스트의 단추도 같은 길이다(2026-10-07)", () => {
   const shell = read("../src/next/lib/use-shell-nav.ts");
-  assert.match(shell, /if \(readyRef\.current\.includes\(slug\)\) now\.openProjectScreen\(slug\);/);
+  // 2026-10-31 홈 걷기 — 알림은 늘 그 프로젝트의 화면 자리로 간다(옛 홈의 받은 편지함 자리는 걷혔다).
+  assert.match(
+    shell,
+    /bridge\.onOpenProject\(\(slug\) => \{\s*latest\.current\.nav\.openProjectScreen\(slug\);/,
+  );
   assert.match(shell, /run: \(\) => latest\.current\.nav\.openProjectScreen\(slug\)/);
   // 준비 소식은 한 번 — 데몬의 첫 준비 표식에서만 나오고, 화면을 보고 있으면 말하지 않는다.
   assert.match(shell, /stepFirstPrep\(watchingPrep\.current, daemon\.projects\)/);
   // 서비스 화면으로 가는 길은 도착한 화면이 말한다 — `옮겼어요` 가 한 번 더 뜨지 않는다.
   assert.match(shell, /if \(!then\?\.screen\) toastSwitched\(slug\)/);
-  const workspace = read("../src/next/Workspace.tsx");
-  assert.match(workspace, /narrow,\s*onLayoutChange,/);
-  assert.match(workspace, /ready=\{ready\}/);
+  // 다른 프로젝트로 옮기는 길은 그대로다 — 활성이어도 아무 데도 안 가던 `switchProject` 자체는 건드리지 않는다.
+  assert.match(
+    shell,
+    /return slug === daemon\.activeSlug\s*\? Promise\.resolve\(true\)\s*: activate\(slug, undefined, options\);/,
+  );
 });
 
 test("토스트: 단추가 달리면 더 오래 머물고, 누르면 일을 하고 닫힌다", () => {

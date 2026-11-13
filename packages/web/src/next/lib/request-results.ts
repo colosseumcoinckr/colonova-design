@@ -1,5 +1,11 @@
-import { type GateChecked, type RepoStatus, readTurn } from "@colonova-design/protocol";
+import {
+  type GateChecked,
+  type PlanSync,
+  type RepoStatus,
+  readTurn,
+} from "@colonova-design/protocol";
 import type { Block } from "../../lib/daemon-client";
+import { type ToPath, threadScreens, titleOfPath } from "../../lib/turn-screens.ts";
 
 export interface RequestResult {
   requestId: string;
@@ -15,15 +21,19 @@ export interface RequestResult {
   repaired: boolean;
   /** 턴 끝의 자동 확인이 문제 없이 지나갔다 — 카드가 무엇을 확인했는지 한 줄로 말한다. 없으면 말하지 않는다. */
   checked: GateChecked | null;
+  /** 같이 고치기(2026-10-30) — 이 요청이 기획서 초안도 고쳤는지. 없으면 곁줄이 서지 않는다. */
+  planSync: PlanSync | null;
 }
 
 /** One recorded user request, including its automatic repair, has one result section. */
 export function requestResults(
   blocks: readonly Block[],
   saved: RepoStatus["cycleScreens"],
+  toPath?: ToPath,
 ): Map<string, RequestResult> {
   const groups: RequestResult[] = [];
   let group: RequestResult | undefined;
+  const linkTitles = toPath === undefined ? null : threadScreens(blocks, toPath);
   let gate = false;
   for (const block of blocks) {
     if (block.type === "user") {
@@ -44,6 +54,10 @@ export function requestResults(
           : marker
             ? null
             : (marked.body.trim().split(/\r?\n/, 1)[0] ?? "");
+      const source =
+        block.changedScreens ??
+        saved?.filter((screen) => screen.requestId === block.requestId) ??
+        [];
       group =
         block.requestId && prompt !== null
           ? {
@@ -53,10 +67,19 @@ export function requestResults(
               turnId: "",
               repaired: false,
               checked: block.checked ?? null,
+              planSync: block.planSync ?? null,
+              // 빈 화면 이름은 이 대화 답변 링크가 붙인 제목으로 다시 채운다(2026-11-11 실측 — 저장된
+              // changedScreens · 화면 지도 행에는 제목이 빈 채로 남았고 답변 링크에는 제목이 있었다.
+              // 데몬이 제목을 저장하지 않은 까닭은 미확정이다). 같은 경로의 링크 제목만 쓰고 저장된
+              // 이름은 덮지 않는다.
               screens:
-                block.changedScreens ??
-                saved?.filter((screen) => screen.requestId === block.requestId) ??
-                [],
+                linkTitles === null
+                  ? source
+                  : source.map((screen) =>
+                      screen.title !== ""
+                        ? screen
+                        : { ...screen, title: titleOfPath(linkTitles, screen.route) ?? "" },
+                    ),
             }
           : undefined;
       if (group) groups.push(group);

@@ -1,21 +1,32 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import {
   type ClientMessage,
+  type DraftPlanRef,
   type EffortLevel,
   markTurn,
   readTurn,
 } from "@colonova-design/protocol";
+
 import { describeProblem } from "./developer-notice.js";
 import { realpathBestEffort } from "./paths.js";
+import { appendPlanRefs, readPlanRef } from "./plan-refs.js";
 import type { ProjectWorkspaces } from "./project-fleet.js";
 import type { StartupRecovery } from "./queue-store.js";
 import type { RepoWorkspace } from "./repo.js";
+import { confluenceHandlers } from "./requests/confluence.js";
+import { docCommentHandlers } from "./requests/doc-comments.js";
+import { docMetaHandlers } from "./requests/doc-meta.js";
+import { docOpHandlers } from "./requests/doc-ops.js";
+import { draftHandlers } from "./requests/drafts.js";
+import { mapHandlers } from "./requests/map.js";
 import { projectHandlers } from "./requests/projects.js";
 import { repositoryHandlers } from "./requests/repository.js";
 import { systemHandlers } from "./requests/system.js";
 import type { RequestHandlers, RouterDeps } from "./requests/types.js";
 import { ReviveBudget } from "./revive-budget.js";
 import type { Session } from "./session.js";
+import { screenSessionDirs } from "./session-dirs.js";
 import { dropTape, readTape, spliceTape } from "./session-tape.js";
 import { threadProvider } from "./thread-provider.js";
 import { REVIVE_GRACE_MS } from "./turn-retry.js";
@@ -40,6 +51,12 @@ export class RequestRouter {
   constructor(private readonly deps: RouterDeps) {
     this.handlers = {
       ...this.sessionHandlers,
+      ...confluenceHandlers(deps),
+      ...draftHandlers(deps),
+      ...docOpHandlers(deps),
+      ...mapHandlers(deps),
+      ...docCommentHandlers(deps),
+      ...docMetaHandlers(deps),
       ...projectHandlers(deps),
       ...repositoryHandlers(deps, (sessionId, stage) => this.briefTo(sessionId, stage)),
       ...systemHandlers(deps),
@@ -82,6 +99,61 @@ export class RequestRouter {
   private workspaceOfSession(sessionId: string): ProjectWorkspaces | null {
     return this.deps.fleet.workspaceOfSession(sessionId);
   }
+
+  /**
+   * 세션 cwd(실제 경로)가 어떤 프로젝트의 클론인지 — 그 프로젝트 폴더. 모르면 null.
+   * 화면 세션의 함께 여는 폴더(기획서 사본)를 찾는 길(2026-10-23 · 기획서 사본 이동 계획 §6).
+   */
+  private projectRootOfCwd(cwd: string): string | null {
+    for (const project of this.deps.registry.list()) {
+      if (realpathBestEffort(this.deps.registry.paths(project.slug).repoRoot) === cwd) {
+        return this.deps.registry.paths(project.slug).root;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 세션 가드가 함께 알아야 하는 경로들 — 함께 여는 사본 폴더(`additionalDirectories`)와
+   * 절대 건드리면 안 되는 기획 작업 저장소(`planRoots`, `<프로젝트>/plans`). 프로젝트를
+   * 모르면(연결 안 된 클론) 둘 다 없다(2026-11-11 감독자 채택 — 실사용 재현에서 화면 AI 가
+   * 셸로 초안을 직접 썼다).
+   */
+  private sessionGuardPathsOf(cwd: string): {
+    additionalDirectories: string[];
+    planRoots: string[];
+  } {
+    const projectRoot = this.projectRootOfCwd(cwd);
+    return {
+      additionalDirectories: screenSessionDirs(projectRoot),
+      planRoots: projectRoot === null ? [] : [join(projectRoot, "plans")],
+    };
+  }
+
+  /**
+   * 기획 근거의 기록(2026-10-23 작업 C3) — 글 첨부 가운데 첫 줄에 근거 표식이 선
+   * 것을 활성 프로젝트 데이터의 `plans/refs.jsonl` 에 덧붙인다. 남기는 것은 언제 ·
+   * 어느 대화 · 어느 문서(제목 · 판 · 절)뿐이다 — 첨부 본문과 사용자의 말은 기록에
+   * 들어가지 않는다.
+   */
+  private recordPlanRefs(
+    sessionId: string,
+    attachments: Array<{ name: string; mediaType: string; data: string }>,
+  ): void {
+    // 표식부터 읽는다 — 근거가 없는 보통의 보내기는 프로젝트 자료에 닿지 않는다(2026-10-23 오케스트레이터 검토).
+    const refs = attachments
+      .filter((file) => file.mediaType.startsWith("text/"))
+      .map((file) => readPlanRef(Buffer.from(file.data, "base64").toString("utf8")))
+      .filter((ref): ref is DraftPlanRef => ref !== null);
+    if (refs.length === 0) return;
+    const slug = this.deps.registry.activeSlug();
+    if (slug === null) return;
+    appendPlanRefs(
+      join(this.deps.registry.paths(slug).root, "plans", "refs.jsonl"),
+      refs.map((ref) => ({ at: new Date().toISOString(), sessionId, ref })),
+    );
+  }
+
   /** 세션 요청은 재개 예산과 복구 수명을 함께 쓴다. */
   private readonly sessionHandlers = {
     "session.list": async (message) => {
@@ -188,6 +260,7 @@ export class RequestRouter {
       const model = message.model ?? (defaultsFit ? defaults.model : undefined);
       const effort = message.effort ?? (defaultsFit ? defaults.effort : undefined);
       const fastMode = message.fastMode === true;
+      const { additionalDirectories, planRoots } = this.sessionGuardPathsOf(sessionCwd);
       const session = this.deps.manager.create({
         cwd: sessionCwd,
         provider,
@@ -201,6 +274,8 @@ export class RequestRouter {
           ...(model ? { model } : {}),
           ...(effort ? { effort } : {}),
           ...(fastMode ? { fastMode: true } : {}),
+          ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+          ...(planRoots.length > 0 ? { planRoots } : {}),
         },
       });
       // 태어날 때의 빠르게 — 새 대화 자리에서 미리 켠 ⚡ 선택. 첫 selectors
@@ -245,6 +320,14 @@ export class RequestRouter {
       // 2026-10-20 응답 지연 개선: 준비 중인 프로젝트만 대기 줄에 둔다.
       // 원격 읽기는 감독자의 관찰 주기에서(합치기는 받아오기 단추), 핀의 코드 탐색은 AI가 맡는다.
       this.deps.fleet.holdIfPreparing(carrier.id);
+      // 기획 근거의 기록(2026-10-23 작업 C3) — 표식이 선 첨부는 이 요청의 근거로
+      // 남긴다. 제출 때 PR 본문의 `### 기획 근거` 절이 이 기록을 읽는다. 실패는
+      // 보내기를 막지 않고 종류만 로그에 남긴다.
+      try {
+        this.recordPlanRefs(message.sessionId, message.attachments ?? []);
+      } catch {
+        this.deps.logger.warn("기획 근거 기록 실패");
+      }
       carrier.send(
         message.text,
         message.attachments,
@@ -426,6 +509,7 @@ export class RequestRouter {
       );
       return { ok: true };
     },
+
     // 답하기 (PLAN D88): the planner's words to one developer comment —
     // the daemon picks the endpoint by the id's kind.
     "session.branch": async (message) => {
@@ -442,6 +526,9 @@ export class RequestRouter {
       const targetExecutable = targetDriver
         ? ((await targetDriver.isAvailable().catch(() => null))?.executable ?? null)
         : null;
+      // 새 대화 · 재개와 같이 분기도 사본 폴더를 함께 연다 — 폴더가 있을 때만
+      // (2026-10-23 · 기획서 사본 이동 계획 §6 · 검토 R1).
+      const { additionalDirectories, planRoots } = this.sessionGuardPathsOf(target.cwd);
       const result = await this.deps.manager.branch({
         sessionId: message.sessionId,
         cwd: this.workspaceCwd(),
@@ -453,6 +540,8 @@ export class RequestRouter {
           writePolicy: repoWritePolicy(this.workspaceCwd()),
           launch: {
             ...(targetExecutable ? { executable: targetExecutable } : {}),
+            ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+            ...(planRoots.length > 0 ? { planRoots } : {}),
           },
         },
       });
@@ -513,6 +602,7 @@ export class RequestRouter {
       );
     }
     const instructions = this.projectInstructions(spec.cwd);
+    const { additionalDirectories, planRoots } = this.sessionGuardPathsOf(spec.cwd);
     const session = this.deps.manager.create({
       cwd: spec.cwd,
       provider: spec.provider,
@@ -525,6 +615,8 @@ export class RequestRouter {
         resume: spec.id,
         ...(spec.chosen.model ? { model: spec.chosen.model } : {}),
         ...(spec.chosen.effort ? { effort: spec.chosen.effort } : {}),
+        ...(additionalDirectories.length > 0 ? { additionalDirectories } : {}),
+        ...(planRoots.length > 0 ? { planRoots } : {}),
       },
     });
     // The tree's child row points at the same id; a rescan picks the new life up.

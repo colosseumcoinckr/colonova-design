@@ -47,3 +47,21 @@ test("로그: 줄바꿈이 있던 message 도 한 줄로 눌러 담긴다", () =
     rmSync(dir, { recursive: true, force: true });
   }
 });
+test("로그: Confluence 자격의 이메일·토큰 짝도 값 걷기로 눌러 닫는다(2026-10-18 기획서 동기화)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "colonova-log-"));
+  try {
+    const logger = createFileLogger({ dir, now: () => new Date("2026-10-18T09:00:00Z") });
+    // 자격은 `email\ntoken` 두 줄 한 몸이다 — 통째로 새어도 이메일과 토큰 모양이 걷힌다.
+    logger.info("연결 검증 실패 me@example.com\nATATT3xFfGF0abcdefghijklmn123456", {
+      credential: "me@example.com\nATATT3xFfGF0abcdefghijklmn123456",
+    });
+    const [name] = readdirSync(dir);
+    const line = readFileSync(join(dir, name!), "utf8");
+    assert.ok(!line.includes("me@example.com"), "이메일이 그대로 남으면 안 된다");
+    assert.ok(!line.includes("ATATT3xFfGF0"), "Atlassian 토큰이 그대로 남으면 안 된다");
+    assert.ok(line.includes("{email}"));
+    assert.ok(line.includes("{secret}"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

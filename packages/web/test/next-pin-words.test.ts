@@ -41,6 +41,6 @@ test("사진 한도의 숫자는 한 곳 — 보내는 쪽이 같은 상수로 �
 test("말 없는 핀 · 사진 한도의 문장은 labels 에 있고 개수를 말한다", async () => {
   const { L } = await import("../src/next/labels.ts");
   assert.match(L.composer.pinNeedsWords, /무엇을 바꿀지/);
-  assert.match(L.composer.pinShotCap(3), /앞 여섯 곳/);
+  assert.match(L.composer.pinShotCap(3), /처음 찍은 6곳/);
   assert.match(L.composer.pinShotCap(3), /3곳/);
 });

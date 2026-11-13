@@ -63,3 +63,15 @@ test("섞인 변경 — 진짜 편집은 남고 부산물만 빠진다", () => {
     ["src/MemberList.tsx", "src/MemberList.mock.ts", "packages/lib/yarn.lock"],
   );
 });
+
+test("연결 레포의 자기 docs/plans 문서는 보통 레포 파일이다 — 보관에 담긴다(2026-10-23 · 기획서 사본 이동 계획 §5)", () => {
+  const files = [
+    modified("docs/plans/회의-메모.md"),
+    added("docs/plans/새-문서.md"),
+    added("docs/plans"),
+  ];
+  assert.deepEqual(
+    saveablePaths(files, new Set(["docs/plans/회의-메모.md"])).map((file) => file.path),
+    ["docs/plans/회의-메모.md", "docs/plans/새-문서.md", "docs/plans"],
+  );
+});

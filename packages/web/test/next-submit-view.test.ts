@@ -27,7 +27,7 @@ test("평소: 목록이 서고 주 단추가 눌린다 — 알림 줄은 없다"
 });
 
 test("읽는 중: 뼈대가 서고 목록 · 주 단추는 없다 — 읽는 중에는 이유 줄이 겹치지 않는다", () => {
-  const loading = view({ hasSnapshot: false, loading: true, lockReason: "AI가 고치는 중" });
+  const loading = view({ hasSnapshot: false, loading: true, lockReason: "AI 가 고치는 중" });
   assert.equal(loading.skeleton, true);
   assert.equal(loading.showList, false);
   assert.equal(loading.enabled, false);
@@ -74,7 +74,7 @@ test("보낼 것 없음: 사진은 받았지만 파일이 0 이면 `제출할 �
 });
 
 test("잠긴 이유: 여정이 잠근 동안 이유 줄이 서고 단추는 잠긴다", () => {
-  const locked = view({ lockReason: "AI가 고치는 중 — 끝나면 제출할 수 있어요" });
+  const locked = view({ lockReason: "AI 가 고치는 중 — 끝나면 제출할 수 있어요" });
   assert.equal(locked.enabled, false);
   assert.deepEqual(locked.notices, ["lock"]);
 });
@@ -82,4 +82,12 @@ test("잠긴 이유: 여정이 잠근 동안 이유 줄이 서고 단추는 잠�
 test("알림 줄의 차례: 보내기 실패 → 읽기 실패 → 바뀜 → 보낼 것 없음 → 잠금", () => {
   const all = view({ sendFailed: true, changed: true, files: 0, lockReason: "이유" });
   assert.deepEqual(all.notices, ["send", "changed", "empty", "lock"]);
+});
+
+test("오래된 기준: 받아올 내용이 있거나 적용 중이면 주 단추만 잠긴다 — 알림 줄은 팝이 지금 값으로 직접 그린다(2026-11-12 사용자 요청)", () => {
+  const blocked = view({ baseBlocked: true });
+  assert.equal(blocked.enabled, false);
+  assert.deepEqual(blocked.notices, [], "baseBlocked 는 알림 줄을 만들지 않는다");
+  // 생략하면(옛 입력) 잠기지 않는다 — 선택 필드다.
+  assert.equal(view({}).enabled, true);
 });

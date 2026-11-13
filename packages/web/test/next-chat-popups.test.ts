@@ -42,7 +42,7 @@ test("모델 칩: 읽는 중에는 바닥에 줄을 띄우지 않는다 — 머�
 
 test("모델 칩 CSS: 고른 칸의 알약은 토큰이고, 어두운 팔레트는 틀보다 밝은 알약을 입는다", () => {
   const all = rules();
-  for (const selector of [".nx .nx-aipick::before", ".nx .nx-model-pop .nx-mseg::before"]) {
+  for (const selector of [".nx .nx-aipick::before", ".nx .nx-model-pop .nx-chat-mseg::before"]) {
     const rule = all.find((one) => one.selector === selector);
     assert.ok(rule, `${selector} 규칙이 있다`);
     assert.match(rule.body, /background:\s*var\(--nx-pill\)/, selector);
@@ -50,6 +50,10 @@ test("모델 칩 CSS: 고른 칸의 알약은 토큰이고, 어두운 팔레트�
   const dark = all.find((one) => one.selector.includes('html[data-theme="dark"] .nx .nx-aipick'));
   assert.ok(dark, "dark 의 알약 · 틀 덮어쓰기");
   assert.ok(dark.selector.includes('html[data-theme="github"] .nx .nx-aipick'), "github 도 같다");
+  assert.ok(
+    dark.selector.includes('html[data-theme="claude-dark"] .nx .nx-aipick'),
+    "claude-dark 도 같다",
+  );
   assert.match(dark.body, /--nx-track:\s*var\(--bg\)/, "틀이 바탕보다 어둡다");
   assert.match(dark.body, /--nx-pill:\s*color-mix\(/, "알약은 잉크를 섞어 밝다");
 });

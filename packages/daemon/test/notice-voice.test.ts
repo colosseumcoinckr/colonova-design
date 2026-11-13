@@ -85,7 +85,7 @@ test("바꾼 문장: 로그인 복귀 · 대화 정리 · 말을 보내지 못�
       text.startsWith("지금 도는 답에 바로 보내지 못했어요 — 답이 끝나면 바로 보낼게요."),
     ),
   );
-  assert.match(labels, /queuedAfter: "지금 답이 끝나면 바로 보낼게요"/);
+  assert.match(labels, /queuedAfter: "지금 답이 끝나면 바로 보내요"/);
 });
 
 test("모든 RPC 거절이 지나는 문장(asPlannerFacingError)도 해요체이고 한글이라 한 번 감싸면 다시 감싸이지 않는다", () => {

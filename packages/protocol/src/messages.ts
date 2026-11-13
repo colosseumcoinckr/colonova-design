@@ -1,4 +1,9 @@
 import { z } from "zod";
+import { docCommentClientMessageSchemas } from "./doc-comments.js";
+import { docOpClientMessageSchemas } from "./doc-ops.js";
+import { docViewClientMessageSchemas } from "./doc-view.js";
+import type { DraftAiMessage, DraftChangedMessage } from "./draft.js";
+import { draftClientMessageSchemas } from "./draft.js";
 import { featureRequestInputSchema } from "./feedback.js";
 import type { AgentInstallKind, DaemonStatus, ProjectSummary } from "./project.js";
 import type { DiffStatus, RepoStatus } from "./repo.js";
@@ -599,7 +604,16 @@ const clientMessageSchema = z.discriminatedUnion("type", [
    * is what the `저장 기록` drawer lists — messages and times, no git words.
    */
   z.object({ ...withId, type: z.literal("repo.history") }),
-  z.object({ ...withId, type: z.literal("repo.submitPreview") }),
+  z.object({
+    ...withId,
+    type: z.literal("repo.submitPreview"),
+    /**
+     * 참이면 읽기 전에 베이스를 새로 받아온다(2026-11-12 채택) — 제출 확인 창을 여는 ·
+     * 다시 읽는 누름에만 켠다. 배경 읽기(상태 방송마다의 재조회)는 값을 싣지 않아 로컬만
+     * 읽는다 — fetch 가 방송을 낳고 방송이 다시 fetch 를 부르는 돌이 돌지 않게.
+     */
+    freshBase: z.boolean().optional(),
+  }),
   /**
    * 서비스의 첫 화면 사진 한 장 (2026-10-07 베타 준비 분석 · 첫 5분) — 홈의 `서비스가 떴어요` 줄이 부른다. 데몬이 준비가
    * 끝나며 읽은 첫 주소(`RepoStatus.firstScreen`, 모르면 `/`)를 숨은 창으로 열어 한 장 찍는다. 실패는 `image: null`.
@@ -671,6 +685,11 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     provider: z.string().min(1).max(64).nullable().optional(),
     /** 새 AI 버전이 나오면 스스로 설치할지(PLAN-UI U12) — 없으면 그대로 둔다. */
     agentAutoUpdate: z.boolean().optional(),
+    /**
+     * 기획서와 화면을 서로 맞추는 자동 판정(2026-11-03 A안 1A-1 설정 토글) — 같이 고치기 · 화면 제안의 판정을 돌릴지.
+     * 끄면 판정 호출 자체를 하지 않는다(연결 · 근거 기록은 계속 쌓는다). 없으면 그대로 둔다.
+     */
+    planLoop: z.boolean().optional(),
   }),
   /**
    * 설정의 `업데이트` 줄(PLAN-UI U12): 에이전트 CLI 를 새 버전으로 바꾼다.
@@ -693,6 +712,23 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     name: z.string().min(1).max(80).nullable(),
   }),
   /**
+   * 초대 파일의 창구 칸 저장(2026-11-12 설계 결정 ㉱) — 가져올 때 초대장에
+   * `support` 가 있으면 machine.json 에 둔다. null 이면 지운다. 데몬은
+   * normalizeInvite 와 같은 판정(parseSupport)으로 다시 거른다. 지금 앱에는
+   * 지우는 손이 없다 — null 은 내부 계약이다(검토 WF-14).
+   */
+  z.object({
+    ...withId,
+    type: z.literal("machine.support.set"),
+    support: z
+      .object({
+        name: z.string().min(1).max(40).optional(),
+        room: z.string().min(1).max(60).optional(),
+        url: z.string().min(1).max(300).optional(),
+      })
+      .nullable(),
+  }),
+  /**
    * One repo, judged before any clone: does package.json carry a dev-family
    * script, may this token open pull requests against it, and what branch
    * would it target.
@@ -702,6 +738,100 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     type: z.literal("github.repo.inspect"),
     owner: z.string().min(1),
     repo: z.string().min(1),
+  }),
+  /**
+   * 기획서(Confluence) 연결(2026-10-18 기획서 동기화 1단계) — 사이트 · 이메일 · 토큰(한 번만
+   * 입력하고 응답 어디에도 다시 나오지 않는다)으로 데몬이 `/user/current` 로 검증하고 자격은
+   * 저장소에, 연결 미러는 machine.json 의 프로젝트별 키에 둔다. `rootPageId` 는 나중에
+   * suggestRoots 로 고르므로 선택 — 이미 저장된 자격으로 뿌리만 고를 때(또는 만료 뒤 다시
+   * 연결할 때)는 이메일 · 토큰을 비우고 보낸다(저장된 자격을 다시 검증한다). 활성 프로젝트에
+   * 묶인다 — 다른 프로젝트의 연결을 덮어쓰지 않는다.
+   */
+  z
+    .object({
+      ...withId,
+      type: z.literal("confluence.connect"),
+      /** 예: colosseum.atlassian.net — 프로토콜과 끝의 /wiki 는 데몬이 정규화한다. */
+      site: z.string().min(1).max(200),
+      /** 일회성 입력 — 빈 값은 거절이다. 뿌리만 고르는 재연결은 아예 비운다. */
+      email: z.string().min(1).max(200).optional(),
+      token: z.string().min(1).max(400).optional(),
+      rootPageId: z.string().min(1).max(64).optional(),
+    })
+    // 이메일과 토큰은 짝이다 — 하나만 온 메시지는 선로에서 걸린다.
+    .refine((input) => (input.email === undefined) === (input.token === undefined), {
+      message: "이메일과 토큰은 짝입니다 — 둘 다 넣거나 둘 다 비우세요.",
+    }),
+  /**
+   * 연결이 없으면 한국어 거절로 답한다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("confluence.suggestRoots"),
+    query: z.string().min(1).max(200),
+  }),
+  /**
+   * 기획서 가져오기(뷰어 · 설정의 새로 가져오기 단추) — 같은 종류가 이미 줄에 있으면
+   * 그 약속에 합류한다(취소는 없다). 연결이 없으면 한국어 거절로 답한다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("confluence.importNow"),
+  }),
+  /**
+   * 기획서 목록 — 원장의 트리와 판 단계. 연결이 없으면 null, 연결됐지만 아직 가져온 것이 없으면 빈 목록이다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("doc.list"),
+  }),
+  /**
+   * 기획서 한 문서 읽기 — 파생 마크다운과 절(매크로 표식), 코멘트는 그 자리에서 읽어
+   * 실는다(안 풀린 것만 · 읽기 실패면 null — 원장의 수가 대신한다).
+   */
+  z.object({
+    ...withId,
+    type: z.literal("doc.read"),
+    pageId: z.string().min(1).max(64),
+  }),
+  /**
+   * 연결 지도 읽기(2026-10-24 연결 지도 계획): 원장의 문서와 연결 레포의 화면
+   * 인벤토리, 연결 파일(클론 뿌리 `plans-map.json`)의 연결을 한 번에 답한다. 연결이
+   * 없으면 문서가 비고 화면·연결은 빈 배열이다 — 읽기만 하고 아무것도 고치지
+   * 않는다. 쓰기는 `map.write` 다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("map.read"),
+  }),
+  /**
+   * 연결 지도 쓰기(2026-10-24 연결 지도 계획 2조각) — 사람이 문서와 화면을 잇고 끊는
+   * 변경을 연결 레포 뿌리의 `plans-map.json` 에 반영한다. 한 요청이 통째로 성공하거나
+   * 거절한다(부분 반영 없음). 답은 쓴 뒤의 연결 목록이다.
+   */
+  z.object({
+    ...withId,
+    type: z.literal("map.write"),
+    changes: z
+      .array(
+        z.union([
+          z.object({
+            op: z.literal("add"),
+            pageId: z.string().min(1).max(64),
+            route: z.string().min(1).max(500),
+            section: z.string().max(300).optional(),
+            note: z.string().max(1000).optional(),
+          }),
+          z.object({
+            op: z.literal("remove"),
+            pageId: z.string().min(1).max(64),
+            route: z.string().min(1).max(500),
+            section: z.string().max(300).optional(),
+          }),
+        ]),
+      )
+      .min(1)
+      .max(100),
   }),
   /**
    * 코멘트 기록 (PLAN D57): the pins the planner sent from the preview land
@@ -823,6 +953,25 @@ const clientMessageSchema = z.discriminatedUnion("type", [
     ...withId,
     type: z.literal("feedback.submit"),
   }),
+  /**
+   * 기획 초안의 요청(2026-10-23 · 최종 구현 계획 F1) — 스키마와 한계값은 draft.ts 의 한 곳에 둔다.
+   */
+  ...draftClientMessageSchemas,
+  /**
+   * 문서 관리의 요청(2026-10-23 · 최종 구현 계획 F4 · 작업 D1a) — 스키마와 한계값은
+   * doc-ops.ts 의 한 곳에 둔다.
+   */
+  ...docOpClientMessageSchemas,
+  /**
+   * 문서 코멘트의 요청(2026-10-23 · 최종 구현 계획 F4 · 작업 D2a) — 스키마와 한계값은
+   * doc-comments.ts 의 한 곳에 둔다.
+   */
+  ...docCommentClientMessageSchemas,
+  /**
+   * Confluence 기능 확장의 요청(2026-10-30 사용자 요청) — 첨부 읽기 · 라벨 · 판 기록 · 본문 찾기.
+   * 스키마와 한계값은 doc-view.ts 의 한 곳에 둔다.
+   */
+  ...docViewClientMessageSchemas,
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -950,7 +1099,10 @@ export type ServerMessage =
       type: "browser.driving";
       sessionId: string;
       on: boolean;
-    };
+    }
+  /** 기획서 초안이 바뀌었다 · AI 가 초안을 위해 생성 중이다(2026-10-23 · 최종 구현 계획 F1). */
+  | DraftChangedMessage
+  | DraftAiMessage;
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -24,6 +24,13 @@ export type HiddenThreads = Record<string, "all" | string[]>;
  * 판정은 데몬의 제목으로 한다 — 이름 바꾸기는 sessionTitles 의 표시만
  * 바꾸므로, 도구가 만든 기록은 이름을 바꿔도 이 그룹에 남는다.
  */
+/**
+ * 미리보기가 스스로 여는 고침 대화의 이름 — 웹의 기계 턴(오류 고침 · 화면 보여 주기)이 대화를
+ * 처음 열 때 이 이름을 붙인다(2026-11-03 실앱 감사: 이름 없이 열어 CLI 의 영어 요약 제목이
+ * 대화 목록에 섞였다). 도구가 한 일 묶음의 판정은 이 목록이 한다.
+ */
+export const PREVIEW_RECOVERY_TITLE = "미리보기 복구";
+
 export const SYSTEM_THREAD_TITLES: Record<string, true> = {
   [BOOTSTRAP_THREAD_TITLE]: true,
   "리뷰 반영": true,
@@ -32,7 +39,7 @@ export const SYSTEM_THREAD_TITLES: Record<string, true> = {
   "제출 문제 해결": true,
   // 2026-09-25 보강 — 감독자와 미리보기가 여는 나머지 자동 대화(cycle-supervisor ·
   // 미리보기 오류 고침). 빠져 있어 기획자의 대화 목록에 섞여 섰다.
-  "미리보기 복구": true,
+  [PREVIEW_RECOVERY_TITLE]: true,
   "최신 변경 합치기": true,
   "반려 반영": true,
   "제출 마저하기": true,

@@ -419,10 +419,16 @@ export class SessionManager {
    * 멈추던 것을 프로젝트별로 좁히는 잣대다. 심볼릭 링크(/var 따위) 로 같은
    * 폴더가 다르게 적히는 것까지 같게 본다.
    */
-  busyIn(cwd: string): boolean {
+  busyIn(cwd: string, exceptPreparingSessionId?: string): boolean {
     const real = realPathOf(cwd);
     for (const session of this.live.values()) {
       if (realPathOf(session.cwd) !== real) continue;
+      // 새 작업 준비끼리는 같은 최신 확인을 기다린다. 이미 AI에게 전달한 다른 턴은 계속 보호한다.
+      if (
+        exceptPreparingSessionId !== undefined &&
+        (session.id === exceptPreparingSessionId || session.preparingForDelivery)
+      )
+        continue;
       if (this.busyState(session)) return true;
     }
     return false;

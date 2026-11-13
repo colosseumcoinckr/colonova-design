@@ -249,7 +249,7 @@ function Case({
           : { width: WIDTH, margin: "28px auto" }
       }
     >
-      {!pinned && <h3 style={{ margin: "0 0 8px" }}>{title}</h3>}
+      {!pinned && <h3 style={{ margin: "0 0 8px", fontSize: "16px" }}>{title}</h3>}
       <div className="nx-cmp-wrap">
         <Composer
           daemon={daemon}

@@ -1,3 +1,4 @@
+// CI-순수-제외 — 자식 프로세스를 띄운다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

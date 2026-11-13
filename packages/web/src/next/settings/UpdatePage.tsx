@@ -227,7 +227,7 @@ function AgentRow({
         {copy.action === "update" && (
           <button
             type="button"
-            className="nx-btn nx-btn--sm nx-btn--pri"
+            className="nx-btn nx-btn--sm"
             onClick={() => updates.runAgent(row.id)}
           >
             {L.update.run}
@@ -329,7 +329,7 @@ export function UpdatePage({
       <p className="nx-snote nx-sfoot">{L.update.useNextTime}</p>
       <SGroup>
         <SRow title={L.update.autoLabel} sub={L.update.autoNote} id="nx-autoupd">
-          <Switch on={updates.auto.on} labelledBy="nx-autoupd" onChange={updates.auto.set} />
+          <Switch on={updates.auto.on} label={L.update.autoLabel} onChange={updates.auto.set} />
         </SRow>
         {updates.auto.error && (
           <p className="nx-snote nx-snote--row nx-snote--red" role="alert">

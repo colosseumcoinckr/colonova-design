@@ -169,7 +169,7 @@ export interface CycleDecision {
     state: "merged" | "closed" | "changes_requested" | "comments";
     pr: number;
     count?: number;
-    /** `merged` 만: 반영된 일을 부르는 말 — OS 알림이 `‘제목’ 일이 반영됐어요` 를 말한다. 모르면 없다. */
+    /** `merged` 만: 반영된 일을 부르는 말 — OS 알림이 `‘제목’ 일을 개발자가 반영했어요` 를 말한다. 모르면 없다. */
     title?: string;
   }>;
 }

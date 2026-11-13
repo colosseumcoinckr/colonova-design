@@ -91,7 +91,9 @@
   background: var(--line2);
 }
 
-.nx-dot--draft {
+/* 파랑 — «제출 전»과 «답이 끝났어요»(보지 못한 끝남 · 2026-11-12). 강조색은 팔레트에 따라 빨강과 닮아 실패 점과 헷갈린다. */
+.nx-dot--draft,
+.nx-dot--blue {
   background: var(--blue);
 }
 
@@ -130,41 +132,42 @@
 }
 
 .nx-pm {
-  border-radius: 6px;
+  border-radius: var(--r-sm);
   display: grid;
   place-items: center;
   /* 고정 — 알파벳 이니셜은 채운 색 위에서 늘 흰 글자다. */
-  color: #fff;
-  font-weight: 700;
+  color: var(--mark-ink);
+  font-weight: var(--fw-bold);
   flex: none;
 }
 
 .nx-pm--md {
   width: 22px;
   height: 22px;
-  font-size: 11.5px;
+  font-size: var(--fs-cap);
 }
 
 .nx-pm--sm {
   width: 18px;
   height: 18px;
-  /* 2026-10-04 ux-review: 10px 글자는 읽기 어렵다 — 11.5px 로 통일한다. */
-  font-size: 11.5px;
+  /* 2026-11-12 UI 조사 U-186 — 이니셜도 정수 글자 토큰(12px)을 쓴다. */
+  font-size: var(--fs-cap);
   border-radius: 5px;
 }
 
 .nx-cnt {
+  font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 var(--sp-1_5);
+  border-radius: var(--r-md);
   background: var(--accent);
   color: var(--bg);
-  font-size: 11px;
-  font-weight: 700;
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-bold);
 }
 
 .nx-cnt--g {
@@ -193,9 +196,9 @@
   border-radius: 7px;
 }
 
-.nx-ibtn {
-  width: 30px;
-  height: 30px;
+.nx .nx-ibtn {
+  width: var(--h-md);
+  height: var(--h-md);
   border-radius: var(--r);
   display: grid;
   place-items: center;
@@ -203,7 +206,7 @@
   flex: none;
 }
 
-.nx-ibtn:hover {
+.nx .nx-ibtn:hover {
   background: var(--nx-hover);
   color: var(--ink);
 }
@@ -212,14 +215,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  height: 32px;
-  padding: 0 12px;
+  gap: var(--sp-1_5);
+  height: var(--h-md);
+  padding: 0 var(--sp-3);
   border-radius: var(--r);
   border: 1px solid var(--line2);
   background: var(--card);
-  font-weight: 500;
-  font-size: 13px;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-ui);
   white-space: nowrap;
 }
 
@@ -228,8 +231,8 @@
 }
 
 .nx .nx-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .nx .nx-btn--pri {
@@ -267,9 +270,9 @@
 /* 인라인 확인 — 팝 · 서랍 안의 한 칸이 확인판으로 바뀐다(`ui/InlineConfirm`). 위험한 일은 왼쪽에 붉은 선. */
 .nx-iconf {
   display: grid;
-  gap: 8px;
-  margin: 4px;
-  padding: 12px 12px 10px 14px;
+  gap: var(--sp-2);
+  margin: var(--sp-1);
+  padding: var(--sp-3) var(--sp-3) 10px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
   background: var(--bg);
@@ -282,22 +285,22 @@
 
 .nx-iconf-t {
   margin: 0;
-  font-size: 13.5px;
-  font-weight: 600;
-  line-height: 1.45;
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-semi);
+  line-height: var(--lh-ui);
   overflow-wrap: anywhere;
 }
 
 .nx-iconf-b {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.55;
   color: var(--ink2);
 }
 
 .nx-iconf-why {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-cap);
   line-height: 1.5;
   color: var(--ink3);
 }
@@ -305,8 +308,8 @@
 .nx-iconf-act {
   display: flex;
   justify-content: flex-end;
-  gap: 6px;
-  padding-top: 2px;
+  gap: var(--sp-1_5);
+  padding-top: var(--sp-0_5);
 }
 
 @keyframes nx-rise-in {
@@ -325,14 +328,14 @@
 /* 소단추 — 앱 어디서나 28px. 설정 안은 한 칸 아래(settings.css 의 `.nx-set .nx-btn--sm`).
    예전에는 다섯 파일이 따로 선언해 마지막에 읽힌 설정의 26px 가 앱 전체의 소단추였다. */
 .nx .nx-btn--sm {
-  height: 28px;
+  height: var(--h-sm);
   padding: 0 10px;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
 }
 
 .nx .nx-ibtn--sm {
-  width: 24px;
-  height: 24px;
+  width: var(--h-sm);
+  height: var(--h-sm);
   border-radius: var(--r-sm);
 }
 
@@ -353,8 +356,8 @@
 
 /* 한 줄의 덧말 — 상자 · 단추 곁에서 조용히 상태를 말한다. 빨강은 실패(`role="alert"` 와 함께). */
 .nx-snote {
-  margin: 4px 0 0;
-  font-size: 12px;
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
   color: var(--ink3);
   line-height: 1.5;
 }
@@ -374,9 +377,9 @@
   z-index: var(--nx-z-pop);
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 14px;
-  box-shadow: var(--pop);
-  padding: 6px;
+  border-radius: var(--r-lg);
+  box-shadow: var(--elev-2);
+  padding: var(--sp-1_5);
   min-width: 210px;
   max-height: 70vh;
   overflow: auto;
@@ -421,10 +424,10 @@
 }
 
 .nx-mh {
-  padding: 8px 10px 4px;
-  font-size: 12px;
+  padding: var(--sp-2) 10px var(--sp-1);
+  font-size: var(--fs-cap);
   color: var(--ink3);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 .nx .nx-mi {
@@ -432,9 +435,10 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
+  min-height: var(--h-row);
+  padding: var(--sp-1_5) 10px;
   border-radius: var(--r);
-  font-size: 13px;
+  font-size: var(--fs-ui);
   line-height: 1.35;
 }
 
@@ -453,7 +457,7 @@
 }
 
 .nx-mi b {
-  font-weight: 500;
+  font-weight: var(--fw-medium);
 }
 
 /* 팝 줄의 키보드 초점 — 전역 고리(바깥 2px)는 6px 여백의 팝 안에서 가장자리에 닿아 굵어 보인다. 줄 안쪽의
@@ -474,7 +478,7 @@
   align-items: center;
   gap: 5px;
   color: var(--ink3);
-  font-size: 11.5px;
+  font-size: var(--fs-cap);
 }
 
 .nx-ck {
@@ -488,15 +492,15 @@
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--sp-1);
   width: max-content;
   max-width: min(560px, calc(100vw - 32px));
   background: var(--ink);
   color: var(--bg);
-  padding: 8px 6px 10px 15px;
+  padding: var(--sp-2) var(--sp-1_5) 10px 15px;
   border-radius: var(--r-md);
-  font-size: 13px;
-  line-height: 1.45;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
   box-shadow: var(--pop);
   animation: nx-toast-in 0.52s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   z-index: var(--nx-z-toast);
@@ -529,7 +533,7 @@
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
-  padding: 1px 4px 1px 0;
+  padding: 1px var(--sp-1) 1px 0;
   animation: nx-toast-text 0.4s 0.08s ease-out both;
 }
 
@@ -537,13 +541,13 @@
 .nx .nx-toast-act {
   position: relative;
   flex: none;
-  height: 26px;
-  padding: 0 11px;
-  border-radius: 8px;
+  height: var(--h-sm);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r);
   background: color-mix(in srgb, var(--bg) 16%, transparent);
   color: var(--bg);
-  font-size: 12.5px;
-  font-weight: 600;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
   white-space: nowrap;
   transition-property: background-color;
 }
@@ -772,4 +776,435 @@
   .nx-cnt--bump {
     animation: none;
   }
+}
+
+/* 링크로 선 단추 · 메뉴 줄 — 브라우저의 기본 링크색(파랑 · 방문한 보라)과 밑줄을 걷어 같은 꼴의 단추 · 줄과 같은 옷을 입힌다(2026-10-24 눈 확인 Q-3). */
+.nx a.nx-btn,
+.nx a.nx-mi,
+.nx a.nx-ibtn {
+  color: inherit;
+  text-decoration: none;
+}
+
+.nx a.nx-btn--pri {
+  color: var(--bg);
+}
+
+.nx a.nx-btn--dng {
+  color: var(--red);
+}
+
+.nx a.nx-btn--accent {
+  color: var(--bg);
+}
+
+.nx a.nx-btn--ghost {
+  color: var(--ink2);
+}
+
+/* ── 공통 부품(2026-10-23 화면 전면 재설계 §4 I · §5) ──────────────────────────────
+   손대는 자리의 같은 꼴 부품은 이것으로 옮기고 그 자리의 따로 선언을 걷는다. 색은 팔레트의 짝 이름만 쓴다. */
+
+/* 큰 단추 — 빈 화면 · 처음 한 번처럼 한 장에 단추가 하나뿐인 자리. */
+.nx .nx-btn--lg {
+  height: var(--h-lg);
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-read);
+  border-radius: var(--r-md);
+}
+
+/* 포인트 단추 — AI 에게 `보내기` 와 켜짐 상태에만. 으뜸(`--pri`)은 잉크다 — 한 화면에 하나. */
+.nx .nx-btn--accent {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--bg);
+}
+
+.nx .nx-btn--accent:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 86%, var(--ink));
+}
+
+/* 작은 아이콘 단추 — 32px 목록 줄 안의 `⋯` 처럼 자리가 빠듯한 곳. */
+.nx .nx-ibtn--xs {
+  width: var(--h-xs);
+  height: var(--h-xs);
+  border-radius: var(--r-sm);
+}
+
+/* 입력 — 한 줄 36px, 여러 줄은 `--area`. 초점에서 포인트 색 테두리와 옅은 고리. 오류는 aria-invalid 로. */
+.nx .nx-input {
+  width: 100%;
+  height: var(--h-input);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line2);
+  border-radius: var(--r);
+  background: var(--cmp);
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+  transition:
+    border-color var(--nx-t-touch) var(--drift),
+    box-shadow var(--nx-t-touch) var(--drift);
+}
+
+.nx .nx-input::placeholder {
+  color: var(--ink3);
+}
+
+.nx .nx-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.nx .nx-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.nx .nx-input[aria-invalid="true"] {
+  border-color: var(--red);
+}
+
+.nx .nx-input--area {
+  height: auto;
+  min-height: 84px;
+  padding: var(--sp-2) var(--sp-3);
+  resize: vertical;
+}
+
+/* 칸 — 이름 · 입력 · 도움말 · 오류를 한 줄기로 세운다. */
+.nx-field {
+  display: grid;
+  gap: var(--sp-1_5);
+}
+
+.nx-field-label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--ink);
+}
+
+.nx-field-help {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--ink3);
+}
+
+.nx-field-error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-1_5);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--red);
+}
+
+/* 알약 — 상태 한 낱말. 색은 늘 글자와 함께 선다(색만으로 말하지 않는다 — 정본 §11). */
+.nx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  height: 20px;
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-medium);
+  line-height: 1;
+  white-space: nowrap;
+  background: var(--nx-selected);
+  color: var(--ink2);
+}
+
+/* 파랑은 밝은 팔레트의 옅은 바탕 위에서 4.5:1 에 못 미친다(4.07–4.38) — 잉크를 조금 섞어 4.9 이상으로 올린다(2026-10-24 F 검토). */
+.nx-pill--blue {
+  background: var(--blue-soft);
+  color: color-mix(in srgb, var(--blue) 86%, var(--ink));
+}
+
+.nx-pill--amber {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
+.nx-pill--green {
+  background: var(--green-soft);
+  color: color-mix(in srgb, var(--green) 86%, var(--ink));
+}
+
+.nx-pill--red {
+  background: var(--red-soft);
+  color: color-mix(in srgb, var(--red) 86%, var(--ink));
+}
+
+.nx-pill--accent {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+/* 띠 — 문제 · 알림 한 줄(아이콘 · 글 · 단추). 문제 줄 · 결과 확인 필요 · 연결 만료가 같은 모양을 쓴다. */
+.nx-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  color: var(--ink);
+  font-size: var(--fs-ui);
+  line-height: var(--lh-ui);
+}
+
+.nx-banner > svg {
+  flex: none;
+  margin-top: var(--sp-0_5);
+}
+
+.nx-banner-body {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: var(--sp-0_5);
+}
+
+.nx-banner-body small {
+  font-size: var(--fs-sm);
+  color: var(--ink2);
+}
+
+.nx-banner-act {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.nx-banner--blue {
+  background: var(--blue-soft);
+  border-color: color-mix(in srgb, var(--blue) 28%, transparent);
+}
+
+.nx-banner--amber {
+  background: var(--amber-soft);
+  border-color: color-mix(in srgb, var(--amber) 32%, transparent);
+}
+
+.nx-banner--red {
+  background: var(--red-soft);
+  border-color: color-mix(in srgb, var(--red) 30%, transparent);
+}
+
+.nx-banner--green {
+  background: var(--green-soft);
+  border-color: color-mix(in srgb, var(--green) 30%, transparent);
+}
+
+/* 빈 · 읽는 중 · 실패 — 한 장의 모양: 그림 하나 · 한 줄 · 설명 · 단추 하나. */
+.nx-empty {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-2);
+  max-width: 420px;
+  margin: 0 auto;
+  padding: var(--sp-10) var(--sp-6);
+  text-align: center;
+}
+
+.nx-empty-mark {
+  width: 40px;
+  height: 40px;
+  margin-bottom: var(--sp-1);
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-lg);
+  background: var(--nx-hover);
+  color: var(--ink2);
+}
+
+.nx-empty-title {
+  font-size: var(--fs-read);
+  font-weight: var(--fw-semi);
+  line-height: var(--lh-tight);
+  color: var(--ink);
+}
+
+.nx-empty-desc {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+  color: var(--ink2);
+}
+
+.nx-empty-act {
+  margin-top: var(--sp-2);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-2);
+}
+
+/* 머리 줄 — 모든 자리의 맨 위 52px · 같은 아래 선(§3.3). 왼쪽은 「어디」, 오른쪽은 「지금 할 일」. */
+.nx-topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex: none;
+  min-width: 0;
+  height: var(--h-bar);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+
+/* 줄 해부 — 목록 · 편지함 · 팝의 한 줄: 앞 그림 · 제목(14) · 부제(13) · 끝(12). */
+.nx-li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--h-row);
+  padding: var(--sp-1_5) var(--sp-2);
+  border-radius: var(--r);
+}
+
+.nx-li-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.nx-li-title,
+.nx-li-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-li-title {
+  font-size: var(--fs-ui);
+  color: var(--ink);
+}
+
+.nx-li-sub {
+  font-size: var(--fs-sm);
+  color: var(--ink3);
+}
+
+.nx-li-end {
+  flex: none;
+  font-size: var(--fs-cap);
+  color: var(--ink3);
+}
+
+/* 어긋남 카드(2026-11-02 · 같이 고치기 UX 계획 §2) — 기획서와 화면의 다른 규칙을 나란히 보이는 판.
+   기획서 칸의 읽는 문서 곁 · 화면 자리 기획서 탭 · 기획 대화 답 아래가 함께 쓴다. */
+.nx-mismatch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--sp-2);
+  /* 대화 칸 안에서 긴 낱말 · 카드가 칸 폭을 넘지 않게(2026-11-12 기획자 체험 — 칸의 가로 넘침). */
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r);
+  background: var(--card);
+}
+
+.nx-mismatch-hd {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.nx-mismatch-hd b {
+  font-size: var(--fs-ui);
+  color: var(--ink);
+}
+
+.nx-mismatch-src {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-cap);
+  color: var(--ink3);
+}
+
+.nx-mismatch-list {
+  display: grid;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nx-mismatch-row {
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.nx-mismatch-sec {
+  margin: 0;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
+  color: var(--ink2);
+}
+
+.nx-mismatch-pair {
+  margin: 0;
+  display: grid;
+  gap: var(--sp-0_5);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.nx-mismatch-pair b {
+  /* 꼬리 ` ·` 뒤에 띄움이 없어 «기획서 ·배정이» 로 붙어 읽혔다(2026-11-12 기획 대화 칸 손질). */
+  margin-inline-end: var(--sp-1);
+  font-weight: var(--fw-semi);
+  color: var(--ink3);
+}
+
+.nx-mismatch-pair b::after {
+  content: " ·";
+}
+
+.nx-mismatch-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1_5);
+}
+
+.nx-mismatch-note {
+  margin: 0;
+  font-size: var(--fs-cap);
+  color: var(--ink3);
+}
+
+/* 2026-11-12 UI 조사 U-195 — 보이지 않는 복사 결과도 같은 상태 줄로 낭독한다. */
+.nx-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+.nx-copy-failed {
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+
+/* 2026-11-12 NOTE-1 — 누를 손이 없는 팝도 초점 위치를 토큰 고리로 말한다. */
+.nx .nx-pop:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }

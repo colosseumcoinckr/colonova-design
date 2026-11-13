@@ -27,11 +27,11 @@ export const EFFORT_LABEL: Record<EffortLevel, string> = {
  * 왼쪽은 빠르고 오른쪽은 깊다는 저울의 눈금 설명.
  */
 export const EFFORT_HINT: Record<EffortLevel, string> = {
-  low: "가장 빠르게 답합니다 — 가벼운 질문에",
-  medium: "대부분의 질문에 알맞은 속도입니다",
-  high: "깊게 생각하고 꼼꼼하게 답합니다",
-  xhigh: "어려운 문제를 오래 들여다봅니다",
-  max: "시간이 걸려도 최선의 답을 찾습니다",
+  low: "가장 빠르게 답해요 — 가벼운 질문에",
+  medium: "대부분의 질문에 알맞은 속도예요",
+  high: "깊게 생각하고 꼼꼼하게 답해요",
+  xhigh: "어려운 문제를 오래 들여다봐요",
+  max: "시간이 걸려도 최선의 답을 찾아요",
 };
 
 /**

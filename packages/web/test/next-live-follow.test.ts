@@ -67,7 +67,7 @@ test("shouldFollow: 옮기지 않는 모든 경우 — 하나라도 걸리면 �
     assert.equal(shouldFollow({ ...base(), ...patch }), false, why);
   no({ modes: { ...MODES, follow: false } }, "설정이 꺼져 있다");
   no({ turnStartedAt: null }, "턴이 언제 시작했는지 모른다");
-  no({ view: { ...VIEW, visible: false } }, "홈이 떠 있거나 대화 탭이 앞이라 칸이 숨었다");
+  no({ view: { ...VIEW, visible: false } }, "기획서 자리거나 대화 탭이 앞이라 칸이 숨었다");
   no({ view: { ...VIEW, covered: true } }, "준비 중 · 오류 · 잠금 덮개가 무대를 가린다");
   no({ view: { ...VIEW, external: true } }, "사람이 일부러 외부 페이지로 나갔다");
   no({ modes: { ...MODES, pin: true } }, "핀 모드");
@@ -228,12 +228,12 @@ test("isFreshSignal: 막 도착한 신호만", () => {
 
 test("문장: 이름 앞 · 뒤의 말 — 이름이 `화면` 으로 끝나면 그 말을 겹치지 않아 조사가 늘 맞는다", () => {
   const whole = (parts: [string, string], name: string) => `${parts[0]}${name}${parts[1]}`;
-  assert.equal(L.live.driving, "AI가 화면을 직접 눌러 보는 중");
+  assert.equal(L.live.driving, "AI 가 화면을 직접 눌러 보는 중");
   assert.equal(
     whole(L.live.editing("회원 목록"), "회원 목록"),
-    "AI가 지금 ‘회원 목록’ 화면을 고치는 중",
+    "AI 가 지금 ‘회원 목록’ 화면을 고치는 중",
   );
-  assert.equal(whole(L.live.editing("첫 화면"), "첫 화면"), "AI가 지금 ‘첫 화면’을 고치는 중");
+  assert.equal(whole(L.live.editing("첫 화면"), "첫 화면"), "AI 가 지금 ‘첫 화면’을 고치는 중");
   assert.equal(whole(L.live.moved("결제"), "결제"), "‘결제’ 화면으로 옮겼어요");
   assert.equal(whole(L.live.moved("첫 화면"), "첫 화면"), "‘첫 화면’으로 옮겼어요");
 });
@@ -263,19 +263,18 @@ test("칸: 따라가기는 칸의 기존 이동 `go` 하나만 쓴다 — 새 �
   );
   assert.match(column, /onFollow: followTo,/);
   // 막대의 주소 알약은 따라간 순간도 물들지만, 무대를 훑는 빛줄기는 턴 끝의 도착만의 것이다.
-  assert.match(column, /arrivePulse=\{arriveTick \+ followTick\}/);
+  assert.match(column, /arrivePulse=\{arriveTick \+ followTick \+ hintTick\}/);
   assert.match(column, /sweep=\{arriveTick\}/);
   // 이동의 몸(setTarget)은 `go` 안의 한 곳뿐이다.
   assert.equal(column.match(/setTarget\(\{/g)?.length, 1);
 });
 
 test("칸: 사람의 손만 `noteUser` 로 남기고, 턴 끝의 도착 · 따라가기 · 자동 새로 고침은 남기지 않는다", () => {
-  // 사람의 손 — 걸음 · 주소 · 기기 · 찍기 · 핀 · 화면 링크 · 막대의 단추들.
+  // 사람의 손 — 걸음 · 주소 · 찍기 · 핀 · 화면 링크 · 막대의 단추들.
   for (const spot of [
     /const walk = \(delta: -1 \| 1\) => \{\s*noteUser\(\);/,
     /open: \(path\) => \{\s*noteUser\(\);/,
     /const onAddress = \(raw: string\): string \| null => \{\s*noteUser\(\);/,
-    /const pickDevice = \(next: PreviewDevice\) => \{\s*noteUser\(\);/,
     /\(on\?: boolean\) => \{\s*noteUser\(\);/,
     /\(pin: ColoNovaDesignPinEnvelope\["pin"\]\) => \{\s*noteUser\(\);/,
     /onGo=\{\(path\) => \{\s*noteUser\(\);\s*go\(path\);/,
@@ -295,7 +294,7 @@ test("칸: 사람의 손만 `noteUser` 로 남기고, 턴 끝의 도착 · 따�
   assert.match(arrival, /if \(refresh\) reload\(\);/);
   assert.doesNotMatch(arrival, /noteUser/);
   assert.doesNotMatch(
-    column.slice(column.indexOf("const retryStage"), column.indexOf("const pickDevice")),
+    column.slice(column.indexOf("const retryStage"), column.indexOf("const [commentsOn")),
     /noteUser/,
   );
   assert.doesNotMatch(column, /followTo = [^;]*noteUser/);
@@ -311,7 +310,10 @@ test("칸: 활성 대화의 조작 · 신호만 읽고, 라이브 층은 무대 
     /editing: activeSessionId \? \(daemon\.editingScreens\.get\(activeSessionId\) \?\? null\) : null,/,
   );
   assert.match(column, /follow: settings\.followEdits,/);
-  assert.match(column, /<LiveLayer line=\{live\.line\} ring=\{live\.ring\} \/>\s*\{frozen && \(/);
+  assert.match(
+    column,
+    /<LiveLayer\s+line=\{live\.line\?\.kind === "editing" \? null : live\.line\}\s+ring=\{live\.ring\}\s*\/>\s*\{frozen && \(/,
+  );
   assert.match(column, /covered: overlay !== null,/);
   assert.match(column, /crowded: narrow && pinCount > 0,/);
 });

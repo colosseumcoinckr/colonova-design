@@ -1,5 +1,14 @@
 import type { ColoNovaDesignPinEnvelope, SessionState } from "@colonova-design/protocol";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { createPortal } from "react-dom";
 import { ShortcutsSheet } from "../../components/dialogs/ShortcutsSheet";
 import type { PreviewOverlaySkin } from "../../components/preview/PreviewFrame";
@@ -19,17 +28,26 @@ import {
   titleOfPath,
 } from "../../lib/turn-screens";
 import { L } from "../labels";
+import {
+  getComposerSheet,
+  setComposerSheetHost,
+  subscribeComposerSheet,
+  toggleComposerSheet,
+} from "../lib/composer-sheet";
 import { routePath } from "../lib/follow-edit";
+import { createLatestRequest } from "../lib/latest-request";
 import { arriveOnTurnEnd, refreshOnTurnEnd } from "../lib/preview-geometry";
+import { requestResults } from "../lib/request-results";
 import { useDiagnosticsText } from "../lib/use-diagnostics";
 import type { PreviewColumnProps } from "../slots";
-import { clockOf, HISTORY_OPEN_EVENT, HistoryDrawer } from "./HistoryDrawer";
+import { createFrozenRequest } from "./frozen-request";
+import { clockOf, HISTORY_DRAWER_EVENT, HistoryDrawer } from "./HistoryDrawer";
 import { ArrowIcon, PinSmallIcon } from "./icons";
 import { LiveLayer } from "./LiveLayer";
 import { PINS_SEND_EVENT, PinBubble } from "./PinBubble";
 import { PrepareCard, StageNotice } from "./PrepareCard";
 import { PreviewBar, type ScreenRow } from "./PreviewBar";
-import { nativePreview, type PreviewDevice, PreviewHost } from "./PreviewHost";
+import { nativePreview, PreviewHost } from "./PreviewHost";
 import { useLiveFollow } from "./use-live-follow";
 import { type MachineTurn, usePreviewErrors } from "./use-preview-errors";
 
@@ -72,7 +90,10 @@ export const PINS_TOGGLE_EVENT = "nx:pins:toggle";
  * 입력창이 받으면 `preventDefault()` 로 답한다. 아무도 받지 않으면 옛 셸처럼
  * 그 화면을 곧장 AI 에게 보여 주는 기계 턴으로 물러선다.
  */
-export const COMPOSER_ATTACH_EVENT = "nx:composer:attach";
+export { COMPOSER_ATTACH_EVENT } from "../lib/composer-attach";
+
+import { PREVIEW_RECOVERY_TITLE } from "../../lib/thread-visibility";
+import { COMPOSER_ATTACH_EVENT } from "../lib/composer-attach";
 
 const LIVE = new Set<SessionState>([
   "starting",
@@ -106,6 +127,7 @@ export function PreviewColumn({
   narrow,
   offstage = false,
   onScreenName,
+  onScreenRoute,
 }: PreviewColumnProps) {
   const { api, repo, connection } = daemon;
   const native = nativePreview();
@@ -119,6 +141,9 @@ export function PreviewColumn({
   navRef.current = nav;
   const toast = useCallback((text: string) => navRef.current.toast(text), []);
   const showTab = useCallback((tab: "chat" | "preview") => navRef.current.showTab(tab), []);
+  // 화면을 앞에 세우는 손들(화면 열기 · 찍기 켜기 · 작업 기록 열기)은 오른쪽 칸이 기획서여도 미리보기로 돌린다 — 숨은
+  // 칸에서 찍기 · 서랍이 열리면 보이지 않는다(2026-10-23 기획자 화면 손질 D1 뒤). 이미 미리보기면 아무 일도 없다.
+  const showScreenPane = useCallback(() => navRef.current.showPane("preview"), []);
   // 사용자가 미리보기를 직접 만진 시각 — 라이브 따라가기가 「이번 턴에 방해받지 않았는가」를 가리는 재료다(2026-10-08).
   // AI 가 하는 이동(턴 끝의 도착 · 따라가기 · 자동 새로 고침)은 남기지 않는다 — 사람의 손만.
   const touchedAt = useRef<number | null>(null);
@@ -128,7 +153,41 @@ export function PreviewColumn({
 
   const sectionRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  /** 서랍을 연 시계 단추 — 닫히면 초점이 그곳으로 돌아간다. */
+  /** 좁은 창의 입력창 시트 자리(S12) — 대화 칸이 입력창을 옮겨 그리는 곳이다. */
+  const sheetHostRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!narrow) {
+      setComposerSheetHost(null);
+      return undefined;
+    }
+    setComposerSheetHost(sheetHostRef.current);
+    return () => setComposerSheetHost(null);
+  }, [narrow]);
+  // 접힌 한 줄이 시트의 열림을 읽는다(`aria-expanded`) — 시트 자리가 서 있는
+  // 동안의 실제 상태이며, 이 칸의 단축키 시트(sheetOpen)와는 무관하다.
+  const composerSheet = useSyncExternalStore(
+    subscribeComposerSheet,
+    getComposerSheet,
+    getComposerSheet,
+  );
+  const sheetHostId = useId();
+  const foldedComposer = useRef<HTMLButtonElement>(null);
+  const openedFromFold = useRef(false);
+  useEffect(() => {
+    if (composerSheet.open || !openedFromFold.current) return;
+    openedFromFold.current = false;
+    if (!narrow || offstage) return;
+    const frame = requestAnimationFrame(() => {
+      if (
+        document.activeElement === document.body ||
+        sectionRef.current?.contains(document.activeElement)
+      ) {
+        foldedComposer.current?.focus();
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [composerSheet.open, narrow, offstage]);
+  /** 서랍을 연 단추 — 닫히면 초점이 그곳으로 돌아간다(막대의 `···` — S6). */
   const historyBtn = useRef<HTMLButtonElement | null>(null);
   /** 시계 단추가 `aria-controls` 로 가리키는 서랍. */
   const drawerId = useId();
@@ -205,10 +264,11 @@ export function PreviewColumn({
       open: (path) => {
         noteUser();
         go(path);
+        showScreenPane();
         if (narrowRef.current) showTab("preview");
       },
     });
-  }, [previewUrl, showTab, go, noteUser]);
+  }, [previewUrl, showTab, showScreenPane, go, noteUser]);
 
   // 지나온 화면 — 주소 목록의 `다른 화면` 이 읽는다.
   const [recent, setRecent] = useState<string[]>([]);
@@ -327,6 +387,11 @@ export function PreviewColumn({
   useEffect(() => {
     onScreenName(hasScreen ? screenName : null);
   }, [hasScreen, screenName, onScreenName]);
+  // 지금 화면의 주소도 보낸다 — 오른쪽 칸의 기획서 탭이 이 화면에 이어진 문서를 가른다(S10).
+  const screenRoute = hasScreen ? herePath : null;
+  useEffect(() => {
+    onScreenRoute?.(screenRoute);
+  }, [screenRoute, onScreenRoute]);
   // 지금 보는 화면의 경로를 보내기에 실리게 알린다 — 말로만 부탁한 요청도 이 화면의 수정 전 사진을
   // 얻는다(2026-10-06 UX 점검). 링크 너머 페이지를 보거나 서버가 없는 동안은 비운다.
   // 쿼리와 해시는 떼고 경로만 — 수정 전 사진은 바뀐 화면의 경로로 짝을 찾고, 쿼리의 값은 선로에 나갈 일이 없다.
@@ -464,7 +529,6 @@ export function PreviewColumn({
     : (errors.fixingSince ?? undefined);
 
   // --- 무대 ---------------------------------------------------------
-  const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [zoom, setZoom] = useState(1);
   // 실패의 다시 시도 — 있는 손만 쓴다: 미리보기를 다시 읽고(막대의 새로 고침과 같은),
   // 준비 파이프를 다시 걷는다(마운트 때와 같은 멱등 부름). 새 진행 표시는 만들지 않는다.
@@ -476,15 +540,6 @@ export function PreviewColumn({
       .repoSync()
       .catch((cause: Error) => console.error("[colonova-design] repo sync", cause));
   }, [reload, api]);
-  const pickDevice = (next: PreviewDevice) => {
-    noteUser();
-    if (next === device) return;
-    invalidateView();
-    setDevice(next);
-    // 기기는 몸이고 배율은 눈이다 — 기기가 바뀌면 눈은 100% 로.
-    setZoom(1);
-    void window.colonovaDesignDesktop?.preview?.zoom?.("reset");
-  };
 
   // --- 찍기 ---------------------------------------------------------
   const [commentsOn, setCommentsOn] = useState(false);
@@ -508,9 +563,14 @@ export function PreviewColumn({
       setFrozen(null);
       const next = on ?? !commentsRef.current;
       setCommentsOn(next);
+      if (next) {
+        showScreenPane();
+        // 찍기를 켰다는 신호 — 셸이 오른쪽 칸이 가장 넓을 때 화면을 내어 주자 한 번 제안한다(S11).
+        window.dispatchEvent(new Event("nx:pins:on"));
+      }
       if (next && narrowRef.current) showTab("preview");
     },
-    [pinLocked, toast, showTab, noteUser],
+    [pinLocked, toast, showTab, showScreenPane, noteUser],
   );
 
   const sync = useMemo(() => pinsSync(pins.ghosts, pins.list), [pins.ghosts, pins.list]);
@@ -576,9 +636,9 @@ export function PreviewColumn({
     },
     [pins, openBubble, noteUser],
   );
-  // 어긋날 수 있는 사건에는 닫는다 — 이동 · 배율 · 기기 · 창 크기(U4 · 6 리스크).
+  // 어긋날 수 있는 사건에는 닫는다 — 이동 · 배율 · 창 크기(U4 · 6 리스크).
   // biome-ignore lint/correctness/useExhaustiveDependencies: 사건만 본다.
-  useEffect(() => setBubble(null), [location, zoom, device, frozen, root]);
+  useEffect(() => setBubble(null), [location, zoom, frozen, root]);
   useEffect(() => {
     const close = () => setBubble(null);
     window.addEventListener("resize", close);
@@ -626,23 +686,54 @@ export function PreviewColumn({
     }
     return times.sort();
   }, [daemon.sessions, handoff]);
+  const frozenRequests = useRef(createFrozenRequest()).current;
+  const frozenScope = JSON.stringify([root, handoff?.state, handoff?.number, herePath, offstage]);
+  frozenRequests.update(frozenScope, api);
+  const frozenInFlight = useRef(false);
+  const [frozenBusy, setFrozenBusy] = useState(false);
+  useEffect(() => () => frozenRequests.invalidate(), [frozenRequests]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: 사이클이 움직이면 얼린 얼굴은 거짓말이다.
   useEffect(() => setFrozen(null), [root, handoff?.state, handoff?.number]);
   const openFrozen = async () => {
     noteUser();
-    ++viewEpoch.current;
+    if (frozenInFlight.current) return;
+    frozenInFlight.current = true;
+    setFrozenBusy(true);
+    const startedEpoch = ++viewEpoch.current;
+    const ticket = frozenRequests.begin(frozenScope, startedEpoch);
     const route = herePath.split("?")[0] ?? "/";
-    const shot = await api.handoffShot(route).catch(() => null);
-    if (!shot) {
-      toast(L.preview.frozenNoShot);
-      return;
+    try {
+      const shot = await api.handoffShot(route).catch(() => null);
+      if (!frozenRequests.accepts(ticket, viewEpoch.current)) return;
+      if (!shot) {
+        toast(L.preview.frozenNoShot);
+        return;
+      }
+      setCommentsOn(false);
+      setFrozen({ shot, at: submits[submits.length - 1] ?? null });
+    } finally {
+      frozenInFlight.current = false;
+      setFrozenBusy(false);
     }
-    setCommentsOn(false);
-    setFrozen({ shot, at: submits[submits.length - 1] ?? null });
   };
 
   // --- AI에게 이 화면 보여 주기 ----------------------------------------
   const [lookBusy, setLookBusy] = useState(false);
+  const [lookError, setLookError] = useState<"capture" | "send" | null>(null);
+  const lookRequests = useRef(createLatestRequest<object>()).current;
+  const lookScope = useMemo(
+    () => ({ slug, root, session: sessions.activeId, api }),
+    [slug, root, sessions.activeId, api],
+  );
+  const lookScopeRef = useRef(lookScope);
+  lookScopeRef.current = lookScope;
+  const lookInFlight = useRef(false);
+  // 2026-11-12 UI 조사 U-012 — 전환 뒤 옛 그림과 늦은 안내를 가져오지 않는다.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 범위 전환 때 안내를 걷고 진행 중 요청을 무효화한다.
+  useEffect(() => {
+    setLookError(null);
+    return () => lookRequests.invalidate();
+  }, [lookScope, lookRequests]);
   const lookSent = useRef(false);
   const lookCount = useRef<{ route: string; n: number }>({ route: "", n: 0 });
   useEffect(() => {
@@ -650,14 +741,23 @@ export function PreviewColumn({
   }, [turnLive]);
   const showAi = async () => {
     noteUser();
-    if (lookBusy) return;
+    if (lookInFlight.current) return;
     if (turnLive && lookSent.current) {
       toast(L.preview.showAiAgain);
       return;
     }
     setLookBusy(true);
+    setLookError(null);
+    lookInFlight.current = true;
+    const ticket = lookRequests.begin(lookScope);
+    const current = () => lookRequests.isCurrent(ticket, lookScopeRef.current);
     try {
       const snapshot = await window.colonovaDesignDesktop?.preview?.snapshot?.();
+      if (!current()) return;
+      if (native && !snapshot?.jpeg) {
+        setLookError("capture");
+        return;
+      }
       const attachment = snapshot?.jpeg
         ? { name: L.preview.shotName(screenName), mediaType: "image/jpeg", data: snapshot.jpeg }
         : null;
@@ -682,23 +782,28 @@ export function PreviewColumn({
       ].filter(Boolean);
       const delivered = await machineTurn(
         lookToTurn(herePath, lines.join("\n\n"), count),
-        undefined,
+        PREVIEW_RECOVERY_TITLE,
         attachment ? [attachment] : undefined,
         [{ screen: herePath }],
       );
+      if (!current()) return;
       lookSent.current = delivered;
       if (delivered) toast(L.preview.showAiSent);
-    } catch (cause) {
-      console.error("[colonova-design] look", cause);
+      else setLookError("send");
+    } catch {
+      if (current()) setLookError("capture");
     } finally {
+      lookInFlight.current = false;
       setLookBusy(false);
     }
   };
 
-  // --- 서랍 · 단축키 -----------------------------------------------
+  // --- 서랍(좁은 창의 몫) · 단축키 ------------------------------------
+  // 넓은 창의 작업 기록은 오른쪽 칸의 탭이 맡는다(S10) — 서랍은 좁은 창의 화면 덮는 시트다.
+  // 대화 칸이 `nx:history:open` 을 받아 좁은 창이면 `nx:history:drawer` 로 돌려 여기 닿는다.
   const [historyOpen, setHistoryOpen] = useState(false);
   const closeHistory = useCallback(() => setHistoryOpen(false), []);
-  // 결과 카드의 `방금 한 것 되돌리기` 가 서랍을 열며 건넨 되돌아갈 곳 — 서랍이 그 줄의 확인을 미리 연다.
+  // 결과 띠의 `방금 한 것 되돌리기` 가 서랍을 열며 건넨 되돌아갈 곳 — 서랍이 그 줄의 확인을 미리 연다.
   const [arm, setArm] = useState<{ sha: string; count: number } | null>(null);
   const clearArm = useCallback(() => setArm(null), []);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -713,11 +818,18 @@ export function PreviewColumn({
           : null,
       );
       setHistoryOpen(true);
+      showScreenPane();
       if (narrowRef.current) showTab("preview");
     };
-    window.addEventListener(HISTORY_OPEN_EVENT, onOpen);
-    return () => window.removeEventListener(HISTORY_OPEN_EVENT, onOpen);
-  }, [showTab]);
+    window.addEventListener(HISTORY_DRAWER_EVENT, onOpen);
+    return () => window.removeEventListener(HISTORY_DRAWER_EVENT, onOpen);
+  }, [showTab, showScreenPane]);
+  // 작업 기록 탭의 되돌리기가 끝났다 — 미리보기를 다시 읽는다(서랍은 onRestored 로 같은 일을 한다).
+  useEffect(() => {
+    const onRestored = () => reload();
+    window.addEventListener("nx:history:restored", onRestored);
+    return () => window.removeEventListener("nx:history:restored", onRestored);
+  }, [reload]);
 
   // 입력창의 보내기(⌘↵ 포함)와 좁은 창의 `찍기` 단추가 부르는 두 이음매.
   useEffect(() => {
@@ -827,6 +939,32 @@ export function PreviewColumn({
     },
     [go],
   );
+  // 결과 띠의 화면 칩에 손이 올 때 주소창이 그 이름으로 잠깐 빛난다(S9의 거꾸로 — 옮기지는 않는다).
+  const [hintTick, setHintTick] = useState(0);
+  useEffect(() => {
+    const onHint = (event: Event) => {
+      const route = (event as CustomEvent<{ route?: unknown }>).detail?.route;
+      if (typeof route !== "string") return;
+      setHintTick((tick) => tick + 1);
+    };
+    window.addEventListener("nx:addr:hint", onHint);
+    return () => window.removeEventListener("nx:addr:hint", onHint);
+  }, []);
+  // 이 화면을 바꾼 말(S9) — 이 대화의 답이 지금 화면을 바꿨으면 그 답의 차례를 안다.
+  // 거꾸로 표는 웹에서 대화록을 읽어 만든다 — 선로는 바꾸지 않는다.
+  const changedByTurnId = useMemo(() => {
+    if (!hasScreen || blocks === null) return null;
+    const here = routePath(herePath);
+    const results_ = requestResults(blocks, repo?.cycleScreens);
+    let found: string | null = null;
+    for (const block of blocks) {
+      if (block.type !== "turn") continue;
+      const result = results_.get(block.id);
+      if (!result) continue;
+      if (result.screens.some((screen) => routePath(screen.route) === here)) found = block.id;
+    }
+    return found;
+  }, [hasScreen, blocks, repo?.cycleScreens, herePath]);
   const live = useLiveFollow({
     sessionId: activeSessionId,
     turnLive,
@@ -853,7 +991,13 @@ export function PreviewColumn({
   });
 
   return (
-    <section ref={sectionRef} className={`nx-preview${historyOpen ? " nx-preview--hist" : ""}`}>
+    // 숨는 동안은 뿌리가 `nx-offstage` 를 입는다 — 오른쪽 칸의 다른 얼굴(기획서)이 같은 격자 칸에 서야 한다.
+    // 빠지면 기획서 칸이 둘째 줄로 밀려 대화 칸 아래에 선다(2026-10-23 기획자 화면 손질 · 989ef22 에서 생긴 틈).
+    <section
+      ref={sectionRef}
+      className={`nx-preview${historyOpen ? " nx-preview--hist" : ""}${offstage ? " nx-offstage" : ""}`}
+      aria-hidden={offstage || undefined}
+    >
       <PreviewBar
         canBack={native ? location?.canGoBack === true : trail.at > 0}
         canForward={native ? location?.canGoForward === true : trail.at < trail.list.length - 1}
@@ -868,25 +1012,27 @@ export function PreviewColumn({
         mine={rows.mine}
         others={rows.others}
         currentPath={hasScreen ? (location?.path ?? "") : ""}
-        arrivePulse={arriveTick + followTick}
+        arrivePulse={arriveTick + followTick + hintTick}
         onGo={(path) => {
           noteUser();
           go(path);
         }}
         onAddress={onAddress}
-        device={device}
-        onDevice={pickDevice}
         pinOn={commentsOn}
         pinCount={pinCount}
         pinLocked={pinLocked}
         onPin={() => togglePins()}
-        historyOpen={historyOpen}
-        historyBtn={historyBtn}
-        drawerId={drawerId}
         onHistory={() => {
           noteUser();
           ++viewEpoch.current;
           setHistoryOpen((open) => !open);
+        }}
+        changedBy={changedByTurnId !== null}
+        onChangedBy={() => {
+          if (changedByTurnId === null) return;
+          window.dispatchEvent(
+            new CustomEvent("nx:thread:goto", { detail: { turnId: changedByTurnId } }),
+          );
         }}
         native={native}
         zoom={zoom}
@@ -895,6 +1041,7 @@ export function PreviewColumn({
           void window.colonovaDesignDesktop?.preview?.zoom?.(kind);
         }}
         frozenReady={frozenReady}
+        frozenBusy={frozenBusy}
         onFrozen={() => void openFrozen()}
         onShowAi={() => void showAi()}
         showAiBusy={lookBusy}
@@ -902,12 +1049,16 @@ export function PreviewColumn({
         addrSignal={addrSignal}
       />
 
+      {lookError && (
+        <div className="nx-look-error" role="alert">
+          <span>{lookError === "capture" ? L.preview.captureFailed : L.preview.showAiFailed}</span>
+        </div>
+      )}
       <PreviewHost
         url={previewUrl}
         epoch={epoch}
         target={target}
         reloadKey={reloadKey}
-        device={device}
         commentsOn={commentsOn}
         overlaySkin={overlaySkin}
         sweep={arriveTick}
@@ -926,7 +1077,9 @@ export function PreviewColumn({
         onBusy={setStageBusy}
         stageRef={stageRef}
       >
-        <LiveLayer line={live.line} ring={live.ring} />
+        {/* 고치는 중의 글 줄은 작업 독이 같은 말을 하므로 걷었다(S8) — 무대 가장자리의
+            옅은 빛(`ring`)과 `옮겼어요` · `직접 눌러 보는 중` 만 남는다. 판정(pickLiveLine)은 그대로다. */}
+        <LiveLayer line={live.line?.kind === "editing" ? null : live.line} ring={live.ring} />
         {frozen && (
           <div className="nx-frozen">
             <img
@@ -987,6 +1140,30 @@ export function PreviewColumn({
         />
       )}
 
+      {/* 좁은 창의 입력창 시트 자리(S12) — 대화 칸이 같은 입력창을 여기로 옮겨 그린다.
+          펼쳐져 있을 때만 자리가 살아 보인다(접힌 한 줄은 아래의 접힌 입력창이 대신한다). */}
+      {narrow && <div className="nx-sheet-host" ref={sheetHostRef} id={sheetHostId} />}
+      {narrow && (
+        // 접힌 입력창(S12) — 화면 탭 바닥의 한 줄. 누르면 대화 칸이 같은 입력창을
+        // 위의 자리로 옮겨 그리고(토글) 다시 누르면 접는다. 펼쳐진 동안은 이 줄이
+        // 시트 뒤에 숨고 입력창의 접기 손 · Esc 가 거둔다.
+        <button
+          type="button"
+          className="nx-fold-cmp"
+          ref={foldedComposer}
+          aria-expanded={composerSheet.open}
+          aria-controls={sheetHostId}
+          tabIndex={composerSheet.open || offstage ? -1 : 0}
+          onClick={() => {
+            openedFromFold.current = true;
+            toggleComposerSheet();
+          }}
+        >
+          {pinCount > 0 ? L.narrow.composeFoldPins(pinCount) : L.narrow.composeFold}
+          <ArrowIcon />
+        </button>
+      )}
+
       <HistoryDrawer
         id={drawerId}
         open={historyOpen}
@@ -1002,8 +1179,13 @@ export function PreviewColumn({
         onArmed={clearArm}
       />
 
+      {/* 2026-11-13 — `document.body` 로 옮기면 `.nx` 뿌리 밖이라 키캡 · 간격 · 토큰이 빠져 시트가 깨졌다.
+          다른 겹판(DocView · 토스트)과 같이 앱 뿌리로 옮긴다. */}
       {sheetOpen &&
-        createPortal(<ShortcutsSheet open onClose={() => setSheetOpen(false)} />, document.body)}
+        createPortal(
+          <ShortcutsSheet open onClose={() => setSheetOpen(false)} />,
+          document.querySelector<HTMLElement>(".nx") ?? document.body,
+        )}
     </section>
   );
 }

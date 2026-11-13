@@ -1,25 +1,17 @@
-import type { SubmitPreview, SubmitSent } from "@colonova-design/protocol";
+import type { DraftSummary, SubmitPreview, SubmitSent } from "@colonova-design/protocol";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { openScreenPath } from "../../lib/screen-link";
 import { L } from "../labels";
 import { type BaseSyncSeen, baseSyncNews, baseSyncRow, baseSyncSeenOf } from "../lib/base-sync";
 import { keyHint } from "../lib/key-hint";
-import { FIRST_TURN_HINT_MS, MAKING_CHECK_MS, makingWordOf } from "../lib/making";
 import type { SubmitCopy } from "../lib/submit-copy";
-import {
-  SUBMIT_SHAKE_MS,
-  SUBMIT_STORY_BAR_MS,
-  SUBMIT_STORY_POINT_MS,
-  submitStoryPhase,
-} from "../lib/submit-story";
-import { useHeldPhase } from "../lib/use-held-phase";
+import { SUBMIT_SHAKE_MS } from "../lib/submit-story";
 import { useSubmitReview } from "../lib/use-submit-review";
 import type { CycleScreen } from "../lib/work-ledger";
 import type { StatusLineProps } from "../slots";
-import { MenuIcon, PanelIcon, Spin } from "../ui/icons";
+import { ChevronDownIcon, MenuIcon, PanelIcon, Spin } from "../ui/icons";
 import { ConvTitle } from "./ConvTitle";
-import { Elapsed } from "./Elapsed";
-import { DrawnCheck, FailIcon, LockIcon, SentIcon } from "./parts";
+import { DrawnCheck, FailIcon, LockIcon } from "./parts";
 import { SubmitPopover } from "./SubmitPopover";
 import type { WorkLedger } from "./use-work-ledger";
 import { WorkPopover } from "./WorkPopover";
@@ -33,18 +25,17 @@ const FRESH_RECEIPT_MS = 30_000;
 const QUIET_AFTER_SEND_MS = 800;
 
 /**
- * 상태 줄(U2) — 대화와 미리보기 위에 걸친 한 줄. 왼쪽은 대화 제목(눌러서 이름을
- * 바꾼다), 오른쪽은 `프로젝트 이름 · 프로젝트 전체 작업` 과 여정 세 점, 그리고 `제출`.
- * AI 가 도는 동안 여정 앞에 단계 말이 붙는다(단계 10) —
- * 지금 도는 도구의 묶음이 `화면을 살펴보는 중` · `화면 파일을 고치는 중` ·
- * `검사를 돌리는 중` 을 고르고, 첫 보내기가 60초를 넘으면 시계 뒤에
- * `처음은 몇 분 걸려요` 가 붙는다. 좁은 창은 단계 말만.
- * 좁은 창(U16)에서는 제목이 빠지고 지금 점만 글자를 갖는다.
+ * 상태 줄(U2 · 2026-10-31 화면 자리 개선안 S1 · S2) — 대화와 미리보기 위에 걸친 한 줄(52px).
+ * 왼쪽은 대화 제목(눌러서 이름을 바꾼다), 오른쪽은 **지금 국면의 알 하나**와 `제출`이다 —
+ * 여정 세 점은 `이번 작업` 팝의 머리가 크게 그린다(S1). AI 가 도는 동안 알 왼쪽의 점이
+ * 포인트 색으로 숨 쉰다(S2) — 단계 말과 시계는 작업 독(S4)이 맡는다. 최신 내용이
+ * 있으면 알 안에 `새 내용` 표식이 서고, 알을 누르면 `이번 작업` 의 `개발자 쪽 새 내용` 이 열린다. 프로젝트
+ * 이름은 사이드바 전환기가 말한다 — 사이드바가 접혀 있을 때만 제목 앞에 흐린 이름이 선다.
  *
  * 오른쪽 묶음(`nx-project-work`)은 제목이 쓰고 남은 자리를 모두 갖는 컨테이너다 — 자리가
- * 줄면 범위의 말 → 이름 → 앞으로 올 점들의 글자 순으로 접히고, 지금 점의 글자와 `제출` 은
- * 끝까지 남는다(status.css 의 컨테이너 질의). 컨테이너가 제 폭을 갖지 못하면(폭 0)
- * 질의가 늘 가장 좁은 쪽으로 읽혀 `만드는 중` 이 사라지니, 이 묶음의 `flex` 를 지우지 않는다.
+ * 줄면 알의 글자가 접히고(배지 · 점만 남는다) `제출` 은 끝까지 남는다(status.css 의
+ * 컨테이너 질의). 컨테이너가 제 폭을 갖지 못하면(폭 0) 질의가 늘 가장 좁은 쪽으로
+ * 읽히니, 이 묶음의 `flex` 를 지우지 않는다.
  *
  * 제출 버튼은 언제나 그려진다. 잠겼으면 누르거나 포커스가 닿을 때 이유 줄이 버튼
  * 아래 서고(목업 `showWhy` — 포커스가 머무는 동안에는 사라지지 않는다); 열렸으면 확인 한 장(U3, `SubmitPopover`). 버튼은 스스로
@@ -59,9 +50,6 @@ export function StatusLine({
   title,
   onRename,
   journey,
-  turnStartedAt,
-  makingPhase,
-  firstTurn,
   narrow,
   nav,
   onSubmit,
@@ -69,7 +57,11 @@ export function StatusLine({
   submitCopy,
   sidebarHidden,
   onOpenSidebar,
+  docFocus = false,
+  drafts = null,
 }: StatusLineProps & {
+  /** 셸이 한 번 부른 초안 요약 — 제출 확인이 발행 전 초안을 함께 알린다(2026-10-30 같이 고치기). */
+  drafts?: DraftSummary[] | null;
   /** 셸이 한 번 부른 `useWorkLedger` — 코멘트 · 작업 기록 · 영수증의 시각. */
   ledger: WorkLedger;
   /** 셸이 여정에 건넨 것과 같은 제출 상태의 문장. */
@@ -95,8 +87,12 @@ export function StatusLine({
     } catch {}
   };
   const [workOpen, setWorkOpen] = useState(false);
-  // 받아오기(2026-10-20 사용자 요청) — 개발자가 반영한 내용은 누를 때만 합친다. 단추는 상태 줄과 `이번 작업` 둘이다.
+  // 최신 내용 적용(2026-11-12 사용자 요청 · 옛 `받아오기`) — 개발자가 반영한 내용은 누를 때만 합친다.
+  // 표식은 상태 줄의 알과 `이번 작업` 의 칸, 둘이다.
   const baseRow = baseSyncRow(daemon.repo, journey.making);
+  // 최신 내용 표식이 서 있는가 — 서 있으면 여정이 쓸 수 있는 폭이 그만큼 줄어 접힘의 기준 폭이 오른다(status.css 의 `--base`).
+  const basePull =
+    baseRow.kind === "ready" || baseRow.kind === "pulling" || baseRow.kind === "waiting";
   const [baseAsking, setBaseAsking] = useState(false);
   const refreshBase = () => {
     if (baseAsking) return;
@@ -106,7 +102,7 @@ export function StatusLine({
       .catch(() => nav.toast(L.work.baseFailed))
       .finally(() => setBaseAsking(false));
   };
-  // 끝난 소식은 한 번 — 같은 클론에서 결과의 시각이 바뀐 순간에만 말한다. 신원은 같은 상태 객체에서 읽는다
+  // 적용이 끝난 소식은 한 번 — 같은 클론에서 결과의 시각이 바뀐 순간에만 말한다. 신원은 같은 상태 객체에서 읽는다
   // (활성 프로젝트 이름과 상태가 잠깐 어긋나는 전환 사이에 남의 결과를 소식으로 읽지 않게).
   const baseSeen = useRef<BaseSyncSeen | null>(null);
   const baseNow = baseSyncSeenOf(daemon.repo);
@@ -142,7 +138,7 @@ export function StatusLine({
   const reviewRead = useRef(0);
   const projectSlug = useRef(daemon.activeSlug);
   projectSlug.current = daemon.activeSlug;
-  const loadSubmission = () => {
+  const loadSubmission = (freshBase = true) => {
     const version = ++reviewRead.current;
     const slug = daemon.activeSlug;
     setReviewLoading(true);
@@ -150,7 +146,7 @@ export function StatusLine({
     setSendError(null);
     setSnapshot(null);
     void daemon.api
-      .submitPreview()
+      .submitPreview(freshBase)
       .then((next) => {
         if (version === reviewRead.current && slug === projectSlug.current) setSnapshot(next);
       })
@@ -161,6 +157,7 @@ export function StatusLine({
         if (version === reviewRead.current && slug === projectSlug.current) setReviewLoading(false);
       });
   };
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 활성 프로젝트가 바뀔 때 제출 상태를 초기화하는 의도된 의존성입니다.
   useEffect(() => {
     ++reviewRead.current;
     setConfirmOpen(false);
@@ -208,32 +205,6 @@ export function StatusLine({
       setWhyHeld(false);
     }
   }, [submit.enabled]);
-  // 답이 끝나면 조각을 곧장 떼지 않는다 — 600ms 체크를 보인 뒤 접는다.
-  // 타이머는 동작을 줄이는 탭에서도 돈다(움직임만 줄어든다).
-  const [makingState, setMakingState] = useState<"off" | "on" | "check">("off");
-  useEffect(() => {
-    if (journey.making) {
-      setMakingState("on");
-      return;
-    }
-    setMakingState((prev) => (prev === "on" ? "check" : "off"));
-  }, [journey.making]);
-  useEffect(() => {
-    if (makingState !== "check") return;
-    const timer = window.setTimeout(() => setMakingState("off"), MAKING_CHECK_MS);
-    return () => window.clearTimeout(timer);
-  }, [makingState]);
-
-  // 단계 말은 최소 1.5초 산다(use-held-phase.ts) — 몇 초 사이에 묶음이 바뀌어도 알약이
-  // 흔들리지 않게. 갈아입는 사이에는 입던 말을 계속 입고, 체크가 보이는 동안도 말은 그대로다.
-  const heldWord = useHeldPhase(makingPhase, makingState === "on");
-  const makingText = makingWordOf(heldWord, {
-    read: L.journey.makingRead,
-    file: L.journey.makingFile,
-    command: L.journey.makingCheck,
-    fallback: L.journey.making,
-  });
-
   // 버튼의 짧은 답 — `done` 은 영수증(cycle.handed)이, `failed` 는 막힘의 시작이 켠다.
   const [flash, setFlash] = useState<"done" | "failed" | null>(null);
   useEffect(() => {
@@ -268,29 +239,6 @@ export function StatusLine({
     }
   }, [submitCopy.phase, daemon.repo?.handoff, leaveConfirm]);
 
-  // 제출의 성공 이야기 — 순서는 submit-story.ts 의 판정이 정한다: 그려지는
-  // 체크 → 첫 막대 → 둘째 점. 타이머만 돌리고 모양은 클래스가 입는다.
-  const [story, setStory] = useState<"draw" | "bar" | "point" | null>(null);
-  useEffect(() => {
-    if (flash !== "done") {
-      setStory(null);
-      return;
-    }
-    setStory(submitStoryPhase(0));
-    const atBar = window.setTimeout(
-      () => setStory(submitStoryPhase(SUBMIT_STORY_BAR_MS)),
-      SUBMIT_STORY_BAR_MS,
-    );
-    const atPoint = window.setTimeout(
-      () => setStory(submitStoryPhase(SUBMIT_STORY_POINT_MS)),
-      SUBMIT_STORY_POINT_MS,
-    );
-    return () => {
-      window.clearTimeout(atBar);
-      window.clearTimeout(atPoint);
-    };
-  }, [flash]);
-
   // 실패는 붉어지기 전에 잠깐 흔들린다 — 동작을 줄이는 탭에서는 곧장 붉어진다.
   const [redOn, setRedOn] = useState(false);
   useEffect(() => {
@@ -305,19 +253,6 @@ export function StatusLine({
     const timer = window.setTimeout(() => setRedOn(true), SUBMIT_SHAKE_MS);
     return () => window.clearTimeout(timer);
   }, [flash]);
-
-  // 지금 점이 앞으로 오르면 새 점이 한 번 맥동한다 — 점은 국면이 바뀌어도
-  // 버려지지 않으므로(key 를 번호로) 전환으로 이어진다.
-  const seenCurrent = useRef(journey.current);
-  const [pulseAt, setPulseAt] = useState<number | null>(null);
-  useEffect(() => {
-    const rose = journey.current > seenCurrent.current;
-    seenCurrent.current = journey.current;
-    if (!rose) return;
-    setPulseAt(journey.current);
-    const timer = window.setTimeout(() => setPulseAt(null), 700);
-    return () => window.clearTimeout(timer);
-  }, [journey.current]);
 
   // 점 전환의 낭독 — 보이는 점들(aria-hidden)은 색만으로는 소리가 없다. 점의
   // 글자가 바뀔 때만 한 문장을 말하고, 첫 마운트는 조용히 지나간다
@@ -336,6 +271,27 @@ export function StatusLine({
   }, [journey.current, journey.points]);
 
   const busy = submit.busy ?? (sending ? "running" : null);
+  // 단추의 지금 얼굴 — 답(영수증 · 막힘)이 먼저, 도는 중, 그다음 잠김. 잠긴 얼굴만 으뜸이 아니다.
+  const submitState =
+    flash === "done"
+      ? " nx-submit--sent"
+      : flash === "failed"
+        ? redOn
+          ? " nx-submit--failed"
+          : " nx-submit--shaking"
+        : busy
+          ? " nx-submit--busy"
+          : submit.enabled
+            ? ""
+            : " nx-submit--locked";
+  const submitLocked = submitState === " nx-submit--locked";
+  // 지금 서 있는 얼굴 — 하나만이다(답이 먼저, 도는 중, 그다음 쉬는 얼굴). 얼굴마다 제 폭을 갖고 서므로 둘이 함께 서면 단추가 두 배로 늘어난다.
+  const submitFace: "idle" | "running" | "retrying" | "done" | "failed" =
+    flash === "done" || flash === "failed"
+      ? flash
+      : busy === "running" || busy === "retrying"
+        ? busy
+        : "idle";
   const reviewers =
     submit.more && daemon.repo?.handoff?.reviewers && daemon.repo.handoff.reviewers.length > 0
       ? daemon.repo.handoff.reviewers
@@ -368,6 +324,13 @@ export function StatusLine({
       .finally(() => setSending(false));
   };
 
+  // 집중 배치로 들어서면 열려 있던 `이번 작업` · 제출 확인은 접는다 — 묶음이 그려지지 않는 동안 열린 채 남지 않게.
+  useEffect(() => {
+    if (!docFocus) return;
+    setWorkOpen(false);
+    setConfirmOpen(false);
+  }, [docFocus]);
+
   return (
     <header
       className={`nx-statusbar nx-cycle--${journey.cycle}${journey.blocked ? " nx-blocked" : ""}`}
@@ -383,277 +346,213 @@ export function StatusLine({
           {narrow ? <MenuIcon /> : <PanelIcon />}
         </button>
       )}
-      {!narrow && <ConvTitle key={sessions.activeId ?? "new"} title={title} onRename={onRename} />}
-      <div
-        className={`nx-anchor nx-project-work${makingState === "on" ? " nx-project-work--making" : ""}`}
-      >
-        <span className="nx-work-scope" title={L.journey.projectWork(scopeName)}>
-          <b>{scopeName}</b>
-          <span className="nx-work-scope-rest">{` · ${L.journey.projectScope}`}</span>
-        </span>
-        <button
-          ref={journeyRef}
-          type="button"
-          className={`nx-journey${makingState === "on" ? " nx-journey--making" : ""}`}
-          title={`${L.journey.projectWork(scopeName)} · ${L.journey.openWork}`}
-          aria-haspopup="dialog"
-          aria-expanded={workOpen}
-          aria-label={workName}
-          onClick={() => {
-            if (!workOpen) ledger.refresh();
-            setConfirmOpen(false);
-            setWorkOpen((open) => !open);
-          }}
-        >
-          <span
-            className={`nx-making${makingState === "off" ? " nx-making--off" : ""}`}
-            aria-hidden="true"
-          >
-            <span className="nx-making-in">
-              {makingState === "check" ? (
-                <span className="nx-making-check">
-                  <SentIcon />
-                </span>
-              ) : makingState === "on" ? (
-                <Spin />
-              ) : null}
-              <RollingWord text={makingText} />
-              {makingState === "on" && turnStartedAt !== null && !narrow && (
-                <Elapsed
-                  startedAt={turnStartedAt}
-                  hintAfterMs={firstTurn ? FIRST_TURN_HINT_MS : undefined}
-                  hint={firstTurn ? L.journey.firstTurnHint : undefined}
-                />
-              )}
+      {!narrow && (
+        <>
+          {/* 프로젝트 이름은 사이드바 전환기가 말한다(S1) — 접혀 있을 때만 제목 앞에 흐리게 선다. */}
+          {sidebarHidden && (
+            <span className="nx-work-scope" title={L.journey.projectWork(scopeName)}>
+              <b>{scopeName}</b>
             </span>
-          </span>
-          {journey.points.map((point, index) => {
-            // 성공 이야기의 둘째 점 — 지금 점이 되기 전에 잠깐 켜진다.
-            const storyLit = story === "point" && index === 1;
-            const pulsing = index === (pulseAt ?? -1) || storyLit;
-            return (
-              // biome-ignore lint/suspicious/noArrayIndexKey: 점의 자리가 곧 정체다 — 글자를 key 로 쓰면 국면이 바뀔 때 점이 버려져 전환이 끊긴다.
-              <span key={index} className="nx-jwrap" aria-hidden="true">
-                {index > 0 && (
-                  <span
-                    className={`nx-jbar${
-                      journey.points[index - 1]?.state === "done" || (story !== null && index === 1)
-                        ? " nx-jbar--full"
-                        : ""
-                    }`}
-                  />
-                )}
-                <span
-                  className={`nx-jstep nx-jstep--${point.state}${storyLit ? " nx-jstep--lit" : ""}${pulsing ? " nx-jstep--pulse" : ""}${narrow && index !== journey.current ? " nx-jstep--bare" : ""}`}
-                >
-                  {/* 지난 점은 채움 차이에 그치지 않게 점 안에 체크를 새긴다 —
-                      저대비 테마에서도 모양으로 남는다(2026-10-04 ux-review). */}
-                  <i aria-hidden="true">{point.state === "done" && <SentIcon />}</i>
-                  {(!narrow || index === journey.current) && (
-                    <span className="nx-jl" key={point.label}>
-                      {point.label}
-                    </span>
-                  )}
+          )}
+          <ConvTitle key={sessions.activeId ?? "new"} title={title} onRename={onRename} />
+        </>
+      )}
+      {/* 집중 배치(초안을 고치는 동안)에는 화면 작업 묶음을 접는다 — `제출` 이 초안 곁에서 `발행` 과 헷갈리지 않게
+          (2026-10-23 기획자 화면 손질 U5). 훅과 상태는 그대로라 돌아오면 같은 모습이다. */}
+      {!docFocus && (
+        <>
+          <div className={`nx-anchor nx-project-work${basePull ? " nx-project-work--base" : ""}`}>
+            {/* 지금 국면의 알 하나(S1) — 여정 세 점은 `이번 작업` 팝의 머리가 크게 그린다.
+                도는 동안 알 왼쪽의 점이 포인트 색으로 숨 쉰다(S2) — 말과 시계는 작업 독이 맡는다. */}
+            <button
+              ref={journeyRef}
+              type="button"
+              className="nx-journey"
+              title={`${L.journey.projectScope} · ${L.journey.openWork}`}
+              aria-haspopup="dialog"
+              aria-expanded={workOpen}
+              aria-label={
+                basePull && baseRow.kind === "ready" ? `${workName} · ${L.work.baseNew}` : workName
+              }
+              onClick={() => {
+                if (!workOpen) ledger.refresh();
+                setConfirmOpen(false);
+                setWorkOpen((open) => !open);
+              }}
+            >
+              <span
+                className={`nx-making-dot${journey.making ? " nx-making-dot--on" : ""}`}
+                aria-hidden="true"
+              />
+              <span className="nx-pill-label">{journey.points[journey.current]?.label}</span>
+              <span className="nx-journey-caret" aria-hidden="true">
+                <ChevronDownIcon />
+              </span>
+              {/* 최신 내용은 알 안의 표식으로(S1) — 수는 말하지 않는다. 누르면 `이번 작업` 의 개발자 쪽 새 내용이 열린다. */}
+              {basePull && baseRow.kind === "ready" && (
+                <span className="nx-pill nx-pill--amber" aria-hidden="true">
+                  {L.work.baseNew}
+                </span>
+              )}
+              {basePull && baseRow.kind !== "ready" && (
+                <span className="nx-base-spin" aria-hidden="true">
+                  <Spin />
+                </span>
+              )}
+            </button>
+            {/* 보이지 않는 낭독 칸 — 국면의 글자가 바뀔 때만 소리를 낸다. */}
+            <span className="nx-sr" role="status">
+              {announce}
+            </span>
+            {workOpen && (
+              <WorkPopover
+                anchor={journeyRef}
+                journey={journey}
+                project={project}
+                repo={daemon.repo}
+                ledger={ledger}
+                author={daemon.status?.authorName ?? null}
+                since={submitCopy.lastAt}
+                noteDraft={workNote}
+                onNoteDraft={setWorkNote}
+                onNote={async (text) => {
+                  await daemon.api.noteToDeveloper(text);
+                }}
+                onWithdraw={async () => {
+                  await daemon.api.withdrawSubmission();
+                }}
+                baseRow={baseRow}
+                baseAsking={baseAsking}
+                onRefreshBase={refreshBase}
+                onOpenScreen={openScreen}
+                onToast={nav.toast}
+                onClose={() => setWorkOpen(false)}
+              />
+            )}
+          </div>
+          <div className="nx-anchor">
+            <button
+              ref={submitRef}
+              type="button"
+              // 이 자리의 유일한 으뜸(잉크)이다. 잠기면 으뜸을 내려놓고 보통 단추의 꺼짐 모양으로 선다 — 눌러서 이유를 읽는
+              // 단추라 `disabled` 가 아니라 `aria-disabled` 다(2026-10-23 화면 전면 재설계 §4 G).
+              className={`nx-btn${submitLocked ? "" : " nx-btn--pri"} nx-submit${submitState}`}
+              // 말풍선이 떠 있는 동안은 같은 문장이 툴팁으로 또 뜨지 않게 뺀다.
+              title={why ? undefined : submit.reason}
+              aria-disabled={!submit.enabled || busy !== null}
+              aria-describedby={why ? "nx-submit-why" : undefined}
+              aria-haspopup="dialog"
+              aria-expanded={confirmOpen}
+              aria-busy={busy !== null || undefined}
+              aria-live="polite"
+              onFocus={() => {
+                // 제출이 막 끝났다면 닫히는 판이 돌려주는 초점이다 — 잠긴 이유를 `제출됐어요` 위에 띄우지 않는다.
+                if (Date.now() < quietUntil.current) return;
+                // 잠긴 채로 닿아도 이유가 서고, 포커스가 머무는 동안 사라지지 않는다.
+                if (!submit.enabled) {
+                  setWhyHeld(true);
+                  setWhyLive(false);
+                  setWhy(submit.reason);
+                }
+              }}
+              onBlur={() => setWhyHeld(false)}
+              onClick={() => {
+                if (busy || flash === "done") return;
+                if (!submit.enabled) {
+                  setConfirmOpen(false);
+                  setWhyLive(true);
+                  setWhy(submit.reason);
+                  return;
+                }
+                setWhy(null);
+                setWorkOpen(false);
+                if (!confirmOpen) loadSubmission();
+                setConfirmOpen((open) => !open);
+              }}
+            >
+              {/* 다섯 얼굴 가운데 하나만 서고, 단추 폭은 서 있는 얼굴의 글에 맞는다(좌우 12px — `제출` 은 글 두 자의 단추).
+              얼굴이 갈릴 때 폭이 0fr ↔ 1fr 로 옮겨 가며 교차 페이드한다 — 오른쪽 묶음이 오른쪽에 붙어 있어 글이 긴 얼굴
+              (`제출하는 중…`)에서는 왼쪽 여정이 부드럽게 한 걸음 밀렸다 돌아온다(2026-10-24 QA 7: 가장 긴 얼굴에 폭을
+              묶어 `제출` 이 155px 상자로 서던 것). 잠긴 얼굴은 쉬는 얼굴과 같은 글자다. 갈아입은 결과는 살아있는 영역이
+              소리로도 흐른다. */}
+              <span className="nx-submit-face" aria-hidden={submitFace !== "idle"}>
+                <span className="nx-submit-face-in">{L.submit.idle}</span>
+              </span>
+              <span className="nx-submit-face" aria-hidden={submitFace !== "running"}>
+                <span className="nx-submit-face-in">
+                  <Spin />
+                  {L.submit.running}
                 </span>
               </span>
-            );
-          })}
-        </button>
-        {(baseRow.kind === "ready" || baseRow.kind === "pulling" || baseRow.kind === "waiting") && (
-          <button
-            type="button"
-            className="nx-btn nx-btn--sm nx-base-pull"
-            title={
-              baseRow.kind === "ready"
-                ? L.work.baseChipTitle(baseRow.behind)
-                : baseRow.kind === "waiting"
-                  ? L.work.baseWaiting
-                  : L.work.basePulling
-            }
-            disabled={baseRow.kind !== "ready" || baseAsking}
-            onClick={refreshBase}
-          >
-            {baseRow.kind === "ready" ? (
-              L.work.basePullCount(baseRow.behind)
-            ) : (
-              <>
-                <Spin />
-                {baseRow.kind === "waiting" ? L.work.basePull : L.work.basePulling}
-              </>
+              <span className="nx-submit-face" aria-hidden={submitFace !== "retrying"}>
+                <span className="nx-submit-face-in">
+                  <Spin />
+                  {L.submit.retrying}
+                </span>
+              </span>
+              <span className="nx-submit-face" aria-hidden={submitFace !== "done"}>
+                <span className="nx-submit-face-in">
+                  <DrawnCheck />
+                  {L.submit.done}
+                </span>
+              </span>
+              <span className="nx-submit-face" aria-hidden={submitFace !== "failed"}>
+                <span className="nx-submit-face-in">
+                  <FailIcon />
+                  {submitCopy.label}
+                </span>
+              </span>
+            </button>
+            {confirmOpen && (
+              <SubmitPopover
+                anchor={submitRef}
+                journey={journey}
+                repo={daemon.repo}
+                onApplyLatest={refreshBase}
+                snapshot={snapshot}
+                projectName={project?.name ?? L.sidebar.brand}
+                loading={reviewLoading}
+                readFailed={readFailed}
+                sendFailed={sendError === "failed"}
+                busy={sending}
+                changed={reviewChanged}
+                lockReason={submit.enabled ? null : submit.reason}
+                since={submitCopy.lastAt}
+                loadDraft={() => daemon.api.handoffDraft()}
+                openTitle={daemon.repo?.handoff?.title ?? null}
+                leaveToken={leaveToken}
+                onRefresh={loadSubmission}
+                reviewers={reviewers}
+                unpublishedPlans={(drafts ?? [])
+                  .filter((one) => one.changedBlocks > 0 || one.pageId === null)
+                  .map((one) => ({ docKey: one.docKey, title: one.title }))}
+                onOpenPlans={() => {
+                  setConfirmOpen(false);
+                  nav.openPlans();
+                }}
+                onClose={() => {
+                  setConfirmOpen(false);
+                  // 스크림을 눌러 닫으면 누름의 기본 동작이 초점을 허공으로 옮긴다 — 열었던 단추로 되돌린다.
+                  if (document.activeElement === document.body) submitRef.current?.focus();
+                }}
+                onConfirm={send}
+                note={noteDraft.key === noteKey ? noteDraft.text : ""}
+                onNote={setNote}
+                onPreview={(screen) => {
+                  setConfirmOpen(false);
+                  openScreen(screen);
+                }}
+              />
             )}
-          </button>
-        )}
-        {/* 보이지 않는 낭독 칸 — 점의 글자가 바뀔 때만 소리를 낸다. */}
-        <span className="nx-sr" role="status">
-          {announce}
-        </span>
-        {workOpen && (
-          <WorkPopover
-            anchor={journeyRef}
-            journey={journey}
-            project={project}
-            repo={daemon.repo}
-            ledger={ledger}
-            author={daemon.status?.authorName ?? null}
-            since={submitCopy.lastAt}
-            noteDraft={workNote}
-            onNoteDraft={setWorkNote}
-            onNote={async (text) => {
-              await daemon.api.noteToDeveloper(text);
-            }}
-            onWithdraw={async () => {
-              await daemon.api.withdrawSubmission();
-            }}
-            baseRow={baseRow}
-            baseAsking={baseAsking}
-            onRefreshBase={refreshBase}
-            onOpenScreen={openScreen}
-            onToast={nav.toast}
-            onClose={() => setWorkOpen(false)}
-          />
-        )}
-      </div>
-      <div className="nx-anchor">
-        <button
-          ref={submitRef}
-          type="button"
-          className={`nx-submit${
-            flash === "done"
-              ? " nx-submit--sent"
-              : flash === "failed"
-                ? redOn
-                  ? " nx-submit--failed"
-                  : " nx-submit--shaking"
-                : busy
-                  ? " nx-submit--busy"
-                  : submit.enabled
-                    ? ""
-                    : " nx-submit--locked"
-          }`}
-          // 말풍선이 떠 있는 동안은 같은 문장이 툴팁으로 또 뜨지 않게 뺀다.
-          title={why ? undefined : submit.reason}
-          aria-disabled={!submit.enabled || busy !== null}
-          aria-describedby={why ? "nx-submit-why" : undefined}
-          aria-haspopup="dialog"
-          aria-expanded={confirmOpen}
-          aria-busy={busy !== null || undefined}
-          aria-live="polite"
-          onFocus={() => {
-            // 제출이 막 끝났다면 닫히는 판이 돌려주는 초점이다 — 잠긴 이유를 `제출됐어요` 위에 띄우지 않는다.
-            if (Date.now() < quietUntil.current) return;
-            // 잠긴 채로 닿아도 이유가 서고, 포커스가 머무는 동안 사라지지 않는다.
-            if (!submit.enabled) {
-              setWhyHeld(true);
-              setWhyLive(false);
-              setWhy(submit.reason);
-            }
-          }}
-          onBlur={() => setWhyHeld(false)}
-          onClick={() => {
-            if (busy || flash === "done") return;
-            if (!submit.enabled) {
-              setConfirmOpen(false);
-              setWhyLive(true);
-              setWhy(submit.reason);
-              return;
-            }
-            setWhy(null);
-            setWorkOpen(false);
-            if (!confirmOpen) loadSubmission();
-            setConfirmOpen((open) => !open);
-          }}
-        >
-          {/* 다섯 얼굴을 한 자리에 겹쳐 둔다 — 단추 폭이 가장 넓은 얼굴에 맞아
-              고정되고, 얼굴은 150ms 교차 페이드로 갈아입는다(왼쪽 여정이 밀리지
-              않게). 잠긴 얼굴은 쉬는 얼굴과 같은 글자다. 갈아입은 결판은 살아있는 영역이 소리로도 흐른다. */}
-          <span className="nx-submit-face" aria-hidden={busy !== null || flash !== null}>
-            {L.submit.idle}
-          </span>
-          <span className="nx-submit-face" aria-hidden={busy !== "running"}>
-            <Spin />
-            {L.submit.running}
-          </span>
-          <span className="nx-submit-face" aria-hidden={busy !== "retrying"}>
-            <Spin />
-            {L.submit.retrying}
-          </span>
-          <span className="nx-submit-face" aria-hidden={flash !== "done"}>
-            <DrawnCheck />
-            {L.submit.done}
-          </span>
-          <span className="nx-submit-face" aria-hidden={flash !== "failed"}>
-            <FailIcon />
-            {submitCopy.label}
-          </span>
-        </button>
-        {confirmOpen && (
-          <SubmitPopover
-            anchor={submitRef}
-            journey={journey}
-            snapshot={snapshot}
-            projectName={project?.name ?? L.sidebar.brand}
-            loading={reviewLoading}
-            readFailed={readFailed}
-            sendFailed={sendError === "failed"}
-            busy={sending}
-            changed={reviewChanged}
-            lockReason={submit.enabled ? null : submit.reason}
-            since={submitCopy.lastAt}
-            loadDraft={() => daemon.api.handoffDraft()}
-            openTitle={daemon.repo?.handoff?.title ?? null}
-            leaveToken={leaveToken}
-            onRefresh={loadSubmission}
-            reviewers={reviewers}
-            onClose={() => {
-              setConfirmOpen(false);
-              // 스크림을 눌러 닫으면 누름의 기본 동작이 초점을 허공으로 옮긴다 — 열었던 단추로 되돌린다.
-              if (document.activeElement === document.body) submitRef.current?.focus();
-            }}
-            onConfirm={send}
-            note={noteDraft.key === noteKey ? noteDraft.text : ""}
-            onNote={setNote}
-            onPreview={(screen) => {
-              setConfirmOpen(false);
-              openScreen(screen);
-            }}
-          />
-        )}
-        {why && (
-          <div id="nx-submit-why" className="nx-why" role={whyLive ? "status" : undefined}>
-            <LockIcon />
-            <span>{why}</span>
+            {why && (
+              <div id="nx-submit-why" className="nx-why" role={whyLive ? "status" : undefined}>
+                <LockIcon />
+                <span>{why}</span>
+              </div>
+            )}
           </div>
-        )}
-      </div>
-    </header>
-  );
-}
-
-/**
- * 세로로 굴러가는 단어 한 개 — 갈아입는 순간에 나가는 말은 위로, 들어오는
- * 말은 아래에서 온다(status.css 의 `nx-roll`). 잠깐 둘 다 그려지는 동안 폭은
- * 넓은 쪽을 지킨다.
- */
-function RollingWord({ text }: { text: string }) {
-  const [pair, setPair] = useState<{ cur: string; prev: string | null }>({ cur: text, prev: null });
-  useEffect(() => {
-    setPair((prev) => (prev.cur === text ? prev : { cur: text, prev: prev.cur }));
-  }, [text]);
-  useEffect(() => {
-    if (pair.prev === null) return;
-    const timer = window.setTimeout(() => setPair((prev) => ({ ...prev, prev: null })), 240);
-    return () => window.clearTimeout(timer);
-  }, [pair]);
-  return (
-    <span className="nx-roll">
-      {pair.prev !== null && (
-        <span key={pair.prev} className="nx-roll-word nx-roll-out">
-          {pair.prev}
-        </span>
+        </>
       )}
-      <span key={pair.cur} className="nx-roll-word nx-roll-in">
-        {pair.cur}
-      </span>
-    </span>
+    </header>
   );
 }

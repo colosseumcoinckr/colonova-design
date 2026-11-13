@@ -1,3 +1,4 @@
+// CI-순수-제외 — spawnSync 로 node 를 띄운다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 /** 개발 명령의 환경변수 전달만 검사한다. 실제 데몬은 부르지 않는다. */
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";

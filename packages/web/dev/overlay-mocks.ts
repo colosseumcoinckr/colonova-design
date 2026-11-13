@@ -86,6 +86,8 @@ export const STATUS = {
   machineProviderActive: { id: "claude", origin: "auto" },
   dev: false,
   authorName: "정인권",
+  // 기획서↔화면 자동 맞춰 보기의 머신 스위치(2026-11-03 A안 1A-1) — 기본은 데몬의 기본(켬)과 같다.
+  planLoop: true,
   agentAutoUpdate: true,
   agentUpdates: {},
   noticeRoute: "slack",
@@ -449,10 +451,12 @@ function settingsDesktop(flags: string[]): void {
  *    notify-block · notify-slow · reset-go · reset-fail · reset-slow
  *  · 업데이트 쪽: all-latest · no-latest · no-agents · update-run · update-fail · check-fail · auto-fail
  *  · AI 쪽: login-needed · login-run · login-fail · login-expired · install-run · install-fail ·
- *    fix-reject · empty-providers · loading — 설치 쪽 셋(install-run · install-fail · fix-reject)은
- *    설치 전의 Claude 카드에서 선다
+ *    fix-reject · empty-providers · loading · loop-off(`기획서와 화면을 서로 맞춰요` 꺼짐 — 2026-11-03 A안) —
+ *    설치 쪽 셋(install-run · install-fail · fix-reject)은 설치 전의 Claude 카드에서 선다
  *  · 연결 쪽: offline · github-expired · work(제출하지 않은 작업이 있는 프로젝트) · author-fail · author-slow
  *  · 계정 쪽(로그인 뒤의 한 줄): acct-none(요금제 모름) · acct-apikey · acct-long(긴 이메일) · acct-free(쓸 수 없는 요금제)
+ *  · 기획서 연결 쪽(2026-10-18): conf-connected(연결만) · conf-rooted(기준 페이지까지) · conf-imported(가져온 기록까지) ·
+ *    conf-expired(연결 만료) · conf-roots(찾기 결과 열둘) · conf-roots-none(결과 없음) · conf-fail(연결 거절) · conf-slow(연결 2초)
  */
 export function SETTINGS_daemon(flags: string[]): Daemon {
   settingsDesktop(flags);
@@ -495,6 +499,8 @@ export function SETTINGS_daemon(flags: string[]): Daemon {
   if (has("login-expired")) {
     status.attention = { kind: "reconnect", what: "agent-login", since: new Date().toISOString() };
   }
+  // 자동 맞춰 보기 스위치(2026-11-03 A안 1A-1) — 끔 상태의 사진.
+  if (has("loop-off")) status.planLoop = false;
   if (has("update-run")) {
     status.agentUpdates = { claude: { phase: "running", at: new Date().toISOString() } };
   }
@@ -566,6 +572,45 @@ export function SETTINGS_daemon(flags: string[]): Daemon {
         handoff: { state: "open" },
       },
     ];
+  }
+  // 기획서(Confluence) 연결 쪽 — 활성 프로젝트의 `confluence` 요약과 연결 · 찾기 · 가져오기 응답.
+  const confFlags = ["conf-connected", "conf-rooted", "conf-imported", "conf-expired"];
+  if (confFlags.some(has)) {
+    const site = "colosseum.atlassian.net";
+    const rooted = has("conf-rooted") || has("conf-imported") || has("conf-expired");
+    patch.projects = [
+      {
+        ...PROJECTS[0],
+        confluence: {
+          site,
+          connected: true,
+          expired: has("conf-expired"),
+          rootTitle: rooted ? "8.8 ColoNova" : null,
+          lastImportAt: has("conf-imported") || has("conf-expired") ? ago(3) : null,
+          pages: has("conf-imported") || has("conf-expired") ? 28 : 0,
+        },
+      },
+      PROJECTS[1],
+    ];
+  }
+  if (has("conf-roots")) {
+    handlers.confluenceSuggestRoots = () => ({
+      roots: Array.from({ length: 12 }, (_, index) => ({
+        id: `90${index}`,
+        title: index === 0 ? "8.8 ColoNova" : `8.8 ColoNova — 보관 ${index}`,
+      })),
+    });
+  }
+  if (has("conf-roots-none")) handlers.confluenceSuggestRoots = () => ({ roots: [] });
+  if (has("conf-fail")) {
+    handlers.confluenceConnect = () =>
+      SETTINGS_DELAY(600).then(() => {
+        throw new Error("Confluence 가 이메일이나 토큰을 받아들이지 않았어요");
+      });
+  }
+  if (has("conf-slow")) {
+    handlers.confluenceConnect = () =>
+      SETTINGS_DELAY(2000).then(() => ({ site: "colosseum.atlassian.net", rootTitle: null }));
   }
   if (has("install-run"))
     patch.install = { kind: "install-claude", line: "Downloading Claude Code 2.2.0..." };

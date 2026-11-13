@@ -42,6 +42,10 @@ export interface AutoThreadRequest {
   defaults?: ProjectDefaults;
   /** 앱 공통 규칙 — appendSystemPrompt 로 실린다. */
   instructions: string;
+  /** 세션이 작업 폴더 밖에서 함께 읽는 폴더(기획서 사본) · 절대 경로(2026-10-23 · 기획서 사본 이동 계획 §6). */
+  additionalDirectories?: string[];
+  /** 화면 AI 가 건드리면 안 되는 기획 작업 저장소 뿌리 · 절대 경로(2026-11-11 감독자 채택 — GLM 교차검토 지적). */
+  planRoots?: string[];
 }
 
 /**
@@ -117,6 +121,12 @@ export async function openAutoThread(
       ...(request.instructions ? { appendSystemPrompt: request.instructions } : {}),
       ...(model ? { model } : {}),
       ...(effort ? { effort } : {}),
+      ...(request.additionalDirectories && request.additionalDirectories.length > 0
+        ? { additionalDirectories: request.additionalDirectories }
+        : {}),
+      ...(request.planRoots && request.planRoots.length > 0
+        ? { planRoots: request.planRoots }
+        : {}),
     },
   });
   return { session, created: true };

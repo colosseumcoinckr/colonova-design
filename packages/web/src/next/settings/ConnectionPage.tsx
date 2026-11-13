@@ -1,11 +1,15 @@
 import { type UIEvent, useEffect, useRef } from "react";
 import type { Daemon } from "../../lib/daemon-client";
+import { timeAgo } from "../../lib/format";
 import { composing } from "../../lib/ime";
+import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
 import type { ConnectionCopy } from "../lib/connection-copy";
 import { resetScope } from "../lib/reset-scope";
 import { nameEscape } from "../lib/settings-shell";
+import { supportFor } from "../lib/support";
 import { CheckIcon, Spin } from "../ui/icons";
+import { confluenceStatus } from "./confluence-form";
 import { BandAlertIcon } from "./icons";
 import { SBand, SGroup, SPage, SRow, useAnnounce } from "./parts";
 import type { AuthorModel } from "./use-author";
@@ -29,6 +33,7 @@ export function ConnectionPage({
   lockReason,
   focusSignal,
   onOpenInvite,
+  onOpenPlansConnect,
   onScroll,
 }: {
   active: boolean;
@@ -41,6 +46,8 @@ export function ConnectionPage({
   /** 값이 오르면 이름 칸에 초점을 둔다(닫기 보호가 저장 실패를 보이려 부른다). */
   focusSignal: number;
   onOpenInvite: () => void;
+  /** 기획서 연결을 연다(2026-11-13 사용자 결정 — 프로젝트 쪽) — 설정이 닫힌 뒤에 선다. */
+  onOpenPlansConnect: () => void;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
 }) {
   const announce = useAnnounce();
@@ -67,7 +74,7 @@ export function ConnectionPage({
             <input
               id="nx-author"
               ref={input}
-              className="nx-sinput"
+              className="nx-input"
               type="text"
               value={author.draft}
               maxLength={AUTHOR_MAX}
@@ -103,23 +110,44 @@ export function ConnectionPage({
             {L.settings.nameSaveFailed}
           </p>
         )}
+        {/* 개발팀 창구(2026-11-12 결정 ㉱) — 초대 파일의 창구 칸을 그대로 보인다. 칸이 없으면
+            «초대 파일에 적혀 있지 않아요» 라고 말한다 — 사용자가 창구를 거기서 정하는 일은 없다. */}
+        <SRow title={L.support.settingsTitle}>
+          {(() => {
+            const support = supportFor(daemon.status?.support);
+            if (support === null) {
+              return <span className="nx-sval">{L.support.settingsUnknown}</span>;
+            }
+            return (
+              <span className="nx-sval">
+                {support.kind === "url"
+                  ? L.support.settingsUrl
+                  : L.support.contact({ name: support.name, room: support.room })}
+                {support.url && (
+                  <>
+                    {" "}
+                    <a
+                      className="nx-slink"
+                      href={support.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={linkClick}
+                    >
+                      {L.support.openRoom}
+                    </a>
+                  </>
+                )}
+              </span>
+            );
+          })()}
+        </SRow>
         <SRow title={L.settings.connectionCode}>
           <span className={`nx-schip nx-schip--${connection.dot}`}>
             <i className={`nx-dot nx-dot--${connection.dot}`} />
             {connection.text}
           </span>
-          {/* 곧 끝나거나 끝난 연결은 해결의 손이 같은 줄에 선다 — 초대 파일을 새로 여는 것이 그 길이다. */}
-          {connection.dot !== "green" && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm"
-              disabled={locked}
-              aria-describedby={lockDesc}
-              onClick={onOpenInvite}
-            >
-              {L.settings.openInvite}
-            </button>
-          )}
+          {/* 같은 일을 하는 `초대 파일 열기` 는 아래 `초대 파일` 줄에 하나만 선다(2026-10-24 QA 19) —
+              연결이 쉬어도 다시 이을 손은 그 줄이 그대로 준다. */}
         </SRow>
         <SRow title={L.settings.inviteRow} sub={L.settings.inviteRowSub}>
           <button
@@ -133,6 +161,30 @@ export function ConnectionPage({
           </button>
         </SRow>
       </SGroup>
+      {/* 기획서(Confluence) 연결은 프로젝트마다 다른 값이다 — 이 컴퓨터 전체의 설정
+          안에 둘 수 없어 프로젝트 쪽의 대화상자로 옮겼다(2026-11-13 사용자 결정).
+          여기는 상태 한 줄과 그 대화상자로 가는 `열기` 뿐이다. 누르면 껍데기가
+          설정을 닫고 닫힘이 확정된 뒤 대화상자가 선다(저장 실패로 설정이 남으면
+          겹쳐 열리지 않는다). 프로젝트가 하나도 없으면 줄 자체가 서지 않는다. */}
+      {daemon.projects.length > 0 &&
+        (() => {
+          const active = daemon.projects.find((entry) => entry.slug === daemon.activeSlug);
+          const summary = active?.confluence;
+          const status = confluenceStatus(summary, null, timeAgo);
+          return (
+            <SGroup>
+              <SRow title={L.plans.title} sub={L.plans.settingsPlansSub}>
+                {active !== undefined && <span className="nx-sval">{active.name}</span>}
+                <span className={`nx-pc-st${summary?.expired === true ? " nx-pc-st--warn" : ""}`}>
+                  {status}
+                </span>
+                <button type="button" className="nx-btn nx-btn--sm" onClick={onOpenPlansConnect}>
+                  {L.plans.settingsPlansOpen}
+                </button>
+              </SRow>
+            </SGroup>
+          );
+        })()}
       {reset.available && (
         <SGroup danger>
           <SRow title={L.settings.resetTitle} sub={L.settings.resetSub}>

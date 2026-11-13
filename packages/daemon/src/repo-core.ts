@@ -78,6 +78,43 @@ export const COMMAND_STALL_MS = 300_000;
  * stash` verbs cannot reach it.
  */
 export const SHELF_REF = "refs/colonova-design/shelf";
+/**
+ * 받아오기로 합치거나 당기기 직전의 HEAD 를 남기는 ref 의 앞자리(2026-11-12 채택) —
+ * `refs/colonova-design/pre-apply/<브랜치>` 모양으로 채워 쓴다. 합침이 끝난 뒤에도
+ * 적용 직전 모습으로 되돌릴 수 있는 마지막 로컬 지점이다(사용자 작업 유실 금지).
+ */
+export const PRE_APPLY_REF = "refs/colonova-design/pre-apply/";
+
+/** 원격 최신 확인(fetch)의 상한 — 웹 요청의 기다림보다 짧아 실패를 일찍 돌려준다(2026-11-12). */
+export const FRESH_FETCH_TIMEOUT_MS = 15_000;
+/** 원격 최신 확인에 실패했을 때 사람이 읽는 문장 — 최신이라고 속이지 않고 다시 시도하게 한다(2026-11-12). */
+export const FRESH_CHECK_FAILED_DETAIL =
+  "최신 내용을 확인하지 못했어요 — 인터넷 연결을 확인한 뒤 다시 시도해 주세요.";
+/** 제출 확정 직전에 이번 작업이 베이스보다 뒤처졌을 때의 안내 — 자동 합침 대신 최신 내용 적용으로 연결한다(2026-11-12). */
+export const SUBMIT_BASE_STALE_DETAIL =
+  "개발자 쪽 새 내용이 있어요 — 최신 내용 적용을 한 뒤 제출해 주세요.";
+/** 새 작업 시작 전 당기기(ff)에 실패했을 때의 안내 — 옛 내용으로 시작하지 않게 막는다(2026-11-12). */
+export const FRESH_APPLY_FAILED_DETAIL = "최신 내용 적용에 실패했어요 — 다시 시도해 주세요.";
+/** 당긴 최신 내용의 준비(설치)가 실패했을 때의 안내 — 오래된 의존성 위에서 시작하지 않게 막는다(2026-11-12). */
+export const FRESH_INSTALL_FAILED_DETAIL =
+  "최신 내용을 받은 뒤 준비를 마치지 못했어요 — 잠시 뒤 다시 보내 주세요.";
+
+/** 최신 확인 게이트의 거절 종류 — network 은 다시 시도, apply 는 최신 내용 적용으로 안내, install 은 잠시 뒤 재시도다. */
+export type FreshGateKind = "network" | "apply" | "install";
+/**
+ * 최신 확인 게이트의 거절(2026-11-12 채택) — 사용자가 읽는 문장을 메시지로 싣고 종류를 `freshGate` 표식으로
+ * 남긴다. 표식은 instanceof 대신 성질 검사로 읽는다(dist · src 를 섞어 읽는 시험에서도 같은 종류로 식별된다).
+ */
+export function freshGateError(kind: FreshGateKind, detail: string): Error {
+  return Object.assign(new Error(detail), { freshGate: kind });
+}
+
+/** 이 오류가 최신 확인 게이트의 거절인가 — 게이트 아닌 실패는 보관 게이트의 옛 의미(삼킴)를 지킨다. */
+export function freshGateKindOf(error: unknown): FreshGateKind | null {
+  if (typeof error !== "object" || error === null || !("freshGate" in error)) return null;
+  const kind = error.freshGate;
+  return kind === "network" || kind === "apply" || kind === "install" ? kind : null;
+}
 
 /** How long the save-time memo turn may take before the default message. */
 export const MEMO_TIMEOUT_MS = 8_000;
@@ -104,6 +141,20 @@ export const GATE_BRIEF: Record<"commit" | "push" | "pr", string> = {
   push: "보관한 변경을 올리지 못했습니다.",
   pr: "개발자에게 제출하지 못했습니다.",
 };
+
+/**
+ * 저장 · 넘기기 게이트가 개발자 알림으로 올리는 문제 키 — `save:` 는 보관 단계
+ * (`save:commit` 은 AI 가 고칠 수 없는 원인 · 같은 실패의 반복, `save:push` 는 같은 올리기
+ * 실패의 반복), `push:` · `submit:` 은 올리기 · 제출 단계다(2026-11-12 기획자 체험).
+ */
+export type GateNoticeKey =
+  | "save:commit"
+  | "save:push"
+  | "push:behind"
+  | "push:auth"
+  | "push:permission"
+  | "submit:permission"
+  | "submit:pr";
 
 /**
  * The same five failures, named for the button the planner pressed rather than
@@ -187,6 +238,10 @@ export function conflictBrief(
   lines.push(
     "두 변경의 뜻을 모두 살려 표식을 지우고 파일을 정리해 주세요.",
     "git 명령은 쓰지 마세요 — 정리가 끝나면 도구가 마무리합니다.",
+    // 정리가 늘 되는 것은 아니다(2026-11-12 채택) — 어느 쪽이 옳은지는 사람이 정한다.
+    "두 변경의 뜻을 함께 살릴 수 없는 부분은 임의로 버리지 말고 남겨 둔 뒤, 판단에 필요한 내용을 답에 적어 주세요. 해결이 보장되지는 않습니다.",
+    // 정리 뒤의 설명과 사람의 확인(2026-11-12 채택) — 최종 판단은 화면을 보는 사람이다.
+    "정리가 끝나면 합쳐진 내용 중 달라진 점을 답에서 짧게 설명해 주세요. 마지막 확인은 사람이 화면에서 하므로, 결과가 확실하다고 말하지 마세요.",
     // 끝의 기준(2026-10-02, claude.dev 「Opus 5.5」: 끝나는 선을 이름 붙이라) — 표식이
     // 남지 않는 것이지 "고쳤다"가 아니다. 범위도 여기서 묶는다.
     "끝의 기준: 위 파일에 충돌 표식이 하나도 남지 않고 두 변경의 뜻이 모두 살아 있는 것입니다 — 그 밖의 파일은 손대지 마세요.",
@@ -330,15 +385,12 @@ export interface RepoWorkspaceOptions {
    * 개발자 알림 (PLAN L11) — 저장·넘기기의 인증·권한 게이트가 문제 키와
    * 함께 여기를 부른다. fleet 의 DeveloperNotice 로 이어진다.
    */
-  notice?: (
-    key: "push:auth" | "push:permission" | "submit:permission" | "submit:pr",
-    detail: string,
-  ) => void;
+  notice?: (key: GateNoticeKey, detail: string) => void;
   /**
-   * 서 있던 개발자 알림을 거둔다 (PLAN L11) — 넘기기 성공이 `submit:pr` 을
-   * 푸는 한 길이다. fleet 의 DeveloperNotice.resolve 로 이어진다.
+   * 서 있던 개발자 알림을 거둔다 (PLAN L11) — 넘기기 성공이 `submit:pr` 을,
+   * 보관 성공이 `save:commit` 을 푸는 길이다. fleet 의 DeveloperNotice.resolve 로 이어진다.
    */
-  resolveNotice?: (key: "submit:pr") => void;
+  resolveNotice?: (key: "submit:pr" | "save:commit") => void;
   /**
    * 한마디 더(U20 · PLAN-UI §10) — 영수증의 상자가 보낸 말의 흔적을 제출
    * 기록에 남기는 손잡이. fleet 이 감독자의 원장(cycle.json 의 submitTrail)으로
@@ -774,7 +826,14 @@ export class RepoCore {
       async (): Promise<DiffFile[]> => {
         if (!this.isCloned()) return [];
         const tracked = parseUnifiedDiff(
-          await this.git(["-c", "core.quotepath=false", "diff", "HEAD", "--no-color"]),
+          await this.git([
+            "-c",
+            "core.quotepath=false",
+            "diff",
+            "HEAD",
+            "--no-color",
+            "--no-renames",
+          ]),
         );
         const files = [...tracked];
         for (const rel of (
@@ -1336,6 +1395,15 @@ export class RepoCore {
   }
 
   /**
+   * 베이스만 새로 받아온다(2026-11-12 채택) — 새 작업 시작 직전 확인 · 제출 확인 창의 새로 읽기 ·
+   * 제출 확정 직전의 원격 확인이 쓴다. 웹 요청의 기다림보다 짧은 상한으로 실패를 일찍 돌려준다.
+   * fetch 는 쓰기이므로 호출자는 차선 작업 안에 있어야 한다.
+   */
+  async fetchBase(timeoutMs: number): Promise<void> {
+    await this.git(["fetch", "origin", this.baseBranch], this.root, {}, false, timeoutMs);
+  }
+
+  /**
    * Which GitHub repository the handoff opens a pull request against.
    *
    * Normally the remote url says so. `COLONOVA_DESIGN_GITHUB_SLUG` (`owner/repo`)
@@ -1442,6 +1510,8 @@ export class RepoCore {
     /** `binary` keeps stdout as bytes and answers base64 — `git show` on a
      *  committed capture would otherwise come back utf8-mangled. */
     binary = false,
+    /** atomic 검사·보관의 명령별 벽시계 상한. 종료를 확인한 뒤 반환한다. */
+    timeoutMs?: number,
   ): Promise<string> {
     // PLAN L1: 클론을 바꾸는 git 은 차선 작업 안에서만 돈다. 판정은 동사로
     // 한다 — 다른 작업 트리 cwd(handoff-preview 의 워크트리)로 도는 명령도
@@ -1467,7 +1537,7 @@ export class RepoCore {
         // `.cmd` shims are not executables on Windows; the resolver returns a
         // real git.exe, so the shell is only for the unresolved fallback.
         shell: windows && git === "git",
-        detached: false,
+        detached: timeoutMs !== undefined && !windows,
         stdio: ["ignore", "pipe", "pipe"],
         env: {
           ...process.env,
@@ -1490,8 +1560,9 @@ export class RepoCore {
       windows ? windowsGitArgs(argv) : argv,
       stallMs,
       binary,
+      timeoutMs,
     );
-    if (result.code === 0) return result.stdout;
+    if (result.code === 0 && !result.stalled) return result.stdout;
     // PLAN D36: a Korean lead, then git's own words — the throw may reach a
     // notice verbatim, and `exit` was never a word the planner wrote.
     throw new Error(
@@ -1532,6 +1603,7 @@ export class RepoCore {
     args: string[] = [],
     stallMs?: number,
     binary = false,
+    timeoutMs?: number,
   ): Promise<{
     code: number | null;
     output: string;
@@ -1563,11 +1635,14 @@ export class RepoCore {
     let stalled = false;
     let watchdog: NodeJS.Timeout | undefined;
     let hardKill: NodeJS.Timeout | undefined;
+    let deadline: NodeJS.Timeout | undefined;
     const clearTimers = () => {
       clearTimeout(watchdog);
       clearTimeout(hardKill);
+      clearTimeout(deadline);
       watchdog = undefined;
       hardKill = undefined;
+      deadline = undefined;
     };
     const rearm = () => {
       if (stallMs === undefined || stalled) return;
@@ -1622,6 +1697,16 @@ export class RepoCore {
       const bytes = stdoutBytes.length > 0 ? Buffer.concat(stdoutBytes).toString("base64") : stdout;
       resolve({ code, output, stdout: binary ? bytes : stdout, lastLine, stalled });
     });
+    if (timeoutMs !== undefined) {
+      deadline = setTimeout(
+        () => {
+          stalled = true;
+          killTree(child, "SIGKILL");
+        },
+        Math.max(1, timeoutMs),
+      );
+      deadline.unref();
+    }
     return promise;
   }
 

@@ -1,5 +1,6 @@
 import type { ThreadSummary } from "@colonova-design/protocol";
-import { type Ref, useState } from "react";
+import { Monitor } from "lucide-react";
+import { type ReactNode, type Ref, useState } from "react";
 import type { Sessions } from "../../hooks/useSessions";
 import type { Daemon } from "../../lib/daemon-client";
 import { L } from "../labels";
@@ -10,27 +11,27 @@ import { Count } from "../ui/Count";
 import {
   CloseIcon,
   GearIcon,
-  HomeIcon,
   LightbulbIcon,
   PanelIcon,
+  PlansDocIcon,
   PlusIcon,
   SearchIcon,
+  Spin,
 } from "../ui/icons";
 import { ConversationList } from "./ConversationList";
 import { OtherProjects } from "./OtherProjects";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 
-/**
- * 사이드바(U1 · U7) — 위에서부터 `새 대화 · 홈 · 찾기`, 프로젝트 전환기, 다른
- * 프로젝트 줄, 날짜 머리 아래의 대화 목록, 접힌 `도구가 한 일`, 바닥에 기능 제안과
- * 작성자 · 설정. 넓은 창은 열(접힘 · 너비 조절 가능), 좁은 창은 `≡` 뒤의 서랍이다 — 모양은
- * 셸의 CSS 가 정하고 이 컴포넌트는 같은 내용을 그린다.
- */
+/** 프로젝트 · 자리 셋 · 자리별 목록 · 설정을 놓는다. 좁은 창에서는 같은 내용이 서랍에 선다(2026-10-23 화면 전면 재설계 §3.2). */
 export function Sidebar({
   daemon,
   sessions,
   activeSessionId,
-  view,
+  plansOn = false,
+  chatShown = true,
+  planDrafts = 0,
+  running = false,
+  plansContent,
   titleFor,
   nav,
   onPalette,
@@ -45,7 +46,14 @@ export function Sidebar({
   /** `useSessions` 의 결과 — 대화 목록의 지우기 · 이름 바꾸기가 쓴다. */
   sessions: Sessions;
   activeSessionId: string | null;
-  view: "home" | "thread";
+  /** 기획서 자리인가. 자리 표시와 목록 선택에 쓴다. */
+  plansOn?: boolean;
+  /** 대화 칸이 눈앞에 있는가 — 기획서 자리 · 좁은 창 화면 탭에서 끝난 답은 «보지 못한» 것으로 단다(2026-11-12 끝남 표시). */
+  chatShown?: boolean;
+  /** 지금 프로젝트의 작성 중인 초안 수 — `기획서` 줄 끝에 흐리게 선다(2026-10-23 기획자 화면 손질 D5). */
+  planDrafts?: number;
+  running?: boolean;
+  plansContent?: ReactNode;
   titleFor: (thread: ThreadSummary) => string;
   nav: ShellNav;
   /** ⌘K 팔레트를 연다. */
@@ -68,8 +76,9 @@ export function Sidebar({
   const active = projects.find((project) => project.slug === daemon.activeSlug) ?? null;
   // `프로젝트 N개 더 보기` 가 전환기 목록을 여는 신호 — 누를 때마다 한 칸 올라 목록이 열린다.
   const [openSwitcher, setOpenSwitcher] = useState(0);
-  // 홈 배지는 확인 요청만 센다 — 「내 손이 필요한 일」의 수, 모든 프로젝트에 걸쳐(U6).
-  const waiting = projects.reduce((sum, project) => sum + project.pendingCount, 0);
+  // `화면` 줄의 기다림 배지 — 지금 프로젝트의 「내 손이 필요한 일」만 센다(2026-10-31 홈 걷기 —
+  // 옛 `홈` 줄은 모든 프로젝트의 수를 섰다). 다른 프로젝트의 기다림은 `다른 프로젝트` 줄이 말한다.
+  const waiting = active?.pendingCount ?? 0;
   const author = daemon.status?.authorName?.trim() || null;
   // 설정 바퀴의 점 — 깔려 있는 AI 중 새 버전을 아는 것이 있으면 한 알(PLAN-UI U12).
   const updateReady = (daemon.status?.providers ?? []).some(
@@ -77,7 +86,14 @@ export function Sidebar({
   );
 
   return (
-    <aside className="nx-sidebar" aria-hidden={hidden} inert={hidden} ref={containerRef}>
+    <aside
+      {...(drawer && !hidden ? { role: "dialog" as const, "aria-modal": true as const } : {})}
+      aria-label={drawer ? L.shell.menu : undefined}
+      className="nx-sidebar"
+      aria-hidden={hidden}
+      inert={hidden}
+      ref={containerRef}
+    >
       <div className="nx-side-top">
         <span className="nx-brand">
           <img src="/colonova-icon.svg" alt="" width={20} height={20} />
@@ -94,60 +110,101 @@ export function Sidebar({
           {drawer ? <CloseIcon /> : <PanelIcon />}
         </button>
       </div>
-      <nav className="nx-side-nav" aria-label={L.sidebar.nav}>
-        <button
-          type="button"
-          className="nx-side-row nx-side-row--new"
-          onClick={() => nav.newThread()}
-        >
-          {/* 사이드바의 으뜸 행동 — 브랜드 색이 든 알약 하나로 다른 두 줄과 가른다(2026-10-06). */}
-          <span className="nx-newmark">
-            <PlusIcon />
-          </span>
-          {L.sidebar.newConv}
-          <kbd>{keyHint("⌘T")}</kbd>
-        </button>
-        <button
-          type="button"
-          className={`nx-side-row${view === "home" ? " nx-side-row--on" : ""}`}
-          aria-current={view === "home" ? "page" : undefined}
-          onClick={nav.goHome}
-        >
-          <HomeIcon />
-          {L.sidebar.home}
-          {waiting > 0 && <Count n={waiting} className="nx-r" />}
-        </button>
-        <button type="button" className="nx-side-row" onClick={onPalette}>
-          <SearchIcon />
-          {L.sidebar.find}
-          <kbd>{keyHint("⌘K")}</kbd>
-        </button>
-      </nav>
       <ProjectSwitcher
         daemon={daemon}
         projects={projects}
         active={active}
         onSwitch={nav.switchProject}
         onToast={nav.toast}
+        onOpenPlansConnect={nav.openPlansConnect}
         openSignal={openSwitcher}
       />
-      <OtherProjects
-        projects={projects}
-        activeSlug={daemon.activeSlug}
-        onSwitch={nav.switchProject}
-        onMore={() => setOpenSwitcher((count) => count + 1)}
-      />
-      <ConversationList
-        daemon={daemon}
-        project={active}
-        sessions={sessions}
-        activeSessionId={activeSessionId}
-        threadView={view === "thread"}
-        titleFor={titleFor}
-        onOpen={(thread) => active && nav.openThread(active.slug, thread.id)}
-        onRenameSession={onRenameSession}
-        onToast={nav.toast}
-      />
+      <nav className="nx-side-nav" aria-label={L.sidebar.nav}>
+        <button type="button" className="nx-side-row" onClick={onPalette}>
+          <SearchIcon />
+          {L.sidebar.find}
+          <kbd>{keyHint("⌘K")}</kbd>
+        </button>
+        {/* 왼쪽 줄의 차례는 찾기 · 기획서 · 화면이다 — 홈 자리는 2026-10-31 사용자 결정으로 걷혔다. */}
+        <button
+          type="button"
+          className={`nx-side-row${plansOn ? " nx-side-row--on" : ""}`}
+          aria-current={plansOn ? "page" : undefined}
+          aria-label={planDrafts > 0 ? L.sidebar.plansDraftsAria(planDrafts) : undefined}
+          title={L.plans.open}
+          onClick={nav.openPlans}
+        >
+          <PlansDocIcon />
+          {L.plans.sidebar}
+          {planDrafts > 0 && (
+            <span className="nx-side-note" aria-hidden="true">
+              {L.sidebar.plansDrafts(planDrafts)}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          className={`nx-side-row${!plansOn ? " nx-side-row--on" : ""}`}
+          aria-current={!plansOn ? "page" : undefined}
+          aria-label={
+            running
+              ? L.sidebar.screenRunning
+              : waiting > 0
+                ? L.sidebar.waitingAnswerCount(waiting)
+                : undefined
+          }
+          title={
+            running
+              ? L.sidebar.screenRunning
+              : waiting > 0
+                ? L.sidebar.waitingAnswerCount(waiting)
+                : undefined
+          }
+          onClick={nav.openScreen ?? nav.showScreen}
+        >
+          <Monitor className="nx-i" size={16} aria-hidden="true" />
+          {L.sidebar.screen}
+          {/* 옛 `홈` 줄의 기다림 배지(2026-10-31 홈 걷기) — 지금 프로젝트의 기다림만 센다. */}
+          {waiting > 0 && !running && <Count n={waiting} className="nx-r" />}
+          {running && (
+            <span className="nx-side-note" title={L.sidebar.screenRunning}>
+              <Spin />
+            </span>
+          )}
+        </button>
+      </nav>
+      {plansContent}
+      <div className="nx-side-conversations" hidden={plansOn}>
+        <div className="nx-side-list-head">
+          <h2>{L.sidebar.convs}</h2>
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm nx-btn--ghost"
+            onClick={() => nav.newThread()}
+            title={keyHint(`${L.sidebar.newConv} · ⌘T`)}
+          >
+            <PlusIcon />
+            {L.sidebar.newConv}
+          </button>
+        </div>
+        <OtherProjects
+          projects={projects}
+          activeSlug={daemon.activeSlug}
+          onSwitch={nav.switchProject}
+          onMore={() => setOpenSwitcher((count) => count + 1)}
+        />
+        <ConversationList
+          daemon={daemon}
+          project={active}
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          titleFor={titleFor}
+          chatShown={chatShown}
+          onOpen={(thread) => active && nav.openThread(active.slug, thread.id)}
+          onRenameSession={onRenameSession}
+          onToast={nav.toast}
+        />
+      </div>
       <div className="nx-side-bottom">
         <button type="button" className="nx-side-row nx-fb-row" onClick={onFeedback}>
           <LightbulbIcon />

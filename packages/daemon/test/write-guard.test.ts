@@ -16,6 +16,8 @@ import {
   fileWriteVerdict,
   OUTSIDE_COMMAND_REFUSAL,
   OUTSIDE_WRITE_REFUSAL,
+  PLANS_STATE_REFUSAL,
+  PLANS_WRITE_REFUSAL,
   pathWritable,
   SHELL_MATCHER,
   sessionGuardHookDecision,
@@ -32,9 +34,18 @@ function scene() {
   const root = realpathSync(mkdtempSync(join(tmpdir(), "write-guard-")));
   const home = join(root, "home");
   const clone = join(home, ".colonova-design", "projects", "p", "repo");
+  const mirror = join(home, ".colonova-design", "projects", "p", "confluence");
   const elsewhere = join(root, "elsewhere");
+  const plans = join(home, ".colonova-design", "projects", "p", "plans");
   const tmp = join(root, "scratch-tmp");
-  for (const dir of [join(clone, "src"), elsewhere, tmp, join(home, ".claude")]) {
+  for (const dir of [
+    join(clone, "src"),
+    join(mirror, "COLO"),
+    elsewhere,
+    tmp,
+    join(plans, "drafts"),
+    join(home, ".claude"),
+  ]) {
     mkdirSync(dir, { recursive: true });
   }
   writeFileSync(join(elsewhere, "secret.txt"), "secret");
@@ -49,6 +60,8 @@ function scene() {
     root,
     home,
     clone,
+    mirror,
+    plans,
     elsewhere,
     tmp,
     scope,
@@ -123,7 +136,162 @@ test("클론 밖은 거절한다 — 설정 · 홈 · 바깥 폴더 · 부모 ·
   }
 });
 
-test("심볼릭 링크로 클론을 빠져나가는 길은 막는다 — 있는 파일 · 없는 파일 · 없는 폴더 아래", (t) => {
+test("클론 안의 docs/plans 는 이제 보통 레포 폴더다 — 훅도 지난다(2026-10-23 · 기획서 사본 이동 계획 §5)", () => {
+  const s = scene();
+  try {
+    for (const path of [
+      "docs/plans/a.md",
+      "src/../docs/plans/confluence.json",
+      join(s.clone, "docs", "plans", "COLO", "정책서.storage.xml"),
+      "docs/plans",
+    ]) {
+      assert.deepEqual(
+        fileWriteVerdict("Edit", { file_path: path }, s.scope),
+        { allow: true },
+        `${path} 는 보통 레포 폴더다`,
+      );
+    }
+    assert.deepEqual(
+      sessionGuardHookDecision("Write", { file_path: "docs/plans/a.md" }, s.scope),
+      {},
+    );
+  } finally {
+    s.dispose();
+  }
+});
+
+test("기획서 사본 뿌리는 클론 밖 거절이지만 이유만 기획서 말이다 — 밖 · 무지정은 클론 밖 문장(2026-10-23 · 기획서 사본 이동 계획 §6)", () => {
+  const s = scene();
+  const scope: WriteScope = { ...s.scope, mirrorRoots: [s.mirror] };
+  try {
+    // 사본 안의 Write 는 기획서 이유로 거절한다 — AI 가 사본 파일을 보고 고치려 들기 때문이다.
+    for (const path of [join(s.mirror, "COLO", "정책서.md"), join(s.mirror, "confluence.json")]) {
+      assert.deepEqual(
+        fileWriteVerdict("Write", { file_path: path }, scope),
+        { allow: false, reason: PLANS_WRITE_REFUSAL },
+        `${path} 는 사본 뿌리 안이다`,
+      );
+    }
+    // 사본 뿌리 밖 · 클론 밖은 여전히 클론 밖 거절이다.
+    assert.deepEqual(fileWriteVerdict("Write", { file_path: join(s.elsewhere, "x.txt") }, scope), {
+      allow: false,
+      reason: OUTSIDE_WRITE_REFUSAL,
+    });
+    // mirrorRoots 를 안 주면 사본 자리도 보통 클론 밖이다 — 넣는 쪽(클로드 드라이버)이 아직 없어도 같다.
+    assert.deepEqual(
+      fileWriteVerdict("Write", { file_path: join(s.mirror, "COLO", "정책서.md") }, s.scope),
+      { allow: false, reason: OUTSIDE_WRITE_REFUSAL },
+    );
+    // 셸 도구는 사본 뿌리를 이유로 보지 않는다 — 클론 밖 파괴의 한 문장이 그 몫이다(알고 둔 틈).
+    assert.deepEqual(bashCommandVerdict(`echo x > ${join(s.mirror, "a.md")}`, scope), {
+      allow: false,
+      reason: OUTSIDE_COMMAND_REFUSAL,
+    });
+  } finally {
+    s.dispose();
+  }
+});
+
+test("기획 작업 저장소는 어떤 길로도 직접 건드리지 못한다 — 쓰기 도구 · 셸 인자 · cd · heredoc 본문(2026-11-11 감독자 채택 · 실사용 재현)", () => {
+  const s = scene();
+  const scope: WriteScope = { ...s.scope, mirrorRoots: [s.mirror], planRoots: [s.plans] };
+  try {
+    const draft = join(s.plans, "drafts", "n-1.json");
+    // 파일 쓰기 도구 — planRoots 가 허용 뿌리(임시 폴더 · extraRoots) 아래여도 먼저 거절한다.
+    const nestedTmp = join(s.tmp, "plans");
+    mkdirSync(nestedTmp, { recursive: true });
+    assert.deepEqual(
+      fileWriteVerdict(
+        "Write",
+        { file_path: join(nestedTmp, "x.json") },
+        { ...s.scope, tempRoots: [s.tmp], planRoots: [nestedTmp] },
+      ),
+      { allow: false, reason: PLANS_STATE_REFUSAL },
+      "임시 폴더 아래의 planRoots 도 허용보다 먼저 거절한다",
+    );
+    assert.deepEqual(fileWriteVerdict("Write", { file_path: draft }, scope), {
+      allow: false,
+      reason: PLANS_STATE_REFUSAL,
+    });
+    // 상대 경로로 빠져나가는 길 — 클론에서 `..` 로 프로젝트 폴더 아래를 겨눈다.
+    assert.deepEqual(
+      fileWriteVerdict(
+        "Write",
+        { file_path: join("..", "plans", "drafts", "n-1.json") },
+        { ...scope, base: s.clone },
+      ),
+      { allow: false, reason: PLANS_STATE_REFUSAL },
+      "클론에서 .. 로 빠져나가는 상대 경로도 거절한다",
+    );
+    // 셸 — 쓰기 리다이렉션 · 인자 짚기 · cd 의 목적지 모두 같은 거절이다.
+    for (const command of [
+      `echo x > ${draft}`,
+      `cat ${draft}`,
+      `cd ${s.plans}`,
+      `cd ${s.plans} && python3 - <<'EOF'\nopen("drafts/n-1.json","w")\nEOF`,
+    ]) {
+      assert.deepEqual(
+        bashCommandVerdict(command, scope),
+        { allow: false, reason: PLANS_STATE_REFUSAL },
+        `${command} 는 plans 를 짚는다`,
+      );
+    }
+    // heredoc 본문 안의 절대 경로 — scanShell 의 인자 밖이라 문자열 스캔이 잡는다.
+    const heredoc = `python3 - <<'PY'\nfrom pathlib import Path\np = Path("${draft}")\np.write_text("{}")\nPY`;
+    assert.deepEqual(bashCommandVerdict(heredoc, scope), {
+      allow: false,
+      reason: PLANS_STATE_REFUSAL,
+    });
+    // 앱 데이터 폴더 표식 + plans 마디의 만남 — Path.home() 조각 경로.
+    assert.deepEqual(
+      bashCommandVerdict(
+        `python3 -c "from pathlib import Path; (Path.home()/'.colonova-design'/'projects'/'p'/'plans'/'x.json').write_text('{}')"`,
+        scope,
+      ),
+      { allow: false, reason: PLANS_STATE_REFUSAL },
+      "홈에서 조각 내린 plans 경로도 거절한다",
+    );
+    assert.deepEqual(
+      bashCommandVerdict(
+        `python3 -c 'import os; open(os.path.join(os.path.expanduser("~"), ".colonova-design", "projects", "p", "plans", "drafts", "n-1.json"), "w").write("{}")'`,
+        scope,
+      ),
+      { allow: false, reason: PLANS_STATE_REFUSAL },
+      "os.path.join으로 조합한 앱의 초안 저장 경로도 거절한다",
+    );
+    // planRoots 가 없으면 기존과 같다 — 같은 문자도 통과다(뿌리를 모르는 세션).
+    assert.equal(
+      bashCommandVerdict(heredoc, s.scope).allow,
+      true,
+      "planRoots 가 비면 문자열 스캔은 작동하지 않는다",
+    );
+    // 정상 작업의 오탐 없음 — 레포의 plans-map.json · 클론 안 docs/plans.
+    assert.equal(bashCommandVerdict("cat plans-map.json", scope).allow, true);
+    assert.equal(bashCommandVerdict("cat docs/plans/spec.md", scope).allow, true);
+    // plans 뿌리의 접두 오탐 없음 — `…/plans` 로 시작하는 이름(`plans-map.json`)은 다른 파일이다.
+    assert.equal(
+      bashCommandVerdict(`cat ${s.plans}-map.json`, scope).allow,
+      true,
+      "뿌리 접두가 같은 이름은 걸리지 않는다",
+    );
+    // 연결 클론이 앱 데이터 폴더 아래 있어도 정상 경로는 지난다 — repo 아래의 plans 는 저장소가 아니다.
+    assert.equal(
+      bashCommandVerdict(`cat $HOME/.colonova-design/projects/p/repo/docs/plans/spec.md`, scope)
+        .allow,
+      true,
+      "repo 아래의 plans 마디는 저장소가 아니다",
+    );
+    assert.equal(
+      fileWriteVerdict("Write", { file_path: "docs/plans/spec.md" }, scope).allow,
+      true,
+      "클론 안의 docs/plans 는 보통 레포 폴더다",
+    );
+  } finally {
+    s.dispose();
+  }
+});
+
+test("심볼릭 링크로 클론을 빠져나가는 길은 막는다 — 있는 파일 · 없는 파일 · 없는 폴더 아래", () => {
   const s = scene();
   try {
     for (const path of [
@@ -604,6 +772,10 @@ test("거절 문장은 AI 가 답변에 옮겨도 사용자 어휘다 — 개발
     );
   }
   assert.ok(OUTSIDE_COMMAND_REFUSAL.includes("관리자 권한"), "sudo 이유가 들어 있다");
+  // 기획서 사본의 거절은 판정이 아니라 이유만 바뀐 문장이다 — 무엇을 하라는지 말한다(2026-10-23 · 기획서 사본 이동 계획 §6).
+  assert.ok(!/(?<![패리])턴|경로|git|커밋|브랜치|\bPR\b|데몬/i.test(PLANS_WRITE_REFUSAL));
+  assert.ok(PLANS_WRITE_REFUSAL.includes("기획서"));
+  assert.ok(PLANS_WRITE_REFUSAL.endsWith("Confluence 에서 고쳐 주세요."));
 });
 
 // ---------------------------------------------------------------------------
@@ -671,6 +843,12 @@ test("코어의 decidePermission 이 같은 판정을 낸다(행동) — 클론 
     behavior: "deny",
     message: OUTSIDE_WRITE_REFUSAL,
   });
+  // 클론 안의 docs/plans 는 이제 보통 레포 폴더다 — 기획서 특례는 걷었다(2026-10-23 · 기획서 사본 이동 계획 §5).
+  assert.equal((await decide(edit("docs/plans/a.md")).verdict).behavior, "allow");
+  assert.equal(
+    (await decide(edit(join(cwd, "docs", "plans", "confluence.json"))).verdict).behavior,
+    "allow",
+  );
   for (const command of ["sudo ls", "rm -rf ~/x", "echo x > ~/.zshrc"]) {
     assert.deepEqual(await decide(exec(command)).verdict, {
       behavior: "deny",
@@ -726,6 +904,11 @@ test("코어의 쓰기 정책도 같은 함수를 읽는다 — 기본 정책 ·
   assert.match(core, /bashCommandVerdict\(command, \{ cwd: this\.cwd \}\)/);
   assert.match(core, /message: OUTSIDE_WRITE_REFUSAL/);
   assert.match(core, /message: OUTSIDE_COMMAND_REFUSAL/);
+  assert.doesNotMatch(
+    core,
+    /plansFolderTarget|PLANS_WRITE_REFUSAL/,
+    "기획서 특례는 걷었다 — 사본은 클론 밖이라 일반 규칙으로 막는다(2026-10-23 · 기획서 사본 이동 계획 §5)",
+  );
   assert.doesNotMatch(
     core,
     /containsPath/,

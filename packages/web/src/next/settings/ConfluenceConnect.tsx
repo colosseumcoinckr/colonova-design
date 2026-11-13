@@ -1,0 +1,286 @@
+import type { KeyboardEvent } from "react";
+import type { Daemon } from "../../lib/daemon-client";
+import { composing } from "../../lib/ime";
+import { linkClick } from "../../lib/open-link";
+import { L } from "../labels";
+import { Spin } from "../ui/icons";
+import { TOKEN_PAGE_URL } from "./confluence-form";
+import { SGroup, SRow } from "./parts";
+import { useConfluenceConnect } from "./use-confluence-connect";
+
+/**
+ * 기획서 연결(2026-10-18 기획서 동기화 1단계, 같은 날 개선 패스) — 사이트 · 이메일 · 토큰 · 기준 페이지.
+ * 이메일과 토큰은 일회성 입력이다: 제출 뒤에는 값이 어디에도 남지 않는다(모델의 걸음이 지운다). 연결된 뒤에는
+ * 입력 칸이 접히고(`다시 연결하기` 로 다시 연다) 사이트 · 계정 · 기준 페이지가 줄로 서며, 기준 페이지는 `바꾸기` 로
+ * 다시 고를 수 있다 — 찾기는 저장된 자격으로 돈다. 연결 · 자격 모두 활성 프로젝트의 것이다 — 자격은 프로젝트마다
+ * 따로 저장된다(2026-11-03). 프로젝트 이름 칩은 걷었다 — 2026-11-13 사용자 결정으로 이 폼을 서는 기획서
+ * 연결 대화상자의 머리가 프로젝트 이름을 말한다(설정 안에는 한 줄만 남았다).
+ */
+export function ConfluenceConnect({ daemon, locked }: { daemon: Daemon; locked: boolean }) {
+  const model = useConfluenceConnect(daemon);
+  const { state, summary } = model;
+  const busy = state.phase === "connecting";
+  const linked = state.linked !== null || summary?.connected === true;
+  const expired = summary?.expired === true;
+  const rootTitle = state.linked?.rootTitle ?? summary?.rootTitle ?? null;
+  // 입력 칸 — 연결이 안 섰거나 끊겼거나(만료) 사용자가 다시 연결하러 연 동안.
+  const showCreds = !linked || expired || state.reconnecting;
+  // 기준 페이지 찾기 — 아직 못 정했거나 바꾸러 연 동안. 연결이 끊기면 찾기도 못 돌므로 서지 않는다.
+  const finder = linked && !expired && (rootTitle === null || state.changingRoot);
+  const chipTone =
+    model.tone === "ok" ? " nx-pill--green" : model.tone === "warn" ? " nx-pill--amber" : "";
+  const submitOnEnter = (event: KeyboardEvent) => {
+    if (composing(event)) return;
+    if (event.key === "Enter" && model.ready && !busy) model.connect();
+  };
+
+  return (
+    <SGroup>
+      {/* 첫 줄은 상태만 — 대화상자 머리가 이미 「기획서 연결」과 그 보조를 말한다(2026-11-13 R1-2). */}
+      <SRow title={L.plans.statusRow}>
+        <span className={`nx-pill${chipTone}`}>{model.status}</span>
+      </SRow>
+
+      {linked && !showCreds && (
+        <SRow title={L.plans.site}>
+          <span className="nx-sval">{model.site}</span>
+          <button
+            type="button"
+            className="nx-btn nx-btn--sm"
+            disabled={locked}
+            onClick={model.startReconnect}
+          >
+            {L.plans.reconnect}
+          </button>
+        </SRow>
+      )}
+
+      {linked && !showCreds && summary?.account !== undefined && (
+        <SRow title={L.plans.account} sub={L.plans.accountSub}>
+          <span className="nx-sval">{summary.account}</span>
+        </SRow>
+      )}
+
+      {showCreds && (
+        <div className="nx-sform">
+          {/* 입력 셋 — 한 줄기로 세운 공통 칸(nx-field · nx-input · 도움말). 이메일과 토큰은 일회성이다. */}
+          <div className="nx-field">
+            <label className="nx-field-label" htmlFor="nx-conf-site">
+              {L.plans.site}
+            </label>
+            <input
+              id="nx-conf-site"
+              className="nx-input"
+              type="text"
+              value={state.site}
+              maxLength={200}
+              placeholder={L.plans.sitePlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={locked}
+              onChange={(event) => model.setSite(event.target.value)}
+              // biome-ignore lint/a11y/noAutofocus: 기획서 연결 대화상자가 열리면 사이트 칸부터 — 연결 전 첫 입력 자리다(2026-11-13 감독자 걷기).
+              autoFocus
+            />
+          </div>
+          <div className="nx-field">
+            <label className="nx-field-label" htmlFor="nx-conf-email">
+              {L.plans.email}
+            </label>
+            <input
+              id="nx-conf-email"
+              className="nx-input"
+              type="email"
+              value={state.email}
+              maxLength={200}
+              placeholder={L.plans.emailPlaceholder}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={locked}
+              onChange={(event) => model.setEmail(event.target.value)}
+              onKeyDown={submitOnEnter}
+            />
+          </div>
+          <div className="nx-field">
+            <label className="nx-field-label" htmlFor="nx-conf-token">
+              {L.plans.token}
+            </label>
+            <input
+              id="nx-conf-token"
+              className="nx-input"
+              type="password"
+              value={state.token}
+              maxLength={400}
+              placeholder={L.plans.tokenPlaceholder}
+              autoComplete="new-password"
+              disabled={locked}
+              onChange={(event) => model.setToken(event.target.value)}
+              onKeyDown={submitOnEnter}
+            />
+            <span className="nx-field-help">{L.plans.tokenNote}</span>
+            <span className="nx-field-help">
+              {L.plans.tokenHelp}{" "}
+              <a
+                className="nx-slink"
+                href={TOKEN_PAGE_URL}
+                target="_blank"
+                rel="noreferrer"
+                onClick={linkClick}
+              >
+                {L.plans.tokenHelpLink}
+              </a>
+            </span>
+          </div>
+          <div className="nx-sform-act">
+            {state.reconnecting && !busy && (
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm nx-btn--ghost"
+                onClick={model.cancelReconnect}
+              >
+                {L.plans.cancel}
+              </button>
+            )}
+            {/* 이 쪽의 으뜸은 하나 — 연결하기(2026-10-23 화면 전면 재설계 §4 H). */}
+            <button
+              type="button"
+              className="nx-btn nx-btn--pri"
+              disabled={locked || busy || !model.ready}
+              onClick={model.connect}
+            >
+              {busy ? (
+                <>
+                  <Spin /> {L.plans.connecting}
+                </>
+              ) : linked ? (
+                L.plans.reconnect
+              ) : (
+                L.plans.connect
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {linked && !expired && (
+        <SRow
+          title={L.plans.rootQuery}
+          sub={L.plans.rootSub}
+          htmlFor={finder ? "nx-conf-root" : undefined}
+        >
+          {finder ? (
+            <>
+              <span className="nx-sfield">
+                <input
+                  id="nx-conf-root"
+                  className="nx-input"
+                  type="text"
+                  value={state.rootQuery}
+                  maxLength={200}
+                  placeholder={L.plans.rootPlaceholder}
+                  autoComplete="off"
+                  disabled={locked}
+                  onChange={(event) => model.setRootQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (composing(event)) return;
+                    if (
+                      event.key === "Enter" &&
+                      state.rootQuery !== "" &&
+                      !state.finding &&
+                      !locked
+                    )
+                      model.findRoots();
+                  }}
+                />
+              </span>
+              {state.changingRoot && (
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm nx-btn--ghost"
+                  onClick={model.cancelChangeRoot}
+                >
+                  {L.plans.cancel}
+                </button>
+              )}
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                disabled={locked || state.finding || state.rootQuery === ""}
+                onClick={model.findRoots}
+              >
+                {state.finding ? (
+                  <>
+                    <Spin /> {L.plans.finding}
+                  </>
+                ) : (
+                  L.plans.findRoots
+                )}
+              </button>
+            </>
+          ) : (
+            <>
+              <span className="nx-svalue">{rootTitle}</span>
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                disabled={locked}
+                onClick={model.startChangeRoot}
+              >
+                {L.plans.changeRoot}
+              </button>
+            </>
+          )}
+        </SRow>
+      )}
+
+      {linked && !expired && finder && (
+        <div className="nx-sroots-status" role="status" aria-live="polite">
+          {state.finding
+            ? L.plans.finding
+            : state.roots === null
+              ? ""
+              : state.roots.length === 0
+                ? L.plans.rootsEmpty
+                : L.plans.rootsHeading(state.roots.length)}
+        </div>
+      )}
+      {linked && !expired && state.roots !== null && (
+        <div className="nx-sroots">
+          {state.roots.length > 0 && (
+            <>
+              <ul className="nx-sroots-list">
+                {state.roots.map((root) => (
+                  <li key={root.id} className="nx-sroots-row">
+                    <span className="nx-sroots-t" title={root.title}>
+                      {root.title}
+                    </span>
+                    <button
+                      type="button"
+                      className="nx-btn nx-btn--sm"
+                      disabled={locked || state.picking !== null}
+                      onClick={() => model.pickRoot(root.id)}
+                    >
+                      {state.picking === root.id ? (
+                        <>
+                          <Spin /> {L.plans.picking}
+                        </>
+                      ) : (
+                        L.plans.pickRoot
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      )}
+
+      {state.failure !== null && (
+        <p className="nx-snote nx-snote--row nx-snote--red nx-row--new" role="alert">
+          {state.failure}
+        </p>
+      )}
+    </SGroup>
+  );
+}

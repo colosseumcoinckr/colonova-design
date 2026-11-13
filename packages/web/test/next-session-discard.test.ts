@@ -15,7 +15,7 @@ test("shouldDiscardOnFirstFailure: 블록 0 의 첫 보내기만 거둔다", () 
 });
 
 test("shouldDiscardOnFirstFailure: 시스템 안내만 남은 첫 보내기도 거둔다", () => {
-  // 홈의 큰 입력창이 여는 첫 보내기(W4 재발 길) — 거절과 함께 데몬이 남기는 것은
+  // 새 대화의 빈 자리의 첫 보내기(W4 재발 길) — 거절과 함께 데몬이 남기는 것은
   // 실패 안내 notice 뿐이다. 사용자의 말은 컴포저가 지키고 있으니 세션은 거둔다.
   assert.equal(
     shouldDiscardOnFirstFailure([{ type: "notice", id: "n1", level: "error", text: "…" }], 1),

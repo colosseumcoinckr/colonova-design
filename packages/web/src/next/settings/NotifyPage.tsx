@@ -136,7 +136,7 @@ export function NotifyPage({
         <SRow title={L.settings.sound} id="nx-notify-sound">
           <Switch
             on={settings.notifications.sound}
-            labelledBy="nx-notify-sound"
+            label={L.settings.sound}
             onChange={(sound) => change({ sound })}
           />
         </SRow>

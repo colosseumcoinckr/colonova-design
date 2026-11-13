@@ -1,4 +1,5 @@
 import { type RefObject, useEffect } from "react";
+import { focusableElements } from "./focusable.ts";
 
 /**
  * The keyboard side of `aria-modal="true"`: while the dialog is open, Tab
@@ -43,26 +44,12 @@ export function useModalFocus(
     // roving group (radio cards, tabs) leaves only its checked item tabbable,
     // and if the last node in the DOM were an unreachable one, Tab would walk
     // out of the dialog instead of wrapping.
-    const focusables = (root: HTMLElement): HTMLElement[] =>
-      Array.from(
-        root.querySelectorAll<HTMLElement>(
-          [
-            "a[href]",
-            "button:not([disabled])",
-            "input:not([disabled])",
-            "select:not([disabled])",
-            "textarea:not([disabled])",
-            "details > summary",
-            '[tabindex]:not([tabindex="-1"])',
-          ].join(", "),
-        ),
-      ).filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0);
 
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
       const root = panel.current;
       if (!root) return;
-      // 숨었거나 inert 인 판(홈 · 가려진 탭 · 옆 서랍 뒤)은 손이 닿지 않는다 — 가두면 초점이 못 가는 곳으로 Tab 을 막아
+      // 숨었거나 inert 인 판(기획서 자리 · 가려진 탭 · 옆 서랍 뒤)은 손이 닿지 않는다 — 가두면 초점이 못 가는 곳으로 Tab 을 막아
       // 키보드가 죽는다.
       if (!panelReachable(root.closest("[inert]"), getComputedStyle(root).visibility)) return;
       // 초점이 이 판 밖의 다른 겹판(aria-modal) 안에 있으면 그쪽의 가두기가 맡는다 — 서랍 위에
@@ -75,7 +62,7 @@ export function useModalFocus(
         !escapeCloses(overlay, Array.from(document.querySelectorAll(MODAL_ROOT_SELECTOR)))
       )
         return;
-      const within = focusables(root);
+      const within = focusableElements(root);
       if (within.length === 0) {
         event.preventDefault();
         root.focus();
@@ -201,7 +188,7 @@ export function useModalEscape(
       if (event.key !== "Escape") return;
       // 한글 조합 중의 Esc 는 조합을 취소하는 키다 — 대화상자까지 닫으면 쓰던 글이 한꺼번에
       // 날아간다(2026-10-06 겹판 조사).
-      if (event.isComposing) return;
+      if (event.defaultPrevented || event.isComposing || event.keyCode === 229) return;
       const overlays = Array.from(document.querySelectorAll(MODAL_ROOT_SELECTOR));
       // 규칙은 겹침이다, 마크 순서가 아니다 — 팔레트(z-70)는 대화상자(z-60)보다
       // 위에 칠해지는데 마크에서는 앞에 설 수 있다. 팔레트가 열려 있기만 해도

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleAlert,
   Ellipsis,
   Eye,
   History,
@@ -13,13 +14,10 @@ import {
   MapPin,
   MessageSquareText,
   Minus,
-  Monitor,
   PanelTop,
   Plus,
   RefreshCw,
   RotateCw,
-  Smartphone,
-  Tablet,
   Trash2,
   Undo2,
   X,
@@ -39,11 +37,8 @@ export const BackIcon = make(ChevronLeft, 17);
 export const ForwardIcon = make(ChevronRight, 17);
 export const ReloadIcon = make(RotateCw, 15);
 export const AddrChevronIcon = make(ChevronDown, 14, 2);
-/** 주소 알약 머리의 「화면」 그림 — 기기 단추의 모니터와 겹치지 않게 창 모양. */
+/** 주소 알약 머리의 「화면」 그림 — 창 모양. */
 export const ScreenIcon = make(PanelTop, 15);
-export const PcIcon = make(Monitor, 15);
-export const TabletIcon = make(Tablet, 15);
-export const PhoneIcon = make(Smartphone, 15);
 export const PinIcon = make(MapPin, 15);
 export const PinSmallIcon = make(MapPin, 14);
 /** 작업 기록 — 막대의 단추와 서랍 머리가 같은 그림이라 단추에서 서랍으로 눈이 이어진다. */
@@ -64,3 +59,5 @@ export const SmallCheckIcon = make(Check, 12, 2.2);
 export const MinusIcon = make(Minus, 14);
 export const PlusIcon = make(Plus, 14);
 export const ArrowIcon = make(ArrowRight, 14);
+/** 화면을 띄우지 못한 실패 띠의 그림 — 문제 띠(`nx-banner--red`)의 앞 그림이다. */
+export const AlertIcon = make(CircleAlert, 16);

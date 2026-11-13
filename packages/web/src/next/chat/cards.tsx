@@ -4,17 +4,19 @@ import type {
   RepoStatus,
   TurnMarker,
 } from "@colonova-design/protocol";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { Block, PendingPermission, PendingQuestion } from "../../lib/daemon-client";
+import { koreanNoticeWords } from "../../lib/error-words";
 import { composing } from "../../lib/ime";
 import { bashHeadline, toolLabel } from "../../lib/labels";
 import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
 import { previewDoc } from "../lib/ask-preview";
+import { createLatestRequest } from "../lib/latest-request";
 import { receiptFacts } from "../lib/receipt";
 import { noteAllowed } from "../lib/thread";
-import { useCopied } from "../lib/use-copied";
 import { whenText } from "../status/parts";
+import { CopyButton } from "../ui/CopyButton";
 import { PreviewBig, PreviewGrid } from "./AskPreview";
 import { AlertIcon, CheckIcon, ClockIcon, ExtIcon, EyeIcon, SparkIcon } from "./icons";
 
@@ -139,7 +141,7 @@ export function NoticeCard({
     <div className="nx-card nx-card--gate">
       <div className="nx-ch">
         <ClockIcon />
-        <b>{marker.text}</b>
+        <b>{koreanNoticeWords(marker.text) ? marker.text : L.chat.sendFailed}</b>
       </div>
       <Received body={body} />
     </div>
@@ -197,13 +199,17 @@ export function ReplyBox({
   // 접근 이름은 고정으로 — placeholder 는 답할 사람에 따라 바뀌어도 이름이
   // 흔들리지 않게 하고, 바뀌는 자리 표시는 힌트로 묶는다(2026-10-04 ux-review).
   const hintId = useId();
+  const requests = useRef(createLatestRequest<string>()).current;
+  useEffect(() => () => requests.invalidate(), [requests]);
   const send = async () => {
     const text = draft.trim();
     if (!text || busy) return;
+    const ticket = requests.begin(text);
     setBusy(true);
     setFailed(false);
     try {
       await onSend(text);
+      if (!requests.isCurrent(ticket, text)) return;
       setDraft("");
       onSent(text);
     } catch {
@@ -218,7 +224,9 @@ export function ReplyBox({
         <input
           // biome-ignore lint/a11y/noAutofocus: 답하기를 누른 손이 곧 쓸 자리다.
           autoFocus
+          className="nx-input"
           value={draft}
+          disabled={busy}
           placeholder={placeholder}
           aria-label={L.composer.noteToDev}
           aria-describedby={hintId}
@@ -236,7 +244,7 @@ export function ReplyBox({
         </span>
         <button
           type="button"
-          className="nx-btn nx-btn--sm nx-btn--pri"
+          className="nx-btn nx-btn--pri"
           disabled={busy || draft.trim() === ""}
           onClick={() => void send()}
         >
@@ -291,7 +299,7 @@ export function ReviewCard({
         <span className="nx-muted">{L.cards.reviewDone}</span>
         <span className="nx-grow" />
         {replyId !== null && (
-          <button type="button" className="nx-btn nx-btn--sm" onClick={() => setOpen((v) => !v)}>
+          <button type="button" className="nx-btn" onClick={() => setOpen((v) => !v)}>
             {L.cards.reply}
           </button>
         )}
@@ -367,7 +375,6 @@ export function ReceiptCard({
 }) {
   const same = handoff && handoff.number === block.pr ? handoff : null;
   const { reviewers, sent, nobody } = receiptFacts(block, same, more);
-  const { copied, copy } = useCopied(() => onToast(L.transcript.copyFailed));
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteSentAt, setNoteSentAt] = useState<string | null>(null);
   const noteOk = noteAllowed(block, handoff);
@@ -411,7 +418,7 @@ export function ReceiptCard({
         <div className="nx-cfoot">
           {same?.url && (
             <a
-              className="nx-btn nx-btn--sm"
+              className="nx-btn"
               href={same.url}
               target="_blank"
               rel="noreferrer"
@@ -422,16 +429,14 @@ export function ReceiptCard({
             </a>
           )}
           {nobody && same?.url && (
-            <button type="button" className="nx-btn nx-btn--sm" onClick={() => copy(same.url)}>
-              {copied ? L.cards.receiptLinkCopied : L.cards.receiptCopyLink}
-            </button>
+            <CopyButton
+              text={same.url}
+              label={L.cards.receiptCopyLink}
+              doneLabel={L.cards.receiptLinkCopied}
+            />
           )}
           {noteOk && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--sm"
-              onClick={() => setNoteOpen((open) => !open)}
-            >
+            <button type="button" className="nx-btn" onClick={() => setNoteOpen((open) => !open)}>
               {L.cards.noteMore}
             </button>
           )}
@@ -455,10 +460,6 @@ export function ReceiptCard({
           <span>{L.cards.noteSent(noteSentAt)}</span>
         </div>
       )}
-      {/* 복사했다는 말은 단추 글자만 바뀌어서는 낭독기가 모른다. */}
-      <span className="nx-sr" role="status">
-        {copied ? L.cards.receiptLinkCopied : ""}
-      </span>
     </div>
   );
 }
@@ -537,7 +538,7 @@ export function AskCard({
   };
 
   if (request.kind === "permission") {
-    // 레포가 정한 명령은 이름으로(`레포 검사`) — 날 명령줄은 보이지 않는다(홈 인박스와 같은 판정).
+    // 레포가 정한 명령은 이름으로(`레포 검사`) — 날 명령줄은 보이지 않는다.
     const raw = (() => {
       if (request.toolName === "Bash") {
         const input = request.input as { command?: unknown } | null;
@@ -738,6 +739,7 @@ export function AskCard({
                 <input
                   // biome-ignore lint/a11y/noAutofocus: 직접 답하기를 누른 손이 곧 쓸 자리다.
                   autoFocus
+                  className="nx-input"
                   value={free[q.question] ?? ""}
                   placeholder={L.cards.askFree}
                   aria-label={L.cards.askFree}
@@ -756,7 +758,9 @@ export function AskCard({
                 {single && (
                   <button
                     type="button"
-                    className={`nx-btn nx-btn--sm nx-btn--pri${
+                    /* 그림 없는 단일 질문(instant)은 누르는 순간 가서 바닥 보내기가 없다 — 이 단추가 카드의 으뜸이다.
+                       바닥 보내기가 설 때(!instant)만 보통 단추로 내려 카드의 으뜸을 하나로 지킨다(2026-10-23 화면 전면 재설계 §4 E). */
+                    className={`nx-btn${instant ? " nx-btn--pri" : ""}${
                       pressed === `free:${q.question}` ? " nx-btn--picked" : ""
                     }`}
                     disabled={sent || !(free[q.question] ?? "").trim()}
@@ -780,7 +784,7 @@ export function AskCard({
           {/* 잠긴 이유는 눈에도 한 줄로 서고 `aria-describedby` 로 묶인다. */}
           <button
             type="button"
-            className="nx-btn nx-btn--sm nx-btn--pri"
+            className="nx-btn nx-btn--pri"
             disabled={!complete || sent}
             aria-describedby={complete ? undefined : needId}
             onClick={() => send(merged(), "send")}
@@ -862,7 +866,7 @@ export function FailCard({
           {onLogin && (
             <button
               type="button"
-              className="nx-btn nx-btn--sm"
+              className="nx-btn"
               onClick={() => {
                 setLoginStarted(true);
                 onLogin();
@@ -873,7 +877,7 @@ export function FailCard({
           )}
           <button
             type="button"
-            className="nx-btn nx-btn--sm nx-btn--pri"
+            className="nx-btn nx-btn--pri"
             disabled={live}
             aria-describedby={live ? whyId : undefined}
             title={live ? L.chat.retryLive : undefined}

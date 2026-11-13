@@ -140,20 +140,20 @@ test("noticeCopy: 게이트는 보관 · 제출이라 말하고 옛 말(저장 �
 test("noticeCopy: 개발자 쪽 사건 — 반영됨 · 요청 닫힘 · 코멘트 · 다시 제출됨", () => {
   const handoff = (event: "merged" | "closed" | "changes_requested" | "comments" | "replied") =>
     noticeCopy({ kind: "handoff", slug: "members", projectName: NAME, event, count: 3 });
-  assert.equal(handoff("merged").title, `${NAME} · 반영됨`);
+  assert.equal(handoff("merged").title, `${NAME} · 개발자 반영`);
   assert.match(handoff("merged").body, /^개발자가 이번 작업을 반영했어요/);
   assert.match(handoff("closed").title, /요청 닫힘$/);
   assert.match(handoff("replied").title, /다시 제출됨$/);
   assert.match(handoff("replied").body, /다시 제출했어요/);
-  assert.match(handoff("changes_requested").body, /코멘트를 남겼어요/);
-  assert.match(handoff("comments").body, /3건/);
+  assert.match(handoff("changes_requested").body, /수정을 요청했어요/);
+  assert.match(handoff("comments").body, /3개/);
   const bare = noticeCopy({
     kind: "handoff",
     slug: "members",
     projectName: NAME,
     event: "comments",
   });
-  assert.match(bare.body, /1건/, "개수를 모르면 한 건");
+  assert.match(bare.body, /1개/, "개수를 모르면 한 건");
 });
 
 test("noticeCopy: 병합이 제목을 알면 그 일의 이름으로, 모르면 지금까지의 말로 알린다", () => {
@@ -166,8 +166,8 @@ test("noticeCopy: 병합이 제목을 알면 그 일의 이름으로, 모르면 
       ...(title === undefined ? {} : { title }),
     });
   const named = merged("이름으로 찾기");
-  assert.equal(named.title, `${NAME} · 반영됨`, "제목 줄은 그대로 — 이름은 몸글에만 실린다");
-  assert.match(named.body, /^‘이름으로 찾기’ 일이 반영됐어요/);
+  assert.equal(named.title, `${NAME} · 개발자 반영`, "제목 줄은 그대로 — 이름은 몸글에만 실린다");
+  assert.match(named.body, /^‘이름으로 찾기’ 일을 개발자가 반영했어요/);
   assert.match(named.body, /새 작업이에요/);
   assert.deepEqual(merged(), merged(""), "빈 제목은 모르는 것과 같다");
   assert.match(merged().body, /^개발자가 이번 작업을 반영했어요/);
@@ -195,8 +195,8 @@ test("noticeCopy: 제출이 막힌 알림 — 제목은 짧고, 개발자에게 
   assert.match(blocked("auth").body, /새 초대 파일을 열어 주세요/);
   // 연결 코드의 권한 부족(2026-10-07) — 새 초대 파일이 풀지 않는다: 그 말을 하지 않고, 개발자가 권한을 고치면 풀린다고 말한다.
   assert.doesNotMatch(blocked("permission").body, /새 초대 파일|알렸어요/);
-  assert.match(blocked("permission").body, /연결 코드의 권한이 모자라요/);
-  assert.match(blocked("permission").body, /개발자가 코드의 권한을 고치면 도구가 다시 제출해요/);
+  assert.match(blocked("permission").body, /개발자에게 제출할 권한이 없어요/);
+  assert.match(blocked("permission").body, /개발자가 권한을 고치면 자동으로 다시 제출해요/);
   // 이 기계의 인터넷 문제(2026-10-06) — 개발자를 기다릴 일이 아니라 연결이 돌아오면 풀린다.
   assert.doesNotMatch(blocked("network").body, /알렸어요/);
   assert.match(blocked("network").body, /인터넷 연결/);
@@ -205,8 +205,8 @@ test("noticeCopy: 제출이 막힌 알림 — 제목은 짧고, 개발자에게 
 
 test("noticeCopy: AI 업데이트 알림은 에이전트 이름과 버전을 말한다", () => {
   assert.deepEqual(noticeCopy({ kind: "update-done", agent: "claude", version: "2.2.0" }), {
-    title: "AI를 업데이트했어요",
-    body: "Claude Code 2.2.0 — 다음 새 대화부터 써요.",
+    title: "AI 를 업데이트했어요",
+    body: "Claude Code 2.2.0 — 다음 새 대화부터 써요",
   });
 });
 
@@ -370,8 +370,8 @@ test("두 단추 상자: 안전한 쪽이 첫 단추 · 기본 · Esc 의 답이
     }
   }
   // 위험한 확인은 취소가 첫 단추이고, 일을 벌이는 단추는 일을 이름으로 부른다.
-  assert.deepEqual(boxes.종료.buttons, ["취소", "그만두고 끝내기"]);
-  assert.deepEqual(boxes.초기화.buttons, ["취소", "모두 지우고 다시 시작"]);
+  assert.deepEqual(boxes.종료.buttons, ["그만두기", "작업을 멈추고 앱 종료"]);
+  assert.deepEqual(boxes.초기화.buttons, ["그만두기", "전체 초기화"]);
   // 복구 상자는 복구(기다리기 · 다시 열기)가 기본이다.
   assert.deepEqual(boxes["화면이 계속 꺼짐"].buttons, ["다시 열기", "끝내기"]);
   assert.deepEqual(boxes["화면이 멈춤"].buttons, ["기다리기", "다시 열기"]);
@@ -379,8 +379,11 @@ test("두 단추 상자: 안전한 쪽이 첫 단추 · 기본 · Esc 의 답이
 
 test("종료 확인: 무엇이 멈추고 무엇이 남는지 말한다", () => {
   const box = quitOptions();
-  assert.equal(box.message, "AI가 작업 중이에요. 지금 끝내면 하던 작업이 멈춰요.");
-  assert.equal(box.detail, "이미 끝난 답은 보관돼 있어요.");
+  assert.equal(box.message, "AI 가 작업 중이에요. 지금 끝내면 하던 작업이 멈춰요.");
+  assert.equal(
+    box.detail,
+    "이미 끝난 AI 답변과 그때까지의 화면 작업은 보관돼 있어요. 진행 중인 작업은 멈춰요.",
+  );
 });
 
 test("초기화 확인: 지워지는 것 · 남는 것을 말하고, 도는 AI 일이 있을 때만 그 일도 멈춘다고 말한다", () => {
@@ -388,12 +391,12 @@ test("초기화 확인: 지워지는 것 · 남는 것을 말하고, 도는 AI �
   const busy = resetOptions(true);
   for (const box of [idle, busy]) {
     assert.match(box.detail ?? "", /제출하지 않은 작업은 되돌릴 수 없어요/);
-    assert.match(box.detail ?? "", /Claude 로그인은 유지돼요/);
-    assert.match(box.detail ?? "", /새 초대 파일을 넣어 주세요/);
+    assert.match(box.detail ?? "", /AI 로그인은 유지돼요/);
+    assert.match(box.detail ?? "", /초대 파일을 열어 주세요/);
     assert.doesNotMatch(box.detail ?? "", /초대장/, "UI 의 말은 초대 파일이다");
   }
-  assert.doesNotMatch(idle.detail ?? "", /AI가 일하는 중/);
-  assert.match(busy.detail ?? "", /지금 AI가 일하는 중이에요\. 다시 시작하면 그 일도 멈춰요\./);
+  assert.doesNotMatch(idle.detail ?? "", /진행 중인 AI 작업/);
+  assert.match(busy.detail ?? "", /지금 진행 중인 AI 작업도 중단하고 초기화해요/);
   assert.ok(
     (busy.detail ?? "").startsWith(idle.detail ?? ""),
     "경고는 덧붙을 뿐 앞의 말을 바꾸지 않는다",
@@ -405,24 +408,24 @@ test("시작 실패 상자: 기록 폴더 열기가 기본 출구이고, 날 오
   const logs = "/Users/me/.colonova-design/logs";
   const box = startFailedOptions(reason, logs);
   assert.equal(box.type, "error");
-  assert.deepEqual(box.buttons, ["기록 폴더 열기", "끝내기"]);
+  assert.deepEqual(box.buttons, ["기록 폴더 열고 앱 종료", "끝내기"]);
   assert.equal(START_ANSWER.openLogs, 0);
   assert.equal(START_ANSWER.quit, 1);
   assert.equal(box.defaultId, START_ANSWER.openLogs, "막다른 길의 기본은 출구");
   assert.equal(box.cancelId, START_ANSWER.quit, "Esc 는 그냥 끝낸다");
   assert.equal(box.noLink, true);
-  assert.equal(box.message, "ColoNova Design을 시작하지 못했어요");
+  assert.equal(box.message, "ColoNova Design 을 시작하지 못했어요");
   assert.ok(!(box.message ?? "").includes("EADDRINUSE"), "날 오류는 제목에 올리지 않는다");
   assert.match(
     box.detail ?? "",
-    /앱을 다시 열어 주세요\. 계속 안 되면 기록 폴더의 내용을 담당자에게 전해 주세요\./,
+    /앱을 다시 열어 주세요\. 계속 안 되면 기록 폴더의 내용을 개발자에게 전해 주세요\./,
   );
   assert.ok((box.detail ?? "").includes(`자세한 내용: ${reason}`));
   assert.ok((box.detail ?? "").includes(`기록 폴더: ${logs}`), "끝내기를 골라도 자리를 안다");
   // 문장 부분(날 오류는 개발자의 말이 섞일 수 있다)은 해요체 · 사용자의 어휘다.
   const fixed = startFailedOptions("", logs);
   assertVoice("시작 실패", `${fixed.message}\n${fixed.detail}\n${fixed.buttons?.join(" ")}`);
-  assert.ok(!(fixed.detail ?? "").includes("자세한 내용"), "이유가 없으면 그 줄도 없다");
+  assert.ok(!(fixed.detail ?? "").includes("자세한 내용:"), "이유가 없으면 그 줄도 없다");
 });
 
 test("시작 실패 상자: 긴 날 오류는 잘려 상자가 화면을 넘지 않는다", () => {
@@ -463,11 +466,8 @@ test("업데이트 알림: 설정 → 업데이트로 데려가고 존재하지 
   }
   assert.match(UPDATE.available("0.4.1").body, /설정 → 업데이트에서 설치할 수 있어요/);
   assert.match(UPDATE.prepareFailed("x").body, /설정 → 업데이트에서 다시 시도할 수 있어요/);
-  assert.match(
-    UPDATE.prepared("0.4.1").body,
-    /다시 시작하면 새 버전이 돼요\. 누르면 다시 시작해요\./,
-  );
-  assert.match(UPDATE.swapFailed("x").body, /누르면 기록을 열어요\.$/);
+  assert.match(UPDATE.prepared("0.4.1").body, /진행 중인 작업이 끝난 뒤 앱을 다시 시작해요/);
+  assert.match(UPDATE.swapFailed("x").body, /알림을 누르면 문제 확인용 기록 폴더를 열어요$/);
   assert.doesNotMatch(UPDATE.swapFailed(undefined).body, /undefined/);
 });
 
@@ -537,11 +537,12 @@ test("업데이트 검증 오류: 파일 · 디스크 · 계획의 오류가 해
       requireDiskSpace({
         path: dir,
         minBytes: 1024 ** 3,
-        statfs: async () => ({ bsize: 1, bavail: 1 }),
+        // 2026-11-12 UI 조사 검토 R9 — 0.9GB가 남아도 안내 수는 총 필요 여유 1GB다.
+        statfs: async () => ({ bsize: 1, bavail: Math.floor(0.9 * 1024 ** 3) }),
       }),
       (error: Error) => {
         assertVoice("디스크", error.message);
-        assert.match(error.message, /1GB 이상의 여유가 필요해요/);
+        assert.match(error.message, /여유 공간을 1GB 이상 확보한 뒤 다시 시도해 주세요/);
         return true;
       },
     );

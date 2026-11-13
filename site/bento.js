@@ -1,9 +1,9 @@
 /**
  * 기능 카드의 놀이 — 카드마다 그 기능이 실제로 하는 일을 손으로 해 보게 한다.
  *
- * 주문(끌어다 놓기) · 진짜 서비스(크기 · 검색) · 찍기(여러 곳 · 문장이 뜻을 정한다) ·
- * 제출(확인 한 장) · 작업 기록(시점 되돌리기) · 오류(도구가 먼저 열어 본다) ·
- * 여러 프로젝트 · 알림 · 테마 카드.
+ * 주문(끌어다 놓기) · 진짜 서비스(검색) · 기획서(초안 바로 고침 · 판 되돌리기) · 연결(정적
+ * 그림) · 찍기(여러 곳 · 문장이 뜻을 정한다) · 제출(확인 한 장) · 작업 기록(시점 되돌리기) ·
+ * 오류(도구가 먼저 열어 본다) · 여러 프로젝트 · 알림 · 테마 카드.
  *
  * 문구는 앱의 것을 그대로 쓴다(packages/web/src/next/labels.ts) — 첨부 한도 8MB 와
  * 그 거절 문장, 되돌리기 확인 문장, 영수증 줄이 그렇다. 파일을 끌어다 놓아도 이름과
@@ -176,21 +176,9 @@ if (boStage) {
   setState("idle");
 }
 
-/* ---------- 진짜 서비스 — 크기를 바꾸고, 검색해 본다 ---------- */
+/* ---------- 진짜 서비스 — 검색해 본다(기기 마디 — 크기 전환은 2026-11-11 에 걷었다) ---------- */
 const brFrame = $("br-frame");
 if (brFrame) {
-  const sizeButtons = [...document.querySelectorAll(".br-size")];
-  for (const button of sizeButtons) {
-    button.addEventListener("click", () => {
-      brFrame.dataset.size = button.dataset.size;
-      for (const other of sizeButtons) {
-        const on = other === button;
-        other.classList.toggle("on", on);
-        other.setAttribute("aria-pressed", on ? "true" : "false");
-      }
-    });
-  }
-
   const input = $("br-input");
   const rows = [...$("br-list").children];
   const empty = $("br-empty");
@@ -581,3 +569,16 @@ bnTry?.addEventListener("click", () => {
     toast.hidden = true;
   }, 3200);
 });
+
+/* ---------- 기획서 — 기획 대화의 AI 가 초안을 바로 고친다. 되돌리기는 초안의 판으로(2026-10-31) ---------- */
+const pdStage = $("pd-stage");
+if (pdStage) {
+  const revert = $("pd-revert");
+  const again = $("pd-again");
+  revert?.addEventListener("click", () => {
+    pdStage.dataset.state = "reverted";
+  });
+  again?.addEventListener("click", () => {
+    pdStage.dataset.state = "edited";
+  });
+}

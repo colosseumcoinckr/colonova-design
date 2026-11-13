@@ -42,7 +42,7 @@ test("서랍은 막대 높이를 변수로 읽고(48px 를 베끼지 않는다) 
   // 닫힌 서랍은 눈에도 낭독에도 없고, 열린 때만 그림자가 선다(닫힌 서랍의 그림자가 가장자리에 비치지 않게).
   assert.match(hist, /visibility:\s*hidden/);
   assert.doesNotMatch(hist, /(?:^|[;\s])box-shadow\s*:/);
-  // 열린 서랍은 `visible` 이 아니라 조상을 따른다(`inherit`) — `visible` 은 숨은 조상(홈 · 가려진 탭)의 hidden 을 이겨 눈에
+  // 열린 서랍은 `visible` 이 아니라 조상을 따른다(`inherit`) — `visible` 은 숨은 조상(기획서 자리 · 가려진 탭)의 hidden 을 이겨 눈에
   // 안 보이는 서랍이 Tab 초점을 붙들었다.
   assert.match(body(".nx-hist--open"), /visibility:\s*inherit/);
   assert.match(body(".nx-hist--open"), /box-shadow:/);
@@ -123,24 +123,18 @@ test("서랍: 움직임을 줄인 창은 서랍 · 스크림의 전환을 쓰지
   assert.match(block[0], /transition:\s*none/);
 });
 
-test("서랍: 숨은 칸에서 열린 채 있지 않고 · 지난 프로젝트의 줄이 비치지 않고 · 되돌린 뒤 접힌다", () => {
-  // ① 칸이 숨는 순간(홈 · 좁은 창의 대화 탭) 열린 서랍은 `visibility: visible` 로 숨은 조상을 이겨 Tab 초점을 눈에 안 보이는
-  //    곳으로 끌어갔다 — 숨는 순간에 접고, 숨은 동안은 가두기도 돌지 않는다(숨은 칸에서 여는 길은 접지 않는다).
-  assert.match(drawer, /const hid = offstage && !wasOffstage\.current/);
-  assert.match(drawer, /if \(open && \(hid \|\| moved\)\) onClose\(\)/);
-  assert.match(
-    drawer,
-    /useModalFocus\(panel, open && !offstage, returnRef, \{ reenter: false \}\)/,
-  );
-  // ② 읽어 온 줄은 프로젝트와 함께 든다 — 옮긴 직후(열려 있는 동안) 지난 프로젝트의 줄이 비치지 않게.
-  assert.match(drawer, /loaded\.slug === slug/);
-  // ③ 되돌리기가 성공하면 서랍이 접혀 되돌린 화면이 곧바로 보인다(실패면 열린 채 카드에 알림). 오래 걸린 되돌리기가 끝났을
-  //    때 그사이 서랍을 닫았다 열었거나 프로젝트를 옮겼다면(판이 달라졌다면) 지금 보는 서랍을 닫지 않는다.
-  assert.match(
-    drawer,
-    /api\.restore\([\s\S]*?stage === "failed"[\s\S]*?onRestored\(\)[\s\S]*?if \(here\) onClose\(\)/,
-  );
-  assert.match(drawer, /const here = session\.current === started/);
+test("서랍: 숨은 칸에서 열린 채 있지 않고 · 지난 프로젝트의 줄이 비치지 않고 · 되돌린 뒤 접힌다(S10 의 갈라짐과 함께)", () => {
+  // 몸(HistoryPanel)과 껍데기(HistoryDrawer)가 갈라졌다 — 몸은 탭과 서랍이 같이 쓴다(S10).
+  assert.match(drawer, /export function HistoryPanel/);
+  assert.match(drawer, /export function HistoryDrawer/);
+  // 숨는 순간의 접힘은 껍데기가 맡는다 — 열린 채 칸이 숨으면(offstage) 접는다.
+  assert.match(drawer, /if \(open && hid\) onClose\(\)/);
+  // 프로젝트가 바뀐 순간에도 접는다 — 지난 프로젝트의 줄이 비치지 않게.
+  assert.match(drawer, /if \(open && was !== slug\) onClose\(\)/);
+  // 몸은 프로젝트를 함께 든다 — 옮겨 온 직후 지난 줄이 비치지 않게(slug 가 함께 온다).
+  assert.match(drawer, /setLoaded\(\{ slug, entries: next\.entries \}\)/);
+  // 되돌리기가 끝난 뒤 몸은 껍데기의 손(onDone)을 부른다 — 서랍은 접고 탭은 남는다.
+  assert.match(drawer, /if \(here\) onDone\?\.\(\)/);
 });
 
 test("서랍: 게스트가 다시 쏜 Esc(대상이 문서)도 서랍을 닫고, 제목 초점은 두 프레임 뒤에 선다", () => {
@@ -154,4 +148,70 @@ test("서랍: 게스트가 다시 쏜 Esc(대상이 문서)도 서랍을 닫고,
   );
   // 이 칸을 가린 옆 서랍(main 이 inert)의 Esc 는 그 서랍의 몫이다.
   assert.match(drawer, /panel\.current\?\.closest\("\[inert\]"\)/);
+});
+
+// ── 2026-10-23 화면 전면 재설계 §4 F — 작업 기록 서랍 · 말풍선 · 준비 카드
+
+const prepare = strip(readFileSync(join(dir, "PrepareCard.tsx"), "utf8"));
+const bubble = strip(readFileSync(join(dir, "PinBubble.tsx"), "utf8"));
+
+test("서랍: 시각 12 · 제목 14 · 부제 13 — 반 픽셀과 12px 아래 글자가 없다", () => {
+  assert.match(body(".nx-ht"), /font-size:\s*var\(--fs-ui\)/);
+  assert.match(body(".nx-hs"), /font-size:\s*var\(--fs-sm\)/);
+  assert.match(body(".nx-hd2"), /font-size:\s*var\(--fs-sm\)/);
+  assert.match(body(".nx-hmeta"), /font-size:\s*var\(--fs-cap\)/);
+  assert.match(body(".nx-hday"), /font-size:\s*var\(--fs-sm\)/);
+  const sizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map((match) => Number(match[1]));
+  assert.deepEqual(
+    sizes.filter((size) => size < 12 || size % 1 !== 0),
+    [],
+  );
+});
+
+test("서랍: 타임라인의 마디는 제목 첫 줄의 가운데(18px)에 앉고 선이 거기서 시작하고 끝난다", () => {
+  // 제목 줄 높이 20px + 줄 위 여백 8px → 첫 줄의 가운데 18px. 마디(10px)는 13px 아래, 사건 알(20px)은 8px 아래에서 시작한다.
+  assert.match(body(".nx-ht"), /line-height:\s*20px/);
+  assert.match(body(".nx-hnode"), /height:\s*10px/);
+  assert.match(body(".nx-hnode"), /margin-top:\s*13px/);
+  assert.match(
+    css,
+    /\.nx-hnode--merge,\s*\.nx-hnode--restore,\s*\.nx-hnode--comment\s*\{[^}]*height:\s*20px;[^}]*margin-top:\s*8px/,
+  );
+  assert.match(body(".nx-hitem--first::before"), /top:\s*18px/);
+  assert.match(body(".nx-hitem--last::before"), /bottom:\s*calc\(100% - 18px\)/);
+  assert.match(
+    css,
+    /\.nx-hitem--target::before\s*\{[^}]*var\(--hist-undo-line\) 18px, var\(--line2\) 18px/,
+  );
+});
+
+test("서랍: `여기로 되돌리기` 는 보통 소단추(nx-btn--sm)의 모양이고 줄 전체가 하나의 단추다 — 안쪽 것은 모양뿐(aria-hidden)", () => {
+  assert.match(drawer, /<span className="nx-btn nx-btn--sm nx-hgo" aria-hidden="true">/);
+  // 단추 안에 단추를 넣지 않는다(잘못된 HTML · ↑ ↓ 걷기의 `button.nx-hmain` 하나).
+  assert.doesNotMatch(drawer, /<button[^>]*nx-hgo/);
+  // 일의 크기 칩 · 지금 표식은 공통 알약(nx-pill)이다.
+  assert.match(drawer, /nx-pill nx-pill--accent nx-hnow/);
+  assert.match(drawer, /nx-pill nx-pill--amber/);
+  assert.doesNotMatch(css, /\.nx-hchip\b/);
+});
+
+test("말풍선: 글 14px · 단추 28px(nx-btn--sm) — 바닥 줄에서 단추가 겹치지 않을 만큼 넓다", () => {
+  assert.match(body(".nx-pinbub-h"), /font-size:\s*var\(--fs-ui\)/);
+  assert.match(body(".nx .nx-pinbub-note"), /font-size:\s*var\(--fs-ui\)/);
+  assert.equal(bubble.match(/className="nx-btn nx-btn--sm[^"]*"/g)?.length, 2);
+  const width = Number(/width:\s*(\d+)px/.exec(body(".nx-pinbub"))?.[1]);
+  assert.ok(
+    width >= 320,
+    `말풍선 폭 ${width}px 는 14px 글자의 바닥 줄(줄바꿈 · 지금 보내기 ⌘↵ · 담기 ↵)에 모자라다`,
+  );
+});
+
+test("준비 카드: 진행 단계 줄 13px · 실패는 앱 공통의 문제 띠(nx-banner--red)다", () => {
+  assert.match(body(".nx-prep-step"), /font-size:\s*var\(--fs-sm\)/);
+  assert.match(prepare, /nx-banner nx-banner--red nx-prep-fail/);
+  // 실패는 알림이다(곧바로 읽힌다) · 다시 시도와 복사 단추는 띠의 단추 줄에 선다.
+  assert.match(prepare, /nx-banner nx-banner--red nx-prep-fail" role="alert"/);
+  assert.match(prepare, /<div className="nx-banner-act">/);
+  assert.match(prepare, /\{help && \(/);
+  assert.doesNotMatch(css, /\.nx-prep-retry|\.nx-prep-still/);
 });

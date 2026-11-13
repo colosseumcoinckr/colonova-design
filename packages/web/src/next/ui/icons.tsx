@@ -1,15 +1,17 @@
 import {
   AlignVerticalSpaceAround,
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   Check,
   ChevronDown,
   ChevronRight,
   ChevronsUpDown,
-  CircleCheck,
+  Copy,
   CornerDownLeft,
   Download,
-  House,
+  ExternalLink,
+  FileText,
   Info,
   Keyboard,
   Lightbulb,
@@ -19,6 +21,7 @@ import {
   PanelLeft,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   Smartphone,
@@ -27,7 +30,6 @@ import {
   Trash2,
   TriangleAlert,
   Type,
-  Upload,
   X,
 } from "lucide-react";
 
@@ -41,14 +43,14 @@ function make(Glyph: LucideIcon, size: number, strokeWidth = 1.8) {
   };
 }
 
+export const CopyIcon = make(Copy, 16);
 export const PlusIcon = make(Plus, 16);
-export const HomeIcon = make(House, 16);
 export const SearchIcon = make(Search, 16);
 export const GearIcon = make(Settings, 16);
 export const MenuIcon = make(Menu, 17);
 export const PanelIcon = make(PanelLeft, 16);
 export const PencilIcon = make(Pencil, 13, 2);
-export const ChevronDownIcon = make(ChevronDown, 14, 2);
+export const ChevronDownIcon = make(ChevronDown, 12, 2);
 export const ChevronRightIcon = make(ChevronRight, 12, 2);
 /** 고르는 상자의 오른쪽 끝 — 프로젝트 전환기가 쓴다(2026-10-06). */
 export const ChevronsUpDownIcon = make(ChevronsUpDown, 14, 2);
@@ -56,11 +58,18 @@ export const CheckIcon = make(Check, 14, 2.2);
 export const KeyboardIcon = make(Keyboard, 17, 1.8);
 export const AlertIcon = make(TriangleAlert, 26, 1.7);
 export const CloseIcon = make(X, 14, 2);
-export const CalmIcon = make(CircleCheck, 16);
 export const SendIcon = make(ArrowUp, 16, 2.2);
 export const SparkIcon = make(Sparkle, 14);
 /** 사이드바 바닥의 기능 제안 · 프로젝트 목록의 정보 줄(2026-10-06). */
 export const LightbulbIcon = make(Lightbulb, 15);
+/** 기획서(Confluence 동기화) 항목의 그림 — 사이드바의 다른 줄 그림(16px)과 같은 크기의 문서 한 장. */
+export const PlansDocIcon = make(FileText, 16);
+/** 기획서 칸이 비었을 때 가운데 서는 큰 그림. */
+export const PlansEmptyIcon = make(FileText, 22, 1.6);
+/** 기획서 칸 위 막대 — 미리보기로 돌아가는 화살표 · 새로 가져오기 · Confluence 에서 열기. */
+export const ArrowLeftIcon = make(ArrowLeft, 14, 2);
+export const RefreshIcon = make(RefreshCw, 14, 2);
+export const ExternalIcon = make(ExternalLink, 12, 2);
 export const InfoIcon = make(Info, 15);
 
 /** 홈 입력창 아래의 시작점 칩 — 요청의 종류마다 하나(2026-10-06 홈 개선). */
@@ -70,7 +79,6 @@ export const StarterPhoneIcon = make(Smartphone, 14);
 export const StarterTidyIcon = make(AlignVerticalSpaceAround, 14);
 /** 홈 줄의 앞 그림 — 이어서 할 대화 · 끌어다 놓기 덮개. */
 export const ChatLineIcon = make(MessageSquare, 15);
-export const DropIcon = make(Upload, 18);
 /** 대화 줄 `···` 메뉴의 줄 그림 — 내보내기 · 지우기(2026-10-06 겹판 조사). */
 export const DownloadIcon = make(Download, 14);
 export const TrashIcon = make(Trash2, 14);

@@ -1,0 +1,278 @@
+import type { DocOpKind, DocOpPreview, DocOpResult } from "@colonova-design/protocol";
+import { useContext, useEffect, useRef, useState } from "react";
+import type { Daemon } from "../../../lib/daemon-client";
+import { L } from "../../labels";
+import { createLatestRequest } from "../../lib/latest-request";
+import { Spin } from "../../ui/icons";
+import { ModalBody, ModalFoot, ModalFrame, ModalHead } from "../../ui/ModalFrame";
+import { ParentPicker } from "../draft/ParentPicker";
+import { PlansContext } from "../PlansWorkspace";
+import type { PlanListRow } from "../plans-list";
+import {
+  defaultCopyTitle,
+  docOpBlockerLines,
+  docOpFormState,
+  docOpResultLine,
+} from "./doc-actions-model";
+import "./doc-actions.css";
+
+/**
+ * 문서 관리 확인 창(2026-10-23 · 최종 구현 계획 F4) — 복제 · 위치 옮기기 · 휴지통 · 복구의 한 장.
+ * 누르기 전에 미리보기로 원격 대상과 자식 영향 범위를 확인하고, 막는 이유가 남으면 확인이 열리지
+ * 않는다. 부모를 고르면 미리보기를 다시 읽는다. 한 창에서 한 번만 보낸다 — 결과를 모른 채 다시
+ * 보내는 일이 없게(자동 재전송은 없다).
+ */
+export function DocOpDialog({
+  daemon,
+  op,
+  pageId,
+  rows = [],
+  onApplied,
+  onClose,
+}: {
+  daemon: Daemon;
+  op: DocOpKind;
+  pageId: string;
+  /** 목록의 줄 — 복제 · 옮기기의 들어갈 자리를 고르는 칸이 읽는다. */
+  rows?: PlanListRow[];
+  /** 마쳤음 — 창을 거두고 목록을 다시 읽는 일은 부르는 쪽의 몫이다(copy 면 새 문서를 연다). */
+  onApplied: (result: DocOpResult) => void;
+  onClose: () => void;
+}) {
+  const plans = useContext(PlansContext);
+  const apiRef = useRef(daemon.api);
+  apiRef.current = daemon.api;
+  const picksParent = op === "copy" || op === "move";
+  const [phase, setPhase] = useState<"loading" | "ready" | "failed">("loading");
+  const [preview, setPreview] = useState<DocOpPreview | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // 들어갈 자리 — `page:<id>` · `folder:<id>` 꼴의 고르기 값(NewDraftDialog 와 같은 모양).
+  const [parent, setParent] = useState("");
+  const [title, setTitle] = useState("");
+  const [sending, setSending] = useState(false);
+  // 한 번 보내면 같은 창에서 다시 보내지 않는다 — 결과를 못 받았어도(연결이 끊겨도) 잠긴다.
+  const [locked, setLocked] = useState(false);
+  const [result, setResult] = useState<DocOpResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const [retry, setRetry] = useState(0);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryError, setRecoveryError] = useState(false);
+  const recoveryBusy = useRef(false);
+  const writeStarted = useRef(false);
+  const previews = useRef(createLatestRequest<string>()).current;
+  // 미리보기 — 창이 설 때와 자리를 다시 고를 때 읽는다. 늦게 온 답은 창이 닫혔으면 버린다.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: 재시도 번호와 API 교체도 같은 대상의 읽기를 다시 연다.
+  useEffect(() => {
+    const scope = `${op}:${pageId}:${parent}`;
+    const ticket = previews.begin(scope);
+    setPhase("loading");
+    const at = parent.indexOf(":");
+    const parentId = picksParent && at > 0 ? parent.slice(at + 1) : undefined;
+    apiRef.current
+      .docOpPreview(op, pageId, parentId)
+      .then((next) => {
+        if (!previews.isCurrent(ticket, scope)) return;
+        setPreview(next);
+        setPhase("ready");
+        // 복제의 처음 제목 — 문서의 지금 제목에서 사본 이름을 만든다(미리보기가 제목을 안다).
+        if (op === "copy")
+          setTitle((before) => (before === "" ? defaultCopyTitle(next.title) : before));
+      })
+      .catch((err: unknown) => {
+        if (!previews.isCurrent(ticket, scope)) return;
+        setPhase("failed");
+        setLoadError(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      previews.invalidate();
+    };
+  }, [daemon.api, op, pageId, parent, picksParent, previews, retry]);
+
+  // 2026-11-12 UI 조사 U-073 — 원격 쓰기는 반복하지 않고 목록만 다시 가져온다.
+  const recover = async () => {
+    if (recoveryBusy.current) return;
+    recoveryBusy.current = true;
+    setRecovering(true);
+    setRecoveryError(false);
+    try {
+      await apiRef.current.confluenceImportNow();
+      if (plans === null) throw new Error("PlansContext is required");
+      await plans.refreshListAndWait();
+      onClose();
+    } catch {
+      setRecoveryError(true);
+    } finally {
+      recoveryBusy.current = false;
+      setRecovering(false);
+    }
+  };
+  const send = async () => {
+    if (writeStarted.current || sending || locked || phase !== "ready" || preview === null) return;
+    writeStarted.current = true;
+    setSending(true);
+    setError(null);
+    const commandId = crypto.randomUUID().toLowerCase();
+    const at = parent.indexOf(":");
+    const parentId = at > 0 ? parent.slice(at + 1) : "";
+    try {
+      const next =
+        op === "trash"
+          ? await apiRef.current.docTrash(pageId, commandId)
+          : op === "restore"
+            ? await apiRef.current.docRestore(pageId, commandId)
+            : op === "copy"
+              ? await apiRef.current.docCopy(pageId, commandId, title.trim(), parentId)
+              : await apiRef.current.docMove(pageId, commandId, parentId);
+      setResult(next);
+      if (next.state === "applied") {
+        onApplied(next);
+        onClose();
+        return;
+      }
+      setSending(false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSending(false);
+    } finally {
+      // 마쳤음은 창이 곧 거둬지고, 나머지는 결과 줄이 서게 — 어느 쪽이든 다시 보내지 않는다.
+      setLocked(true);
+    }
+  };
+
+  // 초안 안내는 막는 이유 목록에 서지 않고 창의 안내 줄이 말한다(2026-10-23 화면 확인 · R2 검토 7) —
+  // 나머지 이유가 확인 단추를 닫는다.
+  const blockerTexts = preview === null ? [] : docOpBlockerLines(preview);
+  const { keepBody, canConfirm } = docOpFormState({ phase, preview, parent, title });
+  // 초안 안내 — 복제에서는 아예 두지 않는다(사본에는 이 컴퓨터의 초안이 얽히지 않는다).
+  const showDraftNote = preview !== null && preview.hasDraft === true && op !== "copy";
+  const showChildren =
+    preview !== null && op === "trash" && preview.childCount !== null && preview.childCount > 0;
+
+  return (
+    <ModalFrame
+      onClose={onClose}
+      locked={sending || recovering}
+      label={L.docOps.dialogTitle(op)}
+      className="nx-da"
+    >
+      <ModalHead title={L.docOps.dialogTitle(op)} sub={L.docOps.dialogSub} />
+      <ModalBody>
+        {phase === "loading" && (
+          <p className="nx-da-note" role="status">
+            <Spin /> {L.docOps.checking}
+          </p>
+        )}
+        {phase === "failed" && (
+          <div className="nx-banner nx-banner--red" role="alert">
+            <p>{loadError}</p>
+            <button
+              type="button"
+              className="nx-btn nx-btn--sm"
+              onClick={() => setRetry((n) => n + 1)}
+            >
+              {L.plans.retry}
+            </button>
+          </div>
+        )}
+        {keepBody && preview !== null && (
+          <>
+            <dl className="nx-da-facts">
+              <div className="nx-da-fact">
+                <dt>{L.drafts.previewTitle}</dt>
+                <dd>{preview.title}</dd>
+              </div>
+            </dl>
+            {showChildren && (
+              <p className="nx-banner nx-banner--amber" role="note">
+                {L.docOps.childCount(preview.childCount ?? 0)}
+              </p>
+            )}
+            {showDraftNote && (
+              <p className="nx-banner nx-banner--blue" role="note">
+                {L.docOps.hasDraft}
+              </p>
+            )}
+            {picksParent && (
+              <ParentPicker
+                rows={rows}
+                label={L.docOps.target}
+                placeholder={L.docOps.targetPick}
+                value={parent}
+                disabled={sending}
+                onChange={(value) => {
+                  // 자리를 고른 즉시 확인을 잠근다(2026-10-23 화면 전면 재설계 §4 D).
+                  setPhase("loading");
+                  setParent(value);
+                }}
+              />
+            )}
+            {op === "copy" && (
+              <label className="nx-field">
+                <span className="nx-field-label">{L.docOps.newTitle}</span>
+                <input
+                  className="nx-input"
+                  aria-label={L.docOps.newTitle}
+                  value={title}
+                  disabled={sending}
+                  onChange={(event) => setTitle(event.target.value)}
+                />
+              </label>
+            )}
+            {blockerTexts.length > 0 && (
+              <ul className="nx-da-blockers">
+                {blockerTexts.map((line) => (
+                  <li className="nx-banner nx-banner--amber" key={line}>
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {result !== null && result.state !== "applied" && (
+              <p className="nx-banner nx-banner--amber nx-da-result" role="status">
+                {docOpResultLine(result)}
+              </p>
+            )}
+            {error !== null && (
+              <p className="nx-banner nx-banner--red" role="alert">
+                {error}
+              </p>
+            )}
+          </>
+        )}
+      </ModalBody>
+      <ModalFoot>
+        {(result?.state === "unknown" || error !== null) && (
+          <button
+            type="button"
+            className="nx-btn"
+            disabled={recovering}
+            onClick={() => void recover()}
+          >
+            {recovering ? <Spin /> : null}
+            {recovering ? L.plans.importing : L.plans.importNow}
+          </button>
+        )}
+        {recoveryError && (
+          <p className="nx-banner nx-banner--red" role="alert">
+            {L.plans.importFailed}
+          </p>
+        )}
+        <button
+          type="button"
+          className="nx-btn nx-btn--pri"
+          disabled={!canConfirm || sending || locked}
+          onClick={() => void send()}
+        >
+          {sending ? (
+            <>
+              <Spin /> {L.docOps.sending}
+            </>
+          ) : (
+            L.docOps.confirm(op)
+          )}
+        </button>
+      </ModalFoot>
+    </ModalFrame>
+  );
+}

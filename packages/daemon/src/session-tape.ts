@@ -174,6 +174,8 @@ export function spliceTape(events: ChatEvent[], rows: TapeRow[]): ChatEvent[] {
               changedScreens: (match.event as Extract<ChatEvent, { kind: "user.echo" }>)
                 .changedScreens,
               checked: (match.event as Extract<ChatEvent, { kind: "user.echo" }>).checked,
+              // 같이 고치기의 마지막 결과(2026-10-30) — 다시 연 대화에도 곁줄이 선다.
+              planSync: (match.event as Extract<ChatEvent, { kind: "user.echo" }>).planSync,
             }
           : event,
       );

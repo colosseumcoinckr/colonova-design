@@ -1,3 +1,4 @@
+// CI-순수-제외 — 감독자 하네스(cycle-harness)가 진짜 git 을 만든다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 // PLAN 단계 6 시험 — 감독자의 제출 네 단계 (L6). S9 입양 · 두 번 누르기 ·
 // 네트워크 끊김 · 끝난 PR · 본문 보존 · 단계 예산 · 채팅 의도.
 import assert from "node:assert/strict";
@@ -9,7 +10,17 @@ import { SUBMIT_RETRY_MS } from "../src/budgets.ts";
 import { makeSupervisedScene, type SupervisedScene } from "./helpers/cycle-harness.ts";
 
 const BRANCH = "colonova-design/20260924-1";
-const DEAD_REMOTE = "http://127.0.0.1:1/nope.git";
+// 최신 확인은 성공하고 실제 전송에서 연결이 끊기는 경우를 만든다.
+function failPush(scene: SupervisedScene): () => void {
+  const git = scene.core.git.bind(scene.core);
+  scene.core.git = async (args, ...rest) => {
+    if (args[0] === "push") throw new Error("Failed to connect to remote");
+    return git(args, ...rest);
+  };
+  return () => {
+    scene.core.git = git;
+  };
+}
 
 test("리뷰어 요청 실패 뒤 재시작해도 같은 PR 에 요청을 마치고 성공한다", async () => {
   const scene = await makeSupervisedScene({
@@ -153,8 +164,8 @@ test("두 번 눌러도 제출은 하나 — 의도가 다시 적히지 않고 P
   const scene = await makeSupervisedScene();
   try {
     await cycleWith(scene);
-    // 원격을 잠시 죽여 의도가 남아 있게 한다 — 두 번 누르는 찰나를 본다.
-    await scene.git(["remote", "set-url", "origin", DEAD_REMOTE]);
+    // 확인 이후 전송만 실패하게 해 의도가 남아 있게 한다 — 두 번 누르는 찰나를 본다.
+    const restorePush = failPush(scene);
     await scene.supervisor.submit("button");
     await scene.supervisor.settled();
     const first = ledgerOf(scene).submit;
@@ -166,7 +177,7 @@ test("두 번 눌러도 제출은 하나 — 의도가 다시 적히지 않고 P
     assert.equal(ledgerOf(scene).submit?.requestedAt, firstAt, "의도가 다시 적히지 않는다");
 
     // 복구 뒤 한 번의 틱으로 끝까지 간다 — PR 하나.
-    await scene.git(["remote", "set-url", "origin", scene.remote.path]);
+    restorePush();
     const push = ledgerOf(scene).push;
     assert.ok(push, "푸시 밀림이 원장에 적혀야 한다");
     scene.setNow(Date.parse(push.nextAttemptAt) + 1000);
@@ -183,7 +194,7 @@ test("제출 중 네트워크 끊김 — ensurePushed 실패 · 의도 남음 �
   const scene = await makeSupervisedScene();
   try {
     await cycleWith(scene);
-    await scene.git(["remote", "set-url", "origin", DEAD_REMOTE]);
+    const restorePush = failPush(scene);
     await scene.supervisor.submit("button");
     await scene.supervisor.settled();
 
@@ -192,7 +203,7 @@ test("제출 중 네트워크 끊김 — ensurePushed 실패 · 의도 남음 �
     assert.ok(ledger.push?.attempts === 1, "푸시 실패가 12행 원장에 남는다");
     assert.equal(scene.core.openHandoff, null, "PR 은 아직 못 연다");
 
-    await scene.git(["remote", "set-url", "origin", scene.remote.path]);
+    restorePush();
     scene.setNow(Date.parse(ledger.push?.nextAttemptAt ?? "") + 1000);
     await scene.supervisor.tick("manual");
 
@@ -203,7 +214,7 @@ test("제출 중 네트워크 끊김 — ensurePushed 실패 · 의도 남음 �
   }
 });
 
-test("끝난 PR (merged) 이 레지스트리에 남은 채 제출 — 새 PR, 옛 PR 은 PATCH 되지 않는다", async () => {
+test("끝난 PR (merged) 이 남은 채 제출 — 최신 적용을 안내하고 옛 PR은 건드리지 않는다", async () => {
   const scene = await makeSupervisedScene();
   try {
     await cycleWith(scene);
@@ -221,7 +232,7 @@ test("끝난 PR (merged) 이 레지스트리에 남은 채 제출 — 새 PR, �
     // 병합 착지(랜딩)는 아직 일어나지 않은 세계 — 감독자 틱이 land 를 돌기 전에
     // 제출이 먼저 눌렸다. 끝난 요청은 새 요청으로만 이어진다.
 
-    await scene.supervisor.submit("button");
+    await assert.rejects(scene.supervisor.submit("button"), /최신 내용 적용/);
     await scene.supervisor.settled();
 
     assert.equal(scene.github.pull(number)?.title, "옛 제목", "옛 PR 의 제목은 그대로");
@@ -229,7 +240,7 @@ test("끝난 PR (merged) 이 레지스트리에 남은 채 제출 — 새 PR, �
     const handoff = scene.core.openHandoff;
     assert.equal(handoff?.number, number, "끝난 요청을 자동으로 새 제출로 바꾸지 않는다");
     assert.equal(scene.github.pull(number + 1), undefined);
-    assert.equal(ledgerOf(scene).submit, null);
+    assert.equal(readLedger(scene.ledgerPath).submit, null);
   } finally {
     await scene.dispose();
   }
@@ -368,7 +379,7 @@ test("채팅 제출 — submit(via chat) 이 원장에 chat 의도를 적는다"
   const scene = await makeSupervisedScene();
   try {
     await cycleWith(scene);
-    await scene.git(["remote", "set-url", "origin", DEAD_REMOTE]);
+    failPush(scene);
     await scene.supervisor.submit("chat");
     await scene.supervisor.settled();
     assert.equal(ledgerOf(scene).submit?.via, "chat", "의도의 출처가 chat 이어야 한다");

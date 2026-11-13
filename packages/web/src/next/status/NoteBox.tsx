@@ -73,7 +73,8 @@ export function NoteBox({
         </span>
         <button
           type="button"
-          className="nx-btn nx-btn--sm nx-btn--pri"
+          // 으뜸은 화면의 `제출` 하나다 — 한마디 보내기는 보통 단추(2026-10-23 화면 전면 재설계 §4 G).
+          className="nx-btn nx-btn--sm"
           disabled={busy || draft.trim() === ""}
           onClick={() => void send()}
         >

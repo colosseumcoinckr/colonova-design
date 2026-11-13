@@ -229,10 +229,16 @@ export function InviteConfirm({
         <ul className="nx-inv-list">
           {copy.rows.map((row) => (
             <li key={row.repoUrl} className={`nx-inv-row nx-inv-row--${row.action}`}>
-              <span className={`nx-inv-chip nx-inv-chip--${row.action}`}>{row.chip}</span>
+              <span
+                className={`nx-pill nx-inv-chip${row.action === "add" ? " nx-pill--accent" : row.action === "update" ? " nx-pill--amber" : ""}`}
+              >
+                {row.chip}
+              </span>
               <div className="nx-inv-main">
                 <b>{row.name}</b>
-                {(row.detail ?? row.sub) && <small>{row.detail ?? row.sub}</small>}
+                {row.action !== "keep" && (row.detail ?? row.sub) && (
+                  <small>{row.detail ?? row.sub}</small>
+                )}
               </div>
               {row.action === "add" && (
                 // 보조 단추다 — 주 단추는 푸터의 `가져오기` 하나. 가져온 뒤에 이 프로젝트를 연다.
@@ -262,6 +268,7 @@ export function InviteConfirm({
             <label htmlFor="nx-invite-author">{L.invite.authorLabel}</label>
             <input
               id="nx-invite-author"
+              className="nx-input"
               value={authorDraft}
               maxLength={80}
               onChange={(event) => setAuthorDraft(event.target.value)}
@@ -318,6 +325,12 @@ export function InviteConfirm({
         {warning}
       </p>
     ));
+    // 창구 저장 실패(2026-11-12 검토 WF-7) — 가져오기는 계속됐고, 같은 파일을 다시 열면 저장된다.
+    const supportWarn = result.supportFailed ? (
+      <p className="nx-inv-callout nx-inv-callout--warn" role="alert">
+        {L.support.saveFailed}
+      </p>
+    ) : null;
 
     if (outcome === "token") {
       // 연결 코드가 거절됐으면 프로젝트는 하나도 건드리지 않은 상태다.
@@ -362,6 +375,7 @@ export function InviteConfirm({
             </ul>
           </div>
           {warnings}
+          {supportWarn}
         </>
       );
       foot = (
@@ -393,6 +407,7 @@ export function InviteConfirm({
             {addedCount > 0 && <p>{L.invite.addedNote}</p>}
           </div>
           {warnings}
+          {supportWarn}
           {/* 파일 정리는 가져온 뒤의 일이다 — 가져오기 전에 치우면 그만두거나 코드가 거절돼도 파일이 없다. */}
           {trashable && state.path ? (
             <div className={`nx-inv-cleanup${trash === "done" ? " nx-inv-cleanup--done" : ""}`}>

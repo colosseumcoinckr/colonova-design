@@ -6,6 +6,9 @@ import type { ChatSettings, Settings } from "../lib/settings";
 import type { Journey } from "./lib/journey";
 import type { ToastAction } from "./lib/nav";
 
+/** 설정 대화상자의 쪽 — `settings/SettingsDialog` 의 목록 차례와 같다. */
+export type SettingsPage = "ai" | "theme" | "notify" | "connection" | "update" | "developer";
+
 /**
  * 셸이 칸들에 건네는 이동의 손 — 모든 칸이 같은 길로 움직인다. 다른 프로젝트의
  * 대화를 여는 손은 전환을 먼저 하고, 등록부가 옮겨 앉으면 그 대화를 연다(한
@@ -16,33 +19,44 @@ export interface ShellNav {
   openThread: (slug: string, threadId: string) => void;
   /** 새 대화의 빈 자리로(⌘T) — 세션은 첫 말이 나갈 때 태어난다. 다른 프로젝트면 옮긴 뒤. */
   newThread: (slug?: string) => void;
-  /** 홈(받은 편지함)으로. */
-  goHome: () => void;
   /** 대화 보기로 — 지금 열린 대화(또는 새 대화의 빈 자리) 그대로. */
   showThread: () => void;
   /**
-   * 작업 화면의 미리보기 쪽으로 — 홈의 `처음 켜는 준비` 줄이 부른다(2026-10-07 베타 준비 분석 · 첫 5분). `switchProject`
-   * 는 이미 활성인 프로젝트로는 아무 데도 가지 않아, 첫 프로젝트(늘 활성)의 준비 진행에 닿는 길이 없었다. 좁은 창은 화면
-   * 탭이 앞에 선다.
+   * 작업 화면의 미리보기 쪽으로 — 첫 준비가 끝났다는 토스트가 부른다(2026-10-07 베타 준비 분석 · 첫 5분).
+   * `switchProject` 는 이미 활성인 프로젝트로는 아무 데도 가지 않아, 첫 프로젝트(늘 활성)의 준비 진행에 닿는 길이
+   * 없었다. 좁은 창은 화면 탭이 앞에 선다.
    */
   showScreen: () => void;
+  /** 마지막 대화와 미리보기로 간다(2026-10-23 화면 전면 재설계 §3.1). */
+  openScreen?: () => void;
+  /** 사이드바의 기획서 항목 — 오른쪽 칸을 기획서 보기로 바꾼다(2026-10-18 · M4). */
+  openPlans: () => void;
+  /** 기획서 칸의 돌아오는 길 — 오른쪽 칸의 얼굴을 바꾼다. */
+  showPane: (pane: "preview" | "plans") => void;
   /**
-   * 프로젝트의 서비스 화면으로 — 활성이 아니면 옮긴 뒤 그 작업 화면을 연다. 첫 준비가 끝났다는 소식(토스트 · 홈 줄 · OS
-   * 알림)이 부른다. 그 프로젝트의 `떴어요` 줄은 이때 거둔다.
+   * 기획서 칸의 초안 편집기가 열리고 닫혔다고 알린다(2026-10-23 기획자 화면 손질 D2) — 넓은 창의 집중 배치를 고르고, 그동안
+   * 대화를 열면 화면 쪽으로 돌아오게 한다(`nav.ts` 의 `planDraft`).
+   */
+  setPlanDraft: (open: boolean) => void;
+  /**
+   * 프로젝트의 서비스 화면으로 — 활성이 아니면 옮긴 뒤 그 작업 화면을 연다. 첫 준비가 끝났다는 소식(토스트 · OS
+   * 알림)이 부른다. 그 프로젝트의 기다림 표식은 이때 거둔다.
    */
   openProjectScreen: (slug: string) => void;
-  /** 서비스가 떴다는 홈 줄을 닫는다. */
-  dismissReady: (slug: string) => void;
   /**
-   * 활성 프로젝트를 옮긴다(`project.activate`). 옮겨 앉으면 셸은 홈부터 선다. 끝나면 옮겼는지(true)
-   * 못 옮겼는지(false)를 알려 준다 — 못 옮기면 알림이 한 문장 뜬다(`quiet` 면 부르는 쪽이 제 자리에서
-   * 말한다 — 찾기 창은 열린 채 남는다).
+   * 활성 프로젝트를 옮긴다(`project.activate`). 옮겨 앉으면 그 프로젝트가 마지막으로 있던 자리(기획서 · 화면)가
+   * 선다(2026-10-31 홈 걷기 §2). 끝나면 옮겼는지(true) 못 옮겼는지(false)를 알려 준다 — 못 옮기면 알림이 한 문장
+   * 뜬다(`quiet` 면 부르는 쪽이 제 자리에서 말한다 — 찾기 창은 열린 채 남는다).
    */
   switchProject: (slug: string, options?: { quiet?: boolean }) => Promise<boolean>;
   /** 좁은 창의 두 탭 중 하나를 앞에 세운다. 넓은 창에서는 아무 일도 없다. */
   showTab: (tab: "chat" | "preview") => void;
-  /** 설정 대화상자. */
-  openSettings: () => void;
+  /** 넓은 창의 오른쪽 칸 탭(2026-10-31 화면 자리 개선안 S10) — 대화 · 기획서 · 작업 기록. */
+  showRightTab: (tab: "chat" | "plans" | "history") => void;
+  /** 설정 대화상자. `page` 를 주면 그 쪽이 먼저 선다(없으면 지금처럼 — 바퀴 · ⌘, · 팔레트). */
+  openSettings: (page?: SettingsPage) => void;
+  /** 기획서 연결 대화상자(2026-11-13 사용자 결정 — 기획서 연결을 프로젝트 쪽으로). 활성 프로젝트의 Confluence 를 정한다. */
+  openPlansConnect: () => void;
   /** 셸 위에 잠깐 뜨는 한 줄 — `action` 이 있으면 단추가 달리고 더 오래 머문다. */
   toast: (text: string, action?: ToastAction) => void;
   /**
@@ -75,7 +89,29 @@ export interface SlotProps {
 }
 
 /** 대화 칸(단계 2) — 입력창 · 대화록 · 카드. 문제 문장은 셸이 상태 줄 아래에 그린다. */
-export type ChatColumnProps = SlotProps;
+export type ChatColumnProps = SlotProps & {
+  /**
+   * 기획서 집중 배치(2026-10-23 기획자 화면 손질 D2) — 넓은 창에서 초안을 고치는 동안 이 칸은 마운트한 채 비켜선다.
+   * 입력창 · 대화록의 상태는 그대로 남고, 근거 보내기의 첨부도 받는다.
+   */
+  offstage?: boolean;
+  /** 오른쪽 칸의 얼굴 — 빈 대화의 안내가 오른쪽에 무엇이 서 있는지 말한다(미리보기 · 기획서). */
+  pane?: "preview" | "plans";
+  /**
+   * 넓은 창의 오른쪽 칸 탭(2026-10-31 화면 자리 개선안 S10) — 대화 · 기획서 · 작업 기록.
+   * 셸이 쥐고, 이 칸은 탭 머리와 몸을 바꿔 그린다. 작업 독과 입력창은 어느 탭에서도 바닥에 남는다.
+   */
+  rightTab?: "chat" | "plans" | "history";
+  /** 빈 대화가 읽는 지금 미리보기의 화면 이름. */
+  screenName?: string | null;
+  /** 지금 미리보기가 보는 화면의 주소 — 기획서 탭이 이 화면에 이어진 문서를 가른다. */
+  screenRoute?: string | null;
+  /**
+   * 좁은 창의 화면 탭(S12) — 입력창 시트의 자리가 여기에 서 있다. 셸이 알려 주고,
+   * 이 칸은 펼침 상태를 쥔다(포털이 인스턴스를 옮겨 그린다).
+   */
+  sheetOn?: boolean;
+};
 
 /**
  * 미리보기 칸(단계 3 이 채운다). `onScreenName` 은 지금 화면의 제목을 셸에
@@ -84,7 +120,9 @@ export type ChatColumnProps = SlotProps;
  */
 export interface PreviewColumnProps extends SlotProps {
   onScreenName: (name: string | null) => void;
-  /** 이 칸이 숨었다(홈이 떠 있거나 좁은 창이 대화 탭에 있다) — 열린 작업 기록 서랍은 숨는 순간 접힌다. */
+  /** 지금 화면의 주소를 알린다 — 오른쪽 칸의 기획서 탭이 이 화면에 이어진 문서를 가른다(S10). */
+  onScreenRoute?: (route: string | null) => void;
+  /** 이 칸이 숨었다(기획서 자리거나 좁은 창이 대화 탭에 있다) — 열린 작업 기록 서랍은 숨는 순간 접힌다. */
   offstage?: boolean;
 }
 
@@ -102,15 +140,13 @@ export interface StatusLineProps {
   /** 제목을 눌러 바꾸는 손 — 열린 대화가 있을 때만 건넨다(새 대화의 빈 자리는 바꿀 이름이 없다). */
   onRename?: (title: string) => void;
   journey: Journey;
-  /** AI 가 도는 턴의 시작 시각(데몬 시계, ms) — `만드는 중 · 12초`. 모르면 null. */
-  turnStartedAt: number | null;
-  /** 지금 도는 도구의 묶음(`makingPhase`) — 단계 말 `화면을 살펴보는 중` … 을
-   * 고른다. 도구가 없거나 모르면 null(`만드는 중`). */
-  makingPhase: "read" | "file" | "command" | null;
-  /** 이 대화의 첫 턴인가 — 60초를 넘으면 시계 뒤에 `처음은 몇 분 걸려요`. */
-  firstTurn: boolean;
   narrow: boolean;
   nav: ShellNav;
   /** 열린 제출 버튼을 눌렀다 — 단계 4 가 확인 팝오버로 바꾼다. 지금은 자리만. */
   onSubmit: () => void;
+  /**
+   * 기획서 집중 배치(2026-10-23 기획자 화면 손질 U5) — 초안을 고치는 동안 오른쪽의 화면 작업 묶음(여정 · 받아오기 · 제출)을
+   * 접고 제목만 남긴다. `제출` 이 초안 곁에 서면 `발행` 과 헷갈린다. 미리보기로 돌아오면 그대로 선다(상태는 살아 있다).
+   */
+  docFocus?: boolean;
 }

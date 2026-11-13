@@ -2,7 +2,8 @@ import { useState } from "react";
 import type { Block } from "../../lib/daemon-client";
 import { isToolRunning } from "../../lib/progress";
 import { bucketOf } from "../../lib/tool-buckets";
-import { CheckIcon, ChevronRightIcon } from "../icons";
+import { L } from "../../next/labels";
+import { CheckIcon, ChevronRightIcon, CloseIcon } from "../icons";
 import { Markdown } from "../Markdown";
 import { ThinkingBlock, ToolBlock } from "./blocks";
 import type { TaskControls, TodoToolBlock } from "./shared";
@@ -11,7 +12,11 @@ type ActivityCounts = { file: number; command: number; read: number; other: numb
 
 function activityCounts(tools: Array<Extract<Block, { type: "tool" }>>): ActivityCounts {
   const counts: ActivityCounts = { file: 0, command: 0, read: 0, other: 0 };
-  for (const tool of tools) counts[bucketOf(tool.name) ?? "other"] += 1;
+  // 2026-11-12 UI 조사 U-037 — 성공으로 끝난 도구만 작업 수에 넣는다.
+  for (const tool of tools) {
+    if (tool.isError || isToolRunning(tool)) continue;
+    counts[bucketOf(tool.name) ?? "other"] += 1;
+  }
   return counts;
 }
 
@@ -25,11 +30,14 @@ function activityCounts(tools: Array<Extract<Block, { type: "tool" }>>): Activit
  * 끝난 머리는 한 일의 가장 무거운 쪽을 말한다 — 파일을 읽기만 한 런이
  * "화면을 고쳤어요" 라고 하면 그 말은 거짓이다.
  */
-function activityStatus(running: boolean, counts: ActivityCounts): string {
-  if (running) return "만드는 중…";
-  if (counts.file > 0) return "화면을 고쳤어요";
-  if (counts.command > 0) return "검사를 돌렸어요";
-  return "확인했어요";
+function activityStatus(running: boolean, failed: boolean, counts: ActivityCounts): string {
+  // 2026-11-12 UI 조사 U-037 — 실패한 도구가 하나라도 있으면 성공 문장보다
+  // 부분 실패가 먼저 선다: 성공한 고침과 어긋난 결과를 같은 말로 읽게 하지 않는다.
+  if (running) return L.tape.actMaking;
+  if (failed) return L.tape.actPartFail;
+  if (counts.file > 0) return L.tape.actFixed;
+  if (counts.command > 0) return L.tape.actChecked;
+  return L.tape.actSeen;
 }
 
 function activityLine(counts: ActivityCounts): string {
@@ -37,10 +45,10 @@ function activityLine(counts: ActivityCounts): string {
   // "파일 3개 생성" is true of a Write call and says nothing about what was
   // gained; the words below describe the work.
   const parts: string[] = [];
-  if (counts.file) parts.push(`화면 파일 ${counts.file}개 작업`);
-  if (counts.command) parts.push(`검사 ${counts.command}회 실행`);
-  if (counts.read) parts.push(`${counts.read}곳 확인`);
-  if (counts.other) parts.push(`그 밖에 ${counts.other}가지`);
+  if (counts.file) parts.push(L.tape.countFile(counts.file));
+  if (counts.command) parts.push(L.tape.countCommand(counts.command));
+  if (counts.read) parts.push(L.tape.countRead(counts.read));
+  if (counts.other) parts.push(L.tape.countOther(counts.other));
   return parts.join(" · ");
 }
 
@@ -67,7 +75,7 @@ function SubagentThread({ steps, controls }: { steps: ActivityStep[]; controls: 
         <span className={`tool__chevron${open ? " tool__chevron--open" : ""}`}>
           <ChevronRightIcon />
         </span>
-        <span className="subagent__label">하위 작업의 대화 {steps.length}</span>
+        <span className="subagent__label">{L.tape.subagent(steps.length)}</span>
         {peek && <span className="subagent__peek">{peek}</span>}
       </button>
       {open && (
@@ -134,12 +142,21 @@ function ActivitySummary({ steps, controls }: { steps: ActivityStep[]; controls:
         <span className={`tool__chevron${open ? " tool__chevron--open" : ""}`}>
           <ChevronRightIcon />
         </span>
-        {running ? <span className="spinner" /> : <CheckIcon size={11} />}
+        {/* U-037 — 실패가 섞인 런은 체크가 아니라 ✕ 와 부분 실패 문장으로 선다. */}
+        {running ? (
+          <span className="spinner" />
+        ) : failed ? (
+          <CloseIcon size={11} />
+        ) : (
+          <CheckIcon size={11} />
+        )}
         {/* 도구 없는 런(하위 작업의 말만 남은 구간)도 빈 막대로 두지 않는다.
             에이전트가 스스로 내놓은 근황(live summary)이 있으면 그것이 이긴다
             — 기계가 제 말로 하는 것이 도구 셈보다 언제나 낫다. */}
-        <span className="activity__text">{headline ?? activityStatus(running, counts)}</span>
-        {failed && <span className="activity__flag">실패 있음</span>}
+        <span className="activity__text">
+          {headline ?? activityStatus(running, failed, counts)}
+        </span>
+        {failed && <span className="activity__flag">{L.tape.flagFail}</span>}
       </button>
       {open && (
         <div className="activity__body">
@@ -238,4 +255,4 @@ function groupActivity(blocks: Block[]): Row[] {
   return rows;
 }
 
-export { ActivitySummary, groupActivity };
+export { ActivitySummary, activityCounts, groupActivity };

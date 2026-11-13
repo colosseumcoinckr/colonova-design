@@ -2,10 +2,13 @@
  * 재생 벤치(PLAN-HARNESS §3.A)의 순수 함수 — 시나리오 읽기 · 핀 턴 만들기 ·
  * 통계 행 모으기 · 끝 판정 · 판정 · 요약 · 비교. 네트워크와 git 은 bench.mjs 가
  * 갖고, 이 파일은 검증하기 쉽도록 부작용을 파일 읽기(loadScenarios ·
- * collectRows) 정도로만 둔다.
+ * collectRows · loadSheet) 정도로만 둔다.
+ * 데몬의 대상 고르기(syncTargets)는 dist 를 가져다 쓴다 — 시험은 빌드 뒤에
+ * 돈다(2026-11-03 · A안 0-2 1층 채점기).
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { syncTargets } from "../../packages/daemon/dist/screen-plan-sync.js";
 import { markTurn } from "../../packages/protocol/dist/index.js";
 
 const TURN_STATS_PREFIX = "turn-stats-";
@@ -53,14 +56,49 @@ function validateScenario(item, index) {
         throw new Error(`${at} — pins[${i}] 의 text 가 없습니다 — 벤치의 핀은 글자 핀입니다.`);
       }
     }
+  } else if (item.kind === "compare") {
+    // 맞춰 보기(2026-11-02 · 같이 고치기 UX 계획 0단계) — 문서 하나의 어긋남을 재는 한 편. 정답은
+    // compare-sheet.json 이 갈고리 삼는다 — 여기선 문서와 기대 절만 받는다.
+    if (typeof item.pageId !== "string" || item.pageId.trim() === "") {
+      throw new Error(`${at} — compare 시나리오에 pageId 가 없습니다.`);
+    }
+    if (item.sheet !== undefined && typeof item.sheet !== "string") {
+      throw new Error(`${at} — sheet 는 문자열(정답표의 문서 제목)이어야 합니다.`);
+    }
+  } else if (item.kind === "suggest") {
+    // 화면 제안(2026-11-03 · A안 0-2 C8) — 정책을 바꾸는 말을 보낸 뒤 답의 어긋남 줄을 재는 한 편.
+    if (typeof item.pageId !== "string" || item.pageId.trim() === "") {
+      throw new Error(`${at} — suggest 시나리오에 pageId 가 없습니다.`);
+    }
+    if (item.sheet !== undefined && typeof item.sheet !== "string") {
+      throw new Error(`${at} — sheet 는 문자열(정답표의 문서 제목)이어야 합니다.`);
+    }
+    if (typeof item.brief !== "string" || item.brief.trim() === "") {
+      throw new Error(`${at} — suggest 시나리오에 brief(정책을 바꾸는 말)가 없습니다.`);
+    }
   } else {
     throw new Error(
-      `${at} — kind 는 "user" 또는 "pin" 이어야 합니다(${JSON.stringify(item.kind)}).`,
+      `${at} — kind 는 "user" · "pin" · "compare" · "suggest" 이어야 합니다(${JSON.stringify(item.kind)}).`,
     );
   }
   const expect = item.expect;
   if (expect === null || typeof expect !== "object" || Array.isArray(expect)) {
     throw new Error(`${at} — expect 가 없습니다.`);
+  }
+  if (item.kind === "compare" || item.kind === "suggest") {
+    // compare 는 어긋남 한 절 이상을 기대하는 견본만 둔다. suggest 는 빈 목록도 받는다 —
+    // 정책과 화면이 이미 맞는 편의 「잘못 짚음 없음」을 재기 때문이다(2026-11-03 · A안 0-2).
+    const label = item.kind === "compare" ? "compare" : "suggest";
+    if (
+      !Array.isArray(expect.sections) ||
+      expect.sections.some((s) => typeof s !== "string" || s === "")
+    ) {
+      throw new Error(`${at} — ${label} 시나리오의 expect.sections 는 절 목록이어야 합니다.`);
+    }
+    if (item.kind === "compare" && expect.sections.length === 0) {
+      throw new Error(`${at} — compare 시나리오의 expect.sections 는 비어 있지 않아야 합니다.`);
+    }
+    return;
   }
   if (
     !Array.isArray(expect.files) ||
@@ -267,6 +305,122 @@ export function judge(scenario, changed, contents, lastTurn) {
   return { pass: reasons.length === 0, reasons };
 }
 
+/**
+ * 맞춰 보기의 판정(2026-11-02 · 같이 고치기 UX 계획 0단계) — result 는 `draft.compare` 의 답.
+ * 놓친 절(expect.sections 에 있는데 rows 에 없는 것)과 잘못 짚은 절(rows 에 있는데 expect 에 없는
+ * 것)을 다 잰다 — 정확도 재는 자리다(같은 계획 §6 기준 견본).
+ */
+export function judgeCompare(scenario, result) {
+  const reasons = [];
+  const rows = result?.rows ?? [];
+  const got = rows.map((row) => row.section);
+  for (const section of scenario.expect.sections) {
+    if (!got.includes(section)) reasons.push(`놓친 절 — ${section}`);
+  }
+  for (const section of got) {
+    if (!scenario.expect.sections.includes(section)) reasons.push(`잘못 짚은 절 — ${section}`);
+  }
+  return { pass: reasons.length === 0, reasons };
+}
+
+/**
+ * 1층 채점(2026-11-03 · A안 0-2) — 정답표의 화면 요청마다 데몬의 `syncTargets` 를 1층 바닥 재료(근거 없음 ·
+ * 그 요청의 화면 주소 · 연결 표)로 돌려, 기대 문서가 대상에 들었는지 센다. `opts.links` 를 주면 그 연결 줄
+ * (plans-map 의 MapLink 모양 — 진짜 pageId)를 쓴다 — 그때는 정답표의 docs[].pageId 가 다 채워져 있어야 하고,
+ * 비어 있으면 사람 말로 멈춘다. 주지 않으면 정답표의 `links`(doc 제목 모양)를 가짜 pageId 로 바꿔 쓴다.
+ * 돌려주는 것은 `{ total, hit, missed, extra }` — `missed` 는 기대 문서(doc)가 있는데 대상에 없는 요청,
+ * `extra` 는 기대에 없는 문서가 대상에 든 요청(doc: null 요청에 문서가 골라진 것 포함)이다. 한 요청이
+ * 둘 다일 수 있다. `hit` 은 둘 다 아닌 요청 수다(2026-11-03 후속 — 놓침과 잘못 닿음을 가른다).
+ */
+export function scoreTargets(sheet, opts = {}) {
+  if (sheet === null || typeof sheet !== "object" || !Array.isArray(sheet.requests)) {
+    throw new Error("정답표에 requests 목록이 없습니다.");
+  }
+  const docs = Array.isArray(sheet.docs) ? sheet.docs : [];
+  const pageIdOf = new Map(docs.map((doc) => [doc.title, doc.pageId ?? null]));
+  const useFileLinks = Array.isArray(opts.links);
+  if (useFileLinks) {
+    const missing = docs
+      .filter((doc) => typeof doc.pageId !== "string" || doc.pageId === "")
+      .map((doc) => doc.title);
+    if (missing.length > 0) {
+      throw new Error(
+        `정답표의 문서 pageId 가 비어 있습니다 — 실측 전에 채워 주세요: ${missing.join(" · ")}`,
+      );
+    }
+  }
+  const idOf = (title) => {
+    if (!useFileLinks) return `bench-doc:${title}`;
+    const pageId = pageIdOf.get(title);
+    if (pageId === undefined) {
+      throw new Error(`정답표의 문서 목록에 없는 제목입니다 — ${title}`);
+    }
+    return pageId;
+  };
+  const links = useFileLinks
+    ? opts.links.map((row) => ({
+        pageId: row.pageId,
+        route: row.route,
+        section: row.section ?? null,
+      }))
+    : (Array.isArray(sheet.links) ? sheet.links : []).map((row) => ({
+        pageId: idOf(row.doc),
+        route: row.route,
+        section: row.section ?? null,
+      }));
+  const missed = [];
+  const extra = [];
+  let hit = 0;
+  for (const request of sheet.requests) {
+    if (typeof request.route !== "string" || request.route.trim() === "") {
+      throw new Error(`요청 ${request.id} 에 화면 주소(route)가 없습니다.`);
+    }
+    const targets = syncTargets({ links, refs: [], sessionId: "bench", routes: [request.route] });
+    const expected = request.doc === null ? null : idOf(request.doc);
+    const found = targets.some((target) => target.pageId === expected);
+    const stray = targets.some((target) => target.pageId !== expected);
+    if (expected !== null && !found) missed.push(request.id);
+    if (stray) extra.push(request.id);
+    if ((expected === null || found) && !stray) hit += 1;
+  }
+  return { total: sheet.requests.length, hit, missed, extra };
+}
+
+/** 정답표 파일을 읽는다 — 읽기 · JSON 깨짐은 사람 말로 멈춘다. */
+export function loadSheet(file) {
+  let data;
+  try {
+    data = JSON.parse(readFileSync(file, "utf8"));
+  } catch (error) {
+    throw new Error(`정답표를 읽지 못했습니다 — ${file}: ${error.message}`);
+  }
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error(`정답표가 객체가 아닙니다 — ${file}`);
+  }
+  return data;
+}
+
+/**
+ * 흔들림 재기(2026-11-03 · A안 0-2) — `--repeat` 으로 한 시나리오를 여러 번 돈 결과에서, 짚은 절 묶음
+ * (entry.sections)이 그 시나리오의 첫 회와 달라진 회 수의 합이다. 절을 읽지 못해 sections 가 없는 회는
+ * 센 것도 · 기준도 되지 않는다. `{ total, byId }` 를 돌려준다.
+ */
+export function countFlaky(entries) {
+  const byId = {};
+  const baseline = new Map();
+  for (const entry of entries ?? []) {
+    if (!Array.isArray(entry.sections)) continue;
+    const got = JSON.stringify([...entry.sections].sort());
+    if (!baseline.has(entry.id)) {
+      baseline.set(entry.id, got);
+      byId[entry.id] = 0;
+      continue;
+    }
+    if (baseline.get(entry.id) !== got) byId[entry.id] += 1;
+  }
+  return { total: Object.values(byId).reduce((acc, n) => acc + n, 0), byId };
+}
+
 // ---------------------------------------------------------------------------
 // 요약과 비교 — 표의 한 줄 / 두 결과 파일의 같은 id 끼리.
 // ---------------------------------------------------------------------------
@@ -301,7 +455,11 @@ export function summaryOf(entry) {
   return {
     id: entry.id,
     pass: entry.pass === true,
-    ms: turns.reduce((acc, turn) => acc + (turn.durationMs ?? 0), 0),
+    // 턴을 안 만드는 종류(compare · suggest)는 entry.ms 가 총 시간을 잡는다(2026-11-03 · A안 0-2).
+    ms:
+      typeof entry.ms === "number"
+        ? entry.ms
+        : turns.reduce((acc, turn) => acc + (turn.durationMs ?? 0), 0),
     costUsd,
     outputTokens,
     cacheHitRate,

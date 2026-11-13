@@ -7,7 +7,24 @@ import { DEV, L } from "../src/next/labels.ts";
 import { sourcePath } from "./helpers/source-path.ts";
 
 /** U10 의 끝 조건 — 사용자 면에 나오지 않는 개발자의 말. */
-const FORBIDDEN = ["턴", "경로", "git", "데몬", "커밋", "브랜치", "PR"];
+const FORBIDDEN = [
+  "턴",
+  "경로",
+  "git",
+  "데몬",
+  "커밋",
+  "브랜치",
+  "PR",
+  "API",
+  "URL",
+  "레포",
+  "빌드",
+  "서버",
+  "세션",
+  "캐시",
+  "HTTP",
+  "종료 코드",
+];
 
 const HANGUL = /[ᄀ-ᇿ㄰-㆏가-힯]/;
 
@@ -162,6 +179,10 @@ test("labels: L 의 칸은 모두 next/ 어딘가에서 불린다", () => {
     ...sourceFiles(root),
     ...sourceFiles(join(root, "../components/shell")),
     ...sourceFiles(join(root, "../components/dialogs")),
+    // L.tape 는 낡은 대화록 부품(components/transcript)의 문장이다 — 같은
+    // 관리 밖이면 죽은 문장을 못 잡으니 함께 센다(2026-11-12 U-201).
+    ...sourceFiles(join(root, "../components/transcript")),
+    join(root, "../components/Markdown.tsx"),
   ]
     .filter((file) => sourcePath(root, file) !== "labels.ts")
     .map((file) => ({
@@ -226,4 +247,17 @@ test("watchdog: 문장이 L.crash 와 글자 그대로 같다", () => {
   for (const text of [L.crash.bootTitle, L.crash.body, L.crash.reopen, DEV.crash.details]) {
     assert.ok(source.includes(text), `boot-watchdog.js 에 이 문장이 없다: ${text}`);
   }
+});
+
+// 2026-11-12 UI 조사 U-214 — 같은 오류와 초대 파일 정리 안내가 다시 갈라지지 않게 한다.
+test("labels: 같은 안내를 쓰는 자리의 문장이 같다", () => {
+  const pairs = [
+    [L.planSync.applyFailed, L.compare.applyFailed],
+    [L.planSync.retryFailed, L.compare.retryFailed],
+    [L.planSync.undoFailed, L.drafts.undoFailed],
+    [L.docOps.failed, L.comments.failed],
+    [L.comments.failed, L.confluence.labelFailed],
+    [L.onboarding.inviteWarn, L.invite.warnTrash],
+  ];
+  for (const [left, right] of pairs) assert.equal(left, right);
 });

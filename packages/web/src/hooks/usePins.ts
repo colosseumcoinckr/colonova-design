@@ -203,8 +203,8 @@ export function usePins(slug: string | null, api: Daemon["api"]): Pins {
       // 그대로이므로 AI 는 이미 들었다.
       setRecordError(
         e instanceof Error && e.message
-          ? `코멘트 기록을 저장하지 못했습니다 — ${e.message}. 요청은 그대로 갔어요 — 개발자에게 보낼 기록에만 남지 않아요`
-          : "코멘트 기록을 저장하지 못했습니다 — 요청은 그대로 갔어요 — 개발자에게 보낼 기록에만 남지 않아요",
+          ? `코멘트 기록을 저장하지 못했어요 — ${e.message}. 요청은 그대로 갔어요 — 개발자에게 보낼 기록에만 남지 않아요`
+          : "코멘트 기록을 저장하지 못했어요 — 요청은 그대로 갔어요 — 개발자에게 보낼 기록에만 남지 않아요",
       );
     }
   };

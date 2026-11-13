@@ -12,13 +12,13 @@
  * 주소창에 절대 쓰지 않는다), 미리 보기에는 가린 값만 그린다. 보내기 길(메일
  * 초안 · OS 공유 시트)도 파일을 브라우저 밖 서버가 아니라 로컬 앱에 건넨다.
  */
-// ?v=8 — Pages 캐시가 옛 invite-format.mjs를 주지 않게 한다.
+// ?v=10 — Pages 캐시가 옛 invite-format.mjs를 주지 않게 한다.
 import {
   buildInvite,
   inviteFileName,
   maskInviteForPreview,
   sealInvite,
-} from "./invite-format.mjs?v=8";
+} from "./invite-format.mjs?v=10";
 import * as inviteCheck from "./invite-check.mjs?v=2";
 
 const form = document.getElementById("invite-form");
@@ -40,6 +40,7 @@ const manualUrl = document.getElementById("manual-url");
 const manualAdd = document.getElementById("manual-add");
 const authorStatus = document.getElementById("author-status");
 const notifyStatus = document.getElementById("notify-status");
+const supportUrlStatus = document.getElementById("support-url-status");
 const nameStatus = document.getElementById("name-status");
 const limitStatus = document.getElementById("limit-status");
 const checkPanel = document.getElementById("check-panel");
@@ -97,6 +98,10 @@ const state = {
   slackWebhook: "",
   slackBotToken: "",
   slackChannel: "",
+  /** 창구(2026-11-12 설계 결정 ㉱) — 막혔을 때 물어볼 곳. 셋 다 선택이다. */
+  supportName: "",
+  supportRoom: "",
+  supportUrl: "",
 };
 
 const params = new URLSearchParams(location.search);
@@ -152,6 +157,16 @@ function buildValues() {
     author: state.author,
     // 초대 v4(PLAN 단계 5): 개발자 알림이 갈 Slack 길은 기계 몫이다.
     ...(slack ? { notify: { slack } } : {}),
+    // 창구 칸(2026-11-12 결정 ㉱) — 형식 모듈이 걸러 싣는다(비면 칸이 없다).
+    ...(state.supportName || state.supportRoom || state.supportUrl
+      ? {
+          support: {
+            name: state.supportName,
+            room: state.supportRoom,
+            url: state.supportUrl,
+          },
+        }
+      : {}),
     projects: state.projects.map((project) => {
       // 행의 리뷰어가 있으면 그 행은 행의 것, 없으면 공통 — 둘 다 없으면 싣지
       // 않는다. 공통 리뷰어를 최상위로 넘겨 봐야 projects 가 있으면 버려진다.
@@ -963,6 +978,12 @@ async function render({ keepRows = false } = {}) {
   const notifyText = notifyWarning(view);
   notifyStatus.hidden = notifyText === "";
   notifyStatus.textContent = notifyText;
+  // 대화방 주소 — https 가 아니면 버려지는 칸이다. 만들기는 막지 않고 알린다(검토 WF-2).
+  const urlBad = state.supportUrl.trim() !== "" && !state.supportUrl.trim().startsWith("https://");
+  supportUrlStatus.hidden = !urlBad;
+  supportUrlStatus.textContent = urlBad
+    ? "https:// 로 시작하는 주소만 실려요 — 이 주소는 빼고 만들어요"
+    : "";
   // 점검 칸과, 점검이 만들기를 잠근 이유.
   renderCheck(view);
   const gateText = checkGateText(view, values.projects.length > 0);
@@ -1047,6 +1068,19 @@ form.addEventListener("input", (event) => {
   }
   if (field.name === "slackChannel") {
     state.slackChannel = field.value;
+    render();
+  }
+  // 창구(2026-11-12 결정 ㉱) — 선택 칸 셋, 만들기를 막지 않는다.
+  if (field.name === "supportName") {
+    state.supportName = field.value;
+    render();
+  }
+  if (field.name === "supportRoom") {
+    state.supportRoom = field.value;
+    render();
+  }
+  if (field.name === "supportUrl") {
+    state.supportUrl = field.value;
     render();
   }
 });

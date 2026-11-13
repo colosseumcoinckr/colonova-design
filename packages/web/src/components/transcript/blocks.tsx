@@ -3,9 +3,11 @@ import type { Block } from "../../lib/daemon-client";
 import { waitedFor } from "../../lib/format";
 import { toolLabel } from "../../lib/labels";
 import { isToolRunning } from "../../lib/progress";
+import { L } from "../../next/labels";
+import { CopyButton } from "../../next/ui/CopyButton";
 import { CheckIcon, ChevronRightIcon, CloseIcon } from "../icons";
 import { Tip } from "../Tip";
-import { preview, type TaskControls, type ToolStatus, toolHeadline } from "./shared";
+import { type TaskControls, type ToolStatus, toolHeadline } from "./shared";
 
 /**
  * 도는 도구의 경과 시계 — "몇 분째인가"는 심장박동(`tool.progress`)이 오기
@@ -36,6 +38,32 @@ function ToolBlock({
   const elapsed = block.progress?.elapsedSeconds ?? 0;
   const retry = block.progress?.retry;
 
+  // 2026-11-12 UI 조사 U-040 — 누른 손은 기다리는 동안 잠기고, Promise 가
+  // 실패({moved:false} 포함)를 알리면 같은 자리에서 다시 누를 수 있게
+  // 머무른다. 결과가 없는 콜백(오래된 호출부)도 실패로 남지 않게
+  // 이미 끝난 Promise 로 친다.
+  const [acting, setActing] = useState<"back" | "stop" | null>(null);
+  const [actError, setActError] = useState<"back" | "stop" | null>(null);
+  const act = (kind: "back" | "stop", call: () => unknown) => {
+    setActError(null);
+    let outcome: unknown;
+    try {
+      outcome = call();
+    } catch {
+      setActError(kind);
+      return;
+    }
+    if (outcome === undefined || outcome === null) return;
+    setActing(kind);
+    void Promise.resolve(outcome)
+      .then((result) => {
+        if (result && typeof result === "object" && "moved" in result && result.moved === false)
+          setActError(kind);
+      })
+      .catch(() => setActError(kind))
+      .finally(() => setActing(null));
+  };
+
   return (
     <div className={`tool tool--${status}`}>
       <div className="tool__bar">
@@ -59,10 +87,10 @@ function ToolBlock({
           </span>
           <span className="tool__name">{toolLabel(block.name)}</span>
           {headline && <span className="tool__headline">{headline}</span>}
-          {block.agentId && <span className="tag">하위 작업</span>}
+          {block.agentId && <span className="tag">{L.tape.subagentTag}</span>}
           <span className={`tool__status tool__status--${status}`}>
             {status === "error" ? (
-              "실패"
+              L.tape.toolFailed
             ) : running ? (
               // 몇 초째인지는 도는 동안에만 뜻이 있다: 끝난 행에
               // 남으면 지금 도는 것처럼 읽힌다. 시계는 행이 뜬 시각에서
@@ -70,37 +98,42 @@ function ToolBlock({
               block.startedAt !== undefined ? (
                 <ToolElapsed startedAt={block.startedAt} />
               ) : elapsed > 0 ? (
-                `${Math.round(elapsed)}초`
+                L.tape.seconds(Math.round(elapsed))
               ) : (
-                "실행 중…"
+                L.tape.toolRunning
               )
             ) : (
               ""
             )}
           </span>
         </button>
-        {/* 작업 버튼은 머리 버튼 바깥에 산다 — 버튼 안의 버튼은 클릭이 겹친다. */}
+        {/* 작업 버튼은 머리 버튼 바깥에 산다 — 버튼 안의 버튼은 클릭이 겹친다.
+            U-040: 누른 손은 기다리는 동안 잠기고 실패는 같은 자리에서 알린다. */}
         {task && task.status === "running" && (
           <span className="tool__acts">
             {!task.backgrounded && onBackgroundTask && (
-              <Tip label="이 작업을 뒤로 보내고 대화를 이어갑니다">
+              <Tip label={L.tape.sendBackTip}>
                 <button
                   type="button"
                   className="ghost tool__act"
-                  onClick={() => onBackgroundTask(block.id)}
+                  disabled={acting !== null}
+                  aria-busy={acting === "back"}
+                  onClick={() => act("back", () => onBackgroundTask(block.id))}
                 >
-                  뒤로 보내기
+                  {acting === "back" ? L.tape.sendBackBusy : L.tape.sendBack}
                 </button>
               </Tip>
             )}
             {onStopTask && (
-              <Tip label="이 작업만 세웁니다 — 대화는 그대로 이어집니다">
+              <Tip label={L.tape.stopTaskTip}>
                 <button
                   type="button"
                   className="ghost tool__act"
-                  onClick={() => onStopTask(task.id)}
+                  disabled={acting !== null}
+                  aria-busy={acting === "stop"}
+                  onClick={() => act("stop", () => onStopTask(task.id))}
                 >
-                  이 작업만 중지
+                  {acting === "stop" ? L.tape.stopTaskBusy : L.tape.stopTask}
                 </button>
               </Tip>
             )}
@@ -108,37 +141,83 @@ function ToolBlock({
         )}
       </div>
       {/* 작업의 한 줄: 모델이 쓴 근황이 있으면 그것이 가장 최신이고,
-          없으면 무엇을 하러 떠난 작업인지가 남는다. */}
+          없으면 무엇을 하러 떠난 작업인지가 남는다. 전체 문장은 title 로 —
+          말줄임 뒤의 끝이 읽히게(U-041). */}
       {task && (
         <div className="tool__task">
-          <span className="tool__tasktext">{task.summary || task.description}</span>
-          {task.toolUses > 0 && <span className="tool__taskmeta">도구 {task.toolUses}회</span>}
+          <span className="tool__tasktext" title={task.summary || task.description}>
+            {task.summary || task.description}
+          </span>
+          {task.toolUses > 0 && (
+            <span className="tool__taskmeta">{L.tape.toolUses(task.toolUses)}</span>
+          )}
           {task.lastTool && <span className="tool__taskmeta">{toolLabel(task.lastTool)}</span>}
           {task.backgrounded && task.status === "running" && (
-            <span className="tag">뒤에서 도는 중</span>
+            <span className="tag">{L.tape.bgTag}</span>
           )}
+        </div>
+      )}
+      {actError !== null && (
+        <div className="tool__task tool__task--error" role="alert">
+          <span className="tool__tasktext">
+            {actError === "back" ? L.tape.sendBackFailed : L.tape.stopTaskFailed}
+          </span>
         </div>
       )}
       {retry && (
         <div className="tool__task">
           <span className="tool__tasktext">
-            연결이 끊겨 다시 시도합니다 ({retry.attempt}/{retry.maxRetries})
+            {L.tape.retryLine(retry.attempt, retry.maxRetries)}
           </span>
         </div>
       )}
       {open && (
         <div className="tool__body">
-          <div className="tool__label">입력</div>
-          <pre>{preview(block.input, 4000)}</pre>
+          {task && <p className="tool__taskfull">{task.summary || task.description}</p>}
+          <div className="tool__label">{L.tape.toolInput}</div>
+          <RawView value={block.input} />
           {block.done && (
             <>
-              <div className="tool__label">결과</div>
-              <pre>{preview(block.result, 4000)}</pre>
+              <div className="tool__label">{L.tape.toolResult}</div>
+              <RawView value={block.result} tail={block.isError} />
             </>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 도구의 긴 입력 · 결과 — 앞 4,000자만 DOM 에 올리던 자리(2026-11-12 UI 조사
+ * U-041). 자른 것은 그 끝이 어디인지 모르므로 잘렸음을 말하고 «전체 보기»
+ * 로 펼친다(스크롤은 CSS 의 320px 가 받는다). 실패한 결과는 앞이 아니라
+ * 끝에 이유가 쓰여 있으므로 꼬리 조각도 함께 둔다.
+ */
+const RAW_PREVIEW_CHARS = 4000;
+
+function rawText(value: unknown): string {
+  return typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? String(value));
+}
+
+function RawView({ value, tail = false }: { value: unknown; tail?: boolean }) {
+  const [whole, setWhole] = useState(false);
+  const text = rawText(value);
+  const truncated = text.length > RAW_PREVIEW_CHARS && !whole;
+  return (
+    <>
+      <pre>{truncated ? `${text.slice(0, RAW_PREVIEW_CHARS)}…` : text}</pre>
+      <CopyButton text={text} label={L.transcript.copyAll} small />
+      {truncated && (
+        <div className="tool__more">
+          {tail && <span className="tool__tail">{L.tape.toolTail}</span>}
+          {tail && <pre>{text.slice(-1000)}</pre>}
+          <button type="button" className="ghost tool__whole" onClick={() => setWhole(true)}>
+            {L.tape.toolWhole}
+          </button>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -156,7 +235,9 @@ function ThinkingBlock({ block }: { block: Extract<Block, { type: "thinking" }> 
   return (
     <details className={block.streaming ? "thinking thinking--live" : "thinking"}>
       <summary>
-        <span className="thinking__label">{block.streaming ? "생각 중…" : "생각 과정"}</span>
+        <span className="thinking__label">
+          {block.streaming ? L.tape.thinkLive : L.tape.thinkDone}
+        </span>
         {!block.streaming && peek && <span className="thinking__peek">{peek}</span>}
       </summary>
       <pre>{block.text}</pre>

@@ -61,9 +61,11 @@ function useFileDrag(on: boolean): boolean {
 export function InviteDrop({
   invite,
   importing,
+  primary = true,
 }: {
   invite: InviteImportController;
   importing: boolean;
+  primary?: boolean;
 }) {
   const [over, setOver] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
@@ -140,7 +142,11 @@ export function InviteDrop({
         <p className="nx-drop-t">{L.onboarding.inviteDropName}</p>
         <p className="nx-drop-s">{L.onboarding.inviteDropHow}</p>
         <div className="nx-drop-acts">
-          <button type="button" className="nx-btn nx-btn--pri" onClick={invite.openPicker}>
+          <button
+            type="button"
+            className={`nx-btn${primary ? " nx-btn--pri" : ""}`}
+            onClick={invite.openPicker}
+          >
             {L.onboarding.invitePick}
           </button>
           <button

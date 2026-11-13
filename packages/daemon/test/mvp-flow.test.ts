@@ -1,3 +1,4 @@
+// CI-순수-제외 — 감독자 하네스(cycle-harness)가 진짜 git 을 만든다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,7 +38,7 @@ test("MVP: 전송 단계에서 재확인이 필요해지면 제출 요청을 실
         expectedHead: head,
         expectedPreview: token,
       }),
-      /SUBMIT_CHANGED/,
+      /최신 내용 적용/,
     );
     assert.equal(scene.github.pull(1), undefined);
   } finally {

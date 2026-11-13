@@ -12,8 +12,8 @@
    글자는 한 단 물러나 있다가 손이 닿으면(위 `.nx-side-row:hover`) 또렷해진다(2026-10-06). */
 .nx .nx-fb-row {
   width: 100%;
-  margin-bottom: 2px;
-  font-size: 13px;
+  margin-bottom: var(--sp-0_5);
+  font-size: var(--fs-sm);
   color: var(--ink3);
 }
 
@@ -25,16 +25,16 @@
   display: flex;
   align-items: center;
   margin: 0;
-  padding: 0 24px 12px;
+  padding: 0 var(--sp-6) var(--sp-3);
   list-style: none;
-  font-size: 12px;
+  font-size: var(--fs-cap);
   color: var(--ink3);
 }
 
 .nx-fb-step {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   white-space: nowrap;
 }
 
@@ -42,8 +42,8 @@
 .nx-fb-step + .nx-fb-step::before {
   content: "";
   width: 22px;
-  height: 1.5px;
-  margin: 0 4px 0 8px;
+  height: 2px;
+  margin: 0 var(--sp-1) 0 var(--sp-2);
   border-radius: 1px;
   background: var(--line2);
 }
@@ -54,7 +54,7 @@
 
 .nx-fb-step--now {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .nx-fb-dot {
@@ -63,7 +63,7 @@
   place-items: center;
   width: 16px;
   height: 16px;
-  border: 1.5px solid var(--line2);
+  border: 1px solid var(--line2);
   border-radius: 50%;
 }
 
@@ -89,7 +89,7 @@
 
 .nx-fb-step--warn {
   color: var(--ink);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .nx-fb-step--warn .nx-fb-dot {
@@ -104,44 +104,25 @@
 .nx-fb-stage {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding-top: 4px;
+  gap: var(--sp-1);
+  padding-top: var(--sp-1);
   animation: nx-rise-in var(--nx-t-move) var(--drift) backwards;
 }
 
 .nx-fb-label {
-  margin: 10px 0 4px;
-  font-size: 13px;
-  font-weight: 600;
+  margin: var(--sp-0_5) 0 var(--sp-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semi);
 }
 
 .nx-fb-stage > .nx-fb-label:first-child {
-  margin-top: 2px;
+  margin-top: var(--sp-0_5);
 }
 
+/* 몸통의 입력칸 — 공통 부품 nx-input(--area)의 옷을 입고, 오류의 테두리만 여기서
+   (aria-invalid 로 함께 선다 · 2026-10-23 화면 전면 재설계 §4 H 「입력 공통 부품」). */
 .nx-fb-field {
-  font: inherit;
-  line-height: 1.55;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1px solid var(--line2);
-  border-radius: 10px;
-  padding: 9px 11px;
-  resize: vertical;
   min-height: 3em;
-}
-
-/* 초점 — 전역 `textarea:focus` 는 바탕을 어둡게 하고 키보드 초점의 2px 고리는 Claude 테마에서 오류의
-   붉은 테두리와 똑같이 읽혔다. 바탕은 그대로 두고 브랜드 색 테두리 + 옅은 띠로 말한다(초대 확인판의
-   이름 칸과 같은 모양). */
-.nx-fb-field:focus {
-  background-color: var(--bg);
-  border-color: var(--accent);
-}
-
-.nx-fb-field:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .nx-fb-field--err,
@@ -158,9 +139,10 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
-  min-height: 18px;
-  font-size: 12px;
+  gap: var(--sp-2);
+  min-height: var(--sp-5);
+  line-height: var(--sp-5);
+  font-size: var(--fs-cap);
   color: var(--ink3);
 }
 
@@ -175,45 +157,45 @@
 
 .nx-fb-n--over {
   color: var(--red);
-  font-weight: 600;
+  font-weight: var(--fw-semi);
 }
 
 .nx-fb-err {
   margin: 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.5;
   color: var(--red);
 }
 
 /* 몸 한가운데 서는 오류 — 확인 단계에서 요청이 나가지 못했을 때. */
 .nx-fb-err--block {
-  margin-top: 12px;
-  padding: 9px 12px;
-  border-radius: 10px;
+  margin-top: var(--sp-3);
+  padding: 9px var(--sp-3);
+  border-radius: var(--r-md);
   background: var(--red-soft);
 }
 
 /* ── 확인 단계 */
 .nx-fb-head {
-  margin: 12px 0 4px;
-  font-size: 12px;
-  font-weight: 600;
+  margin: var(--sp-3) 0 var(--sp-1);
+  font-size: var(--fs-cap);
+  font-weight: var(--fw-semi);
   color: var(--ink3);
 }
 
 .nx-fb-stage > .nx-fb-head:first-child {
-  margin-top: 2px;
+  margin-top: var(--sp-0_5);
 }
 
 .nx-fb-quote {
   margin: 0;
-  padding: 9px 12px;
+  padding: 9px var(--sp-3);
   max-height: 176px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: var(--bg);
-  font-size: 13.5px;
+  font-size: var(--fs-ui);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -221,20 +203,20 @@
 
 .nx-fb-dest {
   margin: 0;
-  font-size: 13.5px;
-  font-weight: 500;
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-medium);
 }
 
 /* 공개 고지 — 되돌릴 수 없는 일 앞의 가장 중요한 문장이라 가장 눈에 띈다(2026-10-06 겹판 조사:
    12px 회색 덧말이던 것을 노란 콜아웃으로). `함께 보내지 않는 것` 은 접어 둔다. */
 .nx-fb-notice {
   display: flex;
-  gap: 12px;
-  margin-top: 16px;
-  padding: 12px 14px;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) 14px;
   border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--line));
   border-left: 3px solid var(--amber);
-  border-radius: 12px;
+  border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--amber) 9%, var(--card));
 }
 
@@ -244,7 +226,7 @@
   place-items: center;
   width: 28px;
   height: 28px;
-  border-radius: 8px;
+  border-radius: var(--r);
   background: color-mix(in srgb, var(--amber) 18%, transparent);
   color: var(--amber);
 }
@@ -256,40 +238,40 @@
 
 .nx-fb-notice-t > b {
   display: block;
-  padding-top: 4px;
-  font-size: 13.5px;
-  font-weight: 700;
+  padding-top: var(--sp-1);
+  font-size: var(--fs-ui);
+  font-weight: var(--fw-bold);
   line-height: 1.4;
 }
 
 .nx-fb-notice-t > p {
   margin: 3px 0 0;
-  font-size: 12.5px;
+  font-size: var(--fs-sm);
   line-height: 1.55;
   color: var(--ink2);
 }
 
 /* 접는 머리 — 확인 단계의 `함께 보내지 않는 것` · 브라우저 단계의 `열린 페이지가 비어 있나요?`. */
 .nx-fb-fold {
-  margin-top: 6px;
-  font-size: 12.5px;
+  margin-top: var(--sp-1_5);
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
 .nx-fb-fold summary {
   width: fit-content;
   padding: 3px 0;
-  color: var(--ink3);
+  color: var(--ink2);
   cursor: pointer;
 }
 
 .nx-fb-fold p {
-  margin: 4px 0 0;
+  margin: var(--sp-1) 0 0;
   line-height: 1.55;
 }
 
 .nx-fb-fold--lone {
-  margin-top: 12px;
+  margin-top: var(--sp-3);
 }
 
 /* ── 전송 중 */
@@ -297,8 +279,8 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 8px 0 0;
-  font-size: 13.5px;
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
@@ -308,7 +290,7 @@
   border-radius: 2px;
   background: var(--line);
   overflow: hidden;
-  margin: 12px 0 8px;
+  margin: var(--sp-3) 0 var(--sp-2);
 }
 
 .nx-fb-bar > i {
@@ -334,20 +316,20 @@
 .nx-fb-done {
   display: grid;
   justify-items: center;
-  gap: 4px;
-  padding: 14px 0 6px;
+  gap: var(--sp-1);
+  padding: 14px 0 var(--sp-1_5);
   text-align: center;
 }
 
 .nx-fb-done > b {
-  font-size: 16px;
-  font-weight: 700;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
   letter-spacing: -0.01em;
 }
 
 .nx-fb-done > p {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--fs-sm);
   color: var(--ink2);
 }
 
@@ -370,8 +352,8 @@
 
 /* ── 브라우저 · 거절 · 확인 불가 */
 .nx-fb-note {
-  margin: 4px 0 0;
-  font-size: 13.5px;
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
   line-height: 1.6;
   color: var(--ink2);
 }
@@ -380,8 +362,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1_5);
 }
 
 .nx-fb-prehd .nx-fb-head {
@@ -389,12 +371,13 @@
 }
 
 .nx-fb-pre {
-  margin: 8px 0 0;
-  padding: 10px 12px;
+  margin: var(--sp-2) 0 0;
+  padding: 10px var(--sp-3);
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--r-md);
   background: var(--bg);
-  font-size: 12px;
+  font-family: inherit;
+  font-size: var(--fs-ui);
   line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -403,22 +386,22 @@
 }
 
 .nx-fb-prehd + .nx-fb-pre {
-  margin-top: 4px;
+  margin-top: var(--sp-1);
 }
 
 .nx-fb-acts {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
 }
 
 .nx-fb-link {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12.5px;
+  gap: var(--sp-1);
+  font-size: var(--fs-sm);
   color: var(--accent);
   text-decoration: underline;
   text-underline-offset: 2px;
@@ -427,15 +410,15 @@
 /* ── 바닥 — 왼쪽에 한 줄 덧말, 오른쪽에 단추. 주 단추는 늘 맨 오른쪽 끝이다. */
 .nx-modal--frame .nx-mfoot--frame.nx-fb-foot {
   flex-wrap: wrap;
-  row-gap: 8px;
+  row-gap: var(--sp-2);
 }
 
 .nx-fb-footnote {
   flex: 1 1 150px;
   min-width: 0;
   margin: 0 auto 0 0;
-  font-size: 12.5px;
-  line-height: 1.45;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
   color: var(--ink3);
 }
 
@@ -467,7 +450,7 @@
 
 /* 주 단추 안의 단축키 — `.nx kbd` 의 회색 11px 를 이기려 한 단계 더 세게 쓴다. */
 .nx .nx-fb-kbd {
-  margin-left: 2px;
+  margin-left: var(--sp-0_5);
   font: 500 12px var(--font);
   color: inherit;
   opacity: 0.7;

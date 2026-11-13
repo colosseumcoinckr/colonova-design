@@ -1,6 +1,7 @@
 import type { ProjectSummary, RepoStatus } from "@colonova-design/protocol";
 import type { RefObject } from "react";
 import { useEffect, useRef, useState } from "react";
+import { timeAgo } from "../../lib/format";
 import { openLink } from "../../lib/open-link";
 import { canOpenScreen } from "../../lib/screen-link";
 import { clockOf } from "../chat/cards";
@@ -8,13 +9,15 @@ import { L } from "../labels";
 import type { BaseSyncRow } from "../lib/base-sync";
 import { ciLine } from "../lib/ci-line";
 import type { Journey } from "../lib/journey";
+import { landedFacts, landedLines } from "../lib/landed";
 import { ledgerLine } from "../lib/submit-copy";
 import { handoffOpen } from "../lib/thread";
-import { useCopied } from "../lib/use-copied";
 import type { CycleScreen } from "../lib/work-ledger";
 import { commentRows, cycleStart, outgoingScreens, submitLogLines } from "../lib/work-ledger";
+import { CopyButton } from "../ui/CopyButton";
+import { Count } from "../ui/Count";
 import { InlineConfirm } from "../ui/InlineConfirm";
-import { Spin } from "../ui/icons";
+import { CheckIcon, Spin } from "../ui/icons";
 import { Popover } from "../ui/Popover";
 import { NoteBox } from "./NoteBox";
 import {
@@ -31,8 +34,8 @@ import {
 } from "./parts";
 import type { WorkLedger } from "./use-work-ledger";
 
-/** Stage 3 의 작업 기록 서랍이 듣는 신호 — 서랍은 미리보기 칸의 것이다. */
-export const HISTORY_OPEN_EVENT = "nx:history:open";
+/** Stage 3 의 작업 기록 서랍이 듣는 신호 — 정본은 preview/HistoryDrawer.tsx 의 같은 이름 상수다. */
+const HISTORY_OPEN_EVENT = "nx:history:open";
 
 /** 처음에 보이는 화면 줄의 수 — 나머지는 `바뀐 화면 N개 더 보기` 뒤에(머리 · 바닥은 서 있고 몸만 굴러간다). */
 const SCREEN_LIMIT = 4;
@@ -85,9 +88,9 @@ export function WorkPopover({
   onNote: (text: string) => Promise<void>;
   /** 제출 취소 — 열린 요청을 닫는다. 던지면 실패다(까닭은 말하지 않고 한 문장으로 알린다). */
   onWithdraw: () => Promise<void>;
-  /** 받아오기 칸의 지금(2026-10-20) — 상태 줄의 단추와 같은 판정이다. */
+  /** 최신 내용 칸의 지금(2026-11-12) — 상태 줄의 표식과 같은 판정이다. */
   baseRow: BaseSyncRow;
-  /** 받아오기 요청이 데몬에 가는 중 — 단추를 잠근다. */
+  /** 최신 내용 적용 요청이 데몬에 가는 중 — 단추를 잠근다. */
   baseAsking: boolean;
   onRefreshBase: () => void;
   /** 화면 줄을 눌렀다 — 미리보기를 그 화면으로 옮긴다. */
@@ -104,9 +107,11 @@ export function WorkPopover({
   const screens = outgoingScreens(repo?.cycleScreens, null);
   const newSince =
     cycle === "review" && since ? outgoingScreens(repo?.cycleScreens, since).length : 0;
+  // 반영된 일(2026-10-08 · A2b) — 원장의 기억을 최근 여덟 줄로 접는다(`landed.ts`). 없으면 묶음이 서지 않는다.
+  const landed = landedLines(repo?.landed);
   const [allScreens, setAllScreens] = useState(false);
   const shownScreens = allScreens ? screens : screens.slice(0, SCREEN_LIMIT);
-  // 열 수 있는 미리보기 칸이 없으면(홈에서 열었다 등) 줄은 읽기만 한다.
+  // 열 수 있는 미리보기 칸이 없으면(준비가 덜 됐다 등) 줄은 읽기만 한다.
   const open = canOpenScreen()
     ? (screen: CycleScreen) => {
         onClose();
@@ -172,7 +177,6 @@ export function WorkPopover({
   const submitLine = ledgerLine(repo?.submit, L);
   const submitBlocked = repo?.submit?.phase === "blocked";
   // 문제 문장 줄의 ✕ 로 막힘을 닫아도 담당자에게 건넬 글은 여기서 복사된다.
-  const { copied, copy } = useCopied(() => onToast(L.chat.somethingWrong));
   const comments =
     cycle === "draft"
       ? []
@@ -190,7 +194,7 @@ export function WorkPopover({
       label={L.work.title}
     >
       <div className="nx-wp-h">
-        <b>{L.work.title}</b>
+        <h2>{L.work.title}</h2>
         <div>{L.work.headerSub(name, start, where)}</div>
       </div>
       <div className={`nx-wp-journey nx-cycle--${cycle}`}>
@@ -203,14 +207,13 @@ export function WorkPopover({
       </div>
 
       <div className="nx-wp-body">
-        {/* 2026-10-20 사용자 요청 — 개발자가 반영한 내용은 누를 때만 받아온다. 받을 것도 요청도 없으면 칸이 없다. */}
+        {/* 2026-11-12 사용자 요청 — 개발자가 반영한 내용은 `최신 내용 적용` 을 누를 때만 합친다. 받을 것도 요청도 없으면 칸이 없다. */}
         {baseRow.kind !== "hidden" && (
           <div className="nx-wp-sec">
-            <h5>{L.work.baseHeading}</h5>
+            <h3>{L.work.baseHeading}</h3>
             {baseRow.kind === "ready" ? (
               <>
-                <div className="nx-wp-empty">{L.work.baseBehind(baseRow.behind)}</div>
-                <div className="nx-wp-empty nx-wp-gap">{L.work.baseHint}</div>
+                <div className="nx-wp-empty">{L.work.baseReady}</div>
                 <div className="nx-wp-copy">
                   <button
                     type="button"
@@ -218,7 +221,7 @@ export function WorkPopover({
                     disabled={baseAsking}
                     onClick={onRefreshBase}
                   >
-                    {L.work.basePull}
+                    {L.work.baseApply}
                   </button>
                 </div>
               </>
@@ -231,7 +234,7 @@ export function WorkPopover({
                   ? L.work.baseWaiting
                   : baseRow.kind === "overlap"
                     ? L.work.baseOverlap
-                    : L.work.basePulling}
+                    : L.work.baseApplying}
               </div>
             )}
           </div>
@@ -241,10 +244,10 @@ export function WorkPopover({
             둔다. */}
         {!(cycle === "draft" && screens.length === 0) && (
           <div className="nx-wp-sec">
-            <h5>
+            <h3>
               {screens.length > 0 ? L.work.changedCount(screens.length) : L.work.changed}
               {newSince > 0 && <span className="nx-wp-hr">{L.work.changedSince(newSince)}</span>}
-            </h5>
+            </h3>
             {screens.length > 0 ? (
               <>
                 {shownScreens.map((screen) => (
@@ -269,7 +272,7 @@ export function WorkPopover({
         )}
 
         <div className="nx-wp-sec">
-          <h5>{L.work.submitHeading}</h5>
+          <h3>{L.work.submitHeading}</h3>
           {handoff && (
             <>
               <div className="nx-wp-receipt">
@@ -324,27 +327,18 @@ export function WorkPopover({
           )}
           {submitBlocked && (
             <div className="nx-wp-copy">
-              <button
-                type="button"
-                className="nx-btn nx-btn--sm"
-                onClick={() =>
-                  copy(
-                    blockedHelpText(
-                      project?.name,
-                      repo?.submit?.lastError === "permission"
-                        ? L.problem.blockedPermission
-                        : L.problem.blockedBody,
-                      repo?.submit?.lastError,
-                    ),
-                  )
-                }
-              >
-                {copied ? L.problem.copiedHelp : L.problem.copyHelp}
-              </button>
-              {/* 복사했다는 답은 눈이 아니라 낭독으로도 한 번 말한다. */}
-              <span className="nx-sr" role="status">
-                {copied ? L.problem.copiedHelp : ""}
-              </span>
+              <CopyButton
+                small
+                label={L.problem.copyHelp}
+                doneLabel={L.problem.copiedHelp}
+                text={blockedHelpText(
+                  project?.name,
+                  repo?.submit?.lastError === "permission"
+                    ? L.problem.blockedPermission
+                    : L.problem.blockedBody,
+                  repo?.submit?.lastError,
+                )}
+              />
             </div>
           )}
           {log.length > 0 && (
@@ -423,11 +417,11 @@ export function WorkPopover({
           )}
         </div>
 
-        <div className="nx-wp-sec nx-wp-sec--last">
-          <h5>
+        <div className={landed.length > 0 ? "nx-wp-sec" : "nx-wp-sec nx-wp-sec--last"}>
+          <h3>
             {comments.length > 0 ? L.work.commentsCount(comments.length) : L.work.comments}
             {comments.length > 0 && <span className="nx-wp-hr">{L.work.commentsAuto}</span>}
-          </h5>
+          </h3>{" "}
           {cycle === "draft" ? (
             <div className="nx-wp-empty">{L.work.commentsEmptyDraft}</div>
           ) : ledger.status === "loading" ? (
@@ -443,17 +437,19 @@ export function WorkPopover({
               </div>
             </div>
           ) : ledger.status === "failed" ? (
-            <div role="alert" className="nx-st-note nx-st-note--red">
+            <div role="alert" className="nx-banner nx-banner--red nx-st-bn">
               <FailIcon />
-              <span className="nx-st-note-t">{L.work.readFailed}</span>
-              <button type="button" className="nx-btn nx-btn--sm" onClick={ledger.retry}>
-                {L.vocab.retry}
-              </button>
+              <div className="nx-banner-body">{L.work.readFailed}</div>
+              <div className="nx-banner-act">
+                <button type="button" className="nx-btn nx-btn--sm" onClick={ledger.retry}>
+                  {L.vocab.retry}
+                </button>
+              </div>
             </div>
           ) : comments.length > 0 ? (
             comments.map((comment) => (
               <div key={comment.id} className="nx-wp-cm">
-                <span className="nx-avt" aria-hidden="true">
+                <span className="nx-wp-avt" aria-hidden="true">
                   {comment.author.trim().slice(0, 1) || "?"}
                 </span>
                 <div className="nx-wp-cb">
@@ -461,7 +457,9 @@ export function WorkPopover({
                     <b>{comment.author.trim() || L.work.commentAuthor}</b>
                     <time dateTime={comment.at}>{whenText(comment.at)}</time>
                     {comment.state !== "unknown" && (
-                      <span className={`nx-wp-r nx-wp-state nx-wp-state--${comment.state}`}>
+                      <span
+                        className={`nx-pill nx-pill--${comment.state === "done" ? "green" : "amber"} nx-wp-state nx-wp-state--${comment.state}`}
+                      >
                         {comment.state === "done" ? <SentIcon /> : <FixingIcon />}
                         {comment.state === "done" ? L.work.commentDone : L.work.commentFixing}
                       </span>
@@ -475,6 +473,39 @@ export function WorkPopover({
             <div className="nx-wp-empty">{L.work.commentsEmpty}</div>
           )}
         </div>
+
+        {/* 반영된 일(2026-10-08 베타 준비 분석 · A2b — 2026-10-31 홈 걷기로 홈의 묶음이 여기로 왔다) —
+            병합돼 서비스가 된 요청들의 성취 기록. 새 작업이 시작돼도 지워지지 않고, 없으면 묶음이 서지 않는다. */}
+        {landed.length > 0 && (
+          <div className="nx-wp-sec nx-wp-sec--last">
+            <h3>
+              {L.landed.fold}
+              <span className="nx-wp-hr">
+                <Count n={landed.length} />
+              </span>
+            </h3>
+            <ul className="nx-wp-landed">
+              {landed.map((item) => {
+                const facts = landedFacts(item.days, item.screens, {
+                  took: L.landed.took,
+                  screens: L.landed.screens,
+                });
+                return (
+                  <li key={item.pr}>
+                    <span className="nx-wp-landed-i" aria-hidden="true">
+                      <CheckIcon />
+                    </span>
+                    <span className="nx-wp-landed-t">
+                      <b>{item.title ?? L.landed.untitled}</b>
+                      {facts && <small>{facts}</small>}
+                    </span>
+                    <span className="nx-wp-landed-at">{timeAgo(item.at)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
 
       <div className="nx-wp-foot">

@@ -93,6 +93,7 @@ function stub(root: string) {
     gateFallbackCount: new Map(),
     screenMapDue: new Map(),
     autoSaveDue: new Set(["s"]),
+
     autoSaveLands: new Map(),
     changePlans: new Map(),
     config: {},

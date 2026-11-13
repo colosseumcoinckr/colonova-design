@@ -1,5 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { withoutSelfUpdate } from "../../../agent-env.js";
+import { withoutAppSecrets, withoutSelfUpdate } from "../../../agent-env.js";
+import type { OneShotUsage } from "../../driver.js";
 
 /**
  * One machine turn (비개발자 저장): the same SDK entry the sessions use,
@@ -12,7 +13,13 @@ import { withoutSelfUpdate } from "../../../agent-env.js";
  */
 export async function claudeOneShot(
   prompt: string,
-  opts: { cwd: string; executable: string | null; model: string; timeoutMs: number },
+  opts: {
+    cwd: string;
+    executable: string | null;
+    model: string;
+    timeoutMs: number;
+    onUsage?: (usage: OneShotUsage) => void;
+  },
 ): Promise<string | null> {
   if (!opts.executable) return null;
   const controller = new AbortController();
@@ -28,16 +35,30 @@ export async function claudeOneShot(
         tools: [],
         settingSources: [],
         abortController: controller,
-        // 세션과 같이 자기 업데이트를 끈다(PLAN-UI U12).
-        env: withoutSelfUpdate(process.env),
+        // 세션과 같이 자기 업데이트를 끄고, 앱의 자격이 새지 않게 거른다
+        // (2026-10-23 · 최종 구현 계획 F0).
+        env: withoutSelfUpdate(withoutAppSecrets(process.env)),
       },
     });
     let answer: string | null = null;
+    let apiRetries = 0;
+    const usage: OneShotUsage = {};
     for await (const message of conversation) {
-      if (message.type === "result" && message.subtype === "success" && !message.is_error) {
-        answer = message.result;
+      // SDK 가 안쪽에서 한 API 재시도는 숫자만 센다 — 이유 · 요청은 안 남긴다.
+      if (message.type === "system" && message.subtype === "api_retry") apiRetries += 1;
+      if (message.type === "result") {
+        usage.durationMs = message.duration_ms;
+        usage.inputTokens = message.usage?.input_tokens;
+        usage.outputTokens = message.usage?.output_tokens;
+        usage.cacheReadTokens = message.usage?.cache_read_input_tokens;
+        usage.cacheWriteTokens = message.usage?.cache_creation_input_tokens;
+        if (message.subtype === "success" && !message.is_error) {
+          answer = message.result;
+        }
       }
     }
+    if (apiRetries > 0) usage.apiRetries = apiRetries;
+    if (opts.onUsage && Object.keys(usage).length > 0) opts.onUsage(usage);
     return answer;
   } finally {
     clearTimeout(timeout);

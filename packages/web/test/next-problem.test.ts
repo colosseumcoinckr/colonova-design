@@ -154,7 +154,7 @@ test("problemFor: 권한이 모자라 막힌 제출은 개발자가 코드의 �
   );
   assert.equal(problem?.kind, "blocked");
   assert.equal(problem?.body, L.problem.blockedPermission);
-  assert.match(problem?.body ?? "", /개발자가 코드의 권한을 고치면/);
+  assert.match(problem?.body ?? "", /개발자가 권한을 고치면/);
   assert.doesNotMatch(problem?.body ?? "", /새 초대 파일|만료/);
   // 사용자의 손이 풀 일이 아니다 — 초대 파일 열기 단추가 아니라 담당자에게 건넬 글(복사)이 선다.
   assert.equal(problem?.action, "copy");
@@ -324,4 +324,43 @@ test("problemFor: 자동 검사가 계속 통과하지 못해 개발자에게 �
     key: "review:12:rounds",
   };
   assert.equal(problemFor({ attention: other }, REPO, L)?.body, L.problem.notifiedOther);
+});
+
+test("problemFor: 창구 줄은 제출 막힘(연결 코드 · 권한)과 GitHub 재연결에만 선다(검토 WF-6)", () => {
+  // 제출이 권한 부족으로 막힘 — 개발팀의 몫이라 support 표식이 선다.
+  const blocked = problemFor(
+    null,
+    {
+      ...REPO,
+      submit: {
+        phase: "blocked",
+        attempts: 1,
+        lastError: "permission",
+        since: "2026-10-07T00:00:00.000Z",
+        log: [],
+      },
+    },
+    L,
+  );
+  assert.equal(blocked?.support, true);
+  // GitHub 연결 코드 재연결 — 같은 몫.
+  assert.equal(problemFor(null, { ...REPO, attention: github }, L)?.support, true);
+  // 인터넷이 끊긴 제출 — 개발자를 기다릴 일이 아니므로 서지 않는다.
+  const offline = problemFor(
+    null,
+    {
+      ...REPO,
+      submit: {
+        phase: "blocked",
+        attempts: 5,
+        lastError: "network",
+        since: "2026-09-27T00:00:00.000Z",
+        log: [],
+      },
+    },
+    L,
+  );
+  assert.equal(offline?.support, undefined);
+  // AI 로그인이 풀린 재연결 — 같은 까닭으로 서지 않는다.
+  assert.equal(problemFor({ attention: login }, REPO, L)?.support, undefined);
 });

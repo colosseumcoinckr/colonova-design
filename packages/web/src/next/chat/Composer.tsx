@@ -1,3 +1,4 @@
+import { PanelBottomClose } from "lucide-react";
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Tip } from "../../components/Tip";
 import type { PinAttachment } from "../../hooks/usePins";
@@ -6,9 +7,9 @@ import type { Attachment } from "../../lib/attachment";
 import { modelRowOf } from "../../lib/chat-options";
 import type { Daemon } from "../../lib/daemon-client";
 import { koreanNoticeWords } from "../../lib/error-words";
-import { composing } from "../../lib/ime";
 import { isInviteFile, offerInviteFile } from "../../lib/invite-bus";
 import { L } from "../labels";
+import { composing } from "../lib/ime";
 import { keyHint } from "../lib/key-hint";
 import { ghostText, isAcceptKey } from "../lib/next-say";
 import { fastChip, fastCost, fastTipWords, fastToast, sizeText } from "../lib/thread";
@@ -29,7 +30,7 @@ const RESIZABLE: Record<string, true> = {
 /** 입력창의 초안은 옛 입력창과 같은 열쇠를 쓴다 — 두 셸이 같은 대화의 같은 초안을 본다. */
 import { appendScreenDraft, DraftScreenHints } from "../lib/draft-screens";
 import { pinsBeyondShots, pinsWordless } from "../lib/pin-words";
-import { clearSentDraft, restoreRejectedDraft } from "../lib/sent-draft";
+import { restoreRejectedDraft } from "../lib/sent-draft";
 
 const DRAFT_PREFIX = "colonova-design.draft.";
 
@@ -143,18 +144,17 @@ export interface ComposerHandle {
 }
 
 /**
- * 입력창(PLAN-UI 단계 2) — 대화 칸과 홈이 함께 쓴다. 글 · 핀 칩(메모를 여기서도
+ * 입력창(PLAN-UI 단계 2) — 대화 칸이 쓴다. 글 · 핀 칩(메모를 여기서도
  * 고친다) · 첨부(그림 · 문서, 한 건 8MB — 초대 파일은 첨부하지 않고 가져오기로
  * 넘긴다) · 도구 줄(첨부 · 찍기(좁은 창만) · 설정 칩 · 빠르게 · 보내기).
  *
  * 보내기의 실제 일은 부르는 쪽(`onSend`)이 한다 — 대화 칸은 핀을 한 턴으로
- * 묶어 `sessions.submit`, 홈은 새 대화를 열어 보낸다. 입력창은 받아들여졌을
- * 때만 비운다: 거절되면 말과 첨부와 핀이 그대로 남고 이유가 한 줄 선다.
+ * 묶어 `sessions.submit` 로 보낸다. 입력창은 받아들여졌을 때만 비운다:
+ * 거절되면 말과 첨부와 핀이 그대로 남고 이유가 한 줄 선다.
  */
 export function Composer({
   daemon,
   sessions,
-  variant,
   subject,
   draftKey,
   placeholder,
@@ -166,6 +166,7 @@ export function Composer({
   narrow = false,
   onPinMode,
   leading,
+  references,
   onContentChange,
   disabledProviders,
   lockReason = null,
@@ -178,14 +179,13 @@ export function Composer({
   registerHandle,
   onToast,
   onSend,
+  onSheetFold,
 }: {
   daemon: Daemon;
   sessions: Sessions;
-  variant: "thread" | "home";
   /**
-   * 칩의 주인(PLAN-MODEL-CHIP §3.5) — 홈의 입력창은 언제나 `next`(홈의
-   * 보내기는 새 대화를 연다), 대화 칸은 열린 대화가 있으면 `session`.
-   * 모델 칩 · ⚡ 토글 · AI 고르기가 모두 이 주인으로 읽고 쓴다.
+   * 칩의 주인(PLAN-MODEL-CHIP §3.5) — 새 대화의 빈 자리면 `next`, 열린 대화가
+   * 있으면 `session`. 모델 칩 · ⚡ 토글 · AI 고르기가 모두 이 주인으로 읽고 쓴다.
    */
   subject: "next" | "session";
   /** 어느 대화의 초안인가 — 열쇠가 바뀌면 초안도 바뀐다. */
@@ -200,10 +200,11 @@ export function Composer({
   narrow?: boolean;
   /** 좁은 창의 `찍기` — 넓은 창은 미리보기 막대의 것 하나(U16). */
   onPinMode?: () => void;
-  /** 도구 줄 맨 앞(홈의 프로젝트 칩). */
+  /** 도구 줄 맨 앞(프로젝트 칩 등). */
   leading?: ReactNode;
+  references?: ReactNode;
   /**
-   * 입력창에 보낼 것이 생기거나 비워질 때 알린다 — 홈의 시작점 칩이 쓰던 말을 덮지 않게 물러난다.
+   * 입력창에 보낼 것이 생기거나 비워질 때 알린다 — 새 대화의 시작점 칩이 쓰던 말을 덮지 않게 물러난다.
    * 처음 그리기 전에 한 번 불러(layout effect) 되살린 초안이 있는 채로 열려도 칩이 깜빡이지 않는다.
    */
   onContentChange?: (filled: boolean) => void;
@@ -215,7 +216,7 @@ export function Composer({
   stopping?: boolean;
   /**
    * AI 가 답을 마치고 내놓은 다음 말 제안(2026-10-14 사용자 요청) — 입력창이 비어 있는 동안 옅게 뜨고
-   * Tab 이 입력창에 넣는다. 대화 칸만 준다(홈에는 이어 갈 답이 없다).
+   * Tab 이 입력창에 넣는다.
    */
   suggestion?: string | null;
   /** 밖에서 채워 넣는 말(고쳐서 다시 보내기) — `nonce` 가 오르면 한 번 집는다. */
@@ -224,7 +225,7 @@ export function Composer({
     nonce: number;
     append?: boolean;
     screen?: string;
-    /** 채운 뒤 선택해 둘 자리 — 없으면 커서가 끝에 선다(홈의 시작점 칩이 화면 이름 자리를 고른다). */
+    /** 채운 뒤 선택해 둘 자리 — 없으면 커서가 끝에 선다(시작점 칩이 화면 이름 자리를 고른다). */
     select?: [number, number];
   } | null;
   /** 말풍선의 `지금 보내기`(`nx:pins:send`)를 이 입력창이 받는다 — 대화 칸만. */
@@ -240,11 +241,21 @@ export function Composer({
     screens: Array<{ screen: string }>,
     onTarget?: (id: string) => void,
   ) => Promise<void>;
+  /**
+   * 좁은 창의 펼친 시트(화면 탭의 입력창)를 접는 손(2026-11-12) — 있을 때만
+   * 도구 줄의 접기 단추가 서고, 입력창 안의 Esc 도 이 길로 접는다(목록 · 옅은
+   * 제안이 먼저 Esc 를 먹은 뒤에만).
+   */
+  onSheetFold?: () => void;
 }) {
   const [editor, setEditor] = useState<Editor>(() => ({
     text: storedDraft(draftKey),
     attachments: [],
   }));
+  // 지금 편집판의 거울 — `nx:composer:attach` 의 누름=보내기가 setEditor 를 기다리지 않고
+  // 붙인 편집판을 계산할 때 읽는다.
+  const editorRef = useRef(editor);
+  editorRef.current = editor;
   const hintId = useId();
   const [notice, setNotice] = useState<{ tone: "warn" | "danger"; text: string } | null>(null);
   const [sending, setSending] = useState(false);
@@ -254,6 +265,17 @@ export function Composer({
   const drafts = useRef(new Map<string, Editor>());
   const sendFailures = useRef(new Map<string, string>());
   const keyRef = useRef(draftKey);
+  const mounted = useRef(true);
+  const reads = useRef(new Map<string, number>());
+  const readBatches = useRef(new Set<{ owner: string }>());
+  const readNotices = useRef(new Map<string, string>());
+  const [, refreshReads] = useState(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   // 보낸 말 걷기의 자리 — null 은 걷지 않는 중. 0 이 가장 최신(2026-10-04 ux-plan PR 2).
   const recallIndex = useRef<number | null>(null);
   // 밖에서 채운 말 속에 골라 둘 자리 — 값이 그려진 직후의 layout effect 가 쓰고 거둔다.
@@ -299,8 +321,23 @@ export function Composer({
     const carry = previous.startsWith("new:") && prevEditor.text !== "" && pristine;
     if (carry) {
       shownScreens.current.add(draftKey, shownScreens.current.take(previous));
+      // 2026-11-12 CHAT 검토 2 — 초안과 함께 읽는 중인 묶음의 주인도 옮긴다.
+      for (const batch of readBatches.current) {
+        if (batch.owner === previous) batch.owner = draftKey;
+      }
+      reads.current.set(
+        draftKey,
+        (reads.current.get(draftKey) ?? 0) + (reads.current.get(previous) ?? 0),
+      );
+      reads.current.delete(previous);
+      const readNotice = readNotices.current.get(previous);
+      if (readNotice) readNotices.current.set(draftKey, readNotice);
+      readNotices.current.delete(previous);
+      refreshReads((n) => n + 1);
       drafts.current.delete(previous);
       saveDraft(previous, "");
+      drafts.current.set(draftKey, prevEditor);
+      saveDraft(draftKey, prevEditor.text);
     }
     keyRef.current = draftKey;
     // 대화를 옮기면 걷기도 처음부터 — 인덱스는 옛 대화의 것이었다.
@@ -311,7 +348,7 @@ export function Composer({
     setNotice(failure ? { tone: "danger", text: failure } : null);
   }, [draftKey]);
 
-  // 열자마자 칠 수 있게 — 사용자가 말을 쓰는 자리는 이 칸 하나뿐이다. 홈이 열릴 때와 대화가
+  // 열자마자 칠 수 있게 — 사용자가 말을 쓰는 자리는 이 칸 하나뿐이다. 새 대화가
   // 바뀔 때(새 대화 · 옮기기) 입력창이 초점을 받는다. 다른 입력칸이나 팝 · 대화상자 안에
   // 손이 가 있으면 뺏지 않는다.
   // biome-ignore lint/correctness/useExhaustiveDependencies: 열쇠가 바뀔 때만 잡는다.
@@ -319,17 +356,16 @@ export function Composer({
     claimFocus(area.current);
   }, [draftKey]);
 
-  // 대화 화면은 홈이 떠 있는 동안에도 마운트돼 있어(미리보기가 살아 있게) 홈에서 넘어올 때는
-  // 열쇠가 바뀌지 않는다 — 셸이 넘어왔다고 알리면(`nx:composer:focus`) 그때 잡는다.
+  // 칸은 자리가 바뀌어도 마운트된 채라(미리보기가 살아 있게) 자리에서 돌아올 때는
+  // 열쇠가 바뀌지 않는다 — 셸이 돌아왔다고 알리면(`nx:composer:focus`) 그때 잡는다.
   useEffect(() => {
-    if (variant !== "thread") return;
     const onShow = () => claimFocus(area.current);
     window.addEventListener("nx:composer:focus", onShow);
     return () => window.removeEventListener("nx:composer:focus", onShow);
-  }, [variant]);
+  }, []);
 
   // 고쳐서 다시 보내기 — 그 말이 입력창에 들어오고 커서가 끝에 선다. 선택할 자리가 딸려 오면
-  // (홈의 시작점 칩) 값이 그려진 뒤의 layout effect 가 그 자리를 고른다 — 값을 쓰는 순간 브라우저가
+  // (시작점 칩) 값이 그려진 뒤의 layout effect 가 그 자리를 고른다 — 값을 쓰는 순간 브라우저가
   // 커서를 끝으로 옮기므로, 그리기 전에 잡은 선택은 진다.
   const prefillSeen = useRef<number | null>(null);
   useEffect(() => {
@@ -378,8 +414,34 @@ export function Composer({
       refused.length > 0 ? { tone: "warn", text: L.composer.tooBig(refused.join(", ")) } : null,
     );
     if (accepted.length === 0) return;
-    const read = await Promise.all(accepted.map((file) => toAttachment(file)));
-    setEditor((prev) => ({ text: prev.text, attachments: [...prev.attachments, ...read] }));
+    const batch = { owner: keyRef.current };
+    readBatches.current.add(batch);
+    reads.current.set(batch.owner, (reads.current.get(batch.owner) ?? 0) + 1);
+    readNotices.current.delete(batch.owner);
+    refreshReads((n) => n + 1);
+    const results = await Promise.allSettled(accepted.map((file) => toAttachment(file)));
+    readBatches.current.delete(batch);
+    if (!mounted.current) return;
+    const owner = batch.owner;
+    const read: Attachment[] = [];
+    const failed: string[] = [];
+    results.forEach((result, index) => {
+      if (result.status === "fulfilled") read.push(result.value);
+      else failed.push(accepted[index]?.name ?? "");
+    });
+    const append = (prev: Editor): Editor => ({
+      ...prev,
+      attachments: [...prev.attachments, ...read],
+    });
+    if (keyRef.current === owner) setEditor(append);
+    else
+      drafts.current.set(
+        owner,
+        append(drafts.current.get(owner) ?? { text: storedDraft(owner), attachments: [] }),
+      );
+    reads.current.set(owner, Math.max(0, (reads.current.get(owner) ?? 1) - 1));
+    if (failed.length) readNotices.current.set(owner, L.composer.readFailed(failed.join(", ")));
+    refreshReads((n) => n + 1);
   };
   const readRef = useRef(readFiles);
   readRef.current = readFiles;
@@ -420,10 +482,12 @@ export function Composer({
     setEditor((prev) => ({ ...prev, text: ghost }));
   };
 
-  const submit = () => {
-    if (sendingRef.current || locked) return;
-    const text = editor.text.trim();
-    if (!text && editor.attachments.length === 0 && pins.length === 0) return;
+  // 보내기의 몸통 — 입력창의 지금 편집판이 아니라 건네준 편집판을 보낸다. `nx:composer:attach` 의
+  // 누름=보내기(`detail.send` — 2026-11-03 A안 1A-1(b))가 붙인 내용을 그대로 보내게 한 갈림이다.
+  const submitEditor = (given: Editor) => {
+    if (sendingRef.current || locked || (reads.current.get(keyRef.current) ?? 0) > 0) return;
+    const text = given.text.trim();
+    if (!text && given.attachments.length === 0 && pins.length === 0) return;
     // 핀만 있고 말이 어디에도 없다 — 보내지 않고 한 줄로 묻는다(말풍선의 `지금 보내기` 도 이 길을 지난다).
     if (pinsWordless(text, pins)) {
       setNotice({ tone: "warn", text: L.composer.pinNeedsWords });
@@ -436,48 +500,29 @@ export function Composer({
     setDismissed(suggestion?.trim() || null);
     const sentKey = keyRef.current;
     sendFailures.current.delete(sentKey);
-    const sentEditor = editor;
+    const sentEditor = given;
     let restoreKey = sentKey;
-    // 대화 칸은 누른 순간 비운다. 홈은 성공 뒤 화면을 옮기는 기존 흐름을 따른다.
-    const cleared = variant === "thread";
-    if (cleared) {
-      drafts.current.set(sentKey, EMPTY);
-      saveDraft(sentKey, "");
-      setEditor(EMPTY);
-    }
+    // 누른 순간 비운다 — 거절되면 catch 가 말과 첨부를 돌려놓는다.
+    drafts.current.set(sentKey, EMPTY);
+    saveDraft(sentKey, "");
+    setEditor(EMPTY);
     const sentScreens = shownScreens.current.take(sentKey);
-    void onSend(text, editor.attachments, pins, sentScreens, (id) => {
+    void onSend(text, given.attachments, pins, sentScreens, (id) => {
       restoreKey = id;
     })
-      .then(() => {
-        if (cleared) return;
-        clearSentDraft(sentKey, sentEditor.text);
-        // 보내는 동안 다른 대화로 옮겼으면 비우는 것은 보낸 쪽의 초안뿐이다.
-        if (keyRef.current !== sentKey) {
-          drafts.current.set(sentKey, EMPTY);
-          saveDraft(sentKey, "");
-        }
-        // 보내는 동안 더 쓴 말은 살린다 — 필드가 보낸 그대로일 때만 비운다.
-        setEditor((prev) =>
-          prev.text === sentEditor.text && prev.attachments === sentEditor.attachments
-            ? EMPTY
-            : prev,
-        );
-      })
       .catch((error: unknown) => {
         shownScreens.current.add(restoreKey, sentScreens);
-        if (cleared) {
-          if (keyRef.current === restoreKey) {
-            setEditor((current) => restoreRejectedDraft(sentEditor, current));
-          } else {
-            const current = drafts.current.get(restoreKey) ?? {
-              text: storedDraft(restoreKey),
-              attachments: [],
-            };
-            const restored = restoreRejectedDraft(sentEditor, current);
-            drafts.current.set(restoreKey, restored);
-            saveDraft(restoreKey, restored.text);
-          }
+        // 거절되면 말과 첨부가 돌아온다 — 보내는 동안 다른 대화로 옮겼으면 그 대화의 초안으로.
+        if (keyRef.current === restoreKey) {
+          setEditor((current) => restoreRejectedDraft(sentEditor, current));
+        } else {
+          const current = drafts.current.get(restoreKey) ?? {
+            text: storedDraft(restoreKey),
+            attachments: [],
+          };
+          const restored = restoreRejectedDraft(sentEditor, current);
+          drafts.current.set(restoreKey, restored);
+          saveDraft(restoreKey, restored.text);
         }
         // 데몬의 거절 문장은 한국어이고 고치는 길을 싣는다 — 있으면 그대로, 없으면 한 줄.
         const raw = error instanceof Error ? (error.message.split("\n")[0] ?? "").trim() : "";
@@ -495,8 +540,17 @@ export function Composer({
         }
       });
   };
+  const submit = () => submitEditor(editor);
   const submitRef = useRef(submit);
   submitRef.current = submit;
+  // 최신 submitEditor · pins · locked 의 손잡이 — 마운트 때 단 한 번 붙는 `nx:composer:attach` 처리가
+  // 오래된 값을 잡지 않게 렌더마다 갈아 끼운다.
+  const submitEditorRef = useRef(submitEditor);
+  submitEditorRef.current = submitEditor;
+  const pinsRef = useRef(pins);
+  pinsRef.current = pins;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
 
   // 미리보기의 `AI에게 이 화면 보여 주기`(단계 3) — 담아 준 그림을 첨부로 받는다. 받았다고
   // 알리면(preventDefault) 미리보기는 스스로 보내지 않는다. 화면은 다음 보내기에 실린다.
@@ -508,10 +562,16 @@ export function Composer({
         event as CustomEvent<{
           attachments?: Array<Partial<Attachment> & { mediaType: string; data: string }>;
           screen?: string;
+          text?: string;
+          /** 누름=보내기(2026-11-03 A안 1A-1(b)) — 붙이고 채운 뒤 곧바로 보낸다(도는 중이면 대기 줄). */
+          send?: boolean;
+          /** 처리 결과의 답신 — 누름=보내기가 실제로 보냈으면 true, 미리 채우기로 떨어졌으면 false. */
+          sent?: boolean;
         }>
       ).detail;
       const incoming = (detail?.attachments ?? []).filter((att) => att?.data && att.mediaType);
-      if (incoming.length === 0) return;
+      // 미리 채우는 말만 오는 경우도 받는다(2026-11-02 · 같이 고치기 UX 계획 C8) — 브리프만 실어 보낼 수 있다.
+      if (incoming.length === 0 && typeof detail?.text !== "string") return;
       event.preventDefault();
       const read: Attachment[] = incoming.map((att) => ({
         kind: att.kind ?? (att.mediaType.startsWith("image/") ? "image" : "file"),
@@ -520,7 +580,35 @@ export function Composer({
         data: att.data,
         size: att.size ?? Math.ceil(att.data.length * 0.75),
       }));
-      setEditor((prev) => ({ text: prev.text, attachments: [...prev.attachments, ...read] }));
+      // 누름=보내기는 입력창이 완전히 비었을 때만 보낸다 — 쓰던 말 · 첨부 · 핀이 하나라도 있으면
+      // 사람의 편집판을 덮거나 함께 보내지 않고 미리 채우기로 떨어진다(2026-11-03 오케스트레이터 검토).
+      const sendsNow =
+        detail?.send === true &&
+        editorRef.current.text.trim() === "" &&
+        editorRef.current.attachments.length === 0 &&
+        pinsRef.current.length === 0 &&
+        (reads.current.get(keyRef.current) ?? 0) === 0 &&
+        !sendingRef.current &&
+        !lockedRef.current;
+      if (sendsNow && detail) {
+        detail.sent = true;
+        setEditor(EMPTY);
+        if (detail.screen) shownScreens.current.add(keyRef.current, [{ screen: detail.screen }]);
+        // 보내는 편집판은 브리프와 붙은 첨부뿐 — 보내기 길은 `submitEditor`(`nx:pins:send` 와 같은 길).
+        submitEditorRef.current({ text: detail.text ?? "", attachments: read });
+        return;
+      }
+      if (detail?.send === true) detail.sent = false;
+      // 붙인 편집판을 한 번 계산해 둔다 — 미리 채우는 말은 사람이 확인하고 보내는 브리프다 —
+      // 이미 쓰던 말을 덮지 않게 비었을 때만 채운다.
+      const merged: Editor = {
+        text:
+          typeof detail?.text === "string" && editorRef.current.text.trim() === ""
+            ? detail.text
+            : editorRef.current.text,
+        attachments: [...editorRef.current.attachments, ...read],
+      };
+      setEditor(merged);
       if (detail?.screen) shownScreens.current.add(keyRef.current, [{ screen: detail.screen }]);
       area.current?.focus();
     };
@@ -687,9 +775,16 @@ export function Composer({
   const showSend = !showStop || hasContent;
 
   return (
-    // 끌어다 놓기는 칸 전체의 몫이다 — 대화 칸은 ChatColumn, 홈은 HomeView 가 받아 `registerHandle` 로 넘긴다.
+    // 끌어다 놓기는 칸 전체의 몫이다 — 대화 칸(ChatColumn)이 받아 `registerHandle` 로 넘긴다.
+    // biome-ignore lint/a11y/noStaticElementInteractions: 클릭이 아니라 Esc 만 받는다 — 펼친 시트를 접는 키다.
+    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 위와 같다 — 안의 어떤 손에서 온 Esc 도 같은 일을 한다.
     <div
-      className={`nx-composer${variant === "home" ? " nx-composer--home" : ""}${ghost !== null ? " nx-composer--ghost" : ""}`}
+      className={`nx-composer${ghost !== null ? " nx-composer--ghost" : ""}`}
+      onKeyDown={(event) => {
+        // 펼친 시트의 Esc — 입력칸의 손(목록 닫기 · 옅은 제안 숨기기 · 핀 메모)이
+        // 먼저 먹은 뒤에만 접는다. 입력칸 밖의 도구 단추에 초점이 있어도 같은 길이다.
+        if (event.key === "Escape" && !event.defaultPrevented) onSheetFold?.();
+      }}
     >
       {pins.length > 0 && (
         <div className="nx-pinrows">
@@ -735,6 +830,12 @@ export function Composer({
           )}
         </div>
       )}
+      <div role="status" className="nx-cmp-note">
+        {(reads.current.get(draftKey) ?? 0) > 0
+          ? L.composer.readingFiles
+          : readNotices.current.get(draftKey)}
+      </div>
+      {references}
       {editor.attachments.length > 0 && (
         <div className="nx-atts">
           {editor.attachments.map((att, index) => (
@@ -747,14 +848,14 @@ export function Composer({
                 )}
               </span>
               <span className="nx-att-n">
-                <b>{att.name}</b>
+                <b title={att.name}>{att.name}</b>
                 <span>{sizeText(att.size)}</span>
               </span>
               <button
                 type="button"
                 className="nx-ibtn nx-ibtn--sm"
                 title={L.chat.attachRemove}
-                aria-label={L.chat.attachRemove}
+                aria-label={`${L.chat.attachRemove} · ${att.name}`}
                 onClick={() =>
                   setEditor((prev) => ({
                     text: prev.text,
@@ -770,7 +871,7 @@ export function Composer({
       )}
       <textarea
         ref={area}
-        rows={variant === "home" ? 2 : 1}
+        rows={1}
         value={editor.text}
         // 옅은 글자는 placeholder 가 맡는다 — 제안이 서 있으면 그 말이 자리 표시를 대신한다.
         placeholder={ghost ?? placeholder}
@@ -801,7 +902,7 @@ export function Composer({
           void readFiles(files);
         }}
       />
-      <SuggestList suggest={suggest} up={variant === "thread"} />
+      <SuggestList suggest={suggest} up />
       {ghost !== null && (
         <button
           type="button"
@@ -865,7 +966,7 @@ export function Composer({
           sessions={sessions}
           target={target}
           disabledProviders={disabledProviders}
-          up={variant === "thread"}
+          up
         />
         {fastShown && (
           <Tip
@@ -877,7 +978,7 @@ export function Composer({
                 ))}
               </>
             }
-            side={variant === "thread" ? "top" : "bottom"}
+            side="top"
             align="end"
             bubbleClass="nx-fast-tip"
           >
@@ -894,6 +995,19 @@ export function Composer({
               <BoltIcon />
             </button>
           </Tip>
+        )}
+        {onSheetFold !== undefined && (
+          // 펼친 시트의 접기 손(2026-11-12) — 보내지 않고 접힌 한 줄로 거둔다.
+          // Esc(위 입력창의 키 손)과 같은 길이다.
+          <button
+            type="button"
+            className="nx-tbtn"
+            title={L.composer.foldClose}
+            aria-label={L.composer.foldClose}
+            onClick={onSheetFold}
+          >
+            <PanelBottomClose className="nx-i" size={16} aria-hidden="true" />
+          </button>
         )}
         {showStop && (
           <button
@@ -913,7 +1027,7 @@ export function Composer({
             className="nx-send"
             title={keyHint(running ? L.composer.sendQueue : L.composer.send)}
             aria-label={keyHint(running ? L.composer.sendQueue : L.composer.send)}
-            disabled={!hasContent || sending || locked}
+            disabled={!hasContent || sending || locked || (reads.current.get(draftKey) ?? 0) > 0}
             onClick={submit}
           >
             <UpIcon />

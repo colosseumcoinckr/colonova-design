@@ -1,4 +1,6 @@
-/**
+/** `?scene=empty` — 새 대화의 빈 자리(2026-10-31 홈 걷기): 안내 · `수정할 곳 선택` · 시작점 칩 · 입력창.
+ *  진짜 `ChatColumn` 을 가짜 데몬으로 올린다 — 칩은 빈 대화에서만 서고 입력창에 말이 생기면 물러난다.
+ *
  * 대화록 견본 — 데몬 없이 `Thread` 를 눈으로 보는 페이지(PLAN-THREAD 단계 1).
  * 앱과 같은 CSS(테마 · styles.css · next.css→chat.css)와 같은 칸 모양
  * (.nx → .nx-chat → .nx-transcript)으로 올린다. `vite build` 의 입력은
@@ -10,13 +12,19 @@
 import { markTurn } from "@colonova-design/protocol";
 import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import type { Block } from "../src/lib/daemon-client";
-import { applyStoredTheme, applyStoredTypeScale } from "../src/lib/settings";
-import { RunLine } from "../src/next/chat/RunLine";
+import type { Pins } from "../src/hooks/usePins";
+import type { Block, Daemon } from "../src/lib/daemon-client";
+import { applyStoredTheme, applyStoredTypeScale, type Settings } from "../src/lib/settings";
+import { ChatColumn } from "../src/next/chat/ChatColumn";
+import { PlanRefStrip } from "../src/next/chat/PlanRefStrip";
 import { RunPlan } from "../src/next/chat/RunPlan";
 import { Thread } from "../src/next/chat/Thread";
+import { WorkDock } from "../src/next/chat/WorkDock";
 import { L } from "../src/next/labels";
+import { dockOf } from "../src/next/lib/dock";
 import { runPlan } from "../src/next/lib/run-plan";
+import type { ShellNav } from "../src/next/slots";
+import { mockDaemon } from "./overlay-mocks";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
 import "../src/next/next.css";
@@ -32,6 +40,11 @@ const query = new URLSearchParams(location.search);
 const theme = query.get("theme");
 if (theme) document.documentElement.dataset.theme = theme;
 const COLUMN = Number(query.get("w")) || 420;
+/** `?rtab=plans|history` — 오른쪽 칸 탭의 처음 모습을 고른다(2026-11-03 탭 알약식의 그림용).
+ *  누름은 견본 안의 state 로 탭을 옮기고 `window.__calls` 에 기록한다. */
+const RTAB_PARAM = query.get("rtab");
+const INITIAL_RTAB: "chat" | "plans" | "history" =
+  RTAB_PARAM === "plans" || RTAB_PARAM === "history" ? RTAB_PARAM : "chat";
 /** `?fork=0` 이면 갈래를 못 내는 AI — 정산 줄 `···` 메뉴의 `여기서 새 대화` 가 이유와 함께 흐려진다. */
 const CAN_BRANCH = query.get("fork") !== "0";
 /** 눌린 손을 읽는 시험이 `window.__calls` 를 본다 — 정산 줄 메뉴의 갈래 · 기록 · 토스트. */
@@ -519,6 +532,121 @@ const undoScene: Block[] = [
 ];
 
 /**
+ * `?scene=plan-sync` — 같이 고치기의 곁줄(2026-10-30 사용자 결정): 같이 고침 · 변경안으로 남김 · 연결 · 맞춰 보는 중 ·
+ * 이어진 기획서가 없을 때의 고르기.
+ */
+const planSyncScene: Block[] = [
+  {
+    ...withResult("ps1", "비밀번호를 10자 이상으로 바꿔 줘.", "req-ps1", [
+      { route: "signup", title: "회원가입" },
+    ]),
+    planSync: {
+      phase: "done",
+      docs: [
+        {
+          docKey: "p-1",
+          pageId: "1",
+          title: "회원가입 정책서",
+          outcome: "adopted",
+          changes: 1,
+          summary: "가입 조건의 비밀번호 길이를 10자 이상으로",
+          entryId: "e1",
+        },
+        {
+          docKey: "p-2",
+          pageId: "2",
+          title: "계정 기능설계서",
+          outcome: "proposed",
+          changes: 1,
+        },
+      ],
+      linked: [{ pageId: "1", title: "회원가입 정책서", route: "signup" }],
+    },
+  } as Block,
+  answer("ps1a", "비밀번호 규칙을 10자 이상으로 바꿨어요."),
+  turn("pse1", 41000),
+  {
+    ...withResult("ps2", "가입 완료 화면 문구를 다듬어 줘.", "req-ps2", [
+      { route: "signup/done", title: "가입 완료" },
+    ]),
+    planSync: {
+      phase: "checking",
+      docs: [
+        { docKey: "p-1", pageId: "1", title: "회원가입 정책서", outcome: "checking", changes: 0 },
+      ],
+      linked: [],
+    },
+  } as Block,
+  answer("ps2a", "문구를 다듬었어요."),
+  turn("pse2", 18000),
+  {
+    ...withResult("ps3", "결제 버튼 색을 바꿔 줘.", "req-ps3", [{ route: "pay", title: "결제" }]),
+    planSync: { phase: "done", docs: [], linked: [], ask: { routes: ["pay"] } },
+  } as Block,
+  answer("ps3a", "버튼 색을 바꿨어요."),
+  turn("pse3", 12000),
+];
+
+/**
+ * `?scene=plan-sync-gate` — 같이 고치기 게이트(2026-11-03 A안 1A-1 · 1A-2): 판정이 끝났지만 사람의 누름을
+ * 기다리는 문서(요약 · 바꿀 곳 수가 있는 것과 없는 것) · 건너뛴 문서 · 같이 고쳐진 문서(기존 되돌리기 손) ·
+ * 문서를 고르기도 전에 전체가 실패한 카드의 `다시 시도`.
+ */
+const planSyncGateScene: Block[] = [
+  {
+    ...withResult("pg1", "검색 조건을 다섯 개로 늘려 줘.", "req-pg1", [
+      { route: "member/list", title: "회원 목록" },
+    ]),
+    planSync: {
+      phase: "done",
+      docs: [
+        {
+          docKey: "p-1",
+          pageId: "1",
+          title: "회원 목록 기능설계서",
+          outcome: "pending",
+          changes: 3,
+          summary: "검색 조건에 상태 · 가입일 범위를 더함",
+          proposalId: "pp-1",
+        },
+        {
+          docKey: "p-2",
+          pageId: "2",
+          title: "회원가입 정책서",
+          outcome: "pending",
+          changes: 0,
+        },
+        {
+          docKey: "p-3",
+          pageId: "3",
+          title: "주문 접수 정책서",
+          outcome: "declined",
+          changes: 1,
+        },
+        {
+          docKey: "p-4",
+          pageId: "4",
+          title: "공통 용어집",
+          outcome: "adopted",
+          changes: 2,
+          summary: "필터를 검색으로 읽는 말을 맞춤",
+          entryId: "e9",
+        },
+      ],
+      linked: [],
+    },
+  } as Block,
+  answer("pg1a", "검색 조건을 다섯 개로 늘렸어요."),
+  turn("pgt1", 47000),
+  {
+    ...withResult("pg2", "결제 버튼 색을 바꿔 줘.", "req-pg2", [{ route: "pay", title: "결제" }]),
+    planSync: { phase: "done", docs: [], linked: [], failure: { kind: "sync" } },
+  } as Block,
+  answer("pg2a", "버튼 색을 바꿨어요."),
+  turn("pgt2", 12000),
+];
+
+/**
  * `?scene=working` — 맨 아래 `작업 중` 줄의 네 모양(2026-10-06): 묶음을 모를 때 · 살펴보는 중 · 고치는 중 ·
  * 검사 중 + 1분이 넘은 시계. 그 아래 입력창 위 알약(2026-10-20 사용자 요청)의 세 모양: 할 일만 · 보조 작업만 · 둘 다
  * 펼친 목록(끝남 · 하는 중 · 남음 · 근황 한 줄 · 멈춘 보조 작업). 좁은 칸(`?w=320`)에서 줄과 목록이 감겨도 잘리지
@@ -533,10 +661,64 @@ function WorkingLines() {
   const longer = useRef(Date.now() - 125_000).current;
   return (
     <>
-      <RunLine quiet={false} word={L.chat.working} startedAt={since} />
-      <RunLine quiet={false} word={L.journey.makingRead} startedAt={since} />
-      <RunLine quiet={false} word={L.journey.makingFile} startedAt={since} />
-      <RunLine quiet={false} word={L.journey.makingCheck} startedAt={longer} />
+      {/* 작업 독(S4) — 옛 진행 줄의 자리다. 도는 중의 몸 줄과 근거 칩을 눈으로 본다. */}
+      <div className="nx-cmp-wrap">
+        <WorkDock
+          row={
+            dockOf({ running: false, asks: 0, notices: ["대화 내용을 고쳐 보내요"], refs: 0 }).main
+          }
+          runWord={L.chat.working}
+          startedAt={null}
+          plan={null}
+          onStop={() => {}}
+          stopping={false}
+          onAskGo={() => {}}
+          entries={0}
+          daemon={refsDaemon}
+          sessionId={null}
+          nav={refsNav}
+        />
+        <WorkDock
+          row={dockOf({ running: true, asks: 0, notices: [], refs: 0 }).main}
+          runWord={L.journey.makingFile}
+          screenName="회원 목록"
+          startedAt={since}
+          plan={null}
+          onStop={() => {}}
+          stopping={false}
+          onAskGo={() => {}}
+          entries={0}
+          daemon={refsDaemon}
+          sessionId={null}
+          nav={refsNav}
+        />
+        <WorkDock
+          row={dockOf({ running: false, asks: 1, notices: [], refs: 0 }).main}
+          runWord={L.chat.working}
+          startedAt={null}
+          plan={null}
+          onStop={() => {}}
+          stopping={false}
+          onAskGo={() => {}}
+          entries={0}
+          daemon={refsDaemon}
+          sessionId={null}
+          nav={refsNav}
+        />
+        <WorkDock
+          row={dockOf({ running: true, asks: 0, notices: [], refs: 3 }).main}
+          runWord={L.journey.makingCheck}
+          startedAt={longer}
+          plan={null}
+          onStop={() => {}}
+          stopping={false}
+          onAskGo={() => {}}
+          entries={0}
+          daemon={refsDaemon}
+          sessionId={null}
+          nav={refsNav}
+        />
+      </div>
     </>
   );
 }
@@ -613,6 +795,71 @@ function PlanPills() {
         <RunPlan plan={plan} initialOpen />
       </div>
     </>
+  );
+}
+
+/**
+ * `?scene=refs` — 기획 근거 줄(2026-10-23 · 최종 구현 계획 F3 · 화면 전면 재설계 §4 E). 발행본 칩(판 · 절)과
+ * 미발행 초안의 호박색 알약, 세 개째의 `+1` 펼침을 눈으로 본다.
+ */
+const refsDaemon = {
+  api: {
+    draftRefs: () =>
+      Promise.resolve({
+        refs: [
+          {
+            at: "",
+            ref: {
+              title: "회원 목록 개편 기획서",
+              pageId: "123",
+              docKey: null,
+              url: null,
+              version: 4,
+              revision: null,
+              published: true,
+              sections: ["배경"],
+            },
+          },
+          {
+            at: "",
+            ref: {
+              title: "로그인 화면 문구 다듬기",
+              pageId: null,
+              docKey: "n-00112233445566778899aabbccddeeff",
+              url: null,
+              version: null,
+              revision: 2,
+              published: false,
+              sections: [],
+            },
+          },
+          {
+            at: "",
+            ref: {
+              title: "결제 내역 빈 화면 안내",
+              pageId: "456",
+              docKey: null,
+              url: null,
+              version: 12,
+              revision: null,
+              published: true,
+              sections: ["빈 화면 안내", "빈 결과", "다시 시도"],
+            },
+          },
+        ],
+      }),
+  },
+} as unknown as Daemon;
+
+const refsNav = { openPlans: () => calls.push("plans") } as unknown as Parameters<
+  typeof PlanRefStrip
+>[0]["nav"];
+
+function RefStrip() {
+  return (
+    <div className="nx-cmp-wrap">
+      <PlanRefStrip daemon={refsDaemon} sessionId="fixture" sentCount={1} nav={refsNav} />
+    </div>
   );
 }
 
@@ -699,7 +946,7 @@ const ciOneScene: Block[] = [ciUser("co1", 0), answer("co1a", "확인했어요."
 
 /**
  * `?scene=merged` — 반영된 일의 성취 카드(2026-10-08 · A2b). 모양 여섯: ① 제목 · 며칠 · 화면 수를 다 아는 카드 ② 같은 날 반영(`제출한 날 안에`)
- * ③ 제목을 모르는 카드(`제출한 일이 반영됐어요`) ④ 아주 긴 제목 ⑤ 제목만 아는 카드(사실 줄에는 시각만 선다) ⑥ 필드 없는 옛 사건 — 지금의 얇은 한 줄 그대로.
+ * ③ 제목을 모르는 카드(`제출한 일을 개발자가 반영했어요`) ④ 아주 긴 제목 ⑤ 제목만 아는 카드(사실 줄에는 시각만 선다) ⑥ 필드 없는 옛 사건 — 지금의 얇은 한 줄 그대로.
  * `?scene=merged-live` 는 열린 지 0.7초 뒤에 새 반영이 도착한다 — 체크가 한 번 그려지는 모습(이번 창에서 막 도착한 카드에만).
  */
 const mergedAt = (id: string, over: Partial<Extract<Block, { type: "milestone" }>>): Block => ({
@@ -766,6 +1013,10 @@ const longAnswer = [
   "1. 회원 목록을 열고 검색창에 `김` 을 쳐 보세요. 이름에 「김」이 든 회원만 남아야 해요.",
   "2. 아무도 없는 이름(예: `zzz`)을 치면 안내 문구가 보여야 해요.",
   "3. 검색어를 지우면 전체 목록으로 돌아와야 해요.",
+  "",
+  "```tsx",
+  'const [query, setQuery] = useState("");',
+  "```",
   "",
   "> 검색은 지금 화면에 불러온 회원 안에서만 찾아요. 서버에서 찾는 방식은 개발자와 상의가 필요해요.",
   "",
@@ -934,6 +1185,84 @@ function LiveFixture() {
   );
 }
 
+/** 빈 자리의 손 — 누름은 `window.__calls` 로 본다. */
+const nav = {
+  showThread: () => calls.push("showThread"),
+  showTab: () => calls.push("showTab"),
+  showScreen: () => calls.push("showScreen"),
+  openPlans: () => calls.push("openPlans"),
+  toast: (text: string) => calls.push(`toast:${text}`),
+} as unknown as ShellNav;
+const emptyPins = {
+  list: [],
+  ghosts: [],
+  add: () => undefined,
+  remove: () => undefined,
+  setNote: () => undefined,
+  clear: () => undefined,
+  markSent: async () => undefined,
+  dismissGhosts: () => undefined,
+} as unknown as Pins;
+const emptyDaemon = mockDaemon();
+
+/** `?scene=empty&name=로그인` — 새 대화의 빈 자리를 진짜 ChatColumn 으로 그린다. 탭 누름은 state 로 옮긴다. */
+function EmptyFixture() {
+  const [rightTab, setRightTab] = useState(INITIAL_RTAB);
+  const rtabNav = {
+    ...nav,
+    showRightTab: (tab: "chat" | "plans" | "history") => {
+      calls.push(`rightTab:${tab}`);
+      setRightTab(tab);
+    },
+  } as unknown as ShellNav;
+  return (
+    <div
+      className="nx"
+      style={{ display: "block", height: "auto", minHeight: "100vh", overflow: "visible" }}
+    >
+      <div style={{ width: COLUMN, margin: "0 auto", height: "82vh" }}>
+        <ChatColumn
+          daemon={emptyDaemon}
+          settings={
+            { chat: { showThinking: true, showTools: true, disabledProviders: [] } } as Settings
+          }
+          sessions={
+            {
+              activeId: null,
+              list: [],
+              queue: [],
+              outgoing: [],
+              dropped: [],
+              usage: null,
+              chipTarget: (subject: "next" | "session") => ({
+                subject,
+                key: `next:claude`,
+                provider: "claude",
+                model: null,
+                effort: null,
+                fastMode: false,
+                fastModeBlocked: null,
+                models: [],
+                setModel: async () => undefined,
+                setEffort: async () => undefined,
+              }),
+              setError: () => undefined,
+            } as never
+          }
+          pins={emptyPins}
+          project={emptyDaemon.projects[0] ?? null}
+          nav={rtabNav}
+          narrow={false}
+          rightTab={rightTab}
+          screenName={query.get("name")}
+          onChatChange={() => undefined}
+          onRenameSession={() => undefined}
+        />
+      </div>
+    </div>
+  );
+}
+
 function Fixture() {
   // `?scene=merged-live` — 열린 뒤에 도착하는 반영(체크가 그려지는 순간을 본다).
   const [lateMerged, setLateMerged] = useState<Block[]>(mergedLiveStart);
@@ -952,7 +1281,11 @@ function Fixture() {
       className="nx"
       style={{ display: "block", height: "auto", minHeight: "100vh", overflow: "visible" }}
     >
-      <section className="nx-chat" style={{ width: COLUMN, margin: "0 auto" }}>
+      {scene === "empty" && <EmptyFixture />}
+      <section
+        className="nx-chat"
+        style={{ width: COLUMN, margin: "0 auto", display: scene === "empty" ? "none" : undefined }}
+      >
         <div className="nx-transcript">
           <Thread
             blocks={
@@ -992,7 +1325,11 @@ function Fixture() {
                                                 ? longScene
                                                 : scene === "long-live"
                                                   ? longLive
-                                                  : blocks
+                                                  : scene === "plan-sync"
+                                                    ? planSyncScene
+                                                    : scene === "plan-sync-gate"
+                                                      ? planSyncGateScene
+                                                      : blocks
             }
             live={scene === "queue" || scene === "ci-live" || scene === "long-live"}
             showThinking={false}
@@ -1023,6 +1360,31 @@ function Fixture() {
             undoLast={
               scene === "undo" ? { requestId: "req-u", onUndo: () => calls.push("undo") } : null
             }
+            planSync={{
+              open: (doc) => calls.push(`plan-open:${doc.docKey}`),
+              undo: async (entryId) => {
+                calls.push(`plan-undo:${entryId}`);
+              },
+              unlink: async (link) => {
+                calls.push(`plan-unlink:${link.pageId}`);
+              },
+              pick: async (requestId, pageId) => {
+                calls.push(`plan-pick:${requestId}:${pageId}`);
+              },
+              apply: async (requestId, docKey) => {
+                calls.push(`plan-apply:${requestId}:${docKey}`);
+              },
+              skip: async (requestId, docKey) => {
+                calls.push(`plan-skip:${requestId}:${docKey}`);
+              },
+              retry: async (requestId) => {
+                calls.push(`plan-retry:${requestId}`);
+              },
+              docs: async () => [
+                { pageId: "1", title: "회원가입 정책서", path: "정책" },
+                { pageId: "3", title: "결제 정책서", path: "정책" },
+              ],
+            }}
             onReply={async () => {}}
             onNote={async () => {}}
             onToast={(text) => calls.push(`toast:${text}`)}
@@ -1033,6 +1395,7 @@ function Fixture() {
           />
           {scene === "working" && <WorkingLines />}
           {scene === "working" && <PlanPills />}
+          {scene === "refs" && <RefStrip />}
         </div>
       </section>
       {scene === null && <LiveFixture />}
@@ -1040,7 +1403,9 @@ function Fixture() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(
+const rootElement = document.getElementById("root");
+if (rootElement === null) throw new Error("#root 엘리먼트를 찾을 수 없습니다");
+createRoot(rootElement).render(
   <StrictMode>
     <Fixture />
   </StrictMode>,

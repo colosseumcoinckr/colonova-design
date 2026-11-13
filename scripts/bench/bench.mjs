@@ -11,23 +11,30 @@
  *     [--label before] [--only search,form] [--repeat 3] [--yes]
  *
  *   node scripts/bench/bench.mjs compare bench-results/…-before.json bench-results/…-after.json
+ *   node scripts/bench/bench.mjs targets --sheet <정답표> [--links <plans-map.json>] [--out <결과 파일>]
+ *     (1층 채점 — 데몬 없이 syncTargets 만 돌린다 · 2026-11-03 · A안 0-2)
  */
 import { execFile } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { connect } from "./client.mjs";
 import {
   collectRows,
   compareResults,
+  countFlaky,
   judge,
+  judgeCompare,
   loadScenarios,
+  loadSheet,
   pinHints,
   pinsOf,
   pinTurnText,
   renderCompareTable,
   renderSummaryTable,
+  scoreTargets,
   statsFiles,
   turnProgress,
 } from "./lib.mjs";
@@ -49,6 +56,7 @@ const USAGE = `재생 벤치 — 데몬에 붙어 시나리오를 돌리고 결�
 쓰는 법:
   node scripts/bench/bench.mjs run --endpoint <파일> --project <slug> --scenarios <파일> [선택]
   node scripts/bench/bench.mjs compare <결과 A> <결과 B>
+  node scripts/bench/bench.mjs targets --sheet <정답표> [--links <파일>] [--out <파일>]  (데몬 없이 도는 1층 채점)
 
 run 의 인자:
   --endpoint <파일>    dev:desktop 이 적어 둔 접속 파일 (COLONOVA_DESIGN_BENCH_ENDPOINT)
@@ -62,6 +70,11 @@ run 의 인자:
   --only <id,id>       이 id 의 시나리오만 돌린다
   --repeat <N>         시나리오마다 N번 돌린다 (기본 1)
   --yes                안전 확인을 건너뛴다
+
+targets 의 인자:
+  --sheet <파일>     정답표 JSON (compare-sheet.json) — 필수
+  --links <파일>     이 파일(plans-map.json 모양)의 연결로 잰다 — 정답표 docs[].pageId 가 채워져 있어야 함
+  --out <파일>       결과를 JSON 으로 남긴다 — "-" 는 bench-results/…-targets.json
 `;
 
 function parseArgs(argv) {
@@ -125,6 +138,27 @@ function resultPath(label, now = new Date()) {
   return join(RESULTS_DIR, `${stamp}-${label}.json`);
 }
 
+/**
+ * suggest 편의 흔적 걷기(2026-11-03 · 검토 REVIEW-B) — 무엇을 지우고 되돌릴지 순수하게 정한다.
+ * 새 대화는 지우고, 벤치가 새로 연 초안은 버리고, 원래 있던 초안은 말을 보내기 전 개정으로 되돌린다.
+ * @returns {{kind: string, request: {type: string} & Record<string, unknown>}[]}
+ */
+export function suggestCleanup({ threadId, docKey, existed, previousRevision }) {
+  const steps = [];
+  if (threadId !== null) {
+    steps.push({ kind: "대화 지우기", request: { type: "draft.threadDelete", threadId } });
+  }
+  if (docKey !== null && !existed) {
+    steps.push({ kind: "초안 버리기", request: { type: "draft.discard", docKey } });
+  } else if (docKey !== null && previousRevision !== null) {
+    steps.push({
+      kind: "개정 되돌리기",
+      request: { type: "draft.revisionRestore", docKey, revision: previousRevision },
+    });
+  }
+  return steps;
+}
+
 /** 시나리오 하나 — 클론 경로는 읽고 쓰지 않는다. */
 async function runScenario({ client, scenario, repo, logDir, meta }) {
   const entry = {
@@ -140,6 +174,105 @@ async function runScenario({ client, scenario, repo, logDir, meta }) {
     entry.startSha = await git(repo, ["rev-parse", "HEAD"]);
   } catch (error) {
     entry.reasons.push(`클론의 HEAD 를 읽지 못했습니다 — ${error.message}`);
+    return entry;
+  }
+
+  // 맞춰 보기 한 편(2026-11-02 · 같이 고치기 UX 계획 0단계) — 세션을 만들지 않고 문서 하나의
+  // 어긋남을 바로 재고 돌아간다. 판정은 정답표의 절과 견준다(judgeCompare).
+  if (scenario.kind === "compare") {
+    try {
+      const result = await client.request({ type: "draft.compare", pageId: scenario.pageId });
+      const verdict = judgeCompare(scenario, result);
+      entry.pass = verdict.pass;
+      entry.reasons = verdict.reasons;
+      const rows = result?.rows ?? [];
+      entry.compare = { rows: rows.length, note: result?.note ?? null };
+      entry.sections = rows.map((row) => row.section);
+    } catch (error) {
+      entry.reasons.push(error instanceof Error ? error.message : String(error));
+    }
+    return entry;
+  }
+
+  // 화면 제안 한 편(2026-11-03 · A안 0-2 C8) — 초안을 열고 정책을 바꾸는 말을 보낸 뒤 답의 어긋남
+  // 줄을 정답표의 절과 견준다. 시간은 말을 보낸 뒤 답이 올 때까지(생성+판정 포함)다.
+  // 흔적은 걷는다 — 새로 연 초안은 버리고, 원래 있던 초안은 말을 보내기 전 개정으로 되돌린다.
+  if (scenario.kind === "suggest") {
+    let docKey = null;
+    let threadId = null;
+    let previousRevision = null;
+    let existed = false;
+    try {
+      const drafts = await client.request({ type: "draft.list" });
+      const before = (drafts ?? []).find((d) => d.pageId === scenario.pageId) ?? null;
+      existed = before !== null;
+      const view = await client.request({ type: "draft.open", pageId: scenario.pageId });
+      docKey = view.docKey;
+      previousRevision = before !== null ? before.revision : view.revision;
+      const asked = await client.request({
+        type: "draft.ask",
+        docKey,
+        text: scenario.brief,
+        refs: [],
+        threadId: null,
+      });
+      threadId = asked.threadId;
+      const askedAt = Date.now();
+      let message = null;
+      while (Date.now() - askedAt < TURN_TIMEOUT_MS) {
+        const thread = await client.request({
+          type: "draft.thread",
+          docKey,
+          ...(threadId !== null ? { threadId } : {}),
+        });
+        message = (thread?.messages ?? []).find((m) => m.messageId === asked.messageId) ?? null;
+        if (message !== null) break;
+        if (thread?.running === false) {
+          // running 이 꺼졌는데 답 줄이 아직 없다 — 갱신 방송을 한 번 더 본다.
+          await sleep(POLL_MS);
+          const again = await client.request({
+            type: "draft.thread",
+            docKey,
+            ...(threadId !== null ? { threadId } : {}),
+          });
+          message = (again?.messages ?? []).find((m) => m.messageId === asked.messageId) ?? null;
+          break;
+        }
+        await sleep(POLL_MS);
+      }
+      if (message === null) {
+        entry.timeout = true;
+        entry.reasons.push("15분 안에 답이 오지 않았습니다");
+        return entry;
+      }
+      entry.ms = Date.now() - askedAt;
+      const rows = message.mismatch?.rows ?? [];
+      entry.compare = { rows: rows.length, note: null };
+      entry.sections = rows.map((row) => row.section);
+      if (typeof message.error === "string" && message.error !== "") {
+        entry.reasons.push(`답이 오류로 끝났습니다 — ${message.error}`);
+      } else if (message.mismatchFailed === true) {
+        entry.reasons.push("화면 제안의 판정이 실패했습니다");
+      } else {
+        const verdict = judgeCompare(scenario, { rows });
+        entry.pass = verdict.pass;
+        entry.reasons = verdict.reasons;
+      }
+    } catch (error) {
+      entry.reasons.push(error instanceof Error ? error.message : String(error));
+    } finally {
+      // 흔적 걷기 — 무엇을 걷는지는 suggestCleanup(순수)이 정한다. 실패는 삼키지 않는다 —
+      // 몰래 섞인 다음 실측의 기준이 오염되므로 결과 이유와 콘솔에 종류만 한 줄 남긴다(검토 REVIEW-B).
+      for (const step of suggestCleanup({ threadId, docKey, existed, previousRevision })) {
+        try {
+          await client.request(step.request);
+        } catch {
+          const reason = `흔적 걷기가 실패했습니다 — ${step.kind}`;
+          entry.reasons.push(reason);
+          console.log(`  ${scenario.id} · ${reason}`);
+        }
+      }
+    }
     return entry;
   }
 
@@ -275,7 +408,9 @@ async function commandRun(args) {
         2,
       ),
     );
-    console.log(`\n${renderSummaryTable(entries)}\n\n결과: ${file}`);
+    // 흔들림(2026-11-03 · A안 0-2) — --repeat 결과에서 시나리오마다 짚은 절 묶음이 달라진 회 수.
+    const flaky = countFlaky(entries);
+    console.log(`\n${renderSummaryTable(entries)}\n\n흔들림 ${flaky.total}\n\n결과: ${file}`);
   } finally {
     off();
     client.close();
@@ -305,6 +440,41 @@ async function commandCompare(args) {
   console.log(renderCompareTable(compareResults(a, b), a.label ?? "a", b.label ?? "b"));
 }
 
+/**
+ * 1층 채점(2026-11-03 · A안 0-2) — 데몬 없이 돈다. `--links <plans-map.json>` 을 주면 그 파일의
+ * 연결로 잰다(진짜 pageId — 정답표의 docs[].pageId 가 채워져 있어야 한다). 주지 않으면 정답표의
+ * 견본 연결 표로 잰다. `--out` 은 결과를 JSON 파일로 남긴다 — 경로를 주면 그 파일,
+ * `-` 이면 `bench-results/…-targets.json`(값 없는 `--out` 은 인자 검사가 거절한다 — 검토 REVIEW-B).
+ */
+function commandTargets(args) {
+  if (!args.sheet) throw new Error("targets 에는 --sheet <정답표> 가 필요합니다");
+  const sheet = loadSheet(args.sheet);
+  let links;
+  if (args.links) {
+    let map;
+    try {
+      map = JSON.parse(readFileSync(resolve(args.links), "utf8"));
+    } catch (error) {
+      throw new Error(`연결 파일을 읽지 못했습니다 — ${args.links}: ${error.message}`);
+    }
+    if (!Array.isArray(map?.links)) {
+      throw new Error(`연결 파일에 links 목록이 없습니다 — ${args.links}`);
+    }
+    links = map.links;
+  }
+  const result = scoreTargets(sheet, links !== undefined ? { links } : {});
+  if (args.out !== undefined) {
+    mkdirSync(RESULTS_DIR, { recursive: true });
+    const file = args.out === "-" ? resultPath("targets") : args.out;
+    writeFileSync(file, JSON.stringify(result, null, 2));
+    console.log(`결과: ${file}`);
+  }
+  const missed = result.missed.length > 0 ? ` · ${result.missed.join(" · ")}` : "";
+  const extra = result.extra.length > 0 ? ` · ${result.extra.join(" · ")}` : "";
+  console.log(`놓침 ${result.missed.length}/${result.total}${missed}`);
+  console.log(`잘못 닿음 ${result.extra.length}/${result.total}${extra}`);
+}
+
 async function main() {
   const { command, args } = parseArgs(process.argv.slice(2));
   if (args.help || !command) {
@@ -313,10 +483,25 @@ async function main() {
   }
   if (command === "run") await commandRun(args);
   else if (command === "compare") await commandCompare(args);
+  else if (command === "targets") commandTargets(args);
   else throw new Error(`알 수 없는 명령입니다: ${command}`);
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+// 시험이 순수 함수(suggestCleanup)를 빌릴 수 있게 — 직접 실행될 때만 돈다(2026-11-03 · 검토 REVIEW-B).
+const isMain = (() => {
+  try {
+    return (
+      process.argv[1] !== undefined &&
+      realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))
+    );
+  } catch {
+    return false;
+  }
+})();
+
+if (isMain) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

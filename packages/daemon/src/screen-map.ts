@@ -9,7 +9,8 @@
  * 정신이다(무기한 자라는 사용자 데이터 파일은 만들지 않는다). comments.json
  * 이 프로젝트 폴더에 사는 전례를 따라 같은 폴더에 둔다.
  */
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { GateChecked } from "@colonova-design/protocol";
 
@@ -91,11 +92,38 @@ function readRows(file: string): Promise<ScreenMapRow[]> {
 
 /** 자동 저장이 성공한 커밋의 행 하나를 얹는다 — 실패는 조용하다(지도는 판정이 아니다). */
 export async function appendScreenMap(projectRoot: string, row: ScreenMapRow): Promise<void> {
+  return appendScreenMaps(projectRoot, [row]);
+}
+
+const mapWrites = new Map<string, Promise<void>>();
+
+/** 요청의 모든 커밋을 한 파일 교체로 연결한다. 일부 행만 남는 되돌리기를 막는다. */
+export async function appendScreenMaps(
+  projectRoot: string,
+  additions: ScreenMapRow[],
+): Promise<void> {
+  if (additions.length > MAX_ROWS) throw new Error("한 요청의 보관 기록이 너무 많습니다.");
   const file = join(projectRoot, "screen-map.jsonl");
-  const rows = await readRows(file);
-  rows.push(row);
-  const kept = rows.length > MAX_ROWS ? rows.slice(rows.length - MAX_ROWS) : rows;
-  await writeFile(file, `${kept.map((row) => JSON.stringify(row)).join("\n")}\n`);
+  const pending = (mapWrites.get(file) ?? Promise.resolve())
+    .catch(() => undefined)
+    .then(async () => {
+      const rows = [...(await readRows(file)), ...additions].slice(-MAX_ROWS);
+      const temporary = `${file}.${randomUUID()}.tmp`;
+      try {
+        await writeFile(temporary, `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`, {
+          flag: "wx",
+        });
+        await rename(temporary, file);
+      } finally {
+        await rm(temporary, { force: true });
+      }
+    });
+  mapWrites.set(file, pending);
+  try {
+    await pending;
+  } finally {
+    if (mapWrites.get(file) === pending) mapWrites.delete(file);
+  }
 }
 
 /**

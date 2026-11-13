@@ -1,4 +1,5 @@
 import type { GateChecked, HandoffChecks } from "@colonova-design/protocol";
+import { buildPlanRefsSection, readPlanRefs } from "./plan-refs.js";
 import { HANDOFF_TITLE_MAX_CHARS } from "./repo-prompts.js";
 
 /**
@@ -265,6 +266,17 @@ export function scopeOfNumstat(numstat: string): ChangeScope | null {
     other,
     complete: unreadable === 0 && numstat.length < NUMSTAT_TRUST_CHARS,
   };
+}
+
+/**
+ * 근거 기록 파일 → `### 기획 근거` 절 (2026-10-23 · 최종 구현 계획 F3 · 작업 C3) —
+ * 코멘트 절과 같은 판정으로 이 사이클(앵커 이후)에 보낸 기록만 묶는다. 기록이
+ * 없거나 앵커를 못 읽으면 null — 절이 서지 않는다. 나중에 문서가 발행돼도 과거
+ * 제출의 근거는 소급해 바뀌지 않는다(정본 계획 §10).
+ */
+export function buildPlanRefsSectionFromFile(file: string, sinceIso: string | null): string | null {
+  if (sinceIso !== null && Number.isNaN(Date.parse(sinceIso))) return null;
+  return buildPlanRefsSection(readPlanRefs(file, sinceIso === null ? null : new Date(sinceIso)));
 }
 
 /**

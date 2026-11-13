@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { L } from "../labels";
 import { elapsedParts, prepProgress, prepStep } from "../lib/preview-geometry";
-import { useCopied } from "../lib/use-copied";
+import { CopyButton } from "../ui/CopyButton";
 import { Spin } from "../ui/icons";
-import { SmallCheckIcon } from "./icons";
+import { AlertIcon, SmallCheckIcon } from "./icons";
 
 /** 흐른 시간 한 마디 — `12초` · `1분 5초`. */
 export function elapsedText(ms: number): string {
@@ -166,18 +166,6 @@ export function StageNotice({
   // 다시 시도 — 누르면 돌며 잠긴다. 덮개가 바뀌면(다시 켜는 중 · 고치는 중으로) 거기서 끝나고, 8초가 지나도
   // 그대로 실패면 `아직 안 떠요` 를 말하며 손이 다시 열린다.
   const [retry, setRetry] = useState<"idle" | "busy" | "still">("idle");
-  // 복사 — 글은 누른 순간에 모으고(데몬에 묻는다), 모으는 동안 단추가 잠긴다.
-  const { copied, copy } = useCopied();
-  const [gathering, setGathering] = useState(false);
-  const copyHelp = async () => {
-    if (!help) return;
-    setGathering(true);
-    try {
-      copy(await help());
-    } finally {
-      setGathering(false);
-    }
-  };
   // biome-ignore lint/correctness/useExhaustiveDependencies: 덮개의 종류가 바뀌면 시도는 끝난 것이다.
   useEffect(() => {
     setRetry("idle");
@@ -188,24 +176,55 @@ export function StageNotice({
     return () => window.clearTimeout(timer);
   }, [retry]);
 
+  // 실패는 앱 공통의 문제 띠 모양이다 — 아이콘 · 글 · 단추(2026-10-23 화면 전면 재설계 §4 F). 알림이다: 눌러서 읽는 상태가
+  // 아니라 곧바로 읽혀야 한다.
+  if (kind === "failed") {
+    return (
+      <div className="nx-banner nx-banner--red nx-prep-fail" role="alert">
+        <AlertIcon />
+        <div className="nx-banner-body">
+          <b>{L.preview.failedTitle}</b>
+          <small>{L.preview.failedBody}</small>
+          {retry === "still" && <small role="status">{L.prepare.retryStill}</small>}
+        </div>
+        {(onRetry || help) && (
+          <div className="nx-banner-act">
+            {onRetry && (
+              <button
+                type="button"
+                className="nx-btn nx-btn--sm"
+                disabled={retry === "busy"}
+                aria-busy={retry === "busy" || undefined}
+                onClick={() => {
+                  setRetry("busy");
+                  onRetry();
+                }}
+              >
+                {retry === "busy" && <Spin />}
+                {retry === "busy" ? L.prepare.retrying : L.preview.retry}
+              </button>
+            )}
+            {help && (
+              <CopyButton
+                small
+                text={help}
+                label={L.problem.copyHelp}
+                doneLabel={L.problem.copiedHelp}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="nx-prep-card">
-      {kind !== "failed" && <i className="nx-spin nx-spin--lg" aria-hidden="true" />}
-      {/* 실패는 알림이다 — 눌러서 읽는 상태가 아니라 곧바로 읽혀야 한다. */}
-      <div className="nx-prep-top" role={kind === "failed" ? "alert" : "status"}>
-        <h3>
-          {kind === "restarting"
-            ? L.preview.restartingTitle
-            : kind === "fixing"
-              ? L.preview.fixingTitle
-              : L.preview.failedTitle}
-        </h3>
+      <i className="nx-spin nx-spin--lg" aria-hidden="true" />
+      <div className="nx-prep-top" role="status">
+        <h3>{kind === "restarting" ? L.preview.restartingTitle : L.preview.fixingTitle}</h3>
         <p className="nx-prep-lines">
-          {kind === "restarting"
-            ? L.preview.restartingBody
-            : kind === "fixing"
-              ? L.preview.fixingBody
-              : L.preview.failedBody}
+          {kind === "restarting" ? L.preview.restartingBody : L.preview.fixingBody}
         </p>
         {overdue && <p className="nx-prep-lines">{L.preview.fixingOverdue}</p>}
       </div>
@@ -213,43 +232,6 @@ export function StageNotice({
         <p className="nx-prep-lines" aria-hidden="true">
           {elapsedText(elapsed)}
         </p>
-      )}
-      {kind === "failed" && retry === "still" && (
-        <p className="nx-prep-lines nx-prep-still" role="status">
-          {L.prepare.retryStill}
-        </p>
-      )}
-      {kind === "failed" && (onRetry || help) && (
-        <div className="nx-prep-retry">
-          {onRetry && (
-            <button
-              type="button"
-              className="nx-btn"
-              disabled={retry === "busy"}
-              aria-busy={retry === "busy" || undefined}
-              onClick={() => {
-                setRetry("busy");
-                onRetry();
-              }}
-            >
-              {retry === "busy" && <Spin />}
-              {retry === "busy" ? L.prepare.retrying : L.preview.retry}
-            </button>
-          )}
-          {help && (
-            <button
-              type="button"
-              className="nx-btn nx-btn--ghost"
-              disabled={gathering}
-              onClick={() => void copyHelp()}
-            >
-              {copied ? L.problem.copiedHelp : gathering ? L.report.gathering : L.problem.copyHelp}
-            </button>
-          )}
-          <span className="nx-sr" role="status">
-            {copied ? L.problem.copiedHelp : ""}
-          </span>
-        </div>
       )}
     </div>
   );

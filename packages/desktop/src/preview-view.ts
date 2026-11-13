@@ -9,6 +9,7 @@ import { type BrowserWindow, ipcMain, nativeImage, shell, type WebContents } fro
 import { ownersOfElement } from "./element-identity.js";
 import { VIEWPORT_METRICS } from "./emulation.js";
 import { isPinFocus, type PinRejection, readPinEnvelope } from "./pin-envelope.js";
+import { forwardPreviewKey } from "./preview-keys.js";
 
 /**
  * 사용자의 미리보기 (PLAN D64 → webview 전환). The planner's preview pane is
@@ -1402,31 +1403,22 @@ export class PlannerPreviewView {
     // rides the same boat — the column's close paths (찍기 끄기 · 굳힌 화면
     // 닫기) must answer while the planner points at the page. control is
     // Windows/Linux's ⌘ slot — the gate treats it as the same modifier, or
-    // the palette chord never leaves the pane there.
+    // the palette chord never leaves the pane there. 조합 게이트와 alt ·
+    // 조합 필드 보존은 순수 판정 forwardPreviewKey 로 옮겼다(2026-11-12 UI
+    // 조사 U-180).
     contents.on("before-input-event", (event, input) => {
-      if (input.type !== "keyDown") return;
-      const mod = Boolean(input.meta) || Boolean(input.control);
-      const forward =
-        input.key === "Escape" ||
-        (mod &&
-          (input.key === "k" ||
-            input.key === "K" ||
-            input.key === "l" ||
-            input.key === "L" ||
-            input.key === "," ||
-            input.key === "/" ||
-            input.key === "s" ||
-            input.key === "S" ||
-            ((input.key === "p" || input.key === "P") && Boolean(input.shift))));
-      if (!forward) return;
-      event.preventDefault();
-      this.send("colonova-preview:key", {
+      const envelope = forwardPreviewKey({
+        type: input.type,
         key: input.key,
+        isComposing: input.isComposing,
         meta: Boolean(input.meta),
         shift: Boolean(input.shift),
         alt: Boolean(input.alt),
         control: Boolean(input.control),
       });
+      if (!envelope) return;
+      event.preventDefault();
+      this.send("colonova-preview:key", envelope);
     });
   }
 

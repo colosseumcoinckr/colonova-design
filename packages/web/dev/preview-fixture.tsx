@@ -28,7 +28,6 @@ import { HistoryDrawer } from "../src/next/preview/HistoryDrawer";
 import { LiveLayer } from "../src/next/preview/LiveLayer";
 import { PreviewBar, type ScreenRow } from "../src/next/preview/PreviewBar";
 import { PreviewColumn } from "../src/next/preview/PreviewColumn";
-import type { PreviewDevice } from "../src/next/preview/PreviewHost";
 import { useLiveFollow } from "../src/next/preview/use-live-follow";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
@@ -69,7 +68,6 @@ interface Case {
   pinLocked?: string | null;
   historyOpen?: boolean;
   zoom?: number;
-  device?: PreviewDevice;
   canBack?: boolean;
   /** 1 이면 주소 목록이 열린 채 시작한다(⌘L 의 신호). */
   addrOpen?: boolean;
@@ -141,8 +139,6 @@ const BASE_CASES: Case[] = [
     height: 720,
   },
   { id: "m", label: "m · 380px(가장 좁은 탭)", width: 380 },
-  { id: "n", label: "n · 태블릿 틀", device: "tablet", height: 460, pinOn: true, pinCount: 1 },
-  { id: "o", label: "o · 휴대폰 틀", device: "mobile", height: 560 },
   {
     id: "p",
     label: "p · 가장 나쁜 경우 — 찍기 켜짐 12곳 · 기록 열림 · 배율 80% · 만든 화면 위",
@@ -278,14 +274,12 @@ function FakeGuest({ title }: { title?: string }) {
 }
 
 function Row({ spec }: { spec: Case }) {
-  const [device, setDevice] = useState<PreviewDevice>(spec.device ?? "desktop");
   const [pinOn, setPinOn] = useState(spec.pinOn ?? false);
   const [historyOpen, setHistoryOpen] = useState(spec.historyOpen ?? false);
   const [loading, setLoading] = useState(spec.loading ?? false);
   const [zoom, setZoom] = useState(spec.zoom ?? 1);
   const [addrSignal, setAddrSignal] = useState(0);
   const [pulse, setPulse] = useState(0);
-  const historyBtn = useRef<HTMLButtonElement | null>(null);
   const width = spec.width ?? WIDE;
   const height = spec.height ?? 300;
 
@@ -325,15 +319,13 @@ function Row({ spec }: { spec: Case }) {
             arrivePulse={pulse}
             onGo={() => setPulse((n) => n + 1)}
             onAddress={() => null}
-            device={device}
-            onDevice={setDevice}
             pinOn={pinOn}
             pinCount={spec.pinCount ?? 0}
             pinLocked={spec.pinLocked ?? null}
             onPin={() => setPinOn((on) => !on)}
-            historyOpen={historyOpen}
-            historyBtn={historyBtn}
             onHistory={() => setHistoryOpen((open) => !open)}
+            changedBy={false}
+            onChangedBy={() => {}}
             native
             zoom={zoom}
             onZoom={(kind) =>
@@ -345,9 +337,8 @@ function Row({ spec }: { spec: Case }) {
             showAiBusy={false}
             onShortcuts={() => {}}
             addrSignal={addrSignal}
-            drawerId={`fixture-${spec.id}-drawer`}
           />
-          <div className="nx-pvstage" data-device={device}>
+          <div className="nx-pvstage">
             <div className="nx-pvdevice">
               <FakeGuest />
             </div>
@@ -363,7 +354,6 @@ function Row({ spec }: { spec: Case }) {
             submits={SUBMITS}
             onRestored={reload}
             toast={() => {}}
-            returnRef={historyBtn}
           />
         </section>
       </div>
@@ -389,7 +379,6 @@ function LiveRow({ spec }: { spec: Case }) {
   );
   const [pinOn, setPinOn] = useState(live.pin ?? spec.pinOn ?? false);
   const [pulse, setPulse] = useState(0);
-  const historyBtn = useRef<HTMLButtonElement | null>(null);
 
   const result = useLiveFollow({
     sessionId: "fixture",
@@ -477,8 +466,6 @@ function LiveRow({ spec }: { spec: Case }) {
               setHere(path);
             }}
             onAddress={() => null}
-            device="desktop"
-            onDevice={() => {}}
             pinOn={pinOn}
             pinCount={spec.pinCount ?? 0}
             pinLocked={null}
@@ -486,9 +473,9 @@ function LiveRow({ spec }: { spec: Case }) {
               touch();
               setPinOn((on) => !on);
             }}
-            historyOpen={false}
-            historyBtn={historyBtn}
             onHistory={() => {}}
+            changedBy={false}
+            onChangedBy={() => {}}
             native
             zoom={1}
             onZoom={() => {}}
@@ -498,9 +485,8 @@ function LiveRow({ spec }: { spec: Case }) {
             showAiBusy={false}
             onShortcuts={() => {}}
             addrSignal={0}
-            drawerId={`fixture-${spec.id}-drawer`}
           />
-          <div className="nx-pvstage" data-device="desktop">
+          <div className="nx-pvstage">
             <div className="nx-pvdevice">
               <FakeGuest title={NAMES[here]} />
             </div>

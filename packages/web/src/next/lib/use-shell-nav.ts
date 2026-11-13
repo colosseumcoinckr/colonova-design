@@ -3,8 +3,9 @@ import type { Sessions } from "../../hooks/useSessions";
 import type { Daemon } from "../../lib/daemon-client";
 import type { LayoutSettings } from "../../lib/settings";
 import { L } from "../labels";
-import type { ShellNav } from "../slots";
+import type { SettingsPage, ShellNav } from "../slots";
 import { initialNav, type NavState, navReducer, type ToastAction } from "./nav";
+import { entryPane, readPaneMemory, writePaneMemory } from "./pane-memory";
 import { isPreparing } from "./project-note";
 import { nextReady, type SeenView, sameList, stepFirstPrep } from "./ready-watch";
 
@@ -12,9 +13,9 @@ import { nextReady, type SeenView, sameList, stepFirstPrep } from "./ready-watch
 const NARROW_QUERY = "(max-width: 900px)";
 
 /** 토스트가 머무는 시간 — 토스트의 줄어드는 막대가 같은 값으로 닳는다. */
-export const TOAST_MS = 2600;
+export const TOAST_MS = 8000;
 /** 단추가 달린 토스트는 읽고 누를 시간이 더 필요하다(2026-10-07 베타 준비 분석 · 첫 5분). */
-export const TOAST_ACTION_MS = 8000;
+export const TOAST_ACTION_MS = 12000;
 
 /** 지금 떠 있는 토스트 — `seq` 가 달라지면 같은 문장도 새 알림이다. `action` 이 있으면 단추가 달리고 더 오래 머문다. */
 export interface ToastNote {
@@ -38,7 +39,7 @@ export function useNarrow(): boolean {
 
 /**
  * 셸의 이동 — 상태(`nav.ts` 의 줄임 함수)와 칸들에 건넬 손(`ShellNav`).
- * 활성 프로젝트가 바뀌면 홈부터, 다른 프로젝트의 대화를 여는 클릭은 전환을 먼저 하고 등록부가 옮겨 앉으면 그
+ * 활성 프로젝트가 바뀌면 그 프로젝트의 마지막 자리부터, 다른 프로젝트의 대화를 여는 클릭은 전환을 먼저 하고 등록부가 옮겨 앉으면 그
  * 대화를 연다(jump), 대화를 여는 길은 목록 → 살아 있는 세션 → 되살리기 순.
  */
 export function useShellNav({
@@ -49,6 +50,7 @@ export function useShellNav({
   narrow = false,
   onLayoutChange,
   onOpenSettings,
+  onOpenPlansConnect,
 }: {
   daemon: Daemon;
   sessions: Sessions;
@@ -59,11 +61,13 @@ export function useShellNav({
   /** 좁은 창인가 — 서비스가 떴다는 소식은 화면 탭이 앞에 있어야 `보고 있는 것` 이다(`ready-watch.ts`). */
   narrow?: boolean;
   onLayoutChange: (patch: Partial<LayoutSettings>) => void;
-  onOpenSettings: () => void;
+  onOpenSettings: (page?: SettingsPage) => void;
+  /** 기획서 연결 대화상자를 연다(2026-11-13 사용자 결정) — 서랍을 먼저 닫는 건 셸이 맡는다. */
+  onOpenPlansConnect: () => void;
 }): {
   state: NavState;
   nav: ShellNav;
-  /** 첫 준비가 끝났는데 아직 그 화면을 보지 않은 프로젝트 — 홈의 `서비스가 떴어요` 줄이 읽는다. */
+  /** 첫 준비가 끝났는데 아직 그 화면을 보지 않은 프로젝트 — 알림이 화면 자리로 가는 판정이 읽는다(2026-10-31 홈 걷기). */
   ready: string[];
   toast: ToastNote | null;
   /** 토스트를 곧바로 내린다 — 머무는 시간은 `Toast` 가 재고, 끝나거나 `×` 를 누르면 부른다. */
@@ -73,8 +77,9 @@ export function useShellNav({
 } {
   const [state, dispatch] = useReducer(
     navReducer,
-    { collapsed, path: discardableInvitePath },
-    ({ collapsed: seedCollapsed, path }) => initialNav(seedCollapsed, path),
+    { collapsed, path: discardableInvitePath, daemon },
+    ({ collapsed: seedCollapsed, path, daemon: now }) =>
+      initialNav(seedCollapsed, path, entryPane(window.localStorage, now.activeSlug)),
   );
   // 셸 위쪽(NextShell)이 정한 초대 파일 위치 — 첫 실행의 가져오기가 끝나면
   // Workspace 가 막 등장하기 때문에 씨앗만으로는 부족하다(이후의 다시 받기).
@@ -93,14 +98,32 @@ export function useShellNav({
   }, []);
   const dismissToast = useCallback(() => setToast(null), []);
 
-  // 이 두 효과의 순서가 뜻이다: 프로젝트가 바뀌면 먼저 홈으로 돌리고, 같은
-  // 커밋에서 뒤따르는 점프가 대화를 열면 그 "thread" 가 이긴다.
+  // 이 두 효과의 순서가 뜻이다: 프로젝트가 바뀌면 먼저 그 프로젝트의 마지막 자리로 돌리고, 같은
+  // 커밋에서 뒤따르는 점프가 대화를 열면 그 "thread" 가 이긴다(2026-10-31 홈 걷기 §2).
   const seenSlug = useRef(daemon.activeSlug);
   useEffect(() => {
     if (seenSlug.current === daemon.activeSlug) return;
     seenSlug.current = daemon.activeSlug;
-    dispatch({ type: "project-changed" });
+    dispatch({ type: "project-changed", pane: entryPane(window.localStorage, daemon.activeSlug) });
   }, [daemon.activeSlug]);
+
+  // 지금 자리를 그 프로젝트의 기억으로 남긴다 — 앱을 다시 켜거나 프로젝트를 옮겨 왔을 때 같은 자리다.
+  // 슬러그가 바뀐 커밋에서는 쓰지 않는다 — 옮겨 앉기 전 자리가 새 프로젝트의 기억을 덮는 일이 없게
+  // (project-changed 가 기억을 읽은 뒤의 렌더에서, 바뀐 자리를 그때 쓴다).
+  const memorySeen = useRef<{ slug: string | null; pane: NavState["pane"] }>({
+    slug: daemon.activeSlug,
+    pane: state.pane,
+  });
+  useEffect(() => {
+    const slug = daemon.activeSlug;
+    const seen = memorySeen.current;
+    const slugMoved = seen.slug !== slug;
+    memorySeen.current = { slug, pane: state.pane };
+    if (slug === null || slugMoved) return;
+    if (readPaneMemory(window.localStorage, slug) !== state.pane) {
+      writePaneMemory(window.localStorage, slug, state.pane);
+    }
+  }, [daemon.activeSlug, state.pane]);
 
   const jump = useRef<{
     slug: string;
@@ -168,7 +191,7 @@ export function useShellNav({
 
   /**
    * 프로젝트를 옮긴다 — 옮겼는지(true) 못 옮겼는지(false)를 돌려준다. 못 옮기면 한 문장으로 알린다
-   * (사이드바 · 찾기 · 홈이 한 길을 쓴다 — 이전에는 실패가 아무 말 없이 지나갔다, 2026-10-06 겹판 조사).
+   * (사이드바 · 찾기가 한 길을 쓴다 — 이전에는 실패가 아무 말 없이 지나갔다, 2026-10-06 겹판 조사).
    * `quiet` 는 실패를 부르는 쪽이 제 자리에서 말할 때(찾기 창이 열린 채 남는다).
    */
   const activate = (
@@ -192,8 +215,8 @@ export function useShellNav({
     );
   };
 
-  // 첫 준비가 끝났는데 아직 그 화면을 보지 않은 프로젝트(2026-10-07 베타 준비 분석 · 첫 5분) — 홈의 `서비스가 떴어요`
-  // 줄이 서 있는 동안이다. 그 프로젝트의 작업 화면을 보면(또는 줄을 닫으면) 거둔다.
+  // 첫 준비가 끝났는데 아직 그 화면을 보지 않은 프로젝트(2026-10-07 베타 준비 분석 · 첫 5분) — 토스트가 서 있는 동안이다.
+  // 그 프로젝트의 작업 화면을 보면 거둔다(2026-10-31 홈 걷기 — 줄과 닫는 단추는 걷혔다).
   const [ready, setReady] = useState<string[]>([]);
   const dropReady = (slug: string) => setReady((list) => list.filter((entry) => entry !== slug));
 
@@ -206,15 +229,20 @@ export function useShellNav({
       if (!slug || slug === daemon.activeSlug) freshHere();
       else void activate(slug, { fresh: true });
     },
-    goHome: () => dispatch({ type: "home" }),
     showThread: () => dispatch({ type: "thread" }),
     showScreen: () => dispatch({ type: "screen" }),
+    openScreen: () => {
+      if (sessions.activeId === null) freshHere();
+      else dispatch({ type: "screen" });
+    },
+    openPlans: () => dispatch({ type: "plans" }),
+    showPane: (pane) => dispatch({ type: "pane", pane }),
+    setPlanDraft: (open) => dispatch({ type: "plan-draft", open }),
     openProjectScreen: (slug) => {
       dropReady(slug);
       if (slug === daemon.activeSlug) dispatch({ type: "screen" });
       else void activate(slug, { screen: true });
     },
-    dismissReady: dropReady,
     switchProject: (slug, options) => {
       dispatch({ type: "drawer", open: false });
       return slug === daemon.activeSlug
@@ -222,7 +250,9 @@ export function useShellNav({
         : activate(slug, undefined, options);
     },
     showTab: (tab) => dispatch({ type: "tab", tab }),
-    openSettings: () => onOpenSettings(),
+    showRightTab: (tab) => dispatch({ type: "right-tab", tab }),
+    openSettings: (page) => onOpenSettings(page),
+    openPlansConnect: onOpenPlansConnect,
     toast: showToast,
     setDiscardableInvitePath: (path) => dispatch({ type: "invite-path", path }),
   };
@@ -248,32 +278,27 @@ export function useShellNav({
     });
   }, []);
 
-  // 개발자 쪽 사건 알림(넘김 · 준비 끝 · 제출 막힘)을 누르면 데스크톱이 프로젝트 slug 를 건넨다 —
-  // 그 프로젝트의 홈으로 간다(소식은 홈의 받은 편지함에 선다). 다른 프로젝트면 옮기고(옮겨 앉으면 셸이
-  // 홈부터 연다), 이미 거기면 홈으로 돌아온다. 옛 UI 에는 있던 구독이 `next/` 로 옮기며 빠져, 알림을
-  // 눌러도 창만 앞으로 오고 프로젝트는 그대로였다(2026-10-06 UX 점검). 못 옮기면 `switchProject` 가 한
-  // 문장으로 말한다.
+  // 개발자 쪽 사건 알림(넘김 · 준비 끝 · 제출 막힘)을 누르면 데스크톱이 프로젝트 slug 를 건넌다 —
+  // 그 프로젝트의 화면 자리로 간다(2026-10-31 홈 걷기 §2 — 옛 홈의 받은 편지함 자리다). 다른 프로젝트면
+  // 옮기고 그 작업 화면을 연다. 못 옮기면 `switchProject` 가 한 문장으로 말한다.
   useEffect(() => {
     const bridge = window.colonovaDesignDesktop;
     if (!bridge?.onOpenProject) return;
     return bridge.onOpenProject((slug) => {
-      const { nav: now, daemon: current } = latest.current;
-      // 서비스가 떴다는 알림이면 그 화면으로 — 보러 오라고 부른 알림이다. 그 밖의 소식은 홈의 받은 편지함에 선다.
-      if (readyRef.current.includes(slug)) now.openProjectScreen(slug);
-      else if (slug === current.activeSlug) now.goHome();
-      else void now.switchProject(slug);
+      latest.current.nav.openProjectScreen(slug);
     });
   }, []);
 
-  // 첫 준비가 끝난 순간(2026-10-07 베타 준비 분석 · 첫 5분) — 그 프로젝트의 작업 화면을 보고 있지 않으면(홈이거나 다른
-  // 프로젝트) 앱 안에서 말한다: 토스트 한 번 + 홈의 줄. 데몬이 `firstPrep` 으로 첫 준비를 알려 주고(앱을 다시 켤 때의
-  // 준비는 말하지 않는다), 이 효과는 `ready` 로 바뀌는 순간만 본다. 판정은 `ready-watch.ts`.
+  // 첫 준비가 끝난 순간(2026-10-07 베타 준비 분석 · 첫 5분) — 그 프로젝트의 작업 화면을 보고 있지 않으면(기획서 자리거나 다른
+  // 프로젝트) 앱 안에서 말한다: 토스트 한 번(`화면 보기` 단추 — 2026-10-31 홈 걷기로 줄은 걷혔다). 데몬이 `firstPrep` 으로 첫 준비를
+  // 알려 주고(앱을 다시 켤 때의 준비는 말하지 않는다), 이 효과는 `ready` 로 바뀌는 순간만 본다. 판정은 `ready-watch.ts`.
   const watchingPrep = useRef<ReadonlySet<string>>(new Set());
   useEffect(() => {
     const step = stepFirstPrep(watchingPrep.current, daemon.projects);
     watchingPrep.current = step.watching;
+    // 「작업 화면을 보지 않음」의 뜻은 기획서 자리가 맡는다(2026-10-31 홈 걷기 — SeenView.view 의 "home").
     const seen: SeenView = {
-      view: state.view,
+      view: state.pane !== "preview" ? "home" : "thread",
       tab: state.tab,
       narrow,
       activeSlug: daemon.activeSlug,
@@ -294,7 +319,7 @@ export function useShellNav({
         run: () => latest.current.nav.openProjectScreen(slug),
       });
     }
-  }, [daemon.projects, daemon.activeSlug, state.view, state.tab, narrow, showToast]);
+  }, [daemon.projects, daemon.activeSlug, state.pane, state.tab, narrow, showToast]);
 
   const setCollapsed = useCallback(
     (value: boolean) => {

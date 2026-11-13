@@ -53,7 +53,14 @@ interface CreatedOptions {
   provider: string;
   title: string;
   writePolicy: unknown;
-  launch: { executable?: string; appendSystemPrompt?: string; model?: string; effort?: string };
+  launch: {
+    executable?: string;
+    appendSystemPrompt?: string;
+    model?: string;
+    effort?: string;
+    additionalDirectories?: string[];
+    planRoots?: string[];
+  };
 }
 
 /** 가짜 세션 관리자 — 살아 있는 대화 · 저장된 목록을 정하고 create 의 옵션을 모은다. */
@@ -76,7 +83,11 @@ function fakeManager(
 function open(
   drivers: DriverRegistry,
   manager: never,
-  over: { defaults?: Record<string, string> } = {},
+  over: {
+    defaults?: Record<string, string>;
+    planRoots?: string[];
+    additionalDirectories?: string[];
+  } = {},
 ) {
   return openAutoThread(
     { manager, drivers, queueDiskFor: () => ({}) as never },
@@ -137,6 +148,22 @@ test("아무것도 쓸 수 없으면 null — 세션을 만들지 않는다", as
   const { manager, created } = fakeManager({ stored: [{ provider: "second", lastModified: 1 }] });
   assert.equal(await open(registryOf(MISSING, MISSING), manager), null);
   assert.equal(created.length, 0);
+});
+
+test("자동 대화도 기획 저장소 가드 뿌리를 launch 에 싣는다(2026-11-11 감독자 채택 — GLM 교차검토 누락)", async () => {
+  const { manager, created } = fakeManager();
+  await open(registryOf(CLAUDE, MISSING), manager, {
+    planRoots: ["/tmp/colonova-auto-thread/plans"],
+    additionalDirectories: ["/tmp/colonova-auto-thread/confluence"],
+  });
+  assert.deepEqual(created[0]?.launch.planRoots, ["/tmp/colonova-auto-thread/plans"]);
+  assert.deepEqual(created[0]?.launch.additionalDirectories, [
+    "/tmp/colonova-auto-thread/confluence",
+  ]);
+  // 뿌리가 없으면 launch 에 싣지 않는다 — 요청에 없을 때와 같은 모양.
+  const bare = fakeManager();
+  await open(registryOf(CLAUDE, MISSING), bare.manager);
+  assert.equal(bare.created[0]?.launch.planRoots, undefined);
 });
 
 test("그 클론의 살아 있는 보낼 수 있는 대화가 있으면 그것 — 새로 열지 않는다", async () => {

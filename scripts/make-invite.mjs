@@ -58,6 +58,10 @@ const out = flag("out");
 const slackWebhook = flag("slack-webhook");
 const slackBotToken = flag("slack-bot-token");
 const slackChannel = flag("slack-channel");
+// 창구 칸(2026-11-12 설계 결정 ㉱) — 막혔을 때 물어볼 곳. 셋 다 선택이다.
+const supportName = flag("support-name");
+const supportRoom = flag("support-room");
+const supportUrl = flag("support-url");
 const provider = flag("provider");
 const model = flag("model");
 const effort = flag("effort");
@@ -95,6 +99,8 @@ if (repoUrls.length === 0 || !token) {
       "  --no-delete-merged      병합된 사이클 브랜치를 정리하지 않는다 (기본은 정리)",
       "  --no-auto-reply         개발자 코멘트에 AI 가 자동으로 답하지 않는다 (기본은 답한다)",
       "  --no-submit-from-chat   채팅으로 제출하는 도구를 싣지 않는다 (기본은 싣는다)",
+      "  --support-name <이름> --support-room <대화방> --support-url <https 주소>",
+      "                     막혔을 때 물어볼 곳 — 앱이 준비 화면 · 막힘 문장에 세운다 (선택)",
       "",
       "  --skip-check            사전 점검(연결 코드 · 레포 권한 · 리뷰어 · 레포 루트)을 건너뛴다 —",
       "                          기본은 점검하고, 확정 실패가 있으면 파일을 만들지 않는다",
@@ -256,7 +262,19 @@ const target = resolve(
   out ?? `./${repoUrls.length === 1 ? inviteSlug(projects[0].name) : "invite"}.colonova-invite`,
 );
 
-const invite = buildInvite({ token, author, projects, ...(notify ? { notify } : {}) });
+// 창구 칸 — 하나라도 적혀 있으면 싣는다(비면 칸이 없다 — 형식 모듈이 걸러 준다).
+const support =
+  supportName || supportRoom || supportUrl
+    ? { name: supportName ?? "", room: supportRoom ?? "", url: supportUrl ?? "" }
+    : undefined;
+
+const invite = buildInvite({
+  token,
+  author,
+  projects,
+  ...(notify ? { notify } : {}),
+  ...(support ? { support } : {}),
+});
 const sealed = await sealInvite(invite);
 
 writeFileSync(target, `${JSON.stringify(sealed, null, 2)}\n`);

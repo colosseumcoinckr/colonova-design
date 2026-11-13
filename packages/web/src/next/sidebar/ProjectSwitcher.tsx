@@ -1,11 +1,13 @@
 import type { ProjectSummary } from "@colonova-design/protocol";
 import { type RefObject, useEffect, useRef, useState } from "react";
 import type { Daemon } from "../../lib/daemon-client";
+import { timeAgo } from "../../lib/format";
 import { requestInvitePicker } from "../../lib/invite-bus";
 import { openLink } from "../../lib/open-link";
 import { setEmptyAfterProjectRemoval } from "../../lib/project-empty-bus";
 import { L } from "../labels";
 import { neverPrepared, projectCycle, projectStatus } from "../lib/project-note";
+import { confluenceStatus } from "../settings/confluence-form";
 import { Count } from "../ui/Count";
 import { InlineConfirm } from "../ui/InlineConfirm";
 import { CheckIcon, ChevronsUpDownIcon, InfoIcon, PlusIcon, Spin } from "../ui/icons";
@@ -37,6 +39,7 @@ export function ProjectSwitcher({
   active,
   onSwitch,
   onToast,
+  onOpenPlansConnect,
   openSignal = 0,
 }: {
   daemon: Daemon;
@@ -45,6 +48,8 @@ export function ProjectSwitcher({
   /** 프로젝트를 옮긴다 — 끝나면 옮겼는지(true) 알린다(셸의 `nav.switchProject`). 알리지 않으면 옮긴 것으로 본다. */
   onSwitch: (slug: string) => Promise<boolean> | undefined;
   onToast: (text: string) => void;
+  /** 기획서 연결 대화상자를 연다(2026-11-13 사용자 결정 — 프로젝트 쪽). */
+  onOpenPlansConnect: () => void;
   /** 올라갈 때마다 목록을 연다 — `다른 프로젝트` 의 `더 보기` 가 전환기를 부르는 길이다. */
   openSignal?: number;
 }) {
@@ -90,10 +95,14 @@ export function ProjectSwitcher({
         <ProjectMark slug={active.slug} name={active.name} />
         <span className="nx-proj-nm">
           <b>{active.name}</b>
-          <span>
-            <NoteMark note={status} cycle={cycleDotOf(active)} />
-            {status.text}
-          </span>
+          {(active.phase !== "ready" ||
+            status.kind !== "cycle" ||
+            projectCycle(active) !== "draft") && (
+            <span>
+              <NoteMark note={status} cycle={cycleDotOf(active)} />
+              {status.text}
+            </span>
+          )}
         </span>
         <span className="nx-proj-caret">
           <ChevronsUpDownIcon />
@@ -186,6 +195,7 @@ export function ProjectSwitcher({
           anchor={trigger}
           onClose={() => setPop(null)}
           onToast={onToast}
+          onOpenPlansConnect={onOpenPlansConnect}
         />
       )}
     </div>
@@ -197,7 +207,9 @@ const WEB_URL = /^https?:\/\//i;
 
 /**
  * 프로젝트 카드 — 전환기 목록의 `프로젝트 정보` 를 누르면 그 아래에 뜬다. 저장소 · 미리보기는
- * 링크의 규칙대로 연다(open-link).
+ * 링크의 규칙대로 연다(open-link). 머리 아래 첫 줄은 `기획서 연결` — 이 프로젝트의
+ * Confluence 를 정하는 대화상자로 간다(2026-11-13 사용자 결정 — 기획서 연결을 프로젝트
+ * 쪽으로; 설정에는 상태 한 줄만 남는다).
  *
  * 맨 아래 `목록에서 빼기` 는 파일을 지우지 않는다(데몬의 `project.remove` — 대화와 작업 파일이 이
  * 컴퓨터에 남는다). 그래도 되돌리려면 초대 파일이 필요하니 확인을 거친다 — 대화 지우기와 같은
@@ -210,6 +222,7 @@ function ProjectInfo({
   anchor,
   onClose,
   onToast,
+  onOpenPlansConnect,
 }: {
   daemon: Daemon;
   project: ProjectSummary;
@@ -217,6 +230,7 @@ function ProjectInfo({
   anchor: RefObject<HTMLElement | null>;
   onClose: () => void;
   onToast: (text: string) => void;
+  onOpenPlansConnect: () => void;
 }) {
   const [confirmingRemove, setConfirmingRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -252,6 +266,10 @@ function ProjectInfo({
   const repoUrl = project.repoUrl ?? null;
   const repo = repoUrl !== null && WEB_URL.test(repoUrl) ? repoUrl : null;
   const preview = daemon.repo?.phase === "ready" ? daemon.repo.previewUrl : null;
+  // `기획서 연결` — 이 프로젝트의 Confluence 를 정하는 길. 상태는 폼과 같은 판정
+  // (`confluenceStatus`)으로 읽고, 만료는 호박색으로 돋운다(2026-11-13 사용자 결정).
+  const plansStatus = confluenceStatus(project.confluence, null, timeAgo);
+  const plansExpired = project.confluence?.expired === true;
   return (
     <Popover anchor={anchor} onClose={onClose} className="nx-proj-info" label={project.name}>
       <div className="nx-pi-head">
@@ -259,6 +277,20 @@ function ProjectInfo({
         <b>{project.name}</b>
       </div>
       <div className="nx-pi-links">
+        <button
+          type="button"
+          className="nx-mi nx-pi-plans"
+          title={`${L.plans.title} · ${plansStatus}`}
+          onClick={() => {
+            // 카드를 닫고 대화상자를 연다 — 닫히는 팝이 초점을 전환기 머리로 돌리고
+            // 그 손이 대화상자의 복귀 자리가 된다(없으면 셸이 안전한 자리로 받는다).
+            onClose();
+            onOpenPlansConnect();
+          }}
+        >
+          <b>{L.plans.title}</b>
+          <span className={`nx-pc-st${plansExpired ? " nx-pc-st--warn" : ""}`}>{plansStatus}</span>
+        </button>
         {repo && (
           <button type="button" className="nx-mi" onClick={() => openLink(repo)}>
             <b>{L.projInfo.openRepo}</b>

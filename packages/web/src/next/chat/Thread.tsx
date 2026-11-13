@@ -12,6 +12,7 @@ import { ActivitySummary, groupActivity } from "../../components/transcript/acti
 import { ThinkingBlock, ToolBlock } from "../../components/transcript/blocks";
 import { TodoCard } from "../../components/transcript/todo";
 import type { Block } from "../../lib/daemon-client";
+import { koreanNoticeWords } from "../../lib/error-words";
 import { previewPathOf } from "../../lib/screen-link";
 import { blockOnTape, mergeThinking } from "../../lib/tape-visibility";
 import { turnAnswerText, turnBlockNumbers } from "../../lib/turn-numbering";
@@ -46,7 +47,7 @@ import {
 } from "./cards";
 import { CheckIcon, ClockIcon, EditIcon, FwdIcon, ScreenIcon, SparkIcon, UndoIcon } from "./icons";
 import { LandedCard } from "./LandedCard";
-import { ResultScreen } from "./ResultScreens";
+import { type PlanSyncHand, PlanSyncLine } from "./PlanSyncLine";
 import { SettleLine } from "./SettleLine";
 
 /** CLI 가 사람의 말이나 답인 척 내려놓는 살림 줄 — 사람의 말이 아니다. */
@@ -55,6 +56,9 @@ const NO_RESPONSE = "No response requested.";
 
 type TurnBlock = Extract<Block, { type: "turn" }>;
 type Row = ReturnType<typeof groupActivity>[number];
+
+/** 결과 띠의 첫 줄이 늘 보이는 칩의 수 — 나머지는 `외 N` 뒤에(S3). */
+const BAND_CHIP_MAX = 3;
 
 function failed(block: TurnBlock): boolean {
   return block.isError || (block.subtype !== "" && block.subtype !== "success");
@@ -112,10 +116,17 @@ export interface ThreadProps {
   onAdditionalEdit: (screen: TurnScreen) => void;
   onOpenHistory: () => void;
   /**
+   * 결과 띠의 화면 칩에 손을 올렸다(S9의 거꾸로) — 주소창이 그 이름으로 잠깐 빛난다.
+   * null 은 손이 떠났다는 뜻이다.
+   */
+  onScreenHover?: (path: string | null) => void;
+  /**
    * `방금 한 것 되돌리기` — 마지막 결과(그 요청의 보관이 프로젝트 기록의 맨 위일 때)에만 선다. 없으면 단추도 없고
    * 작업 기록이 맡는다(`lib/undo-last.ts`).
    */
   undoLast?: { requestId: string; onUndo: () => void } | null;
+  /** 같이 고치기의 곁줄 손(2026-10-30) — 없으면 곁줄이 서지 않는다. */
+  planSync?: PlanSyncHand;
   onReply: (id: number, text: string) => Promise<void>;
   /** 영수증의 `한마디 더`(U20) — 열린 요청에 코멘트로 남긴다. */
   onNote: (text: string) => Promise<void>;
@@ -161,6 +172,8 @@ export function Thread(props: ThreadProps) {
   // 뒤에 이어 온 글이 답 자리를 받으면 앞의 글은 과정으로 내려간다.
   const roles = textRoles(tape, live);
   const [openSteps, setOpenSteps] = useState<ReadonlySet<string>>(new Set());
+  // `외 N` 이 펼친 띠 — 눌러 본 띠만 남는 칩을 다 보인다(S3).
+  const [bandMore, setBandMore] = useState<ReadonlySet<string>>(new Set());
   const toggleSteps = (key: string) =>
     setOpenSteps((prev) => {
       const next = new Set(prev);
@@ -215,12 +228,16 @@ export function Thread(props: ThreadProps) {
       fileReference: L.chat.fileReference,
     }).answer;
   // 턴 끝마다: 그 턴이 말한 화면과 마지막 답 한 조각.
-  const results = requestResults(blocks, props.cycleScreens);
+  const results = requestResults(blocks, props.cycleScreens, toPath);
   const screensByTurn = new Map<string, TurnScreen[]>();
   const lastAnswerByTurn = new Map<string, string>();
   const requestByTurn = new Map<string, string>();
   // `고친 화면` 카드가 서는 답의 글 — 끝의 화면 링크 줄은 카드와 같은 말이라 글에서 뺀다.
   const cardedTexts = new Set<string>();
+  // 결과 띠(S3) — `작업 과정 ▸` 의 접는 단추는 본문 위가 아니라 띠의 바닥 줄로 내려간다.
+  // 어느 턴의 과정인지, 그 단추가 본문 위에 서면 안 되는 본문이 무엇인지를 여기서 가른다.
+  const foldKeysByTurn = new Map<string, string[]>();
+  const bandFoldIds = new Set<string>();
   let segmentStart = 0;
   let lastText: string | null = null;
   blocks.forEach((block, index) => {
@@ -230,19 +247,26 @@ export function Thread(props: ThreadProps) {
     } else if (block.type === "text" && block.agentId === null) {
       lastText = block.text;
     } else if (block.type === "turn") {
-      {
-        const result = results.get(block.id);
-        const screens = (result?.screens ?? []).map((screen) => ({
-          path: screen.route,
-          title: screen.title,
-        }));
-        if (result) requestByTurn.set(block.id, result.requestId);
-        screensByTurn.set(block.id, screens);
-        if (screens.length > 0 && !failed(block)) {
-          for (const earlier of blocks.slice(segmentStart, index)) {
-            if (earlier.type === "text" && earlier.agentId === null) cardedTexts.add(earlier.id);
+      const result = results.get(block.id);
+      const screens = (result?.screens ?? []).map((screen) => ({
+        path: screen.route,
+        title: screen.title,
+      }));
+      if (result) requestByTurn.set(block.id, result.requestId);
+      screensByTurn.set(block.id, screens);
+      if (screens.length > 0 && !failed(block)) {
+        const keys: string[] = [];
+        for (const earlier of blocks.slice(segmentStart, index)) {
+          if (earlier.type === "text" && earlier.agentId === null) {
+            cardedTexts.add(earlier.id);
+            const step = roles.steps.get(earlier.id);
+            if (step?.head === true) {
+              keys.push(step.key);
+              bandFoldIds.add(earlier.id);
+            }
           }
         }
+        if (keys.length > 0) foldKeysByTurn.set(block.id, keys);
       }
       if (lastText !== null) lastAnswerByTurn.set(block.id, lastText);
     }
@@ -423,7 +447,7 @@ export function Thread(props: ThreadProps) {
           const demoted = demotedEver.current.has(block.id);
           return (
             <>
-              {step.settled && step.head && (
+              {step.settled && step.head && !bandFoldIds.has(block.id) && (
                 <button
                   type="button"
                   className={`nx-m-fold${open ? " nx-m-fold--on" : ""}`}
@@ -542,83 +566,168 @@ export function Thread(props: ThreadProps) {
         const showContext = result?.repaired === true && (requestText !== "" || excerpt !== "");
         // 이번 창에서 막 끝난 답 — 보상(카드 · 체크)은 이 답에만 한 번.
         const fresh = !historyTurns.current?.has(block.id);
+        // 결과 띠(S3) — 화면을 바꾼 답의 끝을 한 판으로 묶는다. 화면을 바꾸지 않은
+        // 답은 지금처럼 정산 줄만 선다.
+        const band = screens.length > 0;
+        const bandKeys = foldKeysByTurn.get(block.id) ?? [];
+        const stepsOpen = bandKeys.length > 0 && bandKeys.every((key) => openSteps.has(key));
+        const toggleBandSteps = () => {
+          setOpenSteps((prev) => {
+            const next = new Set(prev);
+            const allOpen = bandKeys.every((key) => next.has(key));
+            for (const key of bandKeys) {
+              if (allOpen) next.delete(key);
+              else next.add(key);
+            }
+            return next;
+          });
+        };
+        const showAll = bandMore.has(block.id);
+        const shownScreens = showAll ? screens : screens.slice(0, BAND_CHIP_MAX);
+        const hiddenScreens = screens.length - shownScreens.length;
+        const settle = (
+          <SettleLine
+            durationMs={block.durationMs}
+            whole={whole}
+            lastAnswer={lastAnswerByTurn.get(block.id) ?? null}
+            reward={fresh === true}
+            onFork={props.canBranch && whole !== null ? () => props.onFork(turnNo) : null}
+            onOpenHistory={props.onOpenHistory}
+            onToast={props.onToast}
+          />
+        );
+        if (!band) return settle;
+        const undoLast =
+          props.undoLast != null &&
+          props.undoLast.requestId === requestByTurn.get(block.id) &&
+          !live
+            ? props.undoLast
+            : null;
+        const addEditScreen = screens[0] ?? null;
         return (
-          <>
-            {screens.length > 0 && (
-              <section
-                className={`nx-results${fresh ? " nx-results--new" : ""}`}
-                aria-label={L.transcript.shotLabel}
-              >
-                <div className="nx-results-heading">
+          <section
+            className={`nx-band${fresh ? " nx-band--new" : ""}`}
+            aria-label={L.band.label}
+            data-turn={block.id}
+          >
+            <div className="nx-band-row nx-band-screens">
+              <span className="nx-band-cap">
+                <ScreenIcon />
+                {L.band.screens}
+              </span>
+              {shownScreens.map((screen) => (
+                <button
+                  type="button"
+                  key={`${requestByTurn.get(block.id) ?? block.id}:${screen.path}`}
+                  className="nx-band-chip"
+                  title={screenTitle(screen, props.cycleScreens, {
+                    homeScreen: L.preview.homeScreen,
+                    unknownScreen: L.transcript.unknownScreen,
+                  })}
+                  onMouseEnter={() => props.onScreenHover?.(screen.path)}
+                  onMouseLeave={() => props.onScreenHover?.(null)}
+                  onFocus={() => props.onScreenHover?.(screen.path)}
+                  onBlur={() => props.onScreenHover?.(null)}
+                  onClick={() => props.onOpenScreen(screen)}
+                >
                   <ScreenIcon />
-                  <span>{L.transcript.shotLabel}</span>
-                  <span className="nx-results-count">{screens.length}</span>
-                </div>
-                {showContext && (
-                  <dl className="nx-result-context">
-                    {requestText !== "" && (
-                      <div>
-                        <dt>{L.requestResult.request}</dt>
-                        <dd>{requestText}</dd>
-                      </div>
-                    )}
-                    {excerpt !== "" && (
-                      <div>
-                        <dt>{L.requestResult.explanation}</dt>
-                        <dd>{excerpt}</dd>
-                      </div>
-                    )}
-                  </dl>
+                  <span className="nx-band-name">
+                    {screenTitle(screen, props.cycleScreens, {
+                      homeScreen: L.preview.homeScreen,
+                      unknownScreen: L.transcript.unknownScreen,
+                    })}
+                  </span>
+                </button>
+              ))}
+              {hiddenScreens > 0 && (
+                <button
+                  type="button"
+                  className="nx-band-more"
+                  aria-label={L.band.moreAria(hiddenScreens)}
+                  onClick={() =>
+                    setBandMore((prev) => {
+                      const next = new Set(prev);
+                      next.add(block.id);
+                      return next;
+                    })
+                  }
+                >
+                  {L.band.more(hiddenScreens)}
+                </button>
+              )}
+            </div>
+            {showContext && (
+              <dl className="nx-band-context">
+                {requestText !== "" && (
+                  <div>
+                    <dt>{L.requestResult.request}</dt>
+                    <dd>{requestText}</dd>
+                  </div>
                 )}
-                <div className="nx-results-grid">
-                  {screens.map((screen) => (
-                    <ResultScreen
-                      key={`${requestByTurn.get(block.id) ?? block.id}:${screen.path}`}
-                      title={screenTitle(screen, props.cycleScreens, {
-                        homeScreen: L.preview.homeScreen,
-                        unknownScreen: L.transcript.unknownScreen,
-                      })}
-                      onEdit={() => props.onAdditionalEdit(screen)}
-                      onOpen={() => props.onOpenScreen(screen)}
-                    />
-                  ))}
-                </div>
-                {/* 턴 끝의 자동 확인이 문제 없이 지나갔을 때만 — 무엇을 열어 봤는지 실제로 본 것만 말한다. */}
-                {result?.checked && (
-                  <p className="nx-results-checked">
-                    <CheckIcon />
-                    <span>
-                      {L.requestResult.checked(result.checked.screens, result.checked.phone)}
-                    </span>
-                  </p>
+                {excerpt !== "" && (
+                  <div>
+                    <dt>{L.requestResult.explanation}</dt>
+                    <dd>{excerpt}</dd>
+                  </div>
                 )}
-                {props.undoLast != null &&
-                  props.undoLast.requestId === requestByTurn.get(block.id) &&
-                  !live && (
-                    <div className="nx-results-undo">
-                      <button
-                        type="button"
-                        className="nx-btn nx-btn--sm nx-btn--ghost"
-                        title={L.requestResult.undoTip}
-                        onClick={props.undoLast.onUndo}
-                      >
-                        <UndoIcon />
-                        {L.requestResult.undo}
-                      </button>
-                    </div>
-                  )}
-              </section>
+              </dl>
             )}
-            <SettleLine
-              durationMs={block.durationMs}
-              whole={whole}
-              lastAnswer={lastAnswerByTurn.get(block.id) ?? null}
-              reward={fresh === true}
-              onFork={props.canBranch && whole !== null ? () => props.onFork(turnNo) : null}
-              onOpenHistory={props.onOpenHistory}
-              onToast={props.onToast}
-            />
-          </>
+            {/* 턴 끝의 자동 확인이 문제 없이 지나갔을 때만 — 무엇을 열어 봤는지 실제로 본 것만 말한다. */}
+            {result?.checked && (
+              <p className="nx-band-checked">
+                <CheckIcon />
+                <span>{L.requestResult.checked(result.checked.screens, result.checked.phone)}</span>
+              </p>
+            )}
+            {/* 같이 고치기(2026-10-30) — 이 요청이 기획서 초안도 고쳤는지. */}
+            {result?.planSync != null && props.planSync !== undefined && (
+              <PlanSyncLine
+                sync={result.planSync}
+                requestId={result.requestId}
+                screenTitle={(route) =>
+                  result.screens.find((screen) => screen.route === route)?.title ||
+                  L.transcript.unknownScreen
+                }
+                hand={props.planSync}
+              />
+            )}
+            <div className="nx-band-foot">
+              {undoLast !== null && (
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm nx-btn--ghost"
+                  title={L.requestResult.undoTip}
+                  onClick={undoLast.onUndo}
+                >
+                  <UndoIcon />
+                  {L.requestResult.undo}
+                </button>
+              )}
+              {addEditScreen && (
+                <button
+                  type="button"
+                  className="nx-btn nx-btn--sm nx-btn--ghost"
+                  onClick={() => props.onAdditionalEdit(addEditScreen)}
+                >
+                  <EditIcon />
+                  {L.requestResult.edit}
+                </button>
+              )}
+              {/* `작업 과정 ▸` 의 새 자리(S3) — 본문 위가 아니라 띠의 바닥 줄에서 연다. */}
+              {bandKeys.length > 0 && (
+                <button
+                  type="button"
+                  className="nx-m-fold nx-band-steps"
+                  aria-expanded={stepsOpen}
+                  onClick={toggleBandSteps}
+                >
+                  <FwdIcon />
+                  {stepsOpen ? L.band.stepsClose : L.band.steps}
+                </button>
+              )}
+              {settle}
+            </div>
+          </section>
         );
       }
       case "notice": {
@@ -641,7 +750,11 @@ export function Thread(props: ThreadProps) {
         // 데몬은 한국어 한 줄을 앞에 세우고 원문을 빈 줄 뒤에 붙인다 — 앞의 한 줄만 보인다.
         const cut = block.text.search(/\n[ \t]*\n/);
         const lead = (cut === -1 ? block.text : block.text.slice(0, cut)).trim();
-        return <Note tone={block.level === "error" ? "red" : undefined}>{lead}</Note>;
+        return (
+          <Note tone={block.level === "error" ? "red" : undefined}>
+            {koreanNoticeWords(lead) ? lead : L.chat.sendFailed}
+          </Note>
+        );
       }
       case "save":
         // 보관은 답마다 도구가 스스로 한다 — 대화록에 남길 일이 아니다(작업 기록이 그 자리).
@@ -751,6 +864,12 @@ export function Thread(props: ThreadProps) {
         <div key={item.id} className="nx-m-user">
           <div className="nx-bub">
             {item.text && <div className="nx-btxt">{item.text}</div>}
+            {(item.images > 0 || item.files > 0) && (
+              <div className="nx-batts">
+                {item.images > 0 && <span className="nx-tag">{L.chat.images(item.images)}</span>}
+                {item.files > 0 && <span className="nx-tag">{L.chat.files(item.files)}</span>}
+              </div>
+            )}
             <div className="nx-bq">
               <ClockIcon />
               {props.preparing ? L.transcript.queued : L.chat.queuedAfter}

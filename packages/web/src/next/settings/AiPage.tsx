@@ -1,12 +1,12 @@
 import { isUnusablePlan, type OnboardingFixKind } from "@colonova-design/protocol";
-import { type UIEvent, useEffect, useState } from "react";
+import { type UIEvent, useEffect, useRef, useState } from "react";
 import { useInstallStep } from "../../hooks/use-install-step";
 import type { Daemon } from "../../lib/daemon-client";
 import { composing } from "../../lib/ime";
 import { type ChatSettings, type Settings, switchProviderPatch } from "../../lib/settings";
 import { ProviderMark } from "../chat/icons";
 import { L } from "../labels";
-import { accountLine, accountText } from "../lib/account-line";
+import { accountLine, accountText, shortEmail } from "../lib/account-line";
 import { type FixKind, type FixView, fixState } from "../lib/agent-fix";
 import { useFreshKeys } from "../lib/use-fresh-keys";
 import { Spin } from "../ui/icons";
@@ -21,6 +21,7 @@ import {
   Switch,
   useAnnounce,
 } from "./parts";
+import { recoverPlanLoop } from "./recover-plan-loop";
 
 type Provider = NonNullable<NonNullable<Daemon["status"]>["providers"]>[number];
 
@@ -82,6 +83,10 @@ export function AiPage({
         L,
       )
     : null;
+  const fullAccount =
+    status?.email && claudeAccount
+      ? claudeAccount.replace(shortEmail(status.email.trim()), status.email.trim())
+      : claudeAccount;
   const missing = providers.filter((provider) => !provider.available);
   const connectedProvider = providers.length === 1 ? usable[0] : undefined;
   const usableAt = usable.findIndex((provider) => provider.id === settings.chat.provider);
@@ -166,6 +171,55 @@ export function AiPage({
   const gone =
     usable.length > 0 && !usable.some((provider) => provider.id === settings.chat.provider);
 
+  // 기획서↔화면 자동 맞춰 보기(2026-11-03 A안 1A-1(c)) — 값은 머신 설정에 산다. 아직 상태가
+  // 없으면 기본(켬)으로 믿고 그린다 — `use-updates` 의 자동 설치 줄과 같은 결의 낙관적 고름이다.
+  const statusLoop = daemon.status?.planLoop ?? true;
+  const [loopPending, setLoopPending] = useState<boolean | null>(null);
+  const [loopSaving, setLoopSaving] = useState(false);
+  const loopSavingRef = useRef(false);
+  const [loopError, setLoopError] = useState<string | null>(null);
+  const [loopResumed, setLoopResumed] = useState(false);
+  // 2026-11-12 UI 조사 U-120 — 요청 잠금과 방송 대기를 나누고, 누락된 방송은 다시 읽는다.
+  useEffect(() => {
+    if (loopPending !== null && statusLoop === loopPending) setLoopPending(null);
+  }, [statusLoop, loopPending]);
+  useEffect(() => {
+    if (loopSaving || loopPending === null) return;
+    return recoverPlanLoop(
+      () => daemon.api.refreshStatus(),
+      (ok) => {
+        setLoopPending(null);
+        if (!ok) {
+          setLoopError(L.planLoop.checkFailed);
+          setLoopResumed(false);
+        }
+      },
+    );
+  }, [loopSaving, loopPending, daemon.api]);
+  const loopOn = loopPending ?? statusLoop;
+  const setLoop = (next: boolean) => {
+    if (loopSavingRef.current || loopPending !== null) return;
+    loopSavingRef.current = true;
+    setLoopSaving(true);
+    setLoopError(null);
+    setLoopResumed(false);
+    setLoopPending(next);
+    void daemon.api
+      .machineSet(undefined, undefined, next)
+      .then(() => {
+        // 다시 켜면 앱이 어긋남을 곧장 다시 잡는다 — 그 말을 한 번 얹는다.
+        if (next) setLoopResumed(true);
+      })
+      .catch(() => {
+        setLoopPending(null);
+        setLoopError(L.planLoop.saveFailed);
+      })
+      .finally(() => {
+        loopSavingRef.current = false;
+        setLoopSaving(false);
+      });
+  };
+
   return (
     <SPage id="ai" active={active} onScroll={onScroll}>
       {loginExpired && (
@@ -198,7 +252,7 @@ export function AiPage({
           <div className="nx-ai-connection-text">
             <span>{L.settings.aiConnected}</span>
             <b>{connectedProvider.label}</b>
-            <p>{claudeAccount ?? L.settings.loggedIn}</p>
+            <p>{fullAccount ?? L.settings.loggedIn}</p>
           </div>
           <span className="nx-dot nx-dot--green" aria-hidden="true" />
         </div>
@@ -215,7 +269,7 @@ export function AiPage({
             {usable.map((provider, index) => {
               const on = settings.chat.provider === provider.id;
               const connected =
-                (provider.id === "claude" ? claudeAccount : null) ?? L.settings.loggedIn;
+                (provider.id === "claude" ? fullAccount : null) ?? L.settings.loggedIn;
               return (
                 // biome-ignore lint/a11y/useSemanticElements: 카드 전체가 누르는 과녁이다 — 동그라미 입력칸 없이 radio 로 읽힌다(radiogroup 안).
                 <button
@@ -290,10 +344,31 @@ export function AiPage({
         <SRow title={L.live.followRow} id="nx-ai-follow" sub={L.live.followRowSub}>
           <Switch
             on={settings.followEdits}
-            labelledBy="nx-ai-follow"
+            label={L.live.followRow}
             onChange={(followEdits) => onSettingsChange({ followEdits })}
           />
         </SRow>
+        {/* 기획서와 화면이 어긋나면 앱이 스스로 맞춰 본다(2026-11-03 A안 1A-1(c)) — 기본은 켬, 저장은
+          이 컴퓨터의 머신 설정(machine.set 의 planLoop)이다. 값이 아직 안 오면 데몬의 기본(켬)을 믿는다.
+          자리는 위의 미리보기 따라가기 줄 바로 아래다(브리프 · 검토 REVIEW-W2). */}
+        <SRow title={L.planLoop.row} id="nx-ai-planloop" sub={L.planLoop.rowSub}>
+          <Switch
+            on={loopOn}
+            label={L.planLoop.row}
+            onChange={setLoop}
+            disabled={loopSaving || loopPending !== null}
+          />
+        </SRow>
+        {loopError !== null && (
+          <p className="nx-snote nx-snote--row nx-snote--red" role="alert">
+            {loopError}
+          </p>
+        )}
+        {loopResumed && loopOn && (
+          <p className="nx-snote nx-snote--row" role="status">
+            {L.planLoop.resumed}
+          </p>
+        )}
       </SGroup>
     </SPage>
   );
@@ -472,7 +547,7 @@ function AgentLoginCode({ daemon }: { daemon: Daemon }) {
   return (
     <span className="nx-slogin-code">
       <input
-        className="nx-sinput nx-sinput--code"
+        className="nx-input"
         type="password"
         value={code}
         spellCheck={false}

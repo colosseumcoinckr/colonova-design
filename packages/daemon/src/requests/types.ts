@@ -2,7 +2,12 @@ import type { ClientMessage, ServerMessage } from "@colonova-design/protocol";
 import type { DriverRegistry } from "../agent/registry.js";
 import type { AgentInstall } from "../agent-install.js";
 import type { AgentUpdates } from "../agent-update.js";
+import type { ConfluenceSync } from "../confluence-sync.js";
+import type { CredentialStore } from "../credentials.js";
 import type { DeveloperNotice } from "../developer-notice.js";
+import type { DocComments } from "../doc-comments.js";
+import type { DocOps } from "../doc-ops.js";
+import type { DraftService } from "../draft-service.js";
 import type { Escalation } from "../escalation.js";
 import type { GitHubBridge } from "../github-bridge.js";
 import type { HandoffPreviews } from "../handoff-preview.js";
@@ -14,6 +19,7 @@ import type { PreviewDrivers } from "../preview-drivers.js";
 import type { ProjectFleet } from "../project-fleet.js";
 import type { ProjectRegistry } from "../projects.js";
 import type { QueueDisk, QueueStore } from "../queue-store.js";
+import type { ScreenPlanSync } from "../screen-plan-sync.js";
 import type { SessionManager } from "../session-manager.js";
 import type { TurnStats } from "../turn-stats.js";
 
@@ -40,6 +46,18 @@ export interface RouterDeps {
   escalation: Escalation;
   /** 기계 잔일의 설정(machine.json) — machine.set · machine.author.set 이 쓰고 상태가 읽는다. */
   machineSetting: { get(key: string): string | null; set(key: string, value: string | null): void };
+  /** 자격 저장소(키체인 · DPAPI · memory) — confluence.connect 이 이메일·토큰 짝을 둔다. */
+  credentials: CredentialStore;
+  /** 기획서 가져오기의 몸 — importNow 의 합류와 만료 판정은 이 모듈의 것이다. */
+  confluence: ConfluenceSync;
+  /** 기획 초안의 몸 — draft.* 요청이 잇는다(2026-10-23 최종 구현 계획 F1). */
+  drafts: DraftService;
+  /** 같이 고치기의 몸 — draft.syncUndo · draft.syncPick 과 화면 되돌리기가 잇는다(2026-10-30 사용자 결정). */
+  screenSync: ScreenPlanSync;
+  /** 문서 관리의 몸 — doc.trash · doc.restore · doc.copy · doc.move 가 잇는다(2026-10-23 작업 D1a). */
+  docOps: DocOps;
+  /** 문서 코멘트의 몸 — doc.comment.* 가 잇는다(2026-10-23 작업 D2a). */
+  docComments: DocComments;
   /** 담당의 캐시 — 설정이 바뀌면 지운다(invalidate). */
   machineTurns: { invalidate(): void };
   notice(notice: DaemonNotice): void;

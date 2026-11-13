@@ -80,7 +80,7 @@
   flex-direction: column;
 }
 
-/* 홈이 앞에 서 있는 동안의 대화 · 미리보기 — 마운트한 채 자리만 비운다(미리보기
+/* 기획서 자리가 앞에 서 있는 동안의 대화 · 미리보기 — 마운트한 채 자리만 비운다(미리보기
    게스트가 살아 있게). display:none 이 아니라 크기 0 이다. */
 .nx-offstage {
   position: absolute;
@@ -92,7 +92,21 @@
   pointer-events: none;
 }
 
-/* 홈에서 대화로 넘어올 때의 한 번 — 자리를 드러내며 nx-chat-rise 로 뜬다.
+/* 오른쪽 칸의 두 얼굴(미리보기 · 기획서) 중 숨은 쪽 — 둘 다 마운트된 채 한쪽만 선다. `.nx-preview` 는 뒤에서 읽히는
+   `position: relative` 가 위 한 줄 규칙을 이겨 자리 0 짜리 칸이 격자 칸을 차지하고, 뒤에 선 칸이 밀려난다.
+   그래서 격자의 직계 자식일 때는 특이도를 한 칸 올려 어느 파일의 순서에도 기대지 않는다. */
+.nx-panel-slot > .nx-offstage,
+.nx-body > .nx-offstage {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 좁은 창의 서랍에서 대화로 넘어올 때의 한 번 — 자리를 드러내며 nx-chat-rise 로 뜬다.
    offstage 가 다시 입혀지면 걸음이 풀려, 다음 넘어옴에 한 번 더 산다. */
 .nx-work:not(.nx-offstage) {
   animation: nx-chat-rise 0.22s var(--drift);
@@ -104,37 +118,20 @@
   }
 }
 
-.nx-homebar {
-  height: 52px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-}
-
-.nx-homebar-name {
-  min-width: 0;
-  margin-left: 8px;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: var(--ink2);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .nx-body {
   position: relative;
   flex: 1;
   display: grid;
-  grid-template-columns: 400px minmax(0, 1fr);
+  /* 화면이 가운데다(S15) — 미리보기가 남은 폭을 다 쓰고 오른쪽 칸(대화)이 제 폭을 갖는다.
+     Workspace 가 그릴 때 인라인 폭으로 덮는다; 이 기본값은 첫 그림 전의 모습이다. */
+  grid-template-columns: minmax(0, 1fr) 420px;
   min-height: 0;
 }
 
 .nx-tabs {
   display: flex;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--line);
   flex: none;
 }
@@ -144,12 +141,12 @@
   min-width: 0;
   height: 32px;
   border-radius: var(--r);
-  font-weight: 500;
+  font-weight: var(--fw-medium);
   color: var(--ink2);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: var(--sp-1_5);
   text-align: center;
   /* 2026-10-04 ux-review(2차): 긴 화면 이름이 탭을 넘치지 않게 — 말줄임으로 자리를
      지키고 배지(`Count`)가 밀려 나가지 않게 한다. */
@@ -173,7 +170,7 @@
   color: var(--ink);
   box-shadow:
     0 0 0 1px var(--line),
-    /* 고정 — 고른 탭의 그림자. */ 0 1px 2px rgba(0, 0, 0, 0.05);
+    var(--elev-1);
 }
 
 .nx-scrim {
@@ -190,7 +187,7 @@
   left: 0;
   top: 0;
   bottom: 0;
-  width: 284px;
+  width: min(var(--nx-side-w, 284px), calc(100vw - var(--sp-12)));
   z-index: 40;
   transform: translateX(-104%);
   /* 겹판과 같은 박자 — 그림자도 함께 걷혀 닫히는 동안 서랍 가장자리에 옛 그림자가 남지 않는다. */
@@ -239,6 +236,23 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* 대화 칸의 숨김은 접근성 트리에서도 같은 자리다(2026-10-23 화면 전면 재설계 §3.4). */
+.nx-chat-slot {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.nx-chat-slot > .nx-chat {
+  flex: 1;
+}
+.nx--narrow .nx-chat {
+  border-right: 0;
+}
+
+.nx-chat-slot.nx-offstage .nx-chat {
+  border: 0;
+}
+
 .nx--narrow .nx-body[data-tab="chat"] .nx-preview,
 .nx--narrow .nx-body[data-tab="preview"] .nx-chat {
   position: absolute;
@@ -256,6 +270,63 @@
   animation: nx-fade var(--nx-t-move) var(--drift);
 }
 
-.nx--narrow .nx-chat {
-  border-right: 0;
+/* 좁은 창의 입력창 시트 자리(S12) — 비어 있을 때는 자리도 차지하지 않는다. */
+.nx-sheet-host:empty {
+  display: none;
+}
+
+.nx-sheet-host {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+}
+
+/* 접힌 입력창 — 화면 탭 바닥의 한 줄(S12). 펼쳐져 있으면(시트 자리에 입력창이 서면) 물러난다.
+   `.nx` 아래 단추 초기화(`.nx button` — 0-1-1)에 지지 않게 한 단계 더 단다
+   (2026-11-12 — 바탕 · 윗선 · 덧칠이 초기화에 져 배경 없이 가장자리에 붙어 보였다). */
+.nx .nx-fold-cmp {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 29;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 46px;
+  padding: 0 14px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+  font-size: var(--fs-sm);
+  color: var(--ink2);
+  text-align: left;
+}
+
+.nx .nx-fold-cmp:hover {
+  background: var(--bg-2);
+  color: var(--ink);
+}
+
+.nx .nx-fold-cmp .nx-i {
+  margin-left: auto;
+  color: var(--ink3);
+}
+
+/* 시트 자리에 입력창이 서면 접힌 한 줄은 걷힌다 — 입력창이 두 줄로 겹치지 않게. */
+.nx-preview:has(.nx-sheet-host:not(:empty)) .nx-fold-cmp {
+  display: none;
+}
+
+/* 2026-11-12 UI 조사 U-159 — 패널 이름은 유지하고 기존 격자를 잇는다. */
+.nx-panel-slot {
+  display: contents;
+}
+
+/* 2026-11-12 이관 U-157 — 무대에 잘리지 않는 안쪽 초점 고리. */
+.nx .nx-fold-cmp:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -4px;
 }

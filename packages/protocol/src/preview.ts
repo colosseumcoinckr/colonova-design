@@ -24,7 +24,13 @@ export interface ColoNovaDesignCommentTarget {
   component: string;
   /** The element's own text (direct text nodes), trimmed and capped. */
   text: string;
-  /** CSS path from the page's `body` down to the element. */
+  /**
+   * CSS path from the page's `body` down to the element. Each part prefers
+   * the id, then up to two stable classes — generated hashes (css-… · 숫자와
+   * 대문자가 섞인 열두 글자짜리) are stripped — and keeps `:nth-of-type`
+   * where same-tag siblings need it, so the path stays a unique,
+   * querySelector-parseable anchor(2026-10-25 orca grab 참고).
+   */
   path: string;
   /** The same address as `path`, in XPath — the form locator tools read. */
   xpath?: string;

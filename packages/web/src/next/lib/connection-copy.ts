@@ -37,7 +37,7 @@ const WARN_DAYS = 14;
 
 /**
  * 보내기를 잠그는 이유 — 끊겼으면 끊겼다고, 잇는 중이면 잇는 중이라고 말하고, 열려 있으면
- * 잠그지 않는다(null). 대화 칸 · 홈의 입력창 · 홈의 받은 편지함이 같은 판정을 쓴다.
+ * 잠그지 않는다(null). 대화 칸의 입력창 · 시작점 칩이 같은 판정을 쓴다.
  */
 export function connectionLock(
   state: "idle" | "connecting" | "open" | "closed" | "error",

@@ -131,9 +131,17 @@ contextBridge.exposeInMainWorld("colonovaDesignDesktop", {
     onHost: subscribe<{ url: string }>("colonova-preview:host"),
     /** loose 페이지 닫기(주소창의 닫기 버튼) — PreviewFrame이 그 요소를 거둔다. */
     onClose: subscribe<{ url: string }>("colonova-preview:close"),
-    onKey: subscribe<{ key: string; meta: boolean; shift: boolean; control: boolean }>(
-      "colonova-preview:key",
-    ),
+    /** U-180(2026-11-12 UI 조사): alt 와 조합 여부까지 실은 키 봉투 —
+        조합 중인 키는 게스트에 남으므로 composing 은 늘 거짓이지만, 재생
+        쪽이 필드를 잃지 않기 위해 봉투가 지킨다. */
+    onKey: subscribe<{
+      key: string;
+      meta: boolean;
+      shift: boolean;
+      alt: boolean;
+      control: boolean;
+      composing: boolean;
+    }>("colonova-preview:key"),
     onLoading: subscribe<{ on: boolean }>("colonova-preview:loading"),
     /** 배율 되알림 (PLAN D85 ⓔ) — the menu changed it, the web redraws. */
     onZoom: subscribe<{ factor: number }>("colonova-preview:zoom"),

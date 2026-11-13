@@ -1,3 +1,4 @@
+// CI-순수-제외 — 진짜 tsc 를 돌린다. scripts/pure-tests.mjs 가 CI 에서 뺀다(2026-10-24).
 // PLAN-HARNESS §3.C 의 시험 — 증분 타입 진단. 판정(파싱 · 답 문장 · 계획)은
 // 순수 함수로, 줄 세우기와 상한은 가짜 spawn 으로, 마지막 한 건은 이 모노레포의
 // 설치된 typescript 로 진짜 tsc 를 돌려 본다. `../dist` 임포트인 이유: node

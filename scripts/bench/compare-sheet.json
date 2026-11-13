@@ -1,0 +1,206 @@
+{
+  "note": "맞춰 보기 정답표(2026-11-02 · 같이 고치기 UX 계획 0단계 · 문서 §6 기준 견본) — 견본 문서 × 견본 화면에서 일부러 어긋나게 만든 규칙과 「화면 요청 → 닿아야 할 문서 · 절」의 정답. C7 · C8 · C1 의 정확도(놓침 비율 · 잘못 닿은 비율)를 이 표로 잰다. 실측 전에 docs[].pageId 를 견본 프로젝트의 실제 페이지 id 로 채운다. requests[].route 는 그 요청이 바꾸는 견본 화면 주소다. links 는 견본 프로젝트의 연결 표를 doc 제목으로 흉내 낸 줄이다 — 일부러 몇 화면(/settings/dormant · /withdraw · /order/refund · /settings/notifications)을 비워 1층만으로 놓치는 요청이 생기게 한다. 견본 프로젝트를 만들 때 이 연결 표 그대로 plans-map 을 쓴다.",
+  "docs": [
+    {
+      "title": "회원가입 정책서",
+      "pageId": null,
+      "sections": ["비밀번호 규칙", "휴면 전환", "탈퇴 조건"]
+    },
+    {
+      "title": "주문 · 배차 정책서",
+      "pageId": null,
+      "sections": ["주문 접수", "배차 실패 문구", "취소 · 환불"]
+    },
+    {
+      "title": "회원 등급 · 혜택 정책서",
+      "pageId": null,
+      "sections": ["등급 판정", "월 혜택", "등급 유효 기간"]
+    }
+  ],
+  "links": [
+    { "doc": "회원가입 정책서", "route": "/signup", "section": "비밀번호 규칙" },
+    { "doc": "주문 · 배차 정책서", "route": "/order/detail", "section": "취소 · 환불" },
+    { "doc": "주문 · 배차 정책서", "route": "/order/detail", "section": "배차 실패 문구" },
+    { "doc": "회원 등급 · 혜택 정책서", "route": "/benefits", "section": "월 혜택" },
+    { "doc": "회원 등급 · 혜택 정책서", "route": "/settings/grade", "section": null }
+  ],
+  "mismatches": [
+    {
+      "doc": "회원가입 정책서",
+      "section": "비밀번호 규칙",
+      "plan": "비밀번호는 8자 이상이다",
+      "screen": "10자 이상",
+      "screenName": "회원가입"
+    },
+    {
+      "doc": "회원가입 정책서",
+      "section": "휴면 전환",
+      "plan": "1년 동안 로그인이 없으면 휴면으로 전환한다",
+      "screen": "6개월로 안내한다",
+      "screenName": "내 정보"
+    },
+    {
+      "doc": "주문 · 배차 정책서",
+      "section": "배차 실패 문구",
+      "plan": "배차에 실패하면 「주변 기사님을 계속 찾고 있어요」라고 안내한다",
+      "screen": "「배차에 실패했어요」라고만 띄운다",
+      "screenName": "주문 상세"
+    },
+    {
+      "doc": "주문 · 배차 정책서",
+      "section": "취소 · 환불",
+      "plan": "주문 후 1시간까지는 무료로 취소할 수 있다",
+      "screen": "취소 버튼이 30분 뒤에 사라진다",
+      "screenName": "주문 상세"
+    },
+    {
+      "doc": "회원 등급 · 혜택 정책서",
+      "section": "월 혜택",
+      "plan": "골드 회원에게 매달 쿠폰 3장을 준다",
+      "screen": "쿠폰 2장만 내려준다",
+      "screenName": "혜택"
+    }
+  ],
+  "requests": [
+    {
+      "id": "pw-min-10",
+      "request": "비밀번호를 10자 이상으로 바꿔 줘",
+      "route": "/signup",
+      "doc": "회원가입 정책서",
+      "sections": ["비밀번호 규칙"]
+    },
+    {
+      "id": "pw-hint-add",
+      "request": "비밀번호 입력창에 「영문 · 숫자를 섞어 주세요」 도움말을 넣어 줘",
+      "route": "/signup",
+      "doc": "회원가입 정책서",
+      "sections": ["비밀번호 규칙"]
+    },
+    {
+      "id": "dormant-6mo",
+      "request": "휴면 전환을 1년에서 6개월로 바꿔 줘",
+      "route": "/settings/dormant",
+      "doc": "회원가입 정책서",
+      "sections": ["휴면 전환"]
+    },
+    {
+      "id": "dormant-notice",
+      "request": "휴면 예정 안내 문구를 친절하게 바꿔 줘",
+      "route": "/settings/dormant",
+      "doc": "회원가입 정책서",
+      "sections": []
+    },
+    {
+      "id": "withdraw-keep",
+      "request": "탈퇴하면 계정을 바로 지우는 대신 30일 동안 보관했다가 지워 줘",
+      "route": "/withdraw",
+      "doc": "회원가입 정책서",
+      "sections": ["탈퇴 조건"]
+    },
+    {
+      "id": "order-accept-color",
+      "request": "주문 접수 단추 색을 파랑에서 초록으로 바꿔 줘",
+      "route": "/order/new",
+      "doc": null,
+      "sections": []
+    },
+    {
+      "id": "dispatch-retry",
+      "request": "배차에 실패하면 자동으로 한 번 더 시도하게 해 줘",
+      "route": "/order/detail",
+      "doc": "주문 · 배차 정책서",
+      "sections": ["배차 실패 문구"]
+    },
+    {
+      "id": "dispatch-wording",
+      "request": "배차 실패 문구를 「주변 기사님을 계속 찾고 있어요」로 통일해 줘",
+      "route": "/order/detail",
+      "doc": "주문 · 배차 정책서",
+      "sections": ["배차 실패 문구"]
+    },
+    {
+      "id": "cancel-window-1h",
+      "request": "무료 취소를 주문 후 30분까지로 줄여 줘",
+      "route": "/order/detail",
+      "doc": "주문 · 배차 정책서",
+      "sections": ["취소 · 환불"]
+    },
+    {
+      "id": "cancel-fee-table",
+      "request": "취소 수수료 안내 표에 새 줄을 하나 넣어 줘",
+      "route": "/order/detail",
+      "doc": null,
+      "sections": []
+    },
+    {
+      "id": "order-status-pill",
+      "request": "주문 상태 알약 모양을 둥글게 바꿔 줘",
+      "route": "/orders",
+      "doc": null,
+      "sections": []
+    },
+    {
+      "id": "grade-gold-3",
+      "request": "골드 회원 월 쿠폰을 2장에서 3장으로 늘려 줘",
+      "route": "/benefits",
+      "doc": "회원 등급 · 혜택 정책서",
+      "sections": ["월 혜택"]
+    },
+    {
+      "id": "grade-vip-add",
+      "request": "등급에 VIP 를 하나 더 만들어 줘",
+      "route": "/settings/grade",
+      "doc": "회원 등급 · 혜택 정책서",
+      "sections": ["등급 판정"]
+    },
+    {
+      "id": "grade-period-12",
+      "request": "등급 유효 기간을 6개월에서 12개월로 늘려 줘",
+      "route": "/settings/grade",
+      "doc": "회원 등급 · 혜택 정책서",
+      "sections": ["등급 유효 기간"]
+    },
+    {
+      "id": "grade-page-layout",
+      "request": "혜택 화면 목록 사이 간격을 넓혀 줘",
+      "route": "/benefits",
+      "doc": null,
+      "sections": []
+    },
+    {
+      "id": "signup-layout",
+      "request": "회원가입 화면에서 약관 동의칸을 맨 위로 옮겨 줘",
+      "route": "/signup",
+      "doc": null,
+      "sections": []
+    },
+    {
+      "id": "order-list-count",
+      "request": "주문 목록에서 한 번에 10건씩 보여 줘",
+      "route": "/orders",
+      "doc": null,
+      "sections": []
+    },
+    {
+      "id": "pw-confirm",
+      "request": "비밀번호 확인칸을 하나 더 넣어 줘",
+      "route": "/signup",
+      "doc": "회원가입 정책서",
+      "sections": ["비밀번호 규칙"]
+    },
+    {
+      "id": "refund-bank",
+      "request": "환불은 등록한 계좌로만 받게 해 줘",
+      "route": "/order/refund",
+      "doc": "주문 · 배차 정책서",
+      "sections": ["취소 · 환불"]
+    },
+    {
+      "id": "dormant-alarm",
+      "request": "휴면 전환 30일 전에 알림을 보내 줘",
+      "route": "/settings/notifications",
+      "doc": "회원가입 정책서",
+      "sections": ["휴면 전환"]
+    }
+  ]
+}

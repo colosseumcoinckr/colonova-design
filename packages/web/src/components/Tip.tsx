@@ -36,6 +36,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { composing } from "../next/lib/ime";
 
 export type TipSide = "top" | "bottom" | "left" | "right";
 export type TipAlign = "start" | "center" | "end";
@@ -236,6 +237,25 @@ export function Tip({
     }
   };
 
+  // 2026-11-12 UI 조사 U-138 — document 캡처의 팝보다 먼저 풍선만 닫는다.
+  useEffect(() => {
+    if (!shown || open || !label) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        event.key !== "Escape" ||
+        composing({ nativeEvent: event, keyCode: event.keyCode } as React.KeyboardEvent)
+      )
+        return;
+      cancelShow();
+      cancelHide();
+      setShown(false);
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  });
+
   // Watchdog: a shown tip dies the moment the pointer is provably elsewhere.
   // mouseleave alone misses two real cases — a layout shift slides the
   // trigger out from under a stationary cursor (Chromium fires boundary
@@ -303,8 +323,8 @@ export function Tip({
           role="tooltip"
           className={
             bubbleClass
-              ? `tip__bubble${shown || open ? " tip__bubble--shown" : ""} ${bubbleClass}`
-              : `tip__bubble${shown || open ? " tip__bubble--shown" : ""}`
+              ? `nx tip__bubble${shown || open ? " tip__bubble--shown" : ""} ${bubbleClass}`
+              : `nx tip__bubble${shown || open ? " tip__bubble--shown" : ""}`
           }
           style={open || interactive ? { ...at, pointerEvents: "auto" } : at}
           onMouseEnter={interactive ? cancelHide : undefined}

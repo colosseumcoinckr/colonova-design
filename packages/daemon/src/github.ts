@@ -7,7 +7,7 @@
  * same transport when COLONOVA_DESIGN_GITHUB_FIXTURE points at a fixture directory.
  *
  * Endpoints used (cite in every fixture):
- *   POST  /repos/{owner}/{repo}/pulls/{number}/requested_reviewers — ask for reviews (E4)
+ *   POST  /repos/{owner}/{repo}/pulls                              — open the handoff as a draft PR
  *   PATCH /repos/{owner}/{repo}/pulls/{number}                 — retitle/rewrite a standing one · 제출 취소(state: closed)
  *   GET   /repos/{owner}/{repo}/pulls/{number}                 — state + merged flag
  *   GET   /repos/{owner}/{repo}/pulls/{number}/reviews         — latest verdict per reviewer
@@ -21,7 +21,14 @@
 import type { GitHubRepo, GitHubRepoInspection } from "@colonova-design/protocol";
 import { aiReviewerOf } from "./ai-review.js";
 import { markAppComment } from "./app-comment.js";
-import { FixtureTransport, loadFixturePairs, type RestTransport } from "./rest-transport.js";
+import {
+  FetchRestTransport,
+  FixtureTransport,
+  firstLine,
+  loadFixturePairs,
+  nextLink,
+  type RestTransport,
+} from "./rest-transport.js";
 import { classifyGitHubFailure } from "./submit-state.js";
 
 export interface PullRequestRef {
@@ -391,7 +398,9 @@ export class GitHubClient {
   /**
    * A brand-new pull request cannot carry a review yet, so its state is read
    * off the create response alone — no reviews call on the button press the
-   * planner is waiting on.
+   * planner is waiting on. Opened as a GitHub draft(2026-11-13 사용자 결정):
+   * readiness stays the developer's call on GitHub, and the PATCH of a
+   * re-submit never touches the flag.
    */
   async createPullRequest(input: {
     owner: string;
@@ -409,6 +418,8 @@ export class GitHubClient {
         body: input.body,
         head: input.head,
         base: input.base,
+        // GitHub 초안(draft)으로 연다 — 검토 준비 표시는 개발자의 손에 남는다.
+        draft: true,
       },
       "제출",
     );
@@ -1067,31 +1078,6 @@ export function parseRepoSlug(url: string): { owner: string; repo: string } | nu
   return { owner, repo };
 }
 
-/**
- * The `rel="next"` target of a GitHub `Link` header — a path+query the
- * transport can fetch as-is — or null at the last page.
- */
-function nextLink(header: string | undefined): string | null {
-  if (!header) return null;
-  const match = header.match(/<([^>]+)>\s*;\s*rel="next"/);
-  const target = match?.[1];
-  if (!target) return null;
-  // GitHub 은 절대 주소를 돌려준다 — transport 가 여기에 api base 를 또 붙이면
-  // `https://api.github.comhttps://…` 가 되어 100개 넘는 레포의 목록이 깨진다.
-  if (!/^https?:\/\//i.test(target)) return target;
-  try {
-    const url = new URL(target);
-    return `${url.pathname}${url.search}`;
-  } catch {
-    return target;
-  }
-}
-
-/** The first line of a transport error; fetch writes whole sentences per line. */
-function firstLine(text: string): string {
-  return (text.split("\n").find((line) => line.trim() !== "") ?? text).slice(0, 160);
-}
-
 /** 글이 아닌 값은 빈 문자열, 긴 글은 상한에서 자른다 — 검사 출력은 길 수 있다. */
 function clip(value: unknown, max: number): string {
   return typeof value === "string" ? value.slice(0, max) : "";
@@ -1133,47 +1119,10 @@ export function createGitHubTransport(env: NodeJS.ProcessEnv = process.env): {
         fixtureDir,
       };
     } catch {
-      return { transport: new GitHubFetchTransport(apiUrl), fixtureDir };
+      return { transport: new FetchRestTransport(apiUrl), fixtureDir };
     }
   }
-  return { transport: new GitHubFetchTransport(apiUrl), fixtureDir: null };
-}
-
-/**
- * The transport the daemon uses outside tests. Response headers ride along
- * because verifyPullRequestAccess reads a classic token's scopes out of
- * x-oauth-scopes.
- */
-class GitHubFetchTransport implements RestTransport {
-  constructor(private readonly apiUrl: string) {}
-
-  async request(input: {
-    method: "GET" | "POST" | "PUT" | "PATCH";
-    url: string;
-    headers: Record<string, string>;
-    body?: Uint8Array;
-  }): Promise<{
-    status: number;
-    body: Uint8Array;
-    headers: Record<string, string>;
-  }> {
-    const response = await fetch(`${this.apiUrl}${input.url}`, {
-      method: input.method,
-      headers: input.headers,
-      body: input.body ? Buffer.from(input.body) : undefined,
-    });
-    // Headers is only iterable with lib.dom.iterable; forEach is what every
-    // runtime and this tsconfig agree on.
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      headers[key.toLowerCase()] = value;
-    });
-    return {
-      status: response.status,
-      body: new Uint8Array(await response.arrayBuffer()),
-      headers,
-    };
-  }
+  return { transport: new FetchRestTransport(apiUrl), fixtureDir: null };
 }
 
 /**

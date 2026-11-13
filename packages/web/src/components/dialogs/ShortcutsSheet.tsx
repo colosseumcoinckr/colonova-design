@@ -21,21 +21,26 @@ import { ModalBody, ModalFoot, ModalFrame, ModalHead } from "../../next/ui/Modal
  * 열 높이가 고르게 맞는다(다단은 순서대로 채우므로 순서가 곧 배치다).
  */
 const LAYOUT = [
-  { key: "app", ids: ["find", "new-session", "settings", "sidebar", "shortcuts"] },
+  // 2026-11-12 UI 조사 U-140 — ⌘= · ⌘- · ⌘0 이 키우는 것은 미리보기 칸이 아니라
+  // 앱 전체라 미리보기 묶음이 아니라 앱 묶음에 선다(protocol 의 주석도 같다).
+  {
+    key: "app",
+    ids: [
+      "find",
+      "new-session",
+      "settings",
+      "sidebar",
+      "shortcuts",
+      "zoom-in",
+      "zoom-out",
+      "zoom-reset",
+    ],
+  },
   { key: "composer", ids: ["recall", "command", "mention"] },
   { key: "pin", ids: ["pin", "pin-mode"] },
   {
     key: "preview",
-    ids: [
-      "address",
-      "reload",
-      "back",
-      "forward",
-      "zoom-in",
-      "zoom-out",
-      "zoom-reset",
-      "preview-zoom",
-    ],
+    ids: ["address", "reload", "back", "forward", "preview-zoom"],
   },
   { key: "rest", ids: [] },
 ] as const;
@@ -93,7 +98,10 @@ export function ShortcutsSheet({ open, onClose }: { open: boolean; onClose: () =
               <ul>
                 {group.rows.map((shortcut) => (
                   <li key={shortcut.id} className="nx-sc-row">
-                    <span className="nx-sc-label">{shortcut.label}</span>
+                    {/* 2026-11-12 UI 조사 U-140 — 표시 이름만 L 로 덮는다(확대는 앱 전체 · 핀은 찍기). id · 키 정의는 프로토콜 한 벌 그대로다. */}
+                    <span className="nx-sc-label">
+                      {L.sheet.labelOverrides[shortcut.id] ?? shortcut.label}
+                    </span>
                     <KeyCaps keys={shortcut.keys} />
                   </li>
                 ))}

@@ -130,6 +130,9 @@ test("잔여 검사 — 옛 이름은 read-legacy 줄과 주석 안에만 있다
     path.endsWith("RESULT-2026-09-25.md") ||
     // Raw exported conversation: quoted connected-service source/logo is evidence, not product copy.
     path === join(ROOT, "docs/qa/2026-10-02/implementation/abc-after-restart.md") ||
+    // Confluence 동기화 기록 문서 — 스페이스 안 문서 이름(NOVA-972 등)을 그대로 옮긴
+    // 인용이다. 제품 문구가 아니라 기록의 증거다(2026-10-18 기획서 동기화).
+    path === join(ROOT, "docs", "confluence-sync-plan-2026-10-18.md") ||
     path.endsWith(join("packages", "daemon", "test", "colonova-names.test.ts"));
   const pattern = new RegExp(`(?<!colo)${LEGACY}(?!te)`, "i");
   const offenders: string[] = [];

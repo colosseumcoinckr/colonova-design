@@ -4,9 +4,6 @@ import { PreviewFrame, type PreviewOverlaySkin } from "../../components/preview/
 import type { PreviewLocation, PreviewTarget } from "../../components/preview/types";
 import { L } from "../labels";
 
-/** 기기 — PC 는 칸 전체, 태블릿 · 휴대폰은 게스트에 실제 에뮬레이션이 걸린다. */
-export type PreviewDevice = "desktop" | "tablet" | "mobile";
-
 /** 게스트가 보고한 오류, 또는 이 무대의 「30초 넘게 안 뜬다」. */
 export interface StageError {
   kind: "runtime" | "build";
@@ -37,7 +34,6 @@ export function PreviewHost({
   epoch,
   target,
   reloadKey,
-  device,
   commentsOn,
   overlaySkin,
   sweep,
@@ -59,7 +55,6 @@ export function PreviewHost({
   target: PreviewTarget | null;
   /** 새로 고침마다 오른다 — 게스트는 main 이 다시 읽고, iframe 은 새로 선다. */
   reloadKey: number;
-  device: PreviewDevice;
   commentsOn: boolean;
   /** 오버레이가 입는 말과 색 — 게스트 preload 는 웹의 문장을 못 읽어 선로로 건넨다. */
   overlaySkin: PreviewOverlaySkin;
@@ -133,18 +128,6 @@ export function PreviewHost({
     onBusy?.(busy);
   }, [busy, onBusy]);
 
-  // 기기 틀이 바뀌는 동안 내용을 잠깐 흐리게 — 에뮬레이션이 닿았다는
-  // 신호가 선로에 없으니 시간(틀의 전환과 같은 결)로 되돌린다.
-  const [swap, setSwap] = useState(false);
-  const lastDevice = useRef(device);
-  useEffect(() => {
-    if (lastDevice.current === device) return;
-    lastDevice.current = device;
-    setSwap(true);
-    const back = window.setTimeout(() => setSwap(false), 320);
-    return () => window.clearTimeout(back);
-  }, [device]);
-
   // 30초의 멈춤: 서버 · 화면마다 도구가 먼저 한 번 새로 고치고, 그다음은 판정.
   const stuckReloads = useRef(new Set<string>());
   // 자동 새로 고침의 순간을 한 번 알린다 — role=status 의 문장 하나(2026-10-04 ux-review).
@@ -188,15 +171,15 @@ export function PreviewHost({
   }, [native, epoch]);
 
   return (
-    <div className="nx-pvstage" data-device={device}>
-      <div className={`nx-pvdevice${swap ? " nx-pvdevice--swap" : ""}`} ref={stageRef}>
+    <div className="nx-pvstage">
+      <div className="nx-pvdevice" ref={stageRef}>
         {native ? (
           <PreviewFrame
             url={url}
             epoch={epoch}
             target={target}
             reloadKey={reloadKey}
-            width={device}
+            width="desktop"
             commentsOn={commentsOn}
             overlaySkin={overlaySkin}
             onLocation={onLocation}

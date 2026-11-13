@@ -161,6 +161,8 @@ declare global {
             meta: boolean;
             shift: boolean;
             control: boolean;
+            alt: boolean;
+            composing: boolean;
           }) => void,
         ) => Unsubscribe;
         onLoading?: (callback: (payload: { on: boolean }) => void) => Unsubscribe;

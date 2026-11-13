@@ -24,6 +24,7 @@ export function Hero({
   waiting,
   done = false,
   title,
+  lead,
   sub,
   need = [],
 }: {
@@ -32,6 +33,8 @@ export function Hero({
   waiting?: Partial<GatePasses>;
   done?: boolean;
   title: string;
+  /** 제목과 한 줄 설명 사이의 첫말(2026-11-12 설계 결정 ㉯) — 처음 한 번만 든다. */
+  lead?: string;
   sub: string;
   /** 준비물 한 줄(2026-10-20 온보딩 손질) — 처음 한 번만 든다. 빈 목록이면 서지 않는다. */
   need?: readonly string[];
@@ -80,6 +83,7 @@ export function Hero({
         </span>
       </div>
       <h1 className="nx-ob-title">{title}</h1>
+      {lead && <p className="nx-ob-lead">{lead}</p>}
       <p className="nx-ob-sub">{sub}</p>
       {need.length > 0 && (
         <p className="nx-ob-need">

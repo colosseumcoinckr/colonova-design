@@ -70,12 +70,25 @@ function renderSummaryFile(file: DiffFile): string {
 export function memoPrompt(files: DiffFile[]): string {
   return [
     "아래 변경 내용이 보관(커밋)됩니다. 커밋 제목으로 쓸 한국어 한 줄을 적어 주세요.",
-    "규칙: 한 줄만 답하고 `type: 변경` 꼴로 씁니다. type 은 feat(기능) · fix(오류) · refactor(구조) · style(코드 서식) · docs(문서) · test(시험) · chore(그 밖) 중 실제 변경에 맞는 하나(화면의 기능이나 배치를 바꿨으면 feat)이고, 변경은 바뀐 결과를 명사형으로 끝맺은 40자 안팎의 한 줄입니다. 따옴표 · 목록 기호 · 파일 이름 나열 · 줄표(—)는 쓰지 않습니다. 예: feat: 회원 관리 화면 추가",
+    "규칙: 한 줄만 답하고 `type: 변경` 꼴로 씁니다. type 은 feat(기능) · fix(오류) · refactor(구조) · style(코드 서식) · docs(문서) · test(시험) · chore(그 밖) 중 실제 변경에 맞는 하나(화면의 기능이나 배치를 바꿨으면 feat)이고, 변경은 바뀐 결과를 명사형으로 끝맺은 40자 안팎의 한 줄입니다. 따옴표 · 목록 기호 · 파일 이름 · 코드 이름 · 영어 용어 · 줄표(—)는 쓰지 않습니다. 이유나 판단을 덧붙이지 않고 제목 한 줄만 답합니다. 예: feat: 회원 관리 화면 추가",
     "",
     `바뀐 화면·파일: ${files.map((file) => file.path).join(", ")}`,
     "",
     files.map(renderSummaryFile).join("\n"),
   ].join("\n");
+}
+
+/**
+ * 저장 문구가 작업 기록에 서도 되는가 — 화면 코드의 흔적이 남으면 거절한다
+ * (2026-11-02 실사용 관찰: `view.tsx` · `page.tsx` 가 든 문장이 커밋 제목이 되어
+ * 사용자의 작업 기록에 개발 어휘가 올랐다). 거절한 문구는 기본 문구로 물러난다.
+ * 파일 확장자 토큰만 본다 — `URL` 같은 영어 낱말은 화면의 말일 수 있어 두고,
+ * `type:` 접두는 화면이 벗겨 읽으므로 여기서 요구하지 않는다.
+ */
+const CODE_FILE_TOKEN = /[\w가-힣-]+\.(tsx|ts|jsx|js|mjs|cjs|css|scss|json|ya?ml|md|txt)\b/u;
+
+export function memoLineUsable(line: string): boolean {
+  return !CODE_FILE_TOKEN.test(line);
 }
 
 /** 템플릿을 상한에서 닫는다 — 생략 사실은 밝힌다(diff 와 같은 잣대). */

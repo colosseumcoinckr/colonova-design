@@ -24,17 +24,17 @@
  * (machine.set)과 담당이 죽었음을 알린 순간에만 다시 판정한다.
  */
 
-import type { AgentDriver } from "./agent/driver.js";
+import type { AgentDriver, OneShotOptions } from "./agent/driver.js";
 import type { DriverRegistry } from "./agent/registry.js";
+
+export type { OneShotOptions, OneShotUsage } from "./agent/driver.js";
 
 /**
  * 한 번의 기계 턴 — repo 레이어가 아는 전부. 어느 provider 인지는 이
- * 경계 너머의 일이고, null 은 언제나 "폴백을 쓰라"는 뜻이다.
+ * 경계 너머의 일이고, null 은 언제나 "폴백을 쓰라"는 뜻이다. 계측이
+ * 필요한 호출은 opts.onUsage 에 숫자 콜백을 실어 보낸다.
  */
-export type MachineTurn = (
-  prompt: string,
-  opts: { cwd: string; timeoutMs: number },
-) => Promise<string | null>;
+export type MachineTurn = (prompt: string, opts: OneShotOptions) => Promise<string | null>;
 
 /**
  * 담당이 없을 때의 턴 — 폴백만 남는 길. "구성이 machineTurn 을 안 싣는"
@@ -87,7 +87,7 @@ export class MachineTurns {
   ) {}
 
   /** 한 번의 기계 턴: 담당이 없으면 null (폴백), 있는데 못 내도 null. */
-  async turn(prompt: string, opts: { cwd: string; timeoutMs: number }): Promise<string | null> {
+  async turn(prompt: string, opts: OneShotOptions): Promise<string | null> {
     const pick = await this.resolve();
     const driver = pick ? this.registry.get(pick.id) : undefined;
     return driver?.oneShot ? driver.oneShot(prompt, opts) : null;

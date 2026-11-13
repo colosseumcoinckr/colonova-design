@@ -16,7 +16,12 @@ export const SUBMIT_CHANGED =
 
 export async function captureSubmitVersion(core: RepoCore): Promise<SubmitVersion> {
   await core.refreshPendingChanges(true);
-  if (!core.branch || core.pendingChanges > 0) throw new Error(SUBMIT_CHANGED);
+  // 거부 이유를 문장 뒤에 남긴다(2026-11-04 실앱 감사) — 어느 조건이 거부했는지 로그에서 바로 보인다.
+  if (!core.branch || core.pendingChanges > 0) {
+    throw new Error(
+      `${SUBMIT_CHANGED} (사이클_branch=${core.branch ?? "없음"}, 미커밋=${core.pendingChanges})`,
+    );
+  }
   const checkout = (
     await core.git(["symbolic-ref", "--quiet", "--short", "HEAD"]).catch(() => "")
   ).trim();

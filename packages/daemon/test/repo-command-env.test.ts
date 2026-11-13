@@ -26,3 +26,14 @@ test("그 밖의 약속은 그대로 — 과금 키는 없고 번들 경로는 P
   assert.ok(env.PATH?.startsWith("/opt/colonova-design/bin"), `PATH=${env.PATH}`);
   assert.equal(env.COLONOVA_DESIGN_PORT, "7823");
 });
+
+test("앱의 자격 재정의도 물려주지 않는다 — 이메일 · 토큰 · 저장소 PAT (2026-10-23 · F0)", () => {
+  const env = repoCommandEnv({
+    COLONOVA_DESIGN_CONFLUENCE_EMAIL: "planner@example.com",
+    COLONOVA_DESIGN_CONFLUENCE_TOKEN: "atlassian-token",
+    COLONOVA_DESIGN_REPO_PAT: "github-pat",
+  });
+  assert.equal("COLONOVA_DESIGN_CONFLUENCE_EMAIL" in env, false, "이메일이 남았다");
+  assert.equal("COLONOVA_DESIGN_CONFLUENCE_TOKEN" in env, false, "토큰이 남았다");
+  assert.equal("COLONOVA_DESIGN_REPO_PAT" in env, false, "PAT 이 남았다");
+});

@@ -1,8 +1,9 @@
-import type { ServerMessage } from "@colonova-design/protocol";
+import { parseSupport, type ServerMessage } from "@colonova-design/protocol";
 import { collectDiagnostics } from "../diagnostics.js";
 import { forgetMissingGit } from "../environment.js";
 import { submitFeatureRequest } from "../feedback.js";
 import { runOnboardingChecks, runPnpmInstall, startGitInstall } from "../onboarding.js";
+import { PLAN_LOOP_KEY } from "../plan-loop.js";
 import type { RequestHandlers, RouterDeps } from "./types.js";
 
 type SystemDeps = Pick<
@@ -134,6 +135,13 @@ export function systemHandlers(deps: SystemDeps): RequestHandlers<SystemRequest>
         // 켰다면 이미 아는 새 버전을 곧바로 건다(도는 작업이 있으면 미룬다).
         if (message.agentAutoUpdate) void deps.agentUpdates.applyAuto();
       }
+      if (message.planLoop !== undefined) {
+        // 켬이 기본이라 파일에는 끔만 적힌다 — 잊기(null)가 곧 켬이다(agentAutoUpdate 와 같은 결).
+        deps.machineSetting.set(PLAN_LOOP_KEY, message.planLoop ? null : "off");
+        void deps
+          .status()
+          .then((status) => deps.broadcast({ type: "status", status } as ServerMessage));
+      }
       if (provider === undefined) return { ok: true as const };
       if (provider !== null) {
         const driver = deps.agentDrivers.get(provider);
@@ -175,6 +183,19 @@ export function systemHandlers(deps: SystemDeps): RequestHandlers<SystemRequest>
       // 기다리면 초대 파일을 가져온 직후의 홈 인사가 이름 없이 남는다(단계 8 에서 봄).
       const name = message.name === null ? null : message.name.trim();
       deps.machineSetting.set("authorName", name === "" ? null : name);
+      void deps
+        .status()
+        .then((status) => deps.broadcast({ type: "status", status } as ServerMessage));
+      return { ok: true as const };
+    },
+    "machine.support.set": (message) => {
+      // 초대 파일의 창구 칸 — normalizeInvite 와 같은 판정으로 한 번 더 거른 뒤
+      // machine.json 에 둔다(JSON 문자열 — MachineSetting 은 문자열만 안다).
+      // 이름 · 주소를 로그에 남기지 않는다. 상태를 곧바로 다시 보낸다 —
+      // 가져오기 직후의 준비 화면이 창구를 바로 세우게.
+      // 지금 앱에는 지우는 손이 없다 — null(지우기)은 내부 계약이다(검토 WF-14).
+      const parsed = message.support === null ? null : (parseSupport(message.support) ?? null);
+      deps.machineSetting.set("support", parsed === null ? null : JSON.stringify(parsed));
       void deps
         .status()
         .then((status) => deps.broadcast({ type: "status", status } as ServerMessage));

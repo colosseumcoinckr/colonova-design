@@ -77,8 +77,8 @@ export function ModelChip({
   target: ChipTarget;
   disabledProviders?: string[];
   /**
-   * 여는 방향 — 입력창이 화면 바닥에 붙는 대화 칸은 위로, 홈처럼 화면 가운데
-   * 있는 입력창은 아래로. 위로만 열면 홈에서 팝의 머리가 창 밖으로 나간다.
+   * 여는 방향 — 입력창이 화면 바닥에 붙는 대화 칸은 위로. 위로만 열면 좁은 창에서
+   * 팝의 머리가 창 밖으로 나가는 자리는 아래로 연다.
    */
   up?: boolean;
 }) {
@@ -220,6 +220,7 @@ export function ModelChip({
         ref={anchor}
         type="button"
         className="nx-tbtn nx-tbtn--model"
+        title={label}
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => {
@@ -383,7 +384,7 @@ export function ModelChip({
               <div className="nx-mh">{L.model.think}</div>
               {/* 다섯 칸의 한 줄(세그먼트)도 AI 와 같은 라디오 군이다 — 고른 자리가 곧 초점. */}
               <div
-                className="nx-mseg"
+                className="nx-chat-mseg"
                 role="radiogroup"
                 aria-label={L.model.think}
                 style={{ "--n": efforts.length, "--i": efforts.indexOf(think) } as CSSProperties}
@@ -416,7 +417,12 @@ export function ModelChip({
               표시만 서고(`aria-busy`) 이전에 읽은 줄은 그대로 있다. */}
           <div className="nx-msep" />
           {/* biome-ignore lint/a11y/useSemanticElements: 머리 · 줄 · 덧말의 묶음 — fieldset 의 테두리 · legend 틀이 필요 없는 자리라 group 으로 읽힌다. */}
-          <div role="group" aria-label={L.model.usage} aria-busy={planRead === "loading"}>
+          <div
+            className="nx-model-usage"
+            role="group"
+            aria-label={L.model.usage}
+            aria-busy={planRead === "loading"}
+          >
             <div className="nx-mh nx-mh--row">
               {L.model.usage}
               {planRead === "loading" && (

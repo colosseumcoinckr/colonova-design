@@ -4,9 +4,14 @@ import { isValidElement, memo, useEffect, useId, useRef, useState } from "react"
 import ReactMarkdown, { defaultUrlTransform, type Options } from "react-markdown";
 import remarkCjkFriendlyGfmStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
 import remarkGfm from "remark-gfm";
+import { markdownHeadings } from "../lib/markdown-headings";
+import { markdownTasks } from "../lib/markdown-tasks";
 import { linkClick } from "../lib/open-link";
 import { looksLikeScreenLink, openScreenLink } from "../lib/screen-link";
 import { windowsFileLinkEscapeRemarkPlugin } from "../lib/windowsFileLinkEscapeRemarkPlugin";
+import { L } from "../next/labels";
+import { createLatestRequest } from "../next/lib/latest-request";
+import { scrollToTarget } from "../next/lib/scroll-to-target";
 import { CopyButton } from "./CopyButton";
 import { DesktopIcon } from "./icons";
 
@@ -66,18 +71,41 @@ function ChatLink({
   // 미리보기 칸이 그 화면으로 간다(screen-link). 표식은 주소의 모양만 본다:
   // 마크다운은 memo 라 칸의 등록보다 먼저 그려질 수 있고, 판정의 진짜 답은
   // 클릭 순간의 openScreenLink 가 한다(칸이 없으면 원래 길로 연다).
+  const local = href?.startsWith("#") ?? false;
   const screen = href ? looksLikeScreenLink(href) : false;
+  // 화면 칩은 한 줄이라 이름을 말린다 — 전체 이름은 title 이 보태 준다(2026-10-23 화면 전면 재설계 §4 E).
+  const name = screen && typeof children === "string" ? children : null;
   return (
     <a
       href={href}
-      target="_blank"
+      target={local ? undefined : "_blank"}
       rel="noreferrer"
       {...rest}
       className={
         [className, screen ? "md__screenlink" : null].filter(Boolean).join(" ") || undefined
       }
-      title={screen ? "미리보기에서 열어요" : undefined}
+      title={screen ? (name ?? "미리보기에서 열어요") : undefined}
       onClick={(event) => {
+        // U-219: 같은 문서 안에서만 찾고, 없는 절도 앱 주소를 바꾸지 않는다.
+        if (local && href) {
+          event.preventDefault();
+          let slug: string;
+          try {
+            slug = decodeURIComponent(href.slice(1));
+          } catch {
+            return;
+          }
+          const root = event.currentTarget.closest(".md");
+          const heading = Array.from(
+            root?.querySelectorAll<HTMLElement>("[data-md-anchor]") ?? [],
+          ).find((node) => node.dataset.mdAnchor === slug);
+          if (heading) {
+            heading.tabIndex = -1;
+            heading.focus({ preventScroll: true });
+            scrollToTarget(heading, { block: "start" });
+          }
+          return;
+        }
         const plain =
           event.button === 0 &&
           !event.metaKey &&
@@ -163,7 +191,9 @@ function renderDiagram(id: string, source: string, chrome: "dark" | "light"): Pr
  * 순간 다음 렌더에서 그림으로 갈아탄다. 팔레트가 바뀌면 다시 그린다.
  */
 function Mermaid({ source }: { source: string }) {
-  const [svg, setSvg] = useState<string | null>(null);
+  // U-223: 원문과 팔레트가 같은 결과만 그린다. A→B→A도 gate로 거른다.
+  const requests = useRef(createLatestRequest<string>()).current;
+  const [result, setResult] = useState<{ key: string; svg: string | null } | null>(null);
   const [chrome, setChrome] = useState<"dark" | "light">(() =>
     isLightChrome() ? "light" : "dark",
   );
@@ -178,25 +208,33 @@ function Mermaid({ source }: { source: string }) {
     return () => observer.disconnect();
   }, []);
 
+  const key = JSON.stringify([source, chrome]);
+  const currentKey = useRef(key);
+  currentKey.current = key;
   useEffect(() => {
-    let cancelled = false;
+    const ticket = requests.begin(key);
+    setResult(null);
     void renderDiagram(renderId, source, chrome)
       .then((next) => {
-        if (!cancelled) setSvg(next);
+        if (requests.isCurrent(ticket, currentKey.current)) setResult({ key, svg: next });
       })
       .catch(() => {
-        if (!cancelled) setSvg(null);
+        if (requests.isCurrent(ticket, currentKey.current)) setResult({ key, svg: null });
       });
     return () => {
-      cancelled = true;
+      requests.invalidate();
     };
-  }, [source, renderId, chrome]);
+  }, [source, renderId, chrome, key, requests]);
 
-  if (svg === null) {
+  const current = result?.key === key ? result : null;
+  if (!current?.svg) {
     return (
-      <pre>
-        <code className="language-mermaid">{source}</code>
-      </pre>
+      <div className="md__diagram-state" aria-busy={current === null}>
+        <p role="status">{current === null ? L.tape.diagramLoading : L.tape.diagramFailed}</p>
+        <pre>
+          <code className="language-mermaid">{source}</code>
+        </pre>
+      </div>
     );
   }
   return (
@@ -204,7 +242,7 @@ function Mermaid({ source }: { source: string }) {
       className="md__mermaid"
       // mermaid securityLevel=strict (DOMPurify) 가 출력을 소독한다.
       // biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized by mermaid strict mode
-      dangerouslySetInnerHTML={{ __html: svg }}
+      dangerouslySetInnerHTML={{ __html: current.svg }}
     />
   );
 }
@@ -302,19 +340,140 @@ function ChatTable({ children }: { children?: ReactNode }) {
   );
 }
 
-export const Markdown = memo(function Markdown({ text }: { text: string }) {
+/**
+ * 기획 초안의 토큰 칩(2026-10-31 기획서 칸 개선 4단계) — `⟦t1⟧` 글자 대신 사람의 말 칩으로 그린다.
+ * 누르면 그 조각을 지우는 것이다(onTokenRemove). 이름표가 없으면(닫힘 표시 `⟦/c1⟧` 등) 글자조차
+ * 남기지 않는다.
+ */
+const TOKEN_PATTERN = /⟦(?:\/?)([^⟧]+)⟧/gu;
+const TOKEN_HREF = /^#token-(.+)$/u;
+
+/** 상태 토큰의 기계 이름표 — `macro:status:색:값`(storage-blocks 의 wireTokenLabel)을 찾는 꼴이다. */
+const STATUS_MACHINE = /^macro:status:([^:]+):(.*)$/u;
+
+function TokenChip({
+  name,
+  label,
+  machine,
+  onRemove,
+}: {
+  name: string;
+  label: string;
+  /** 토큰의 기계 이름표 — 상태 표시는 색 알약으로 그린다(GUIDE · 2026-11-03 실앱 감사). */
+  machine?: string;
+  onRemove?: (name: string) => void;
+}) {
+  // 상태 표시 — 읽기 화면과 같은 색 알약으로 서고, 지우는 손이 있을 때만 눌린다.
+  const status = machine === undefined ? null : STATUS_MACHINE.exec(machine);
+  const content = status ? (
+    <span className={`nx-dv-status nx-dv-status--${status[1]}`}>{status[2] || label}</span>
+  ) : (
+    label
+  );
+  const className = `nx-dr-tokenchip${status ? " nx-dr-tokenchip--status" : ""}`;
+  if (!onRemove)
+    return (
+      <span className={className} data-token={name} title={label}>
+        {content}
+      </span>
+    );
+  return (
+    <button
+      type="button"
+      className={className}
+      data-token={name}
+      aria-label={L.tape.removeToken(label)}
+      title={L.tape.removeToken(label)}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onRemove(name);
+      }}
+    >
+      {content}
+    </button>
+  );
+}
+
+function TokenLink({
+  href,
+  children,
+  machine,
+  onTokenRemove,
+}: {
+  href: string;
+  children?: ReactNode;
+  machine?: string;
+  onTokenRemove?: (name: string) => void;
+}) {
+  const name = TOKEN_HREF.exec(href)?.[1] ?? "";
+  const label =
+    (Array.isArray(children) ? children.join("") : typeof children === "string" ? children : "")
+      .toString()
+      .trim() || name;
+  return <TokenChip name={name} label={label} machine={machine} onRemove={onTokenRemove} />;
+}
+
+/** 토큰을 마크다운 링크로 바꿔 놓는다 — 칩으로 그리기 전의 다리다. 닫힘 표시는 조용히 걷는다. */
+export function markTokens(text: string, labels: Record<string, string>): string {
+  return text.replace(TOKEN_PATTERN, (_whole: string, name: string) => {
+    const label = labels[name];
+    if (label === undefined) return "";
+    // 마크다운 링크의 글 자리에 각괄호가 그대로 서면 문단의 해석이 흔들린다 — 겹화살괄호로 읽듯 남긴다.
+    return `[${label}](#token-${name})`;
+  });
+}
+
+export const Markdown = memo(function Markdown({
+  text,
+  tokens,
+  machineTokens,
+  onTokenRemove,
+}: {
+  text: string;
+  /** 초안 토큰의 사람의 이름표 — 있으면 `⟦t1⟧` 글자 대신 칩으로 그린다(2026-10-31 4단계). */
+  tokens?: Record<string, string>;
+  /** 초안 토큰의 기계 이름표 — 상태 표시를 색 알약으로 그리는 재료다(2026-11-03 실앱 감사). */
+  machineTokens?: Record<string, string>;
+  /** 토큰 칩을 눌렀을 때 — 그 조각을 지우는 손이다. 없으면 칩이 눌리지 않는다. */
+  onTokenRemove?: (name: string) => void;
+}) {
+  const headingPrefix = `md-${useId()}-`;
+  const marked = tokens === undefined ? text : markTokens(text, tokens);
+  const link =
+    tokens === undefined && onTokenRemove === undefined && machineTokens === undefined
+      ? ChatLink
+      : (props: ComponentPropsWithoutRef<"a"> & { node?: unknown }) =>
+          TOKEN_HREF.test(props.href ?? "") ? (
+            <TokenLink
+              href={props.href ?? ""}
+              machine={machineTokens?.[TOKEN_HREF.exec(props.href ?? "")?.[1] ?? ""]}
+              onTokenRemove={onTokenRemove}
+            >
+              {props.children}
+            </TokenLink>
+          ) : (
+            <ChatLink {...props} />
+          );
   return (
     <div className="md">
       <ReactMarkdown
-        remarkPlugins={remarkPlugins}
+        remarkPlugins={[...remarkPlugins, [markdownHeadings, { prefix: headingPrefix }]]}
+        rehypePlugins={[markdownTasks]}
         urlTransform={urlTransform}
         components={{
-          a: ChatLink,
+          a: link,
           pre: ChatPre,
           table: ChatTable,
+          input: ({ node: _node, ...props }) => (
+            <input
+              {...props}
+              aria-label={`${props.checked ? L.chat.plan.done : L.chat.plan.waiting}: ${props["aria-label"] ?? ""}`}
+            />
+          ),
         }}
       >
-        {text}
+        {marked}
       </ReactMarkdown>
     </div>
   );

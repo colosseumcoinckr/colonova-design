@@ -55,7 +55,8 @@ test("막대: 풍선에 쓰는 단축키의 열쇠는 모두 단축키 표에 �
 
 test("막대 CSS: 컨테이너 질의는 이름 붙은 컨테이너(nxpv · hday)만 부른다", () => {
   const found = allQueries();
-  assert.ok(queries().length >= 5, `막대의 질의가 너무 적다: ${queries().length}`);
+  // 2026-10-31 S6 으로 배율 알약이 `···` 위의 배지가 되어 700px 질의가 걷혔다 — 남은 폭 질의는 넷이다.
+  assert.ok(queries().length >= 4, `막대의 질의가 너무 적다: ${queries().length}`);
   for (const { head } of found) {
     // 이름이 없으면 가장 가까운 조상 컨테이너가 무엇이든 거기에 걸린다. 이름은 둘뿐이다 — 막대의 폭 질의,
     // 서랍의 날 머리(스크롤 상태) 질의.
@@ -93,12 +94,66 @@ test("막대 CSS: 질의의 기준 폭은 한 번씩만 서고 소스에서 위�
   );
 });
 
-test("막대: 작업 기록 단추는 서랍을 여닫는 단추다 — aria-expanded 와 aria-controls, aria-pressed 가 아니다", () => {
-  // 눌림 단추(aria-pressed)는 켜고 끄는 값이고, 서랍은 펼침이다 — 낭독기가 `펼침 · 접힘` 으로 읽고 서랍을 가리킨다.
-  const button = /<button[^>]*nx-hist-t[^>]*>/.exec(bar)?.[0] ?? "";
-  assert.match(button, /aria-expanded=\{historyOpen\}/);
-  assert.match(button, /aria-controls=\{drawerId\}/);
-  assert.doesNotMatch(button, /aria-pressed/);
-  // 이름은 열림 여부에 따라 바뀌지 않는다(낭독기가 같은 단추로 안다) — 풍선만 열려 있으면 `닫기` 로 바뀐다.
-  assert.match(button, /aria-label=\{L\.preview\.history\}/);
+test("막대: 작업 기록은 `···` 메뉴의 항목이다 — 옛 막대 단추(nx-hist-t)가 돌아오지 않는다(S6)", () => {
+  // 넓은 창의 기록은 오른쪽 칸의 탭(S10), 좁은 창은 화면 덮는 시트가 맡는다 — 막대의 단추는 빠졌다.
+  assert.doesNotMatch(bar, /nx-hist-t|aria-controls=\{drawerId\}/);
+  const menu = /<button[^>]*nx-mi[^>]*>[\s\S]*?<HistoryIcon \/>/.exec(bar)?.[0] ?? "";
+  assert.match(menu, /onHistory/);
+});
+
+// ── 2026-10-23 화면 전면 재설계 §4 F — 조절 세 묶음 · 32px · 공통 부품
+
+/** 선택자 하나짜리 규칙의 몸 — 중첩이 없는 규칙만 읽는다(주석을 걷은 CSS). */
+function body(selector: string): string {
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`).exec(css);
+  assert.ok(match, `${selector} 규칙이 없다`);
+  return match[1] ?? "";
+}
+
+test("막대: 조절이 세 묶음으로 서고 묶음 사이 12px · 안 4px 이다", () => {
+  // 이동 묶음(뒤로 · 앞으로 · 새로 고침)과 보기 도구 묶음 둘이 `nx-pvg` 이고, 가운데는 주소 칸이다.
+  assert.equal(bar.match(/className="nx-pvg"/g)?.length, 1, "이동 묶음");
+  assert.equal(bar.match(/className="nx-pvg nx-pvg--tools"/g)?.length, 1, "보기 도구 묶음");
+  assert.match(bar, /className="nx-anchor nx-addrwrap"/);
+  assert.match(body(".nx-pvbar"), /gap:\s*var\(--sp-3\)/, "묶음 사이 12px");
+  assert.match(body(".nx-pvg"), /gap:\s*var\(--sp-1\)/, "묶음 안 4px");
+  // 보기 도구는 오른쪽 끝에 붙는다 — 주소 칸이 남는 폭을 쓴다.
+  assert.match(body(".nx-pvg--tools"), /margin-left:\s*auto/);
+});
+
+test("막대: 모든 조절은 32px 이고 좁아져도 줄이지 않는다 — 줄이는 것은 간격과 글자다", () => {
+  // 크기는 공통 부품(`nx-btn` · `nx-ibtn` 32px)이 정한다 — 이 파일이 따로 선언하지 않는다.
+  assert.doesNotMatch(css, /\.nx-pvbar \.nx-ibtn\s*\{[^}]*(?:width|height):/);
+  assert.match(body(".nx .nx-addr"), /height:\s*var\(--h-md\)/);
+  // 기기 마디(PC · 태블릿 · 휴대폰)는 2026-11-11 사용자 요청으로 걷었다 — 돌아오지 않는다.
+  assert.doesNotMatch(css, /\.nx-seg\b(?!-)/);
+  assert.doesNotMatch(bar, /onDevice|PreviewDevice/);
+  // 질의 안에서 조절을 30px 이하로 줄이는 규칙이 돌아오지 않는다(예전 480px 질의의 30px).
+  for (const { body: inner } of queries()) {
+    assert.doesNotMatch(inner, /(?:^|[;\s{])height:\s*(?:2\d|30)px/);
+    assert.doesNotMatch(inner, /\.nx-ibtn/);
+  }
+});
+
+test("막대: 단추는 공통 부품이다 — 포인트 바탕은 찍기가 켜졌을 때뿐이고 `nx-tbtn` 은 더 쓰지 않는다", () => {
+  assert.doesNotMatch(bar, /nx-tbtn/);
+  // 찍기 — 보통 단추(`nx-btn`)이고 켜짐에서만 `nx-btn--accent`.
+  assert.match(bar, /nx-btn nx-pin-t\$\{pinOn \? " nx-btn--accent" : ""\}/);
+  // 기록 단추는 막대에서 빠졌다(S6 · S10) — 옛 고스트 단추의 옷도 함께 걷혔다.
+  assert.doesNotMatch(bar, /nx-hist-t(?!ile)/);
+  assert.doesNotMatch(css, /nx-hist-t(?!ile)/);
+  // 입력창 칩(chat.css 의 `nx-tbtn`)이 기대던 `flex: none` 한 줄만 특이도 0 으로 남는다 — chat.css 의 값이 늘 이긴다.
+  assert.match(css, /:where\(\.nx\) \.nx-tbtn\s*\{\s*flex:\s*none;\s*\}/);
+  assert.doesNotMatch(css, /\.nx \.nx-tbtn/);
+});
+
+test("막대 CSS: 글자는 12px 이상이고 반 픽셀이 아니다(키캡 제외)", () => {
+  const sizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map((match) => Number(match[1]));
+  assert.deepEqual(
+    sizes.filter((size) => size < 12 || size % 1 !== 0),
+    [],
+  );
+  // 반 픽셀 길이(12.5px · 13.5px …)도 새로 쓰지 않는다 — 스피너 두께까지.
+  assert.deepEqual(css.match(/(?<![\w.-])\d*\.5px/g) ?? [], []);
 });

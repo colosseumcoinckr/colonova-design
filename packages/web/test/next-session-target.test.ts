@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { resolveSessionTarget } from "../src/next/lib/session-target.ts";
 
-test("home create then send retains the accepted ID before React publishes its view", async () => {
+test("new conversation create-then-send retains the accepted ID before React publishes its view", async () => {
   const newborn = new Set<string>();
   const renderedViews: Record<string, { live: boolean; state: string }> = {};
   const launches: Array<string | undefined> = [];

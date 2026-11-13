@@ -3,10 +3,13 @@ export { daemonOwnedPorts } from "./preview-claim.js";
 import { timingSafeEqual } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import { arch, homedir, release } from "node:os";
+import { isAbsolute, relative, sep } from "node:path";
 import {
   type ClientMessage,
   composeAttention,
   type GateChecked,
+  type InviteSupport,
+  type PlanSync,
   PROTOCOL_VERSION,
   type ProjectSummary,
   parseClientMessage,
@@ -21,6 +24,13 @@ import { DriverRegistry } from "./agent/registry.js";
 import { AgentInstall } from "./agent-install.js";
 import { AgentUpdates } from "./agent-update.js";
 import { CommandDedupe } from "./command-dedupe.js";
+import { readConfluenceLedger } from "./confluence-ledger.js";
+import { confluenceMirrorLedger } from "./confluence-mirror.js";
+import {
+  backfillConfluenceAccounts,
+  ConfluenceSync,
+  confluenceSiteKey,
+} from "./confluence-sync.js";
 import {
   type CredentialStore,
   createCredentialStore,
@@ -31,6 +41,11 @@ import { screensOfTurn } from "./cycle-screens.js";
 import { DeveloperNotice, describeProblem } from "./developer-notice.js";
 import { startupLogFields } from "./diagnostics.js";
 import { RequestRouter } from "./dispatch.js";
+import { DocComments } from "./doc-comments.js";
+import { DocOps } from "./doc-ops.js";
+import { createDraftAiRunner } from "./draft-ai.js";
+import { DraftPublisher } from "./draft-publish.js";
+import { DraftService } from "./draft-service.js";
 import { EditAnnouncer } from "./edit-screens.js";
 import { buildStatus, resolveClaudeExecutable } from "./environment.js";
 import { Escalation } from "./escalation.js";
@@ -42,9 +57,11 @@ import { HandoffPreviews } from "./handoff-preview.js";
 import { createFileLogger, type DaemonLogger } from "./log.js";
 import { MachineTurns } from "./machine-provider.js";
 import { MachineSetting } from "./machine-setting.js";
+import { machineSupportValue } from "./machine-support.js";
 import { type DaemonNotice, noticeForState } from "./notices.js";
 import { AgentLogin } from "./onboarding.js";
 import { realpathBestEffort } from "./paths.js";
+import { planLoopOn } from "./plan-loop.js";
 import { PlanTracker } from "./plan-tracker.js";
 import { daemonOwnedPorts } from "./preview-claim.js";
 import type { PreviewDriverFactory } from "./preview-driver.js";
@@ -56,6 +73,7 @@ import { repoSettingsWarning, sanitizeRepoAgentSettings, trustWorkspace } from "
 import { scopeOf } from "./repo-config.js";
 import { routesForFiles } from "./route-index.js";
 import { readScreenMap } from "./screen-map.js";
+import { ScreenPlanSync, type ScreenTurn } from "./screen-plan-sync.js";
 import { asPlannerFacingError, NEW_SESSION_TITLE } from "./session.js";
 import { SessionManager } from "./session-manager.js";
 import { appendTape, readTape } from "./session-tape.js";
@@ -185,6 +203,12 @@ export class DaemonServer {
   private fleet!: ProjectFleet;
   /** The wire's request table (dispatch.ts) — built in `start()` beside the fleet. */
   private router!: RequestRouter;
+  /** 기획서(Confluence) 가져오기의 몸 — start() 가 만들고 stop() 이 내려놓는다. */
+  private confluence!: ConfluenceSync;
+  /** 기획 초안의 몸 — start() 가 만들고 stop() 이 도는 생성을 끊는다(2026-10-23 작업 B2). */
+  private drafts: DraftService | null = null;
+  /** 같이 고치기 — 화면 보관 뒤 이어진 기획서 초안을 기획 AI 가 고친다(2026-10-30 사용자 결정). */
+  private screenSync: ScreenPlanSync | null = null;
   /** 커미티 B1 (2026-09-15): 열린 넘김 폴링 타이머 — stop() 이 끊는다. */
   private handoffTimer: NodeJS.Timeout | null = null;
   /**
@@ -579,6 +603,16 @@ export class DaemonServer {
           this.stats.noteDelivered(sessionId);
         },
         beforeDeliver: (sessionId, item) => this.prepareTurn(sessionId, item),
+        beforeAgentSend: async (sessionId, item) => {
+          // 찍기·브리프로 시작하는 요청도 새 작업이다. 오류 복구와 안내만 기존 복구 흐름에 맡긴다.
+          const marker = readTurn(item.text).marker;
+          if (marker && marker.kind !== "comments" && marker.kind !== "brief") return;
+          const workspace = this.workspaceOfSession(sessionId);
+          if (!workspace) return;
+          const saving = this.autoSaveLands.get(workspace.slug);
+          if (saving) await saving;
+          await workspace.supervisor.prepareFreshBase(sessionId);
+        },
         onPinned: (sessionId, pins) => {
           for (const pin of pins) this.drivers.notePinned(sessionId, pin.screen);
         },
@@ -622,13 +656,17 @@ export class DaemonServer {
       signal: this.closing.signal,
       onChanged: () =>
         void this.status().then((status) => this.broadcast({ type: "status", status })),
-      catalogSources: this.agentDrivers
-        .all()
-        .filter((driver) => typeof driver.listModels === "function")
-        .map((driver) => ({
-          provider: driver.id,
-          read: () => driver.listModels!({ cwd: probeCwd(), signal: this.closing.signal }),
-        })),
+      catalogSources: this.agentDrivers.all().flatMap((driver) => {
+        const listModels = driver.listModels?.bind(driver);
+        return listModels
+          ? [
+              {
+                provider: driver.id,
+                read: () => listModels({ cwd: probeCwd(), signal: this.closing.signal }),
+              },
+            ]
+          : [];
+      }),
     });
     this.drivers = new PreviewDrivers({
       factory: () => this.config.previewDriverFactory,
@@ -744,6 +782,12 @@ export class DaemonServer {
       gitHubClient: () => this.github.client(),
       githubAuthExpired: () => this.github.authExpired,
       queueDiskFor: this.queueDiskFor,
+      // 기획서(Confluence) 상태 배선(수용 항목 13) — 미러와 만료 판정은 지연 클로저다:
+      // ConfluenceSync 는 이 아래 start() 에서 만들어진다.
+      machineSetting: this.machineSetting,
+      confluenceExpired: (slug) => this.confluence?.expiredState(slug) ?? false,
+      // 발행 게이트 — 쓰기 경로(draft-service · doc-ops · doc-comments)와 같은 환경 변수를 읽는다(2026-10-23 U2).
+      confluenceWritable: () => process.env.COLONOVA_DESIGN_CONFLUENCE_PUBLISH === "1",
     });
     await migrateProjectPats(
       this.credentials,
@@ -751,9 +795,81 @@ export class DaemonServer {
       this.registry.activeSlug(),
     );
     await this.github.load();
+    // 프로젝트별 자격이 생기기 전에 연결한 기계의 계정 행 백필 — 종류와 수만 기록한다(2026-11-03).
+    const backfilled = await backfillConfluenceAccounts(
+      this.credentials,
+      this.machineSetting,
+      this.registry.list().map((project) => project.slug),
+    );
+    if (backfilled > 0) this.logger.info("confluence account backfilled", { count: backfilled });
     // 슬라이스 5: 저장된 웹훅을 읽는다 — 상태 방송은 그 뒤에 일어난다.
     await this.escalation.load();
     lap("loadMs");
+    this.confluence = new ConfluenceSync({
+      machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      projectRoot: (slug) => (this.registry?.get(slug) ? this.registry.paths(slug).root : null),
+      slugs: () => this.registry?.list().map((project) => project.slug) ?? [],
+      logger: this.logger,
+      // 바퀴가 원장을 새로 쓰고 끝나면 요약을 한 번 방송한다(2026-11-12 보완 1) — 웹은 요약의
+      // lastImportAt 가 바뀌어야 기획서 목록을 다시 읽는다. 기존 project.changed 방송 길이다.
+      onImported: () => this.announceProjects(),
+    });
+    this.confluence.start();
+    // 기획 초안 — ConfluenceSync 바로 뒤에서 만든다(2026-10-23 작업 B2). 저장소는 슬러그마다
+    // 한 벌씩 서비스 안에서 살고, 도는 생성은 stop() 이 끊는다.
+    this.drafts = new DraftService({
+      registry: this.registry,
+      machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      claudeExecutable: () => this.claudeExecutable,
+      broadcast: (m) => this.broadcast(m),
+      logger: this.logger,
+      // 기획서 탭에서 화면 변경안을 넣거나 걷으면 같이 고치기가 기록과 곁줄을 맞춘다(2026-11-03 A안 1A-1).
+      onScreenProposal: (input) => this.screenSync?.onProposalSettled(input),
+      ai: createDraftAiRunner(),
+      publisher: new DraftPublisher(),
+      // 발행이 적용으로 확인되면 사본이 새 판을 따라오게 한다(2026-11-12 비개발자 사용성 토론).
+      importNow: (slug) => this.confluence.importNow(slug),
+      cloneRoot: (slug) => {
+        const workspaces = this.fleet?.workspaces.get(slug);
+        return workspaces?.repo.isCloned() ? workspaces.repo.root : null;
+      },
+    });
+    // 같이 고치기 — 초안 서비스 위에 선다(2026-10-30 사용자 결정 · 같이 고치기 계획 §4).
+    const registry = this.registry;
+    this.screenSync = new ScreenPlanSync({
+      drafts: this.drafts,
+      paths: (slug) => {
+        const paths = registry.paths(slug);
+        return { root: paths.root, repoRoot: paths.repoRoot };
+      },
+      connected: (slug) => this.machineSetting.get(confluenceSiteKey(slug)) !== null,
+      titleOf: (slug, pageId) =>
+        readConfluenceLedger(confluenceMirrorLedger(registry.paths(slug).root)).pages[pageId]
+          ?.title ?? null,
+      emit: (turn, sync) => this.emitPlanSync(turn, sync),
+      loopOn: () => planLoopOn(this.machineSetting),
+      logger: this.logger,
+    });
+    // 문서 관리 — 기획 초안 바로 옆에서 만든다(2026-10-23 작업 D1a). 적용 · 결과 불명 뒤에는 트리를
+    // 걷게 한다 — 이동 · 휴지통은 증분이 못 본다(2026-10-23 · 최종 구현 계획 F2 · 작업 B5).
+    const docOps = new DocOps({
+      registry: this.registry,
+      machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      broadcast: (m) => this.broadcast(m),
+      logger: this.logger,
+      walkNow: (slug) => this.confluence.walkNow(slug),
+    });
+    // 문서 코멘트 — 문서 관리 바로 옆에서 만든다(2026-10-23 작업 D2a). 기록은 활성
+    // 프로젝트 데이터의 plans/comment-ops 에 산다.
+    const docComments = new DocComments({
+      registry: this.registry,
+      machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      logger: this.logger,
+    });
     this.router = new RequestRouter({
       manager: this.manager,
       fleet: this.fleet,
@@ -774,6 +890,12 @@ export class DaemonServer {
       setClaudeExecutable: (path) => this.adoptClaudeExecutable(path),
       refreshClaudeExecutable: () => this.refreshClaudeExecutable(),
       machineSetting: this.machineSetting,
+      credentials: this.credentials,
+      confluence: this.confluence,
+      drafts: this.drafts,
+      screenSync: this.screenSync,
+      docOps,
+      docComments,
       machineTurns: this.machineTurns,
       agentLogin: this.agentLogin,
       agentInstall: this.agentInstall,
@@ -1028,6 +1150,9 @@ export class DaemonServer {
     // 도는 증분 타입 검사의 자식도 이 데몬의 것 — 내려갈 때 함께 끊는다.
     clearInterval(this.handoffTimer ?? undefined);
     this.handoffTimer = null;
+    this.confluence?.stop();
+    // 도는 기획 AI 생성도 이 데몬의 자식 — 내려갈 때 함께 끊는다(2026-10-23 작업 B2).
+    this.drafts?.stop();
     this.logger.info("데몬 종료");
     await this.manager.closeAll();
     // Every project the daemon touched this run, not just the active one: an
@@ -1324,12 +1449,50 @@ export class DaemonServer {
           },
         });
         this.broadcast({ type: "repo.status", status: workspaces.repo.repoCore().snapshot() });
+        // 같이 고치기(2026-10-30) — 보관이 내려앉은 화면 요청이 기획을 바꿨으면 이어진 초안도 고친다.
+        const request =
+          prompt && prompt.event.kind === "user.echo" ? planRequestOf(prompt.event.text) : "";
+        if (changedScreens.length > 0 && request !== "") {
+          const repoRoot = workspaces.paths.repoRoot;
+          void this.screenSync?.onSaved({
+            slug: workspaces.slug,
+            sessionId,
+            requestId: saved.requestId,
+            request,
+            screens: changedScreens,
+            files: (this.changedTurnFiles.get(sessionId) ?? []).map((file) =>
+              relativeToRepo(repoRoot, file),
+            ),
+            sha: saved.sha,
+          });
+        }
       })
       .catch(() => this.logger.info("Turn save record unavailable"))
       .finally(() => {
         // 턴이 idle 이 되어 자동 보관이 끝난 뒤 — 감독자가 사이클을 한 번 본다.
         void workspaces?.supervisor.tick("turn-idle");
       });
+  }
+
+  /**
+   * 같이 고치기의 결과를 그 대화로 — 방송하고, 다시 연 대화에도 곁줄이 서게 대화록의 그 요청 줄에 싣는다
+   * (screens.saved 의 user.echo 다시 적기와 같은 길).
+   */
+  private emitPlanSync(turn: ScreenTurn, sync: PlanSync): void {
+    this.broadcast({
+      type: "session.event",
+      sessionId: turn.sessionId,
+      event: { kind: "plans.synced", requestId: turn.requestId, sync },
+    });
+    if (sync.phase !== "done") return;
+    const root = this.fleet.workspaces.get(turn.slug)?.paths.root;
+    if (root === undefined) return;
+    const prompt = readTape(root, turn.sessionId).find(
+      (row) => row.event.kind === "user.echo" && row.event.requestId === turn.requestId,
+    );
+    if (prompt && prompt.event.kind === "user.echo") {
+      appendTape(root, { ...prompt, event: { ...prompt.event, planSync: sync } });
+    }
   }
 
   private async status() {
@@ -1393,7 +1556,11 @@ export class DaemonServer {
       // 개발 전용 면의 판정은 데몬이 내린다 — 웹 번들의 DEV 플래그는 패키징 빌드라 항상 거짓.
       dev: this.config.devAgents === true,
       authorName: this.machineSetting.get("authorName"),
+      // 초대 파일의 창구 칸(2026-11-12 결정 ㉱) — machine.json 의 JSON 문자열을
+      // 초대장과 같은 판정으로 읽는다. 없거나 깨져 있으면 null 이 나간다.
+      support: this.machineSupport(),
       agentAutoUpdate: this.machineSetting.get("agentAutoUpdate") !== "off",
+      planLoop: planLoopOn(this.machineSetting),
       ...(this.agentUpdates.snapshot() ? { agentUpdates: this.agentUpdates.snapshot() } : {}),
       githubAuthExpired: this.github.authExpired,
       // 만료 예정(U17) — 브리지가 아직 모르면(첫 관찰 전) machine.json 의 값.
@@ -1407,6 +1574,15 @@ export class DaemonServer {
       noticeRoute: this.noticeRoute(),
       ...(attention ? { attention } : {}),
     };
+  }
+
+  /**
+   * machine.json 의 창구 칸 — 문자열 키·값만 아는 저장소라 JSON 문자열로 둔다.
+   * 읽기 판정은 machine-support.ts 의 순수 함수로 꺼내 시험이 깨진 값을 직접
+   * 붙잡는다(검토 WF-10). 값 자체는 로그에 남기지 않는다.
+   */
+  private machineSupport(): InviteSupport | null {
+    return machineSupportValue(this.machineSetting.get("support"));
   }
 
   /** 개발자 알림이 실제로 갈 수 있는 경로 — GitHub 우선, Slack 보조. */
@@ -1530,10 +1706,14 @@ export class DaemonServer {
   private async onMessage(ws: WebSocket, raw: string): Promise<void> {
     const parsed = parseClientMessage(raw);
     if (!parsed.ok) {
+      // 선로 해석 실패의 답은 사람의 말이다 — zod 의 영어 문장이 화면에 오르지 않게
+      // 한다(2026-10-23 · 웹 검토 R2 의 3). 로그는 필드 경로의 검사 문장만 —
+      // 사용자의 글은 남지 않는다.
+      this.logger.info("선로 해석 실패", { issues: parsed.error });
       this.send(ws, {
         type: "error",
         id: parsed.id,
-        message: parsed.error,
+        message: "요청을 읽지 못했어요 — 글이 너무 길거나 고른 것이 너무 많을 수 있어요",
         code: "bad_request",
       });
       return;
@@ -1563,10 +1743,20 @@ export class DaemonServer {
       // response received" once rode the wire to the chat banner — is logged
       // here verbatim and replaced by the recovery sentence.
       this.logger.error("요청 실패", { type: message.type, err: error });
+      // 오류가 실은 기계 코드(draft.stale 같은)는 답에 함께 나른다 — 화면이 처지를 가린다(2026-10-23 작업 B2).
+      const code =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof error.code === "string" &&
+        error.code.startsWith("draft.")
+          ? error.code
+          : undefined;
       return {
         type: "error",
         id: message.id,
         message: asPlannerFacingError(error).message,
+        ...(code !== undefined ? { code } : {}),
       };
     }
   }
@@ -1577,4 +1767,28 @@ function linksOf(text: string): string[] {
   return [...text.matchAll(/https?:\/\/[^\s<>)\]]+/g)].map((match) =>
     match[0].replace(/[.,;:!?"'`]+$/, ""),
   );
+}
+
+/**
+ * 같이 고치기에 넘길 사람의 요청(2026-10-30) — 표식을 걷은 본문. 핀 코멘트로 연 턴은 메모나 코멘트를 잇고, 기계가 연
+ * 다른 턴(게이트 · 브리프)은 빈 글이라 같이 고치지 않는다. 결과 카드의 요청 줄과 같은 판정이다.
+ */
+function planRequestOf(text: string): string {
+  const marked = readTurn(text);
+  const marker = marked.marker;
+  if (marker === null) return marked.body.trim();
+  if (marker.kind !== "comments") return "";
+  return (
+    marker.note?.trim() ||
+    marker.items
+      .map((item) => item.comment.trim() || item.label.trim())
+      .filter(Boolean)
+      .join(" · ")
+  );
+}
+
+/** 클론 기준 상대 경로 — 이미 상대면 그대로, 구분자는 `/` 로. */
+function relativeToRepo(repoRoot: string, file: string): string {
+  const rel = isAbsolute(file) ? relative(repoRoot, file) : file;
+  return rel.split(sep).join("/");
 }

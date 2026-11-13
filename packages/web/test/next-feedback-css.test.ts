@@ -60,8 +60,13 @@ test("기능 제안: 사이드바 바닥의 `기능 제안` 단추 규칙이 남
 });
 
 test("기능 제안: 글자는 12px 이상이다", () => {
+  // 토큰(var(--fs-*))과 낱 px 선언을 함께 센다 — 토큰은 모두 12px 이상(2026-10-23 화면 전면 재설계 §5).
   const sizes = [...css.matchAll(/font-size:\s*([\d.]+)px/g)].map((match) => Number(match[1]));
-  assert.ok(sizes.length > 10, `글자 크기 선언이 너무 적다: ${sizes.length}`);
+  const tokens = [...css.matchAll(/font-size:\s*var\(--fs-[\w-]+\)/g)];
+  assert.ok(
+    sizes.length + tokens.length > 10,
+    `글자 크기 선언이 너무 적다: ${sizes.length + tokens.length}`,
+  );
   assert.deepEqual(
     sizes.filter((size) => size < 12),
     [],

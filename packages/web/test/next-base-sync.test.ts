@@ -5,7 +5,7 @@ import type { RepoStatus } from "@colonova-design/protocol";
 import { baseSyncNews, baseSyncRow, baseSyncSeenOf } from "../src/next/lib/base-sync.ts";
 
 /**
- * 받아오기(2026-10-20 사용자 요청) — 개발자가 반영한 내용은 누를 때만 받아온다. 상태 줄의 단추와 `이번 작업` 의 칸이
+ * 최신 내용 적용(2026-11-12 사용자 요청 · 옛 `받아오기`) — 개발자가 반영한 내용은 누를 때만 합친다. 상태 줄의 표식과 `이번 작업` 의 칸이
  * 같은 판정을 읽고, 끝난 소식은 같은 프로젝트에서 결과의 시각이 바뀐 순간에 한 번만 말한다.
  */
 

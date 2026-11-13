@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { previewPathOf } from "../src/lib/screen-link.ts";
 import { latestResult, requestResults } from "../src/next/lib/request-results.ts";
 
 test("recorded changed request and automatic repair produce one result with original literal explanation", () => {
@@ -200,4 +201,52 @@ test("requestResults: 턴 끝 확인이 문제 없이 지나간 요청만 checke
   const results = requestResults(blocks, []);
   assert.deepEqual(results.get("t1")?.checked, { screens: 2, phone: true });
   assert.equal(results.get("t2")?.checked, null, "확인 기록이 없는 요청은 말하지 않는다");
+});
+
+test("requestResults: 빈 화면 이름은 같은 대화 답변 링크의 제목으로만 채운다(2026-11-11 실측)", () => {
+  // 미리보기는 127.0.0.1:5274 인데 답변 링크는 localhost:3000 — 데몬의 엄격한 origin 대조가
+  // 제목을 버린 실제 모양을 재현한다.
+  const toPath = (href: string) => previewPathOf(href, "http://127.0.0.1:5274/");
+  const answer = {
+    type: "text",
+    text: "확인: [로그인 화면](http://localhost:3000/signin) · [문서](https://github.com/o/r)",
+    agentId: null,
+  };
+  const turnEnd = { type: "turn", id: "done", isError: false };
+  const userBlock = (changedScreens: Array<{ route: string; title: string }>) =>
+    ({
+      type: "user",
+      id: "u",
+      requestId: "a",
+      text: "로그인 도움말 추가",
+      changedScreens,
+    }) as never;
+
+  // ① 빈 이름을 같은 경로의 링크 제목으로 채운다 — query 가 달라도 같은 경로다.
+  const blocks = [
+    userBlock([{ route: "/signin?next=/home", title: "" }]),
+    answer,
+    turnEnd,
+  ] as never;
+  assert.deepEqual(requestResults(blocks, [], toPath).get("done")?.screens, [
+    { route: "/signin?next=/home", title: "로그인 화면" },
+  ]);
+  // 링크의 hash 는 화면을 가르지 않는다.
+  const hashed = [
+    userBlock([{ route: "/signin", title: "" }]),
+    { type: "text", text: "[로그인 화면](http://localhost:3000/signin#top)", agentId: null },
+    turnEnd,
+  ] as never;
+  assert.equal(requestResults(hashed, [], toPath).get("done")?.screens[0]?.title, "로그인 화면");
+
+  // ② 다른 라우트 · 외부 사이트의 제목은 빌리지 않는다.
+  const other = [userBlock([{ route: "/signup", title: "" }]), answer, turnEnd] as never;
+  assert.equal(requestResults(other, [], toPath).get("done")?.screens[0]?.title, "");
+
+  // ③ 데몬이 저장한 이름은 링크가 덮지 않는다.
+  const named = [userBlock([{ route: "/signin", title: "로그인" }]), answer, turnEnd] as never;
+  assert.equal(requestResults(named, [], toPath).get("done")?.screens[0]?.title, "로그인");
+
+  // toPath 를 모르는 읽기는 지금처럼 빈 이름을 유지한다.
+  assert.equal(requestResults(blocks, []).get("done")?.screens[0]?.title, "");
 });

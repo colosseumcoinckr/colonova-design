@@ -52,7 +52,7 @@ export function Toast({ toast, onDone }: { toast: ToastNote | null; onDone: () =
     setHeld(false);
   }, [toast?.seq]);
   useEffect(() => {
-    if (!toast || held) return;
+    if (!toast || held || toast.action) return;
     startedAt.current = Date.now();
     const timer = setTimeout(() => done.current(), left.current);
     return () => {
@@ -61,41 +61,47 @@ export function Toast({ toast, onDone }: { toast: ToastNote | null; onDone: () =
     };
   }, [toast, held]);
 
-  if (!shown) return null;
   return (
-    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: 머무는 시간을 멈추는 호버 · 초점 범위일 뿐이다 — 누르는 것은 안의 단추다.
-    <div
-      key={shown.seq}
-      className={`nx-toast${leaving ? " nx-toast--out" : ""}${held ? " nx-toast--held" : ""}`}
-      role="status"
-      style={{ "--nx-toast-ms": `${lifeOf(shown)}ms` } as CSSProperties}
-      onMouseEnter={() => setHeld(true)}
-      onMouseLeave={() => setHeld(false)}
-      onFocus={() => setHeld(true)}
-      onBlur={() => setHeld(false)}
-    >
-      <span className="nx-toast-text">{shown.text}</span>
-      {shown.action && (
-        <button
-          type="button"
-          className="nx-toast-act"
-          onClick={() => {
-            shown.action?.run();
-            done.current();
-          }}
+    <>
+      <span className="nx-sr" role="status" aria-atomic="true">
+        <span key={toast?.seq ?? 0}>{toast?.text ?? ""}</span>
+      </span>
+      {shown && (
+        // biome-ignore lint/a11y/noNoninteractiveElementInteractions lint/a11y/useSemanticElements: 머무는 시간을 멈추는 호버 · 초점 범위일 뿐이다 — 누르는 것은 안의 단추다.
+        <div
+          key={shown.seq}
+          role="group"
+          className={`nx-toast${leaving ? " nx-toast--out" : ""}${held ? " nx-toast--held" : ""}`}
+          style={{ "--nx-toast-ms": `${lifeOf(shown)}ms` } as CSSProperties}
+          onMouseEnter={() => setHeld(true)}
+          onMouseLeave={() => setHeld(false)}
+          onFocus={() => setHeld(true)}
+          onBlur={() => setHeld(false)}
         >
-          {shown.action.label}
-        </button>
+          <span className="nx-toast-text">{shown.text}</span>
+          {shown.action && (
+            <button
+              type="button"
+              className="nx-toast-act"
+              onClick={() => {
+                shown.action?.run();
+                done.current();
+              }}
+            >
+              {shown.action.label}
+            </button>
+          )}
+          <button
+            type="button"
+            className="nx-toast-x"
+            aria-label={L.toast.close}
+            onClick={() => done.current()}
+          >
+            <CloseIcon />
+          </button>
+          {!shown.action && <span className="nx-toast-bar" aria-hidden />}
+        </div>
       )}
-      <button
-        type="button"
-        className="nx-toast-x"
-        aria-label={L.toast.close}
-        onClick={() => done.current()}
-      >
-        <CloseIcon />
-      </button>
-      <span className="nx-toast-bar" aria-hidden />
-    </div>
+    </>
   );
 }

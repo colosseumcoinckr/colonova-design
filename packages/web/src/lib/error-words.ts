@@ -5,17 +5,17 @@
  * fallback wording. Raw ids stay available to `자세히` folds.
  */
 const WORDS: Record<string, string> = {
-  overloaded: "AI가 붐빕니다",
-  api_error: "잠시 문제가 있었습니다",
-  invalid_request: "요청을 처리하지 못했습니다",
-  timeout: "응답이 늦어졌습니다",
+  overloaded: "AI 가 붐벼요",
+  api_error: "잠시 문제가 있었어요",
+  invalid_request: "요청을 처리하지 못했어요",
+  timeout: "응답이 늦어졌어요",
 };
 
 /** The subscription-limit refusal's own sentence. The SDK names it only in
     English inside the turn's closing text, so the failed card's `자세히`
     needs a Korean line ahead of the raw words — and `WORDS` keys are the
     daemon's retry ids, which this refusal is not. */
-export const LIMIT_WORDS = "구독 사용량을 채워 작업이 멈췄습니다";
+export const LIMIT_WORDS = "구독 사용량을 채워 작업이 멈췄어요";
 
 /** The Korean sentence for an error id, or `null` when it is unknown. */
 export function errorWords(id: string): string | null {

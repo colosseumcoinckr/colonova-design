@@ -261,3 +261,41 @@ export function classifySubmitError(reason: string): SubmitErrorKind {
   if (/rejected|non-fast-forward|fetch first/.test(reason)) return "rejected";
   return "other";
 }
+
+/**
+ * 보관 단계(commit) 실패의 원인 — `auth` 는 연결 코드 문제로 기획자가 새 초대 파일로 푼다,
+ * `machine` 은 이 기계 · 계정 · GitHub 쪽의 문제로 개발자 알림이 간다. `null` 은 그 밖의 실패 —
+ * 코드가 원인일 수 있으므로 AI 의 과제가 된다(모르면 AI 쪽 · 보수적).
+ *
+ * 2026-11-12 기획자 체험 — 작성자 확인(identityArgs → commitIdentity → GET /user)의 실패가
+ * AI 에게 넘어가 «고칠 것이 없다» 는 답 뒤 자동 보관이 다시 돌고 같은 카드가 무한히 섰다.
+ * 이 기계 · 계정 원인이면 AI 턴을 만들지 않는다.
+ */
+export type SaveGateCause = "auth" | "machine";
+
+/**
+ * 이 기계 · 계정 쪽 원인의 문장 — whoAmI / commitIdentity / identityArgs 가 던지는 말과
+ * GitHub 응답 없음(읽지 못했습니다) · 서버 쪽 실패(5xx). 한국어 문장은 만들어지는 자리가
+ * 정해져 있어 정규식으로 느슨하게 잡지 않는다.
+ */
+const SAVE_MACHINE_LITERAL =
+  /GitHub 계정 정보를 읽지 못했습니다|GitHub 응답을 읽지 못했습니다|GitHub에 연결하지 못했습니다|GitHub에 연결할 수 없습니다/;
+/** 연결 코드 자체의 문제 — 기획자가 새 초대 파일로 푸는 갈래(`push-auth` 사유). */
+const SAVE_AUTH_LITERAL = /연결 코드가 유효하지 않|연결 코드가 없습니다/;
+/** 서버 쪽 실패 — 상태 자리의 5xx(`GitHub 503:` · `HTTP 502` · `(500)`). */
+const GITHUB_5XX = /(?:GitHub|HTTP|status|code|error|returned)\s{0,3}:?\s{0,3}5\d\d\b|\(5\d\d\)/i;
+
+/**
+ * 보관 실패가 AI 가 고칠 수 있는 일인지 가른다 — 인증 · 권한 · 한도는 `classifyGitHubFailure`,
+ * 네트워크는 `classifySubmitError` 와 같은 잣대를 쓰고, 거기에 걸리지 않는 이 기계 · 계정의
+ * 문장을 더한다. `auth` 는 그중 사람(기획자)의 손으로 풀리는 갈래다 — `diffStatus.reason: "push-auth"`
+ * 가 재연결 안내로 읽히는 자리다.
+ */
+export function classifySaveCause(detail: string): SaveGateCause | null {
+  if (SAVE_AUTH_LITERAL.test(detail)) return "auth";
+  const github = classifyGitHubFailure(detail);
+  if (github !== null) return github === "auth" ? "auth" : "machine";
+  if (classifySubmitError(detail) === "network") return "machine";
+  if (SAVE_MACHINE_LITERAL.test(detail) || GITHUB_5XX.test(detail)) return "machine";
+  return null;
+}

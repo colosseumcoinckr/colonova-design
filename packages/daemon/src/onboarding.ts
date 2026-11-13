@@ -24,7 +24,7 @@ import {
   type OnboardingStepId,
 } from "@colonova-design/protocol";
 import type { AgentDriver } from "./agent/driver.js";
-import { withoutSelfUpdate } from "./agent-env.js";
+import { withoutAppSecrets, withoutSelfUpdate } from "./agent-env.js";
 import { run, shellPlan } from "./child.js";
 import { extraPathPrefix } from "./claude-trust.js";
 import {
@@ -453,8 +453,9 @@ export class AgentLogin {
         stdio: ["pipe", "pipe", "pipe"],
         shell: plan.shell,
         windowsHide: true,
-        // 로그인도 Claude 자식이다 — 자기 업데이트를 끈다(PLAN-UI U12).
-        env: withoutSelfUpdate(process.env),
+        // 로그인도 Claude 자식이다 — 자기 업데이트를 끄고(PLAN-UI U12) 앱의
+        // 자격도 거른다(2026-10-23 · 최종 구현 계획 F0).
+        env: withoutSelfUpdate(withoutAppSecrets(process.env)),
       });
       this.child = child;
       let output = "";

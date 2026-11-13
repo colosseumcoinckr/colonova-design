@@ -102,7 +102,8 @@ function fakeManagerWorld(
     registry: {
       activeSlug: () => null,
       list: () => (opts.storedProvider === undefined ? [] : [{ slug: "proj" }]),
-      paths: () => ({ repoRoot: tmpdir() }),
+      // 프로젝트 폴더 — 사본이 없는 자리라 세션에 함께 여는 폴더는 비어 있다(2026-10-23 · 기획서 사본 이동).
+      paths: () => ({ root: join(tmpdir(), "no-such-project"), repoRoot: tmpdir() }),
     },
     ...(opts.queueStore ? { queueStore: opts.queueStore } : {}),
     queueDiskFor: () => {

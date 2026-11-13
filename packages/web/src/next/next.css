@@ -24,6 +24,7 @@
 @import "./preview/preview.css";
 @import "./plans/plans.css";
 @import "./settings/settings.css";
+@import "./project/project.css";
 @import "./feedback/feedback.css";
 
 .nx {

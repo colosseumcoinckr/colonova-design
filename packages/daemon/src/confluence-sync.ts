@@ -743,7 +743,7 @@ export class ConfluenceSync {
     };
   }
 
-  /** 코멘트의 수 — 안 풀린 것만 센다. 못 읽으면 원장이 알던 수를 지키고, 처음이면 null. */
+  /** 코멘트의 수 — 안 풀린 스레드(뿌리)만 센다 — 답글은 세지 않는다(2026-11-13). 못 읽으면 원장이 알던 수를 지키고, 처음이면 null. */
   private async commentCount(
     link: ConfluenceLink,
     ledger: ConfluenceLedger,

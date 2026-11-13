@@ -1912,11 +1912,13 @@ export const L = {
     waiting: "다시 연결하는 중…",
     retry: "지금 다시 시도",
   },
-  // ── 기획서(Confluence) — 동기화 1단계의 연결(설정)과 읽는 칸(오른쪽 칸의 얼굴). 두 면의 문장이 한 칸에 선다.
+  // ── 기획서(Confluence) — 동기화 1단계의 연결(프로젝트 쪽의 대화상자)과 읽는 칸(오른쪽 칸의 얼굴). 두 면의 문장이 한 칸에 선다.
   plans: {
-    // 연결(설정 → 연결의 기획서 상자)
+    // 연결(기획서 연결 대화상자 — 프로젝트 정보 카드 · 설정 → 연결 줄이 연다, 2026-11-13 사용자 결정)
     title: "기획서 연결",
     titleSub: "기획서를 이 앱에서 바로 읽고 초안으로 고쳐요",
+    /** 대화상자 안 폼의 첫 줄 — 머리가 이미 「기획서 연결」이라 여기는 상태만 말한다(2026-11-13 R1-2). */
+    statusRow: "연결 상태",
     site: "사이트 주소",
     sitePlaceholder: "예) colosseum.atlassian.net",
     email: "이메일",
@@ -1950,6 +1952,12 @@ export const L = {
     statusImportedWhen: (when: string) => `${when} 가져왔어요`,
     statusExpired: "다시 연결이 필요해요 — 이메일과 토큰을 넣어 연결해 주세요",
     failed: (detail: string) => `연결하지 못했어요 — ${detail}`,
+    /** 기획서 연결 대화상자 머리의 한 줄 — 누구의 연결인지 프로젝트 이름으로 말한다. */
+    connectDialogSub: (name: string) =>
+      `‘${name}’ 프로젝트의 기획서를 가져올 Confluence예요 — 프로젝트마다 따로 정해요`,
+    /** 설정 → 연결의 기획서 한 줄 — 연결 자체는 프로젝트 쪽의 대화상자로 보낸다. */
+    settingsPlansSub: "프로젝트마다 따로 정해요 — 프로젝트 정보에서도 열 수 있어요",
+    settingsPlansOpen: "열기",
     // 읽는 칸 — 사이드바의 항목 · 위쪽 막대 · 가져오기 줄
     sidebar: "기획서",
     open: "기획서 열기",
@@ -1963,7 +1971,7 @@ export const L = {
     importCapped: (count: number) =>
       `문서 ${count}개를 가져왔어요 — 나머지는 ‘새로 가져오기’로 다시 가져와 주세요`,
     importFailed: "가져오지 못했어요 — 잠시 뒤 다시 시도해 주세요",
-    openSettings: "설정 열기",
+    openConnect: "기획서 연결 열기",
     // 목록 — 찾기 · 폴더 접기 · 비었을 때
     treeLabel: "기획서 목록",
     filterLabel: "기획서 찾기",
@@ -1988,11 +1996,11 @@ export const L = {
     // 2026-10-23 기획자 화면 손질 D7 — 초안(F1) 이후 「여기서 읽기만 한다」 는 틀린 말이 됐다.
     emptyNoneBody:
       "Confluence 기획서를 가져와 읽고, 초안에서 AI 와 함께 고칠 수 있어요. 초안은 이 컴퓨터에 보관되고 발행하면 Confluence 원본에 반영돼요.",
-    connectNow: "설정에서 연결하기",
+    connectNow: "기획서 연결하기",
     emptyListTitle: "아직 가져온 기획서가 없어요",
     emptyListRooted: "기준 페이지 아래의 문서를 가져오면 여기에 나타나요",
-    emptyListNoRoot: "설정에서 기준 페이지를 정하면 그 아래의 문서를 가져와요",
-    emptyListExpired: "연결이 끊겨 가져오지 못했어요 — 설정에서 다시 연결해 주세요",
+    emptyListNoRoot: "기획서 연결에서 기준 페이지를 정하면 그 아래의 문서를 가져와요",
+    emptyListExpired: "연결이 끊겨 가져오지 못했어요 — 기획서 연결에서 다시 연결해 주세요",
     listLoading: "기획서 목록을 불러오는 중…",
     listFailed: "기획서 목록을 읽지 못했어요",
     listFailedBody: "인터넷 연결을 확인하고 다시 시도해 주세요",
@@ -2005,7 +2013,7 @@ export const L = {
     readingNote: "Confluence 에서 가져오느라 몇 초 걸릴 수 있어요",
     docFailedTitle: "문서를 읽지 못했어요",
     docFailedNet: "인터넷 연결을 확인하고 다시 시도해 주세요",
-    docFailedConnect: "Confluence 연결이 필요해요 — 설정에서 연결한 뒤 다시 시도해 주세요",
+    docFailedConnect: "Confluence 연결이 필요해요 — 기획서 연결을 마친 뒤 다시 시도해 주세요",
     /** 데몬이 미연결로 거절하는 문장의 머리 — 실패 면이 연결 사본을 고르는 눈금이다(위 관찰). */
     docFailedConnectMark: "먼저 연결",
     docUpdated: (when: string) => `${when} 고침`,

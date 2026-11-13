@@ -445,14 +445,132 @@ test("listFooterComments — 본문 · 작성자 · 답글 부모를 읽고, 실
   assert.equal(deniedRead.reason, "forbidden");
 });
 
+// 2026-11-13 커넥터로 실사이트 확인 · 앱 경로는 미실측 — 문서별 목록은 뿌리만 주고, 답글은 children 으로 따로 온다(parentCommentId).
+// 닻은 properties.inlineOriginalSelection 이다. 응답 모양은 실제 v2 응답의 필드만 줄여 옮겼다.
+test("listInlineComments replies — 안 풀린 뿌리의 답글을 children 에서 읽어 뿌리 뒤에 붙인다", async () => {
+  const { client, calls } = fake({
+    "/wiki/api/v2/pages/1/inline-comments?body-format=storage&limit=100": {
+      status: 200,
+      json: {
+        results: [
+          {
+            id: "51",
+            resolutionStatus: "open",
+            version: { number: 1, authorId: "a" },
+            body: { storage: { value: "<p>뿌리</p>" } },
+            properties: {
+              inlineMarkerRef: "m1",
+              inlineOriginalSelection: "LPN 추적여부",
+              "inline-original-selection": "LPN 추적여부",
+            },
+          },
+          {
+            id: "52",
+            resolutionStatus: "resolved",
+            body: { storage: { value: "풀림" } },
+            properties: { "inline-original-selection": "다음 목적지" },
+          },
+        ],
+      },
+    },
+    "/wiki/api/v2/inline-comments/51/children?body-format=storage&limit=100": {
+      status: 200,
+      json: {
+        results: [
+          {
+            id: "61",
+            parentCommentId: "51",
+            version: { number: 2, authorId: "b" },
+            body: { storage: { value: "답글" } },
+          },
+        ],
+      },
+    },
+  });
+  const roots = await client.listInlineComments("1");
+  if (!roots.readable) assert.fail("뿌리는 읽혀야 한다");
+  assert.deepEqual(
+    roots.value.map((row) => [row.id, row.anchorText]),
+    [
+      ["51", "LPN 추적여부"],
+      ["52", "다음 목적지"],
+    ],
+  );
+  assert.equal(calls.length, 1, "replies 없이는 children 을 묻지 않는다");
+
+  const read = await client.listInlineComments("1", { replies: true });
+  if (!read.readable) assert.fail("답글까지 읽혀야 한다");
+  assert.deepEqual(
+    read.value.map((row) => [row.id, row.parentId, row.resolved]),
+    [
+      ["51", null, false],
+      ["61", "51", false],
+      ["52", null, true],
+    ],
+  );
+  assert.ok(
+    !calls.includes("/wiki/api/v2/inline-comments/52/children?body-format=storage&limit=100"),
+    "풀린 뿌리의 답글은 묻지 않는다",
+  );
+});
+
+test("listFooterComments replies — 목록이 답글을 함께 줘도 두 번 세지 않고, 답글의 답글은 묻지 않는다", async () => {
+  const { client, calls } = fake({
+    "/wiki/api/v2/pages/1/footer-comments?body-format=storage&limit=100": {
+      status: 200,
+      json: {
+        results: [
+          { id: "81", body: { storage: { value: "뿌리" } } },
+          { id: "82", parentCommentId: "81", body: { storage: { value: "답글" } } },
+        ],
+      },
+    },
+    "/wiki/api/v2/footer-comments/81/children?body-format=storage&limit=100": {
+      status: 200,
+      json: {
+        results: [{ id: "82", parentCommentId: "81", body: { storage: { value: "답글" } } }],
+      },
+    },
+  });
+  const read = await client.listFooterComments("1", { replies: true });
+  if (!read.readable) assert.fail("읽혀야 한다");
+  assert.deepEqual(
+    read.value.map((row) => [row.id, row.parentId]),
+    [
+      ["81", null],
+      ["82", "81"],
+    ],
+  );
+  assert.ok(!calls.some((url) => url.includes("/footer-comments/82/children")));
+});
+
+test("listFooterComments replies — 답글 하나라도 못 읽으면 전체가 못 읽음이다", async () => {
+  const { client } = fake({
+    "/wiki/api/v2/pages/1/footer-comments?body-format=storage&limit=100": {
+      status: 200,
+      json: { results: [{ id: "71", body: { storage: { value: "뿌리" } } }] },
+    },
+    "/wiki/api/v2/footer-comments/71/children?body-format=storage&limit=100": {
+      status: 403,
+      json: {},
+    },
+  });
+  const read = await client.listFooterComments("1", { replies: true });
+  if (read.readable) assert.fail("답글을 못 읽으면 실패여야 한다");
+  assert.equal(read.reason, "forbidden");
+});
+
 test("userName — 한 번 읽은 사람은 캐시로 끊고, 못 읽으면 이름 없음이다(던지지 않는다)", async () => {
   const { client, calls } = fake({
-    "/wiki/api/v2/users/5f0": { status: 200, json: { displayName: "정인권" } },
-    "/wiki/api/v2/users/5f1": { status: 404, json: {} },
+    "/wiki/rest/api/user?accountId=5f0": { status: 200, json: { displayName: "정인권" } },
+    "/wiki/rest/api/user?accountId=5f1": { status: 404, json: {} },
+    // 공개 범위가 좁은 계정 — displayName 이 비고 publicName 만 온다.
+    "/wiki/rest/api/user?accountId=5f2": { status: 200, json: { publicName: "공개이름" } },
   });
+  assert.equal(await client.userName("5f2"), "공개이름");
   assert.equal(await client.userName("5f0"), "정인권");
   assert.equal(await client.userName("5f0"), "정인권");
-  assert.equal(calls.filter((url) => url === "/wiki/api/v2/users/5f0").length, 1);
+  assert.equal(calls.filter((url) => url === "/wiki/rest/api/user?accountId=5f0").length, 1);
   assert.equal(await client.userName("5f1"), null);
 });
 

@@ -52,7 +52,7 @@ export function PlansList({
   onOpenDraft,
   onRetry,
   onImport,
-  onSettings,
+  onConnect,
   hidden,
   focusId,
   onFocused,
@@ -82,7 +82,8 @@ export function PlansList({
   onOpenDraft: (docKey: string) => void;
   onRetry: () => void;
   onImport: () => void;
-  onSettings: () => void;
+  /** 기획서 연결 대화상자를 연다(2026-11-13 사용자 결정 — 프로젝트 쪽). */
+  onConnect: () => void;
   /** 다른 자리로 가서 목록이 숨는 중이다. */
   hidden: boolean;
   /** 문서 보기에서 Esc 를 누르면 초점을 받을 줄. */
@@ -178,7 +179,7 @@ export function PlansList({
   } else if (!connected) {
     body = (
       <Empty title={L.plans.emptyNoneTitle} body={L.plans.emptyNoneBody}>
-        <button type="button" className="nx-btn nx-btn--pri" onClick={onSettings}>
+        <button type="button" className="nx-btn nx-btn--pri" onClick={onConnect}>
           {L.plans.connectNow}
         </button>
       </Empty>
@@ -226,8 +227,8 @@ export function PlansList({
             )}
           </button>
         ) : (
-          <button type="button" className="nx-btn" onClick={onSettings}>
-            {L.plans.openSettings}
+          <button type="button" className="nx-btn" onClick={onConnect}>
+            {L.plans.openConnect}
           </button>
         )}
       </Empty>

@@ -22,7 +22,10 @@ const PAGE_URL = `/wiki/api/v2/pages/${PAGE_ID}?body-format=storage`;
 const FOOTER_URL = `/wiki/api/v2/pages/${PAGE_ID}/footer-comments?body-format=storage&limit=100`;
 const INLINE_URL = `/wiki/api/v2/pages/${PAGE_ID}/inline-comments?body-format=storage&limit=100`;
 const WHO_URL = "/wiki/rest/api/user/current";
-const userUrl = (accountId: string): string => `/wiki/api/v2/users/${accountId}`;
+/** 답글 목록 — 문서별 목록은 뿌리만 주고 답글은 뿌리마다 따로 온다(2026-11-13 커넥터로 실사이트 확인 · 앱 경로는 미실측). */
+const repliesUrl = (kind: "footer" | "inline", id: string): string =>
+  `/wiki/api/v2/${kind}-comments/${id}/children?body-format=storage&limit=100`;
+const userUrl = (accountId: string): string => `/wiki/rest/api/user?accountId=${accountId}`;
 
 /** 기록 쌍 한 세트 — 이름은 사람이 읽고, cite 는 어느 엔드포인트인지 말한다. */
 function fixture(
@@ -58,7 +61,11 @@ function commentRow(
 
 /** 문서 · 코멘트의 기본 기록 쌍 — 시험이 who · footer 만 갈아 끼운다. */
 function basePairs(
-  overrides: { who?: Record<string, unknown>; footer?: Record<string, unknown> } = {},
+  overrides: {
+    who?: Record<string, unknown>;
+    footer?: Record<string, unknown>;
+    f1Replies?: Record<string, unknown>;
+  } = {},
 ): Array<Record<string, unknown>> {
   return [
     fixture("문서 읽기", PAGE_URL, 200, {
@@ -90,10 +97,15 @@ function basePairs(
           inlineProperties: { selection: "풀린 지적" },
         }),
         commentRow("i2", ME_ID, 3, "<p><strong>굵은 지적</strong></p>", {
-          inlineProperties: { selection: "굵은 지적" },
+          // 실제 v2 의 닻 모양(2026-11-13 커넥터로 실사이트 확인 · 앱 경로는 미실측).
+          properties: { inlineMarkerRef: "m2", inlineOriginalSelection: "굵은 지적" },
         }),
       ],
     }),
+    overrides.f1Replies ??
+      fixture("바닥글 답글 — f1", repliesUrl("footer", "f1"), 200, { results: [] }),
+    fixture("바닥글 답글 — f2", repliesUrl("footer", "f2"), 200, { results: [] }),
+    fixture("인라인 답글 — i2", repliesUrl("inline", "i2"), 200, { results: [] }),
     fixture("작성자 이름 — 나", userUrl(ME_ID), 200, { displayName: "나작성자" }),
     fixture("작성자 이름 — 다른이", userUrl(OTHER_ID), 200, { displayName: "다른이" }),
     fixture("멘션 이름", userUrl(MENTION_ID), 200, { displayName: "합성이름" }),
@@ -238,5 +250,38 @@ test("코멘트 목록을 읽지 못하면 코멘트는 null 이고 문서 읽�
     assert.ok(reply.markdown.length > 0);
   } finally {
     rig3.cleanup();
+  }
+});
+
+test("답글은 뿌리의 children 에서 읽혀 뿌리 바로 뒤에 부모 id 와 함께 선다(2026-11-13)", async () => {
+  const rig4 = rig(
+    basePairs({
+      f1Replies: fixture("바닥글 답글 — f1", repliesUrl("footer", "f1"), 200, {
+        results: [
+          {
+            id: "r1",
+            parentCommentId: "f1",
+            version: { number: 1, authorId: OTHER_ID, createdAt: "2026-10-24T00:00:00Z" },
+            body: { storage: { value: "<p>답글입니다</p>", representation: "storage" } },
+          },
+        ],
+      }),
+    }),
+  );
+  try {
+    const reply = await rig4.read(PAGE_ID);
+    assert.ok(reply.comments !== null);
+    assert.deepEqual(
+      reply.comments.map((row) => [row.id, row.parentId, row.body]),
+      [
+        ["f1", null, "내가 쓴 바닥글"],
+        ["r1", "f1", "답글입니다"],
+        ["f2", null, reply.comments[2]?.body],
+        ["i2", null, reply.comments[3]?.body],
+      ],
+    );
+    assert.equal(reply.comments[3]?.anchorText, "굵은 지적");
+  } finally {
+    rig4.cleanup();
   }
 });

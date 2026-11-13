@@ -263,6 +263,7 @@ Home/End 는 양끝(300 · 560px), Enter · 두 번 누름은 기본(380px)으�
 | `showTab("chat" \| "preview")` | 좁은 창의 탭 |
 | `openPlans()` · `showPane("preview" \| "plans")` | 기획서 자리로 간다(다시 눌러도 머문다) · 기존 호출자가 화면/기획서 자리를 고르는 손 |
 | `openSettings()` · `toast(text, action?)` | 설정 대화상자(서랍이 열려 있으면 먼저 닫는다) · 잠깐 뜨는 한 줄 — `action`(`{ label, run }`)이 있으면 단추가 달리고 8초 머문다 |
+| `openPlansConnect()` | 기획서 연결 대화상자(`project/PlansConnectDialog` — 활성 프로젝트의 Confluence. 서랍이 열려 있으면 먼저 닫는다, 2026-11-13 사용자 결정 — 프로젝트 쪽) |
 
 **`SlotProps`** — `ChatColumn`(단계 2)과 `PreviewColumn`(단계 3)이 함께 받는다:
 `daemon` · `settings` · `sessions`(`useSessions` 결과) · `pins`(`usePins` 결과 —

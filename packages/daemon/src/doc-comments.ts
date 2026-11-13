@@ -246,7 +246,7 @@ export class DocComments {
     };
   }
 
-  /** 지금 코멘트의 모습 — 종류의 목록에서 찾는다. 읽지 못하면 그 이유로, 없으면 comment-missing 이다. */
+  /** 지금 코멘트의 모습 — 종류의 목록(답글 포함 — 내 답글을 고칠 수 있게)에서 찾는다. 읽지 못하면 그 이유로, 없으면 comment-missing 이다. */
   async #currentComment(
     client: ConfluenceClient,
     pageId: string,
@@ -255,8 +255,8 @@ export class DocComments {
   ): Promise<{ comment: ConfluenceComment } | { detail: string }> {
     const list =
       kind === "inline"
-        ? await client.listInlineComments(pageId)
-        : await client.listFooterComments(pageId);
+        ? await client.listInlineComments(pageId, { replies: true })
+        : await client.listFooterComments(pageId, { replies: true });
     if (list.readable === false) return { detail: list.detail };
     const comment = list.value.find((row) => row.id === commentId);
     if (comment === undefined) return { detail: REASON.commentMissing };

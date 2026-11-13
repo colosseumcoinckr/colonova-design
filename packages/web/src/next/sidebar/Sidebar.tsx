@@ -116,6 +116,7 @@ export function Sidebar({
         active={active}
         onSwitch={nav.switchProject}
         onToast={nav.toast}
+        onOpenPlansConnect={nav.openPlansConnect}
         openSignal={openSwitcher}
       />
       <nav className="nx-side-nav" aria-label={L.sidebar.nav}>

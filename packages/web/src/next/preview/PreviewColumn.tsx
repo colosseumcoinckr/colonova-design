@@ -1179,8 +1179,13 @@ export function PreviewColumn({
         onArmed={clearArm}
       />
 
+      {/* 2026-11-13 — `document.body` 로 옮기면 `.nx` 뿌리 밖이라 키캡 · 간격 · 토큰이 빠져 시트가 깨졌다.
+          다른 겹판(DocView · 토스트)과 같이 앱 뿌리로 옮긴다. */}
       {sheetOpen &&
-        createPortal(<ShortcutsSheet open onClose={() => setSheetOpen(false)} />, document.body)}
+        createPortal(
+          <ShortcutsSheet open onClose={() => setSheetOpen(false)} />,
+          document.querySelector<HTMLElement>(".nx") ?? document.body,
+        )}
     </section>
   );
 }

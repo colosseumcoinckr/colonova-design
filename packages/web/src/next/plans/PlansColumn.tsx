@@ -341,7 +341,7 @@ function PlansBody({
           rooted={summary?.rootTitle != null}
           phase={state.listPhase}
           importing={state.importing}
-          onSettings={() => nav.openSettings("connection")}
+          onConnect={() => nav.openPlansConnect()}
           onImport={plans.importNow}
           onRetry={plans.refreshList}
         />

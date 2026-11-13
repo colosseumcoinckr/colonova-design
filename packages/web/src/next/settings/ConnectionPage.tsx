@@ -1,5 +1,6 @@
 import { type UIEvent, useEffect, useRef } from "react";
 import type { Daemon } from "../../lib/daemon-client";
+import { timeAgo } from "../../lib/format";
 import { composing } from "../../lib/ime";
 import { linkClick } from "../../lib/open-link";
 import { L } from "../labels";
@@ -8,7 +9,7 @@ import { resetScope } from "../lib/reset-scope";
 import { nameEscape } from "../lib/settings-shell";
 import { supportFor } from "../lib/support";
 import { CheckIcon, Spin } from "../ui/icons";
-import { ConfluenceConnect } from "./ConfluenceConnect";
+import { confluenceStatus } from "./confluence-form";
 import { BandAlertIcon } from "./icons";
 import { SBand, SGroup, SPage, SRow, useAnnounce } from "./parts";
 import type { AuthorModel } from "./use-author";
@@ -32,6 +33,7 @@ export function ConnectionPage({
   lockReason,
   focusSignal,
   onOpenInvite,
+  onOpenPlansConnect,
   onScroll,
 }: {
   active: boolean;
@@ -44,6 +46,8 @@ export function ConnectionPage({
   /** 값이 오르면 이름 칸에 초점을 둔다(닫기 보호가 저장 실패를 보이려 부른다). */
   focusSignal: number;
   onOpenInvite: () => void;
+  /** 기획서 연결을 연다(2026-11-13 사용자 결정 — 프로젝트 쪽) — 설정이 닫힌 뒤에 선다. */
+  onOpenPlansConnect: () => void;
   onScroll: (event: UIEvent<HTMLDivElement>) => void;
 }) {
   const announce = useAnnounce();
@@ -157,9 +161,30 @@ export function ConnectionPage({
           </button>
         </SRow>
       </SGroup>
-      {/* 프로젝트를 바꾸면 판도 새로 — 연결은 프로젝트 스코프라 옛 프로젝트의 사이트 · 연결
-          상태가 남아 있으면 안 된다(2026-11-03 · 프로젝트별 Confluence 자격). */}
-      <ConfluenceConnect key={daemon.activeSlug ?? ""} daemon={daemon} locked={locked} />
+      {/* 기획서(Confluence) 연결은 프로젝트마다 다른 값이다 — 이 컴퓨터 전체의 설정
+          안에 둘 수 없어 프로젝트 쪽의 대화상자로 옮겼다(2026-11-13 사용자 결정).
+          여기는 상태 한 줄과 그 대화상자로 가는 `열기` 뿐이다. 누르면 껍데기가
+          설정을 닫고 닫힘이 확정된 뒤 대화상자가 선다(저장 실패로 설정이 남으면
+          겹쳐 열리지 않는다). 프로젝트가 하나도 없으면 줄 자체가 서지 않는다. */}
+      {daemon.projects.length > 0 &&
+        (() => {
+          const active = daemon.projects.find((entry) => entry.slug === daemon.activeSlug);
+          const summary = active?.confluence;
+          const status = confluenceStatus(summary, null, timeAgo);
+          return (
+            <SGroup>
+              <SRow title={L.plans.title} sub={L.plans.settingsPlansSub}>
+                {active !== undefined && <span className="nx-sval">{active.name}</span>}
+                <span className={`nx-pc-st${summary?.expired === true ? " nx-pc-st--warn" : ""}`}>
+                  {status}
+                </span>
+                <button type="button" className="nx-btn nx-btn--sm" onClick={onOpenPlansConnect}>
+                  {L.plans.settingsPlansOpen}
+                </button>
+              </SRow>
+            </SGroup>
+          );
+        })()}
       {reset.available && (
         <SGroup danger>
           <SRow title={L.settings.resetTitle} sub={L.settings.resetSub}>

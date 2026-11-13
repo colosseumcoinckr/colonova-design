@@ -3,7 +3,7 @@ import { type CSSProperties, useCallback, useEffect, useId, useRef, useState } f
 import { ShortcutsSheet } from "../components/dialogs/ShortcutsSheet";
 import { Palette } from "../components/shell/Palette";
 import { Splitter } from "../components/shell/Splitter";
-import { focusableElements } from "../hooks/focusable";
+import { focusableElements, visibleFocusable } from "../hooks/focusable";
 import { overlayOpen, useModalFocus } from "../hooks/use-modal-focus";
 import { usePins } from "../hooks/usePins";
 import { useSessions } from "../hooks/useSessions";
@@ -29,6 +29,7 @@ import { PlansSidebar } from "./plans/PlansSidebar";
 import { PlansContext, usePlansWorkspace } from "./plans/PlansWorkspace";
 import { useDraftSummaries } from "./plans/use-draft-summaries";
 import { PreviewColumn } from "./preview/PreviewColumn";
+import { PlansConnectDialog } from "./project/PlansConnectDialog";
 import { SettingsDialog } from "./settings/SettingsDialog";
 import { Sidebar } from "./sidebar/Sidebar";
 import type { SettingsPage, SlotProps } from "./slots";
@@ -94,12 +95,24 @@ export function Workspace({
   const drawerOpen = useRef(false);
   // 설정 대화상자(단계 6) — 사이드바 바퀴 · ⌘, · 팔레트가 같은 문으로 연다.
   const [settingsPage, setSettingsPage] = useState<SettingsPage | "default" | null>(null);
+  // 기획서 연결 대화상자(2026-11-13 사용자 결정 — 기획서 연결을 프로젝트 쪽으로) —
+  // 프로젝트 정보 카드 · 기획서 자리의 단추들 · 설정 → 연결의 한 줄이 연다. 설정 쪽에서
+  // 오는 길은 `SettingsDialog` 가 닫힘이 확정된 뒤에야 여기 닿게 한다(작성자 이름
+  // 저장이 실패해 설정이 남으면 위에 겹쳐 열리지 않는다).
+  const [plansConnectOpen, setPlansConnectOpen] = useState(false);
   // 설정도 기능 제안처럼 좁은 창의 서랍 위에 겹치지 않게 서랍을 먼저 닫는다(⌘, · 팔레트 · 바퀴 모두 —
-  // 2026-10-06 겹판 조사: 서랍이 설정 뒤에 열려 있었다). `page` 가 오면 그 쪽이 먼저 선다(2026-11-12 —
-  // 기획서 자리의 연결 단추는 `연결` 쪽으로).
+  // 2026-10-06 겹판 조사: 서랍이 설정 뒤에 열려 있었다). `page` 가 오면 그 쪽이 먼저 선다.
   const openSettings = (page?: SettingsPage) => {
+    // 기획서 연결 대화상자가 떠 있으면 같은 층(z 70)의 DOM 순서가 위를 칠해 설정이
+    // 그 아래에 깔린다 — 먼저 닫고 연다(2026-11-13 R1-4).
+    setPlansConnectOpen(false);
     if (narrow) setDrawer(false);
     setSettingsPage(page ?? "default");
+  };
+  // 기획서 연결은 설정과 같은 길로 서랍을 먼저 닫는다(2026-11-13 사용자 결정).
+  const openPlansConnect = () => {
+    if (narrow) setDrawer(false);
+    setPlansConnectOpen(true);
   };
   // 기능 제안(PLAN-FEEDBACK) — 좁은 창의 서랍 위에 겹치지 않게 서랍을 먼저 닫는다.
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -112,6 +125,9 @@ export function Workspace({
   const focusMenuButton = useCallback(() => {
     if (!narrow) return;
     requestAnimationFrame(() => {
+      // 설정을 닫으며 기획서 연결 대화상자가 이어 열렸다면 초점은 그 판의 것 —
+      // 서랍 ≡ 로 빼앗지 않는다(2026-11-13 사용자 결정).
+      if (document.querySelector(".nx-modal") !== null) return;
       const menu = [...document.querySelectorAll<HTMLButtonElement>(".nx-main button")].find(
         (button) =>
           button.getAttribute("aria-label") === L.shell.menu &&
@@ -130,6 +146,21 @@ export function Workspace({
     setSettingsPage(null);
     focusMenuButton();
   }, [focusMenuButton]);
+  const closePlansConnect = useCallback(() => {
+    setPlansConnectOpen(false);
+    // 초점 복귀의 도착이 사라졌을 때(카드를 닫아 연 줄은 언마운트됐고, 좁은 창은
+    // 서랍이 닫혀 전환기 머리가 inert 다) 초점이 body 로 떨어진다 — 살아 있는
+    // 전환기 머리, 없으면 ≡ 단추로 되돌린다(2026-11-13 사용자 결정).
+    requestAnimationFrame(() => {
+      if (document.activeElement !== document.body) return;
+      const head = document.querySelector<HTMLButtonElement>(".nx-proj-btn");
+      if (head && visibleFocusable(head)) {
+        head.focus();
+        return;
+      }
+      focusMenuButton();
+    });
+  }, [focusMenuButton]);
   const { state, nav, toast, dismissToast, setCollapsed, setDrawer } = useShellNav({
     daemon,
     sessions,
@@ -138,6 +169,7 @@ export function Workspace({
     narrow,
     onLayoutChange,
     onOpenSettings: openSettings,
+    onOpenPlansConnect: openPlansConnect,
   });
   const project = daemon.projects.find((entry) => entry.slug === daemon.activeSlug) ?? null;
   const plansOn = state.pane === "plans";
@@ -759,9 +791,11 @@ export function Workspace({
             onChatChange={onChatChange}
             onSettingsChange={onSettingsChange}
             initialPage={settingsPage === "default" ? undefined : settingsPage}
+            onOpenPlansConnect={openPlansConnect}
             onClose={closeSettings}
           />
         )}
+        {plansConnectOpen && <PlansConnectDialog daemon={daemon} onClose={closePlansConnect} />}
         {/* 기능 제안은 늘 마운트된 채 `open` 만 그린다 — 전송이 도는 동안 닫았다
             다시 열어도 약속이 죽지 않고 늦은 접수 확인이 초안을 지울 수 있다. */}
         <FeedbackDialog

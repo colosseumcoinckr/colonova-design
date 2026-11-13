@@ -272,8 +272,9 @@ async function docRead(
   });
   // 코멘트 · 라벨 · 첨부는 서로 기대지 않는다 — 한꺼번에 묻는다(2026-10-30).
   const [footer, inline, labelRead, attachmentRead] = await Promise.all([
-    client.listFooterComments(pageId),
-    client.listInlineComments(pageId),
+    // 스레드를 보이므로 답글까지 읽는다 — 문서 목록은 뿌리만 준다(2026-11-13).
+    client.listFooterComments(pageId, { replies: true }),
+    client.listInlineComments(pageId, { replies: true }),
     client.listLabels(pageId),
     client.listAttachments(pageId),
   ]);

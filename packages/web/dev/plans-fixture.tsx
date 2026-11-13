@@ -1819,6 +1819,7 @@ function MismatchDocFrame({ id }: { id: string }) {
   const daemon = useMemo(() => daemonFor(id, setLine), [id]);
   const nav = {
     openSettings: () => setLine("설정 열기"),
+    openPlansConnect: () => setLine("기획서 연결"),
     showPane: (pane: string) => setLine(`오른쪽 칸 → ${pane}`),
     showTab: (tab: string) => setLine(`오른쪽 칸 → ${tab}`),
     openPlans: () => setLine("기획서 열기"),
@@ -1899,6 +1900,7 @@ function MismatchChatFrame({ id }: { id: string }) {
   const daemon = useMemo(() => daemonFor(id, setLine), [id]);
   const nav = {
     openSettings: () => setLine("설정 열기"),
+    openPlansConnect: () => setLine("기획서 연결"),
     showPane: (pane: string) => setLine(`오른쪽 칸 → ${pane}`),
     showTab: (tab: string) => setLine(`오른쪽 칸 → ${tab}`),
     openPlans: () => setLine("기획서 열기"),
@@ -2037,7 +2039,12 @@ function PlansAFrame() {
   useEffect(() => {
     (window as unknown as { __plansA: typeof controls }).__plansA = controls;
   }, [controls]);
-  const nav = { toast: setLine, showTab: () => {}, openSettings: () => {} } as unknown as ShellNav;
+  const nav = {
+    toast: setLine,
+    showTab: () => {},
+    openSettings: () => {},
+    openPlansConnect: () => {},
+  } as unknown as ShellNav;
   const key = `p-${page}`;
   const thread = useDraftThread(daemon, opened ? key : null, null);
   const draft = {
@@ -2314,6 +2321,7 @@ function PlansAFixFrame({ recovery = false }: { recovery?: boolean }) {
     showTab: () => {},
     openPlans: () => {},
     openSettings: () => {},
+    openPlansConnect: () => {},
   } as unknown as ShellNav;
   return (
     <PlansContext.Provider value={plans}>
@@ -2341,6 +2349,7 @@ function PlansFrame({ id }: { id: string }) {
   const project = useMemo(() => projectFor(id), [id]);
   const nav = {
     openSettings: () => setLine("설정 열기"),
+    openPlansConnect: () => setLine("기획서 연결"),
     showPane: (pane: string) => setLine(`오른쪽 칸 → ${pane}`),
     showTab: (tab: string) => setLine(`오른쪽 칸 → ${tab}`),
     openPlans: () => setLine("기획서 열기"),

@@ -31,7 +31,7 @@ export function PlansStatus({
   rooted,
   phase,
   importing,
-  onSettings,
+  onConnect,
   onImport,
   onRetry,
 }: {
@@ -40,14 +40,15 @@ export function PlansStatus({
   rooted: boolean;
   phase: PlanPhase;
   importing: boolean;
-  onSettings: () => void;
+  /** 기획서 연결 대화상자를 연다(2026-11-13 사용자 결정 — 프로젝트 쪽). */
+  onConnect: () => void;
   onImport: () => void;
   onRetry: () => void;
 }) {
   if (!connected)
     return (
       <PlansEmpty title={L.plans.emptyNoneTitle} body={L.plans.emptyNoneBody}>
-        <button type="button" className="nx-btn nx-btn--pri" onClick={onSettings}>
+        <button type="button" className="nx-btn nx-btn--pri" onClick={onConnect}>
           {L.plans.connectNow}
         </button>
       </PlansEmpty>
@@ -55,8 +56,8 @@ export function PlansStatus({
   if (expired)
     return (
       <PlansEmpty title={L.plans.statusExpired} body={L.plans.emptyListExpired}>
-        <button type="button" className="nx-btn" onClick={onSettings}>
-          {L.plans.openSettings}
+        <button type="button" className="nx-btn" onClick={onConnect}>
+          {L.plans.openConnect}
         </button>
       </PlansEmpty>
     );
@@ -97,8 +98,8 @@ export function PlansStatus({
           )}
         </button>
       ) : (
-        <button type="button" className="nx-btn" onClick={onSettings}>
-          {L.plans.openSettings}
+        <button type="button" className="nx-btn" onClick={onConnect}>
+          {L.plans.openConnect}
         </button>
       )}
     </PlansEmpty>

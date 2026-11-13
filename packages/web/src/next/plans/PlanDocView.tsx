@@ -284,7 +284,10 @@ export function PlanDocView({
     target.scrollIntoView({ block: "center" });
     return () => target?.removeAttribute("data-search-hit");
   }, [phase, doc, searchTarget]);
-  const commentCount = doc?.comments?.filter((one) => one.resolved !== true).length ?? 0;
+  // 안 풀린 스레드의 수 — 답글은 세지 않는다(가져오기의 미결 수와 같은 잣대 · 2026-11-13).
+  const commentCount =
+    doc?.comments?.filter((one) => one.resolved !== true && (one.parentId ?? null) === null)
+      .length ?? 0;
   const screenCount =
     links === null || syncedScreens === null || linksFailed || syncedFailed
       ? null

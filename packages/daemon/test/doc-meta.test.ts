@@ -109,7 +109,7 @@ function rig() {
         ],
       },
     },
-    "GET /wiki/api/v2/users/u1": { json: { displayName: "김기획" } },
+    "GET /wiki/rest/api/user?accountId=u1": { json: { displayName: "김기획" } },
     [`GET /wiki/api/v2/pages/${PAGE_ID}?version=3&body-format=storage`]: {
       json: {
         id: PAGE_ID,
@@ -344,7 +344,10 @@ test("판 기록 — 최근 것부터, 쓴 사람의 이름을 한 번만 묻는
         [3, "김기획", false],
       ],
     );
-    assert.equal(calls.filter((call) => call.url.startsWith("/wiki/api/v2/users/")).length, 1);
+    assert.equal(
+      calls.filter((call) => call.url.startsWith("/wiki/rest/api/user?accountId=")).length,
+      1,
+    );
     const old = await meta.versionRead(PAGE_ID, 3);
     assert.equal(old.version, 3);
     assert.deepEqual(old.view, [

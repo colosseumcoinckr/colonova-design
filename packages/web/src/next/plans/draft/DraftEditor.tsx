@@ -1596,11 +1596,11 @@ export function DraftEditorSurface({
   const unpublished =
     (view.state === "editing" || view.state === "conflict") &&
     (pending > 0 || view.baseVersion === null);
-  // 코멘트 수(B8) — 안 풀린 것만 센다(읽는 문서 머리와 같은 잣대). 아직 읽는 중이거나 실패면
+  // 코멘트 수(B8) — 안 풀린 스레드만 센다 · 답글 제외(읽는 문서 머리와 같은 잣대 · 2026-11-13). 아직 읽는 중이거나 실패면
   // 단추는 남기고 수를 모르면 세지 않는다(2026-11-12 UI 조사 U-094).
   const commentCount =
     comments !== null && comments !== "failed"
-      ? comments.filter((one) => one.resolved !== true).length
+      ? comments.filter((one) => one.resolved !== true && (one.parentId ?? null) === null).length
       : null;
   // 발행할 고침이 없는 보통 초안의 `발행` 은 으뜸이 아니다(2026-11-12 B4) — 누르면 창이 이유를 말한다.
   // 발행이 끝난 판(published)은 아직 남은 고침이 없다는 뜻이다 — 고침을 새로 쓰면 상태가 editing 으로 돌아간다.

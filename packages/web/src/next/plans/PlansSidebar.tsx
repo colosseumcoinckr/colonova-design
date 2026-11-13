@@ -502,7 +502,7 @@ export function PlansSidebar({
         }}
         onRetry={plans.refreshList}
         onImport={plans.importNow}
-        onSettings={() => nav.openSettings("connection")}
+        onConnect={() => nav.openPlansConnect()}
         hidden={hidden}
         activeDraftKey={plans.draftKey}
         focusId={plans.focusId}
@@ -520,9 +520,9 @@ export function PlansSidebar({
             <button
               type="button"
               className="nx-btn nx-btn--sm nx-banner-act"
-              onClick={() => nav.openSettings("connection")}
+              onClick={() => nav.openPlansConnect()}
             >
-              {L.plans.openSettings}
+              {L.plans.openConnect}
             </button>
           )}
         </div>

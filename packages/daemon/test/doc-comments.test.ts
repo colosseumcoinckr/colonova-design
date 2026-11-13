@@ -95,8 +95,12 @@ function rig(): Rig {
     },
     [`GET ${footerListUrl}`]: {
       json: {
-        results: [commentJson("41", 2), commentJson("42", 1, { parentId: "41" })],
+        results: [commentJson("41", 2)],
       },
+    },
+    // 답글은 문서 목록에 오지 않고 뿌리의 children 으로 온다(2026-11-13 커넥터로 실사이트 확인 · 앱 경로는 미실측).
+    "GET /wiki/api/v2/footer-comments/41/children?body-format=storage&limit=100": {
+      json: { results: [commentJson("42", 1, { parentCommentId: "41" })] },
     },
     [`GET ${inlineListUrl}`]: {
       json: { results: [commentJson("32", 3)] },
@@ -115,7 +119,12 @@ function rig(): Rig {
         url: input.url,
         body: text === "" ? undefined : JSON.parse(text),
       });
-      const route = served[`${input.method} ${input.url}`];
+      const route =
+        served[`${input.method} ${input.url}`] ??
+        // 따로 적지 않은 뿌리의 답글은 없다 — 빈 children 으로 답한다.
+        (input.method === "GET" && /-comments\/[^/]+\/children\?/.test(input.url)
+          ? { json: { results: [] } }
+          : undefined);
       if (route === undefined) return { status: 404, body: Buffer.from("{}", "utf8"), headers: {} };
       return {
         status: route.status ?? 200,
@@ -373,6 +382,27 @@ test("답글 — 부모가 자리를 정하고, 인라인 답글에는 닻이 �
       parentCommentId: "32",
       body: { representation: "storage", value: "<p>합성 답글</p>" },
     });
+  } finally {
+    gate(false);
+    cleanup();
+  }
+});
+
+test("답글의 수정 — children 에서 찾아 쓴다(문서 목록에는 뿌리만 온다 · 2026-11-13)", async () => {
+  const { comments, calls, served, cleanup } = rig();
+  try {
+    gate(true);
+    served["PUT /wiki/api/v2/footer-comments/42"] = { json: { id: "42" } };
+    const result = await comments.update({
+      pageId: PAGE_ID,
+      commandId: commandId(1),
+      commentId: "42",
+      kind: "footer",
+      version: 1,
+      text: "고친 답글",
+    });
+    assert.equal(result.state, "applied");
+    assert.ok(calls.some((row) => row.method === "PUT" && row.url.endsWith("/footer-comments/42")));
   } finally {
     gate(false);
     cleanup();

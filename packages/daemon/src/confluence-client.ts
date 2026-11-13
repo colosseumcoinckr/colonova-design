@@ -20,10 +20,12 @@
  *   GET /wiki/api/v2/{pages|folders|whiteboards|databases|embeds}/{id}/direct-children
  *                                                    — 트리 걷기(종류 있는 직접 아이 · `_links.next` · 2026-10-23 최종 구현 계획 F0)
  *   GET /wiki/rest/api/search?cql=…                  — CQL 증분(`type=page` 를 묶는 건 호출자 — 코멘트가 섞인다 · 실측)
- *   GET /wiki/api/v2/pages/{id}/footer-comments?body-format=storage — 바닥글 · 답글(부모 id)
- *   GET /wiki/api/v2/pages/{id}/inline-comments?body-format=storage — 인라인 · 해결 상태(REST 해결 읽기는 아직 미실측 — 사전 검증 2)
+ *   GET /wiki/api/v2/pages/{id}/footer-comments?body-format=storage — 바닥글 스레드의 뿌리만(답글은 안 온다 · 2026-11-13 확인)
+ *   GET /wiki/api/v2/pages/{id}/inline-comments?body-format=storage — 인라인 뿌리 · resolutionStatus · properties.inlineOriginalSelection
+ *   GET /wiki/api/v2/{footer|inline}-comments/{id}/children?body-format=storage — 답글(parentCommentId · 2026-11-13)
  *     본문 형식을 밝혀야 본문이 온다 — 해결 · 고치기가 본문을 다시 싣기 때문이다(2026-10-23 오케스트레이터 검토).
- *   GET /wiki/api/v2/users/{accountId}               — 코멘트 작성자 이름(뷰어의 「작성자」 · 캐시로 끊는다)
+ *   GET /wiki/rest/api/user?accountId=…              — 코멘트 · 판 작성자 이름(캐시로 끊는다 · 2026-11-13 — v2 에는 GET users/{id} 가
+ *                                                      없어 늘 실패했고 이름이 모두 비었다. v2 는 POST users-bulk 뿐이다)
  *   GET /wiki/rest/api/user/current                  — 인증 검증(사전 검증 1 · 실측 2026-10-18 — v2 의 users/me 는
  *                                                      이 게이트웨이에서 400 이라 v1 current 로 간다)
  *   POST /wiki/api/v2/pages                          — 기획 문서 새 페이지(발행의 새 문서 · 2026-10-23 최종 구현 계획 F2)
@@ -205,6 +207,9 @@ export type ConfluenceWrite<T> =
 /** 한도 사다리 — 429 를 이만큼 오른 뒤에도 막히면 한도로 분류하고 돌아온다. 시간은 BUDGETS.limitRetry 의 몫이다. */
 const LIMIT_ATTEMPTS = 3;
 
+/** 답글을 한 번에 묻는 뿌리의 수 — 뿌리가 많은 문서(실측 12)가 한꺼번에 몰리지 않게 한다. */
+const REPLY_BATCH = 4;
+
 /** 목록이 따라가는 쪽 상한 — github.ts 의 COMMENT_PAGE_CAP 과 같은 감각. 그 너머는 사람의 몫이다. */
 const PAGE_CAP = 10;
 
@@ -369,27 +374,97 @@ export class ConfluenceClient {
     });
   }
 
-  /** 바닥글 코멘트 — 답글은 부모 id 로 온다(실측). 읽지 못하면 읽지 못함이고, 뷰어는 수만 잃는다. */
-  async listFooterComments(pageId: string): Promise<ConfluenceRead<ConfluenceComment[]>> {
+  /**
+   * 바닥글 코멘트 — 문서 목록은 스레드의 뿌리만 준다. 답글은 뿌리마다 children 을 따로 읽어야 온다
+   * (2026-11-13 커넥터로 실사이트 확인 — 인라인 뿌리 12 · 답글 14, 바닥글 뿌리 14 · 답글 7. 옛 「답글도 부모 id 로 온다」는 틀렸다). 수만 세는 쪽은 뿌리로 충분하고,
+   * 스레드를 보이는 쪽만 `replies` 를 켠다. 읽지 못하면 읽지 못함이고, 뷰어는 수만 잃는다.
+   */
+  async listFooterComments(
+    pageId: string,
+    opts: { replies?: boolean } = {},
+  ): Promise<ConfluenceRead<ConfluenceComment[]>> {
     const first = `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/footer-comments?body-format=storage&limit=100`;
-    return await this.listRows(first, "코멘트 읽기", {}, commentOf);
+    const roots = await this.listRows(first, "코멘트 읽기", {}, commentOf);
+    if (!roots.readable || opts.replies !== true) return roots;
+    return await this.#withReplies("footer-comments", roots.value);
   }
 
-  /** 인라인 코멘트 — 닻(본문 선택)과 해결 상태. 해결의 REST 모양은 사전 검증 2 의 입력이다. */
-  async listInlineComments(pageId: string): Promise<ConfluenceRead<ConfluenceComment[]>> {
+  /** 인라인 코멘트 — 닻(본문 선택)과 해결 상태. 답글은 바닥글과 같이 `replies` 일 때만 따로 읽는다. */
+  async listInlineComments(
+    pageId: string,
+    opts: { replies?: boolean } = {},
+  ): Promise<ConfluenceRead<ConfluenceComment[]>> {
     const first = `/wiki/api/v2/pages/${encodeURIComponent(pageId)}/inline-comments?body-format=storage&limit=100`;
-    return await this.listRows(first, "코멘트 읽기", {}, commentOf);
+    const roots = await this.listRows(first, "코멘트 읽기", {}, commentOf);
+    if (!roots.readable || opts.replies !== true) return roots;
+    return await this.#withReplies("inline-comments", roots.value);
+  }
+
+  /**
+   * 뿌리마다 답글을 붙인다 — 부모 없는 안 풀린 뿌리만 묻는다(풀린 스레드는 화면이 보이지 않는다).
+   * 목록이 답글을 함께 주는 응답이 와도 두 번 세지 않게 id 로 한 번만 남긴다. 답글은 뿌리의 해결
+   * 상태를 따른다. 하나라도 못 읽으면 전체를 못 읽음으로 돌린다 — 답글이 조용히 빠진 목록을 내지
+   * 않는다. 한 단계만 읽는다(커넥터로 본 실사이트의 답글은 한 단계였다). 한 번에 몇 개씩만 묻는다.
+   */
+  async #withReplies(
+    segment: "footer-comments" | "inline-comments",
+    roots: ConfluenceComment[],
+  ): Promise<ConfluenceRead<ConfluenceComment[]>> {
+    const open = roots.filter((root) => root.parentId === null && !root.resolved);
+    const replies = new Map<string, ConfluenceComment[]>();
+    for (let at = 0; at < open.length; at += REPLY_BATCH) {
+      const batch = open.slice(at, at + REPLY_BATCH);
+      const reads = await Promise.all(
+        batch.map((root) =>
+          this.listRows(
+            `/wiki/api/v2/${segment}/${encodeURIComponent(root.id)}/children?body-format=storage&limit=100`,
+            "코멘트 읽기",
+            {},
+            commentOf,
+          ),
+        ),
+      );
+      for (const [index, read] of reads.entries()) {
+        if (!read.readable) return read;
+        const root = batch[index];
+        if (root === undefined) continue;
+        replies.set(
+          root.id,
+          read.value.map((reply) => ({
+            ...reply,
+            parentId: reply.parentId ?? root.id,
+            resolved: root.resolved,
+          })),
+        );
+      }
+    }
+    const rows: ConfluenceComment[] = [];
+    const seen = new Set<string>();
+    const keep = (row: ConfluenceComment): void => {
+      if (seen.has(row.id)) return;
+      seen.add(row.id);
+      rows.push(row);
+    };
+    for (const root of roots) {
+      keep(root);
+      for (const reply of replies.get(root.id) ?? []) keep(reply);
+    }
+    return { readable: true, value: rows };
   }
 
   /** 코멘트 작성자의 이름 — v2 는 id 만 주므로 따로 읽는다. 캐시가 같은 사람을 두 번 묻지 않게 하고, 실패는 이름 없음으로 흘린다. */
   async userName(accountId: string): Promise<string | null> {
     const cached = this.names.get(accountId);
     if (cached !== undefined) return cached;
+    // v1 사용자 읽기 — 인증 확인(user/current)과 같은 족속이다. 공개 범위가 좁은 계정은 displayName 이
+    // 비고 publicName 만 올 수 있다.
     const read = await this.requestRead(
-      `/wiki/api/v2/users/${encodeURIComponent(accountId)}`,
+      `/wiki/rest/api/user?accountId=${encodeURIComponent(accountId)}`,
       "작성자 읽기",
     );
-    const name = read.readable ? asString(read.value.displayName) : null;
+    const name = read.readable
+      ? (asString(read.value.displayName) ?? asString(read.value.publicName))
+      : null;
     this.names.set(accountId, name);
     return name;
   }
@@ -1130,7 +1205,7 @@ export class ConfluenceClient {
                     : "unavailable",
           detail:
             status === 401
-              ? `${label}에 실패했습니다 — Confluence 연결이 만료됐거나 자격이 틀렸습니다. 설정에서 다시 연결해 주세요.`
+              ? `${label}에 실패했습니다 — Confluence 연결이 만료됐거나 자격이 틀렸습니다. 기획서 연결에서 다시 연결해 주세요.`
               : httpError(label, status, body),
         };
       }
@@ -1274,20 +1349,26 @@ function pageOf(row: Record<string, unknown>): ConfluencePage | null {
 function commentOf(row: Record<string, unknown>): ConfluenceComment | null {
   const id = asString(row.id);
   if (!id) return null;
-  const inlineProps =
-    asRecord(row.inlineProperties) ?? asRecord(asRecord(row.properties)?.inlineProperties);
+  // 닻은 v2 의 properties.inlineOriginalSelection 에 온다(2026-11-13 커넥터로 실사이트 확인 · 앱 경로는 미실측 — 하이픈 이름도 함께 온다).
+  // 옛 inlineProperties.selection 모양은 시험 · 옛 응답을 위한 관용으로 남긴다.
+  const props = asRecord(row.properties);
+  const inlineProps = asRecord(row.inlineProperties) ?? asRecord(props?.inlineProperties);
   return {
     id,
     // 작성자 · 만든 때는 판(version) 안에 온다(2026-10-24 공식 FooterCommentModel · 실측 사례).
     authorId: asString(asRecord(row.version)?.authorId) ?? asString(row.authorId),
     body: asString(asRecord(asRecord(row.body)?.storage)?.value) ?? "",
     createdAt: asString(asRecord(row.version)?.createdAt) ?? asString(row.createdAt),
-    parentId: asString(row.parentId),
+    // 답글의 부모는 v2 에서 parentCommentId 로 온다(2026-11-13 커넥터로 실사이트 확인 · 앱 경로는 미실측).
+    parentId: asString(row.parentCommentId) ?? asString(row.parentId),
     resolved:
       row.resolutionStatus === "resolved" ||
       asRecord(asRecord(row.status))?.resolution === "resolved" ||
       asRecord(row.resolution)?.status === "resolved",
-    anchorText: asString(inlineProps?.selection),
+    anchorText:
+      asString(props?.inlineOriginalSelection) ??
+      asString(props?.["inline-original-selection"]) ??
+      asString(inlineProps?.selection),
     version: asNumber(asRecord(row.version)?.number),
   };
 }

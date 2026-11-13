@@ -1017,9 +1017,11 @@
   padding: var(--sp-1) var(--sp-3);
   min-height: var(--h-input);
 }
-/* 나눈 자리의 띄어쓰기를 지킨다 — `nowrap` 은 두 조각이 맞닿는 빈칸을 접어 `[정책서] 대행` 이 `[정책서]대행` 으로 붙었다(2026-11-12 감독자 확인). */
+/* 나눈 자리의 띄어쓰기를 지킨다 — `nowrap` 은 두 조각이 맞닿는 빈칸을 접어 `[정책서] 대행` 이 `[정책서]대행` 으로 붙었다(2026-11-12 감독자 확인).
+   앞 조각은 늘지 않고 줄기만 한다 — `flex-grow: 1` 은 남는 폭을 앞 조각에 주어 꼬리를 오른 끝으로 밀었고,
+   글자 수로 자른 자리가 낱말 가운데라 `Plat … form 고객사 관리` 처럼 벌어져 보였다(2026-11-13 사용자 화면). */
 .nx-pl-title-main {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

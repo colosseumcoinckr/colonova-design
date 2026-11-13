@@ -24,8 +24,8 @@ import { L } from "../src/next/labels";
 import { useSidebarWidth } from "../src/next/lib/use-sidebar-width";
 import { PlansSidebar } from "../src/next/plans/PlansSidebar";
 import { PlansContext, usePlansWorkspace } from "../src/next/plans/PlansWorkspace";
+import { PlansConnectDialog } from "../src/next/project/PlansConnectDialog";
 import { Sidebar } from "../src/next/sidebar/Sidebar";
-import type { ShellNav } from "../src/next/slots";
 import "pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css";
 import "../src/styles.css";
 import "../src/next/next.css";
@@ -179,6 +179,8 @@ interface Case {
   /** `기획서` 줄 끝의 작성 중인 초안 수(2026-10-23 기획자 화면 손질 D5). */
   planDrafts?: number;
   plans?: boolean;
+  /** 켜질 때 기획서 연결 대화상자가 열려 있다 — `기획서 연결` 줄로 다시도 연다(2026-11-13). */
+  connect?: boolean;
 }
 
 const CASES: Case[] = [
@@ -189,6 +191,7 @@ const CASES: Case[] = [
     projects: [
       project("plans", "ColoNova", rowsOf(SCREENSHOT), {
         confluence: {
+          connected: true,
           site: "https://example.atlassian.net",
           rootTitle: "8.8 ColoNova",
           lastImportAt: ago(3),
@@ -200,6 +203,26 @@ const CASES: Case[] = [
     activeSlug: "plans",
     rows: SCREENSHOT,
     planDrafts: 1,
+    connect: true,
+  },
+  {
+    id: "expired",
+    label: "expired · 만료된 연결 — 카드 줄은 호박 상태, 대화상자는 자격 입력이 선다",
+    projects: [
+      project("plans", "ColoNova", rowsOf(SCREENSHOT), {
+        confluence: {
+          connected: true,
+          site: "https://example.atlassian.net",
+          rootTitle: "8.8 ColoNova",
+          lastImportAt: ago(3),
+          pages: 3,
+          expired: true,
+        } as ProjectSummary["confluence"],
+      }),
+    ],
+    activeSlug: "plans",
+    rows: SCREENSHOT,
+    connect: true,
   },
   {
     id: "a",
@@ -346,6 +369,7 @@ function Frame({ spec }: { spec: Case }) {
   // 기획서 줄(2026-10-18) — 오른쪽 칸이 기획서인가. 누르면 열고 한 번 더 누르면 닫으며, 홈으로 가면 닫힌다.
   const [plansOn, setPlansOn] = useState(spec.plans ?? false);
   const [slug, setSlug] = useState(spec.activeSlug);
+  const [plansConnectOpen, setPlansConnectOpen] = useState(spec.connect ?? false);
   const [log, setLog] = useState("—");
   // `?done=<id>` — 그 대화가 0.6초 뒤 끝난다. 표시는 관찰한 전이만 달기 때문에 처음부터 끝난 줄로는 서지 않는다.
   const [settled, setSettled] = useState(false);
@@ -413,7 +437,7 @@ function Frame({ spec }: { spec: Case }) {
       hiddenThreads: {},
       sessions: views,
       repo: { phase: "ready", previewUrl: PREVIEW },
-      connection: "closed",
+      connection: "open",
       api: {
         history: async () => [],
         docList: async () => ({
@@ -527,6 +551,10 @@ function Frame({ spec }: { spec: Case }) {
       );
     },
     openSettings: () => setLog("설정"),
+    openPlansConnect: () => {
+      setPlansConnectOpen(true);
+      setLog("기획서 연결");
+    },
     toast: (text: string) => setLog(`토스트: ${text}`),
     showThread: () => setView("thread"),
     showTab: () => {},
@@ -559,6 +587,10 @@ function Frame({ spec }: { spec: Case }) {
       onRenameSession={(id, title) => setLog(`이름 바꾸기 ${id} → ${title}`)}
     />
   );
+  // 기획서 연결 대화상자(2026-11-13) — 카드의 `기획서 연결` 줄과 `?case=plans` 의 처음 열림이 같은 판을 그린다.
+  const plansConnect = plansConnectOpen ? (
+    <PlansConnectDialog daemon={daemon} onClose={() => setPlansConnectOpen(false)} />
+  ) : null;
   const frameWidth = spec.shell ? 900 : spec.pane ? 520 : width + 2;
   return (
     <PlansContext.Provider value={plans}>
@@ -618,6 +650,7 @@ function Frame({ spec }: { spec: Case }) {
               </main>
             </>
           )}
+          {plansConnect}
         </div>
       </div>
     </PlansContext.Provider>

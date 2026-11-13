@@ -1,0 +1,42 @@
+/*
+ * 프로젝트 쪽의 겹판(2026-11-13 사용자 결정 — 기획서 연결을 프로젝트 쪽으로) —
+ * 기획서 연결 대화상자와 전환기 카드 · 설정 줄이 함께 쓰는 상태 글. 판의 옷(스크림 ·
+ * 반경 · 그림자 · 들어옴/나감)은 ui/overlay.css 가 입힌다 — 여기는 폭과 줄의 글만.
+ */
+
+/* 기획서 연결 대화상자 — 폼(입력 셋 · 기준 페이지 찾기)이 들어가는 폭. */
+.nx-modal.nx-pcd {
+  width: min(560px, calc(100vw - 40px));
+  max-height: min(760px, calc(100dvh - 48px));
+}
+
+/* `기획서 연결` 줄 오른쪽의 짧은 상태 — 카드 · 설정 줄이 함께 쓴다. 색은 뜻의 보조
+   (글 그대로 말한다)이고 만료는 호박색으로 읽힌다. */
+.nx-pc-st {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  color: var(--ink3);
+}
+
+/* 전환기 카드의 `기획서 연결` 줄 — 제목은 고른 폭을 지키고(만료 문장이 길어도
+   두 줄로 싸이지 않게) 상태가 남는 칸에서 줄어 오른쪽 끝에 선다. */
+.nx-pi-plans b {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.nx-pi-plans .nx-pc-st {
+  margin-left: auto;
+}
+
+.nx-pc-st--warn {
+  color: var(--amber);
+}
+
+/* 잠금의 이유 띠 — 폼 위에 서서 입력이 왜 죽었는지 먼저 말한다. */
+.nx-pc-lock {
+  margin-bottom: var(--sp-3);
+}

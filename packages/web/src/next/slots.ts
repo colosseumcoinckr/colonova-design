@@ -55,6 +55,8 @@ export interface ShellNav {
   showRightTab: (tab: "chat" | "plans" | "history") => void;
   /** 설정 대화상자. `page` 를 주면 그 쪽이 먼저 선다(없으면 지금처럼 — 바퀴 · ⌘, · 팔레트). */
   openSettings: (page?: SettingsPage) => void;
+  /** 기획서 연결 대화상자(2026-11-13 사용자 결정 — 기획서 연결을 프로젝트 쪽으로). 활성 프로젝트의 Confluence 를 정한다. */
+  openPlansConnect: () => void;
   /** 셸 위에 잠깐 뜨는 한 줄 — `action` 이 있으면 단추가 달리고 더 오래 머문다. */
   toast: (text: string, action?: ToastAction) => void;
   /**

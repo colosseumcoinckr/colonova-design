@@ -50,6 +50,7 @@ export function useShellNav({
   narrow = false,
   onLayoutChange,
   onOpenSettings,
+  onOpenPlansConnect,
 }: {
   daemon: Daemon;
   sessions: Sessions;
@@ -61,6 +62,8 @@ export function useShellNav({
   narrow?: boolean;
   onLayoutChange: (patch: Partial<LayoutSettings>) => void;
   onOpenSettings: (page?: SettingsPage) => void;
+  /** 기획서 연결 대화상자를 연다(2026-11-13 사용자 결정) — 서랍을 먼저 닫는 건 셸이 맡는다. */
+  onOpenPlansConnect: () => void;
 }): {
   state: NavState;
   nav: ShellNav;
@@ -249,6 +252,7 @@ export function useShellNav({
     showTab: (tab) => dispatch({ type: "tab", tab }),
     showRightTab: (tab) => dispatch({ type: "right-tab", tab }),
     openSettings: (page) => onOpenSettings(page),
+    openPlansConnect: onOpenPlansConnect,
     toast: showToast,
     setDiscardableInvitePath: (path) => dispatch({ type: "invite-path", path }),
   };

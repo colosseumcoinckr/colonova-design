@@ -112,7 +112,12 @@ export function PublishDialog({
             .docRead(next.pageId)
             .then((doc) => {
               if (!alive) return;
-              setCommentCount((doc.comments ?? []).filter((one) => one.resolved !== true).length);
+              // 안 풀린 스레드만 — 답글은 세지 않는다(문서 머리와 같은 잣대 · 2026-11-13).
+              setCommentCount(
+                (doc.comments ?? []).filter(
+                  (one) => one.resolved !== true && (one.parentId ?? null) === null,
+                ).length,
+              );
             })
             .catch(() => {
               if (alive) setCommentCount(null);
